@@ -1,0 +1,34 @@
+Differences TAI-UTC from IERS Bulletin C
+The leap second is introduced at the beginning
+of the day reported
+The last value of the file is not used;
+the corresponding date defines the limit
+of validity of the file
+Day, month, year, TAI-UTC (s)
+---------------------------------------------------
+ 1  1  1972    10
+ 1  7  1972    11
+ 1  1  1973    12
+ 1  1  1974    13
+ 1  1  1975    14
+ 1  1  1976    15
+ 1  1  1977    16
+ 1  1  1978    17
+ 1  1  1979    18
+ 1  1  1980    19
+ 1  7  1981    20
+ 1  7  1982    21
+ 1  7  1983    22
+ 1  7  1985    23
+ 1  1  1988    24
+ 1  1  1990    25
+ 1  1  1991    26
+ 1  7  1992    27
+ 1  7  1993    28 
+ 1  7  1994    29
+ 1  1  1996    30
+ 1  7  1997    31
+ 1  1  1999    32
+ 1  1  2006    33
+ 1  1  2009    34
+ 1  7  2130  9999

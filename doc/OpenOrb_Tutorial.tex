@@ -1,0 +1,625 @@
+%====================================================================%
+%                                                                    %
+% Copyright 2009 Mikael Granvik, Jenni Virtanen, Karri Muinonen,     %
+%                Teemu Laakso, Dagmara Oszkiewicz                    %
+%                                                                    %
+% This file is part of OpenOrb.                                      %
+%                                                                    %
+% OpenOrb is free software: you can redistribute it and/or modify it %
+% under the terms of the GNU General Public License as published by  %
+% the Free Software Foundation, either version 3 of the License, or  %
+% (at your option) any later version.                                %
+%                                                                    %
+% OpenOrb is distributed in the hope that it will be useful, but     %
+% WITHOUT ANY WARRANTY; without even the implied warranty of         %
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU  %
+% General Public License for more details.                           %
+%                                                                    %
+% You should have received a copy of the GNU General Public License  %
+% along with OpenOrb. If not, see <http://www.gnu.org/licenses/>.    %
+%                                                                    %
+%====================================================================%
+\documentclass[12pt,english,twoside,a4paper]{report}
+\usepackage{babel}
+\usepackage{t1enc}
+\usepackage[T1]{fontenc}
+\usepackage[latin1]{inputenc}
+\usepackage{epsfig}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphics}
+\usepackage{graphicx}
+\usepackage{lscape}
+\usepackage{rotating}
+\usepackage{verbatim}
+\usepackage{latexsym}
+\usepackage{ae}
+\usepackage{aecompl}
+\usepackage{acronym}
+\usepackage{harvard}
+\usepackage{ae}    
+\usepackage{aecompl}  
+\pagestyle{plain} 
+\renewcommand{\baselinestretch}{1}
+\renewcommand{\deg}{^\circ}
+\newcommand{\arcmin}{^{\prime}}
+\newcommand{\arcsec}{^{\prime\prime}}
+\newcommand{\h}{^\mathrm{h}}
+\newcommand{\m}{^\mathrm{m}}
+\newcommand{\s}{^\mathrm{s}}
+\newcommand{\Mpc}{\,\mathrm{Mpc}}
+\newcommand{\kpc}{\,\mathrm{kpc}}
+\newcommand{\pc}{\,\mathrm{pc}}
+\newcommand{\AU}{\,\mathrm{AU}}
+\newcommand{\km}{\,\mathrm{km}}
+\newcommand{\meter}{\,\mathrm{m}}
+\newcommand{\cm}{\,\mathrm{cm}}
+\newcommand{\mm}{\,\mathrm{mm}}
+\newcommand{\um}{\,\mu \mathrm{m}}
+\newcommand{\nm}{\,\mathrm{nm}}
+\newcommand{\rad}{\,\mathrm{rad}}
+\newcommand{\anno}{\,\mathrm{a}}
+\newcommand{\days}{\,\mathrm{d}}
+\newcommand{\vrk}{\,\mathrm{vrk}}
+\newcommand{\hours}{\,\mathrm{hours}}
+\newcommand{\hour}{\,\mathrm{h}}
+\newcommand{\minute}{\,\mathrm{min}}
+\newcommand{\second}{\,\mathrm{s}}
+\newcommand{\magnitude}{^\mathrm{m}}
+\newcommand{\K}{\,\mathrm{K}}
+\newcommand{\TJ}{\,\mathrm{TJ}}
+\newcommand{\J}{\,\mathrm{J}}
+\newcommand{\N}{\,\mathrm{N}}
+\newcommand{\kg}{\,\mathrm{kg}}
+\newcommand{\g}{\,\mathrm{g}}
+\newcommand{\AMU}{\,\mathrm{AMU}}
+\newcommand{\W}{\,\mathrm{W}}
+\newcommand{\MW}{\,\mathrm{MW}}
+%\newcommand{\elements}{\mathbf{P}}
+\newcommand{\ud}{\mathrm{d}}
+%\renewcommand{\r}{\mathbf{r}}
+%\renewcommand{\v}{\mathbf{v}}
+\newcommand{\f}{\mathnormal{f}}
+\renewcommand{\g}{\mathnormal{g}}
+\title{OpenOrb Tutorial v.0.2}
+\author{Mikael Granvik (mgranvik@iki.fi) \\ Jenni Virtanen (jenni.virtanen@fgi.fi)}
+\date{February 19, 2009}
+%\usepackage[pdftex]{hyperref} 
+\begin{document}
+\maketitle
+\citationstyle{agsm}
+\citationmode{abbr}
+
+\pagenumbering{roman}
+\setcounter{page}{1}
+%\pagestyle{fancy}
+
+\begin{verbatim}
+#====================================================================#
+#                                                                    #
+# Copyright 2009 Mikael Granvik, Jenni Virtanen, Karri Muinonen      #
+#                Teemu Laakso, Dagmara Oszkiewicz                    #
+#                                                                    #
+# This file is part of OpenOrb.                                      #
+#                                                                    #
+# OpenOrb is free software: you can redistribute it and/or modify it #
+# under the terms of the GNU General Public License as published by  #
+# the Free Software Foundation, either version 3 of the License, or  #
+# (at your option) any later version.                                #
+#                                                                    #
+# OpenOrb is distributed in the hope that it will be useful, but     #
+# WITHOUT ANY WARRANTY; without even the implied warranty of         #
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU  #
+# General Public License for more details.                           #
+#                                                                    #
+# You should have received a copy of the GNU General Public License  #
+# along with OpenOrb. If not, see <http://www.gnu.org/licenses/>.    #
+#                                                                    #
+#====================================================================#
+\end{verbatim}
+
+\pagebreak
+
+\tableofcontents
+
+\pagebreak
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\chapter{Short introduction to OpenOrb}
+
+\section{Theory}
+
+In the Bayesian framework, the parameters to be estimated are treated
+as random variables and the complete solution to the inverse problem
+is contained in the parameters' posterior probability densities. The
+posterior distribution $p_\mathrm{p}$ is proportional to the a priori
+($p_\mathrm{pr}$) and the observational error ($p_\mathrm{\epsilon}$)
+PDFs:
+\begin{equation}
+p_\mathrm{p}(\mathbf{P}) \propto p_\mathrm{pr}(\mathbf{P}) p_\mathrm{\epsilon}(\Delta
+\psi (\mathbf{P}))
+\end{equation}
+where $\mathbf{P}$ refers to the orbital elements and $\Delta \psi
+(\mathbf{P})$ stands for the observed minus computed ($O-C$) residuals
+\cite{mui1993a,vir2005c}. The a priori often used is Jeffreys' a
+priori which secures the invariance of the results. For example, the
+collision probability does not depend on the type of orbital elements
+used in the analysis \cite{vir2006a}.
+
+If you want to transform the computed orbital-element PDF to
+another set of variables such as other types of orbital elements or
+ephemerides, you must also transform (that is, propagate) the weights
+to the new variables \cite{mui1993a}:
+\begin{equation}
+p(\mathbf{F}) = \int dP p(\mathbf{P})\delta_\mathrm{D}
+(\mathbf{F}-\mathbf{F}(\mathbf{P})) = \frac{1}{\det(\frac{\delta
+    \mathbf{F}}{\delta \mathbf{P}})_\mathbf{F}}
+p(\mathbf{P}(\mathbf{F})),
+\end{equation}
+where
+$\mathbf{F}(\mathbf{P})=(F_1(\mathbf{P}),\ldots,F_k(\mathbf{P}))^T$ is
+a set of functions of the orbital elements, $\delta_\mathrm{D}$ is
+Dirac's function, and $\det(\frac{\delta \mathbf{F}}{\delta
+  \mathbf{P}})_F$ is the determinant of the Jacobian matrix for the
+transformation $\mathbf{P} \rightarrow \mathbf{F}$. The propagation of
+the weights is done automatically for the PDFs produced by the
+``official'' OpenOrb executable, \verb|oorb|.
+
+
+
+\section{Numerical Methods} 
+
+\subsection{Orbital inversion}
+
+\subsubsection{Ranging}
+
+Ranging maps the non-Gaussian orbital-element PDF with a given
+number of sample orbits \cite{vir2001a,mui2001a}. Each sample orbit is
+computed using the following scheme: Two observations are chosen from
+the data set and a random deviate is added to all four coordinates to
+mimic observational noise. Next, a random topocentric distance is
+generated for the first observation date using a, typically, broad
+interval. The topocentric distance for the second observation date is
+generated from an interval relative to the topocentric distance on the
+first observation date. Since the location of the observatory with
+respect to the Sun is usually known, the four plane-of-sky coordinates
+and the two topocentric distances can be transformed into two
+heliocentric positions corresponding to the two observation
+dates. Using well-established methods in celestial mechanics, an orbit
+can be computed using the two heliocentric positions. The generated
+sample orbit is then used to compute ephemerides for the other
+observation dates. If the residuals are acceptable and the
+PDF value is good enough with respect to the until-then best-fit
+orbit, the sample orbit is accepted. The inversion can be sped up by
+iteratively adjusting the intervals for the topocentric distance
+either by performing the simulation for a smaller number of sample
+orbits before performing the full-scale inversion \cite{vir2003a} or
+by starting with only two observations and adding more observations
+step by step \cite{gra2005c}.
+
+\subsubsection{Least-squares with linearized covariances}
+
+Least-squares with linearized covariances (LSL)\ldots
+
+\subsection{Integration}
+
+- Bulirsch-Stoer extrapolation method
+
+- $n$-body dynamical model contains 8 planets + Moon + Pluto
+
+- leading relativistic term by the Sun (perihelion shift)
+
+\chapter{Installing OpenOrb}
+
+\section{Software requirements}
+
+In addition to basic Unix tools such as \verb|tar| and \verb|make|,
+using OpenOrb only requires a Fortran 90/95 compiler---we are mostly
+using the free \verb|gfortran| compiler (http://gcc.gnu.org/)---and
+\verb|gnuplot| (http://www.gnuplot.info) for automatic generation of
+plots.
+
+\section{Producing the executable}
+
+Extracting the source code archive will produce a directory called
+\verb|OpenOrb|: \\ \\
+\verb|tar xvzf OpenOrb-vN.N.tar.gz|\\ \\
+Change directory to the \verb|OpenOrb| directory:\\ \\
+\verb|cd OpenOrb|\\ \\
+Run configuration script to set up the chosen compiler and its
+command-line switches:\\ \\
+\verb+./configure [COMPILER] [opt | deb]+\\ \\
+Here \verb|COMPILER| can be one of the following: gfortran, g95,
+lahey, intel, sun, compaq, or absoft. The option \verb|opt| will
+produce optimized code for production use, whereas \verb|deb| will
+produce code suitable for debugging. The compiler commands and
+switches are explicitly given in (and should be modified through) the
+\verb|make.config| file. Next change to the \verb|main| directory and
+produce the \verb|oorb| executable: \\ \\
+\verb|cd main| \\
+\verb|make oorb| \\ \\
+Assuming everything compiled without problems\footnote{The only known
+  (compatibility) issue can be found at the end of
+  \mbox{modules/cl\_options.f90} and requires commenting certain lines
+  in/out. If you are using the latest gfortran compiler, everything
+  should compile without errors.} the \verb|oorb| executable is now in
+the \verb|main| directory.
+
+To allow a flexible usage of the executable, you may want to make the
+following changes or additions to your shell's configuration file: \\ \\ 
+\verb|export PATH=$PATH:/path/to/oorb| \\ \\
+If you have access to \verb|gnuplot| and want to make automatic plots
+of the orbital-element PDFs, you should define the
+\verb|$OORB_GNUPLOT_SCRIPTS_DIR| environment variable: \\ \\ 
+\verb|export OORB_GNUPLOT_SCRIPTS_DIR=/path/to/OpenOrb/gnuplot/|
+
+
+\section{Getting and processing required data files}
+
+Access to the following data files is required to run \verb|oorb|: 
+\begin{itemize}
+  \item OBSCODE.dat \href{http://www.cfa.harvard.edu/iau/lists/ObsCodes.html}{http://www.cfa.harvard.edu/iau/lists/ObsCodes.html}
+  \item TAI-UTC.dat \href{http://hpiers.obspm.fr/eop-pc/}{http://hpiers.obspm.fr/eop-pc/}
+  \item ET-UT.dat \href{}{}
+  \item de405.dat
+\end{itemize}
+The most recent versions of the three first files are incorporated in
+the OpenOrb package. OBSCODE.dat is updated every night by the Minor
+Planet Center. However, if you do not use observations from
+observatories that have recently acquired an observatory code, there
+is no need to update this file more often than, say, once every year
+or so. Note that the format of the OBSCODE.dat is identical to the
+HTML page with the exception that all HTML tags have been
+deleted. TAI-UTC.dat and ET-UT.dat have to be updated manually. A
+suitable interval to check the availability of updates is every six
+months or so.
+
+To generate the JPL planetary ephemeris file \verb|de405.dat|, go to
+the \\ \verb|OpenOrb/data/JPL_ephemeris/| directory \\ \\ 
+\verb|cd ../data/JPL_ephemeris/| \\ \\ 
+and issue the following \verb|make| command: \\ \\ 
+\verb|make de405| \\ \\
+If successful, the ASCII versions of the de405 ephemerides will first
+be automatically downloaded from the JPL FTP server, and then built to
+the binary file \verb|de405.dat|. Finally, \verb|de405.dat| is copied
+to the \verb|data| directory and the intermediate files are
+deleted. Note that you do not have to rebuild the \verb|de405.dat|
+file every time you get a new version of OpenOrb. However, since
+\verb|de405.dat| is a binary file, it may have to be built separately
+for every operating system. The correctness of the generated ephemeris
+file can be checked with \\ \\
+\verb|make de405_test| \\ \\
+Finally, the \verb|OORB_DATA| environment variable, which contains the
+path to the data directory (usually \verb|OpenOrb/data/|), should be
+added to the environment: \\ \\
+\verb|export OORB_DATA=/path/to/data/directory/| \\ \\
+Again, consider adding the \verb|OORB_DATA| variable to your shell's
+configuration file. 
+
+
+\section{Configuration file}
+
+The explanations and possible values for the configuration parameters
+are given in Table \ref{table:conf}. The path to the configuration
+file \verb|FILE| (path to default file is
+\verb|OpenOrb/main/oorb.conf|) can either be given using the command
+line option \verb|--conf=FILE| or using an environment variable:
+\\ \\ \verb|export OORB_CONF=/path/to/configuration/FILE| \\ \\ If
+neither of these are used, it is assumed that the configuration file
+is called \verb|oorb.conf| and resides in the working directory. Note
+that specifying the path as a command-line parameter
+(\verb|--conf=FILE|) overrides the environment variable
+(\verb|$OORB_CONF|) which in turn overrides the default path
+(\verb|./oorb.conf|).
+
+\begin{table}\label{table:conf}
+\centering
+\begin{tabular}{cc}
+\hline
+Option & Explanation \\
+\hline
+MANY OPTIONS & NOT MUCH TIME \\
+\hline
+\end{tabular}
+\caption{See configuration file. The options should be self-explanatory\ldots}  
+\end{table}
+
+
+
+\section{Sample configuration file}
+
+If you are using Bash, it makes life quite a bit easier if the
+\verb|.bashrc| file contains the following entries:
+\begin{verbatim}
+export PATH=$PATH:/path/to/oorb
+export OORB_CONF=/path/to/oorb/configuration/file
+export OORB_DATA=/path/to/data/directory/
+export OORB_GNUPLOT_SCRIPTS_DIR=/path/to/OpenOrb/gnuplot/
+\end{verbatim}
+
+
+
+\chapter{Using OpenOrb}
+
+The basic options (input, output, etc.) are given as command-line
+parameters when running \verb|oorb|, but more detailed configuration
+parameters are defined using a configuration file.
+
+\section{File formats}
+
+\subsection{Observations}
+
+\begin{itemize}
+
+\item Current MPC format (.mpc).
+\item New MPC format (.mpc3).
+
+\end{itemize}
+
+In the future, OpenOrb will be able to use the format which Pan-STARRS
+will be using.
+
+\subsection{Orbits}
+
+Current OpenOrb format (.orb).
+
+\subsection{Ephemeris}
+
+Current OpenOrb format (.eph).
+
+
+
+\section{Computing orbital-elements based on observed positions}
+
+The \verb|oorb| executable currently has to ways of obtaining the
+orbital-element PDF based on the observed positions, Ranging
+(\verb|--task=ranging|) and LSL (\verb|--task=lsl|). Whereas Ranging
+maps the PDF rigorously, that is, without prior
+assumptions of its shape, LSL assumes that the PDF is Gaussian and
+derives a so-called single-point estimate for the orbital-element
+PDF. In practice, the single-point estimate consists of the nominal
+orbit and the corresponding hyperellipsoid which describes the
+uncertainty of the orbit. In general, Ranging is optimized for
+situations with scarce data. LSL, on the other hand, should only be
+used when there is enough data available to assume that the {\it true}
+shape of the orbital-element PDF is indeed more or less
+Gaussian. The orbital inversion is performed by using either one of
+the followong commands: \\ \\
+\verb|oorb --task=ranging --obs-in=FILE.mpc [ --orb-out=OUTFILE ]| \\
+\verb|   [ --orb-out-separately ]| \\ \\ 
+\verb|oorb --task=lsl --obs-in=FILE.mpc --orb-in=INFILE|\\
+\verb|   [ --orb-out=OUTFILE ] [ --orb-out-separately ]| \\ \\ 
+Here \verb|FILE.mpc| contains the observed positions in the Minor
+Planet Center (MPC) format, and the file may contain more than one
+object in which case the number or temporary designation separates
+different sets. The observational uncertainty is specified in the
+configuration file. Currently, OpenOrb also allows observations to be
+fed using the ``New MPC Format'' the fate of which is still
+uncertain. In the New MPC Format (OpenOrb recognizes it by the suffix
+\verb|.mpc3|) observations are, among other things, allowed to have
+individual uncertainties. For LSL, \verb|oorb| needs at least one
+starting point which is supplied using INFILE. If
+\verb|--orb-out=OUTFILE| is omitted, the resulting orbital-element
+PDF is written to standard out. With the
+\verb|--orb-out-separately| option the orbit or orbits for each
+separate observation set is written to separate file the name of which
+is defined by the designation or number of the observation set.
+
+\subsection{Tips for using Ranging}
+
+\begin{itemize}
+
+\item Make a reasonable assumption for the observational uncertainty
+  $\sigma_\mathrm{obs}$, e.g., the observatory's historical RMS for
+  $O-C$ residuals.
+
+\item If using relative weights for sample orbits (non-uniform
+  sampling), make sure the acceptance window ($[-c_\mathrm{acc} \times
+    \sigma_\mathrm{obs},+c_\mathrm{acc} \times \sigma_\mathrm{obs}]$,
+  where $c_\mathrm{acc}$ is the acceptance-window multiplier) is large
+  enough to allow sampling without cut-offs due to residuals. In
+  practice, make sure the residual stamps figure do not show cut-offs.
+
+\item The generation window ($[-c_\mathrm{gen} \times
+  \sigma_\mathrm{obs},+c_\mathrm{gen} \times \sigma_\mathrm{obs}]$,
+  where $c_\mathrm{gen}$ is the generation-window multiplier) should
+  not be larger than the acceptance window. Typically, they have the
+  same size, that is, $c_\mathrm{acc}=c_\mathrm{gen}$.
+
+\item Use a number of sample orbits which is enough to do statistics,
+  but is still not overkill considering running time. Typically,
+  2,000--10,000 sample orbits is enough.
+
+\item As rule of thumb, use the two-body approximation for
+  Ranging. The $n$-body corrections are usually only required for
+  special cases such as collision-probability estimation.
+
+\end{itemize}
+
+\section{Propagation of orbital elements from one epoch to another}
+
+The orbital-element PDF can be propagated to another epoch using
+the command \\ \\
+\verb|oorb --task=propagation --epoch-mjd-tt=MJD --orb-in=INFILE| \\
+\verb|   [ --orb-out=OUTFILE ]| \\ \\
+The mode of propagation, that is, analytical two-body propagation or
+numerical $n$-body propagation using an integrator, can be defined in
+the configuration file. If \verb|--orb-out=OUTFILE| is omitted, the
+resulting orbital-element PDF is written to standard out.
+
+\section{Computing ephemerides}
+
+Topocentric ephemerides and their uncertainties are computed based on
+the orbital-element PDF using the command \\ \\
+\verb+oorb --task=ephemeris --obs-code=CODE [ --epoch-mjd-utc=MJD |+\\
+\verb+     --epoch-mjd-tt=MJD | --timespan=DT1 --step=DT2 ]+\\
+\verb+     --orb-in=INFILE+\\ \\
+where \verb|CODE| is the observatory code assigned by MPC and MJD is
+the Modified Julian Date of the desired ephemerides either in UTC or
+TT. DT1 is the timespan (in days) over which ephemerides should be
+computed when starting from the epoch of the orbital-elements and DT2
+is the frequency (in days) of the ephemerides. Positive values for DT1
+and DT2 indicate going forwards in time from the epoch, whereas
+negative values indicate going backwards. The ephemeris prediction
+based on the sampled PDF is a discrete set of predicted positions
+on the sky and their individual weights, and the ephemeris prediction
+based on the single-point estimate is the nominal position with a
+3-$\sigma$ uncertainty ellipse. Note that the non-Gaussian uncertainty
+region equivalent to the Gaussian 3-$\sigma$ region can also be
+obtained for the sampled prediction by normalizing the sum of the
+weights to unity and requiring that 99.73002\% of the total weight
+(probability mass) is within the boundaries. The ephemerides are
+written to standard out.
+
+\section{Dynamical classification}
+
+%Dynamical classification without the use of a priori knowledge is
+%currently included in the \verb|*.sor| file. The file is produced for
+%every observation set which is run through Ranging.
+For cases where the orbital-element PDF has been sampled, it is
+possible to classify the object in a dynamical sense by using the
+relative weight of sample orbits. The classification
+\\ \\ \verb|oorb --task=classification --orb-in=INFILE| \\ \\ The
+results are written to standard output.  The classification criteria
+can be changed by modifying the \verb|getGroupProbabilities|
+subroutine in \\ \verb|StochastiOrbit_class.f90|. Note that the
+current implementation of the dynamical classification is only done in
+the osculating $(a,e,i,q,Q)$ space, which means that, e.g., the
+classification of Jupiter Trojans is not carried out rigorously.
+
+\section{Conversion between file types}
+
+Use \\ \\
+\verb|oorb --task=mpctompc3 --obs-in=FILE1 [ --obs-out=FILE2]| \\ \\
+to convert an observation file (FILE1) formatted according to the
+current MPC format to a file (FILE2) formatted according to the
+proposed new MPC format. Observational uncertainties are taken from
+the configuration file. If they are not defined, the default
+uncertainty is zero. Use \\ \\
+\verb|oorb --task=mpc3tompc --obs-in=FILE1 [ --obs-out=FILE2]| \\ \\
+to convert an observation file (FILE1) formatted according to the
+proposed new MPC format to a file (FILE2) formatted according to the
+current MPC format. Note that information regarding observational
+uncertainties is lost during the conversion. Use \\ \\
+\verb|oorb --task=astorbtoorb --astorb=FILE1 [ --orb-out=FILE2]| \\ \\
+to convert the orbital elements and the (H,G) values in Ted Bowell's
+astorb.dat file to the .orb format. Here FILE1 is the astorb.dat file
+and FILE2 is the output .orb file. Again, if FILE2 is omitted the
+output is sent to standard out.
+
+\section{Example}
+
+In the \verb|OpenOrb/test/| directory you can find two almost
+identical observation files in the MPC format,
+\verb|K08K42V_ranging.mpc| and \verb|K08K42V_lsl.mpc|. The difference
+between these files is that in the previous file all but the three
+first observations have been commented out, whereas in the latter none
+are commented out.
+
+First, compute a Ranging solution for observation set \#1:
+\\ \\ 
+\verb|oorb --task=ranging --obs-in=K08K42V_ranging.mpc \| \\
+\verb|     --orb-out=K08K42V_ranging.orb|
+\\ \\
+The output is written both in the form of an orbital-element
+PDF file called \verb|K08K42V_ranging.orb| and a more general
+output file called \\ \verb|K08K42V_ranging.sor|. Moreover, two separate
+plots were also produced:
+\verb|K08K0042V_0.08_sor_keplerian_results.eps.gz| shows the
+orbital-element PDF and
+\verb|K08K0042V_0.08_sor_residual_stamps.eps.gz| shows stamps of the
+$O-C$ residual distributions corresponding to each observation
+included in the inversion.
+
+Then, use the orbits produced by Ranging to initiate the differential
+correction (LSL) using observation set \#2: \\ \\ 
+\verb|oorb --task=lsl --obs-in=K08K42V_lsl.mpc \| \\
+\verb|     --orb-in=K08K42V_ranging.orb --orb-out=K08K42V_lsl.orb| \\ \\ 
+Again, the output is written in the form of an orbital-element file
+called \verb|K08K42V_lsl.orb| which contains the nominal orbit and the
+standard deviations and correlations for the elements, and a general
+output file called \verb|K08K42V_lsl.ls|. The nominal orbit and the
+1-$\sigma$ and the 3-$\sigma$ uncertainty ellipsoids are shown in plot
+\verb|K08K0042V_37.80_ls_keplerian_results.eps.gz|.
+
+To make a dynamical classification of the object, do \\ \\
+\verb|oorb --task=classification --orb-in=K08K42V_ranging.orb| \\ \\
+The result strongly suggests that the object is something unknown to
+the current classification scheme and, in fact, the object is the
+first retrograde TNO discovered.
+
+To propagate the orbital-element PDF to the current date
+(2008-08-12) epoch, do \\ \\ 
+\verb|oorb --task=propagation --orb-in=K08K42V_ranging.orb \| \\ 
+\verb|     --epoch-mjd-tt=54690 --orb-out=K08K42V_ranging_54690.orb| \\ \\ 
+The file \verb|K08K42V_ranging_54690.orb| contains the orbital-element
+PDF at the new epoch.
+
+To compute follow-up ephemerides (topocentric distance, R.A., Dec.,
+and their corresponding time derivatives) for 10 dates with one-day
+intervals starting at 2008-08-12.0 TT, use \\ \\
+\verb|oorb --task=ephemeris --orb-in=K08K42V_ranging_54690.orb \| \\ 
+\verb|     --timespan=10.0 --step=1.0| \\ \\ 
+The ephemerides are written to standard out.
+
+\chapter{Developing your own applications based on OpenOrb}
+
+It is reasonably straightforward to develop your own applications in
+the OpenOrb framework due to the object-oriented approach. Although
+Fortran 90/95 is not a pure object-oriented language, we have mimicked
+object-oriented concepts in the software by using the guidelines by
+\citeasnoun{dec1997a}.
+
+More to be added later if there is interest\ldots
+
+
+\chapter{Communication}
+
+\section{Getting help}
+
+Due to manpower limitations, we cannot promise to give personal
+assistance in all situations. It is assumed that the user is familiar
+with state-of-the-art orbit computation methods and Bayesian inversion
+theory through published literature
+\citeaffixed{vir2005c,bow2003a,vir2008a}{for reviews, see}. However,
+if you intend to publish results obtained with OpenOrb and have doubt
+regarding the interpretation of the results, we encourage you to
+contact either Mikael Granvik (mgranvik@iki.fi) or Jenni Virtanen
+(jenni.virtanen@fgi.fi) for assistance.
+
+If needed, there may be help available for developing source code
+based on OpenOrb to solve more complicated orbit-computation-related
+problems. However, the help has a price, which is typically to be paid
+in the currency which our funding agencies understand and accept, that
+is, as a co-authorship in the resulting publication(s).
+
+\section{Reporting bugs}
+
+OpenOrb has been tested during the years by comparing the results to
+the results obtained with either our older software or by software by
+colleagues. If you nevertheless find a bug, please report it to us so
+that we can fix the problem. The report should be concise and contain
+everything needed for reproducing the erroneous result. Send the
+report to MG (mgranvik@iki.fi) with the text ``OpenOrb bug'' in the
+subject line.
+
+\section{Acknowledging the use of OpenOrb}
+
+If you find OpenOrb useful in your work, please acknowledge our
+efforts by citing, in addition to the relevant original papers, the
+following abstract (which will hopefully evolve into an ACM 2008
+conference proceedings ma\-nu\-script) on the OpenOrb software package: \\ \\ 
+
+\noindent Granvik, M., Virtanen, J., and Muinonen, K. (2008),
+`OpenOrb: Open-source asteroid-orbit-computation software including
+statistical orbital ranging', Asteroids, Comets, Meteors 2008,
+Abstract \#8206, CD-ROM, LPI Contribution No.\ 1405.
+
+
+
+\bibliographystyle{agsm}
+\bibliography{asteroid,educational,fortran}
+%\nocite{mui1999a}
+
+\end{document}
