@@ -1,0 +1,8 @@
+To produce a PS version of the OpenOrb tutorial, type
+
+    make
+
+To produce a PDF version, type
+
+    make pdf
+

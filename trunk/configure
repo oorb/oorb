@@ -1,0 +1,125 @@
+#!/bin/bash
+#
+#====================================================================#
+#                                                                    #
+# Copyright 2009 Mikael Granvik, Jenni Virtanen, Karri Muinonen,     #
+#                Teemu Laakso, Dagmara Oszkiewicz                    #
+#                                                                    #
+# This file is part of OpenOrb.                                      #
+#                                                                    #
+# OpenOrb is free software: you can redistribute it and/or modify it #
+# under the terms of the GNU General Public License as published by  #
+# the Free Software Foundation, either version 3 of the License, or  #
+# (at your option) any later version.                                #
+#                                                                    #
+# OpenOrb is distributed in the hope that it will be useful, but     #
+# WITHOUT ANY WARRANTY; without even the implied warranty of         #
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU  #
+# General Public License for more details.                           #
+#                                                                    #
+# You should have received a copy of the GNU General Public License  #
+# along with OpenOrb. If not, see <http://www.gnu.org/licenses/>.    #
+#                                                                    #
+#====================================================================#
+#
+# Script for selecting the compiler and setting general options.
+#
+# Author:  MG
+# Version: 2009-03-12
+#
+
+include_file=Makefile.include
+rm -f $include_file
+
+if [[ $1 == absoft ]] ; then
+
+    echo 'FC = $(FC_ABSOFT)' > $include_file
+    if [[ $2 == opt ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_ABSOFT)' >> $include_file
+    else
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_ABSOFT)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_ABSOFT)' >> $include_file
+
+elif [[ $1 == compaq ]] ; then
+
+    echo 'FC = $(FC_COMPAQ)' > $include_file
+    if [[ $2 == opt ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_COMPAQ)' >> $include_file
+    else
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_COMPAQ)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_COMPAQ)' >> $include_file
+
+elif [[ $1 == ibm ]] ; then
+
+    if [[ $2 == opt ]] ; then
+	echo 'FC = $(FC_SER_IBM)' > $include_file
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_IBM)' >> $include_file
+    elif [[ $2 == par ]] ; then
+	echo 'FC = $(FC_PAR_IBM)' > $include_file
+	echo 'FCOPTIONS = $(FCOPTIONS_PAR_IBM)' >> $include_file
+    else
+	echo 'FC = $(FC_SER_IBM)' > $include_file
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_IBM)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_IBM)' >> $include_file
+
+elif [[ $1 == intel ]] ; then
+
+    echo 'FC = $(FC_INTEL)' > $include_file
+    if [[ $2 == opt ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_INTEL)' >> $include_file
+    else
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_INTEL)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_INTEL)' >> $include_file
+
+elif [[ $1 == lahey ]] ; then
+
+    echo 'FC = $(FC_LAHEY)' > $include_file
+    if [[ $2 == opt ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_LAHEY)' >> $include_file
+    else
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_LAHEY)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_LAHEY)' >> $include_file
+
+elif [[ $1 == sun ]] ; then
+
+    echo 'FC = $(FC_SUN)' > $include_file
+    if [[ $2 == opt ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_SUN)' >> $include_file
+    elif [[ $2 == par ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_PAR_SUN)' >> $include_file
+    else
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_SUN)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_SUN)' >> $include_file
+
+elif [[ $1 == g95 ]] ; then
+
+    echo 'FC = $(FC_G95)' > $include_file
+    if [[ $2 == opt ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_G95)' >> $include_file
+    else
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_G95)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_G95)' >> $include_file
+
+elif [[ $1 == gfortran ]] ; then
+
+    echo 'FC = $(FC_GFORTRAN)' > $include_file
+    if [[ $2 == opt ]] ; then
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_GFORTRAN)' >> $include_file
+    else
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_GFORTRAN)' >> $include_file
+    fi
+    echo 'FC_INC = $(FC_INC_GFORTRAN)' >> $include_file
+
+else
+
+    echo Erroneous compiler: $1
+    rm -f $include_file
+
+fi

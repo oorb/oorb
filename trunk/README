@@ -1,0 +1,8 @@
+
+
+For documentation do
+
+ cd doc
+ make pdf
+
+which should produce PDF document 'OpenOrb_Tutorial_vN.N.pdf'.
