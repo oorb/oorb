@@ -25,7 +25,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-04-14
+!! @version 2009-07-28
 !!
 PROGRAM oorb
 
@@ -112,7 +112,8 @@ PROGRAM oorb
        obs_fname, &                                                 !! Path to observation file (incl. fname).
        orb_in_fname, &                                              !! Path to input orbit file (incl. fname).
        orb_out_fname, &                                             !! Path to output orbit file (incl. fname).
-       out_fname                                                    !! Path to generic output file (incl. fname).
+       out_fname, &                                                 !! Path to generic output file (incl. fname).
+       tmp_fname
   CHARACTER(len=ELEMENT_TYPE_LEN) :: &
        element_type_comp_prm, &                                     !! Element type to be used in computations.
        element_type_in, &                                           !! Element type of input orbit(s).
@@ -817,12 +818,12 @@ PROGRAM oorb
                  END IF
                  CALL writeDESOrbitFile(lu_orb_out, i==1 .AND. j==1, "cometary", &
                       id_arr_in(i), orb_arr_in(j), HG_arr_in(i,1))
-                 if (error) then
-                    call errorMessage("oorb", &
+                 IF (error) THEN
+                    CALL errorMessage("oorb", &
                          "DES output failed at orbit:", 1)
-                    write(stderr,*) j
-                    stop
-                 end if
+                    WRITE(stderr,*) j
+                    STOP
+                 END IF
                  CALL NULLIFY(orb_arr_in(j))
               END DO
               DEALLOCATE(orb_arr_in)
@@ -863,12 +864,12 @@ PROGRAM oorb
            END IF
            CALL writeDESOrbitFile(lu_orb_out, i==1, "cometary", &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1))
-           if (error) then
-              call errorMessage("oorb", &
+           IF (error) THEN
+              CALL errorMessage("oorb", &
                    "DES output failed at orbit:", 1)
-              write(stderr,*) i
-              stop
-           end if
+              WRITE(stderr,*) i
+              STOP
+           END IF
         END DO
      END IF
 
@@ -953,6 +954,7 @@ PROGRAM oorb
         STOP        
      END IF
      CALL NEW(orb_in_file, TRIM(orb_in_fname))
+     CALL setStatusOld(orb_in_file)
      CALL OPEN(orb_in_file)
      IF (error) THEN
         CALL errorMessage("oorb / astorbtoorb", &
@@ -1063,6 +1065,7 @@ PROGRAM oorb
         STOP        
      END IF
      CALL NEW(orb_in_file, TRIM(orb_in_fname))
+     CALL setStatusOld(orb_in_file)
      CALL OPEN(orb_in_file)
      IF (error) THEN
         CALL errorMessage("oorb / mpcorbtoorb", &
@@ -1070,9 +1073,9 @@ PROGRAM oorb
         STOP        
      END IF
      norb = getNrOfLines(orb_in_file)
-     deallocate(id_arr_in, orb_arr_in, HG_arr_in, arc_arr, stat=err)
+     DEALLOCATE(id_arr_in, orb_arr_in, HG_arr_in, arc_arr, stat=err)
      ALLOCATE(id_arr_in(norb), orb_arr_in(norb), HG_arr_in(norb,2), arc_arr(norb))
-     call readMPCOrbitFile(getUnit(orb_in_file), norb, id_arr_in, orb_arr_in, HG_arr_in, arc_arr)
+     CALL readMPCOrbitFile(getUnit(orb_in_file), norb, id_arr_in, orb_arr_in, HG_arr_in, arc_arr)
      IF (error) THEN
         CALL errorMessage("oorb / mpcorbtoorb", &
              "TRACE BACK (10)", 1)
@@ -1080,25 +1083,25 @@ PROGRAM oorb
      END IF
      CALL NULLIFY(orb_in_file)
 
-     do i=1,norb
+     DO i=1,norb
         elements = getElements(orb_arr_in(i), "keplerian")
-           IF (orbit_format_out == "des") THEN
-              CALL writeDESOrbitFile(lu_orb_out, i==1, "cometary", &
-                   id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                   -1.0_bp, "OPENORB")
-           ELSE IF (orbit_format_out == "orb") THEN
-              CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
-                   element_type_out=element_type_out_prm, &
-                   id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
-                   H=HG_arr_in(i,1), G=HG_arr_in(i,2))
-           END IF
-           IF (error) THEN
-              CALL errorMessage("oorb / mpcorbtoorb", &
-                   "TRACE BACK (15)", 1)
-              STOP        
-           END IF
+        IF (orbit_format_out == "des") THEN
+           CALL writeDESOrbitFile(lu_orb_out, i==1, "cometary", &
+                id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
+                -1.0_bp, "OPENORB")
+        ELSE IF (orbit_format_out == "orb") THEN
+           CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
+                element_type_out=element_type_out_prm, &
+                id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
+                H=HG_arr_in(i,1), G=HG_arr_in(i,2))
+        END IF
+        IF (error) THEN
+           CALL errorMessage("oorb / mpcorbtoorb", &
+                "TRACE BACK (15)", 1)
+           STOP        
+        END IF
      END DO
-        
+
 
   CASE ("ranging")
 
@@ -2705,8 +2708,8 @@ PROGRAM oorb
            IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) THEN
-              call nullify(epoch)
-           end IF
+              CALL NULLIFY(epoch)
+           END IF
         END DO
         DO i=1,SIZE(orb_arr_in)
            IF (orbit_format_out == "des") THEN
@@ -3466,7 +3469,7 @@ PROGRAM oorb
                 H=HG_arr_in(i,1), G=HG_arr_in(i,3))
         END IF
         IF (error) THEN
-           write(stderr,*) i
+           WRITE(stderr,*) i
            error = .FALSE.
         END IF
      END DO
@@ -4021,6 +4024,83 @@ PROGRAM oorb
         WRITE(stdout,"(A,1X,2(I0,1X),F15.12)") "Dec = ", i, j, sec
      END IF
 
+  CASE ("encode_designation")
+
+     IF (.NOT.(get_cl_option("--mpc", .FALSE.) .OR. &
+          get_cl_option("--mpc3", .FALSE.))) THEN     
+        CALL errorMessage("oorb / encode_designation", &
+             "Either the '--mpc' or the '--mpc3' option has to be specified.", 1)                
+        STOP
+     ELSE IF (get_cl_option("--mpc", .FALSE.) .AND. &
+          get_cl_option("--mpc3", .FALSE.)) THEN     
+        CALL errorMessage("oorb / encode_designation", &
+             "Both '--mpc' and '--mpc3' options cannot be used simultaneously.", 1)                
+        STOP
+     END IF
+
+     IF (get_cl_option("--data-in=", .FALSE.)) THEN     
+        tmp_fname = get_cl_option("--data-in="," ")
+        CALL NEW(tmp_file, TRIM(tmp_fname))
+        CALL setStatusOld(tmp_file)
+        CALL OPEN(tmp_file)
+        IF (error) THEN
+           CALL errorMessage("oorb / encode_designation", &
+                "TRACE BACK", 1)        
+           STOP
+        END IF
+        DO 
+           READ(getUnit(tmp_file),"(A)",iostat=err) id
+           IF (err < 0) THEN
+              EXIT
+           ELSE IF (err > 0) THEN
+              CALL errorMessage("oorb / encode_designation", &
+                   "Could not read designation from file.", 1)        
+              STOP
+           END IF
+           IF (get_cl_option("--mpc", .FALSE.)) THEN
+              CALL encodeMPCDesignation(id)
+           ELSE IF (get_cl_option("--mpc3", .FALSE.)) THEN
+              CALL encodeMPC3Designation(id)
+           END IF
+           WRITE(stdout,"(A)") TRIM(id)
+        END DO
+        CALL NULLIFY(tmp_file)
+     ELSE
+        CALL errorMessage("oorb / encode_designation", &
+             "No input file given (use '--data-in=' option).", 1)                
+     END IF
+
+
+  CASE ("decode_designation")
+
+     IF (get_cl_option("--data-in=", .FALSE.)) THEN     
+        tmp_fname = get_cl_option("--data-in="," ")
+        CALL NEW(tmp_file, TRIM(tmp_fname))
+        CALL setStatusOld(tmp_file)
+        CALL OPEN(tmp_file)
+        IF (error) THEN
+           CALL errorMessage("oorb / decode_designation", &
+                "TRACE BACK", 1)        
+           STOP
+        END IF
+        DO 
+           READ(getUnit(tmp_file),"(A)",iostat=err) id
+           IF (err < 0) THEN
+              EXIT
+           ELSE IF (err > 0) THEN
+              CALL errorMessage("oorb / decode_designation", &
+                   "Could not read designation from file.", 1)        
+              STOP
+           END IF
+           IF (LEN_TRIM(id) > 7) THEN
+              CALL decodeMPC3Designation(id)
+           ELSE
+              CALL decodeMPCDesignation(id)
+           END IF
+           WRITE(stdout,"(A)") TRIM(id)
+        END DO
+        CALL NULLIFY(tmp_file)
+     END IF
 
   CASE default
 
