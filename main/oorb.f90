@@ -25,7 +25,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-07-28
+!! @version 2009-07-29
 !!
 PROGRAM oorb
 
@@ -1085,6 +1085,13 @@ PROGRAM oorb
 
      DO i=1,norb
         elements = getElements(orb_arr_in(i), "keplerian")
+!!$        ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+!!$        ! Discard some orbits depending on the following requirement:
+!!$        IF (arc_arr(i) > 30.0_bp .AND. elements(1) < 30.0_bp) THEN
+!!$           CYCLE
+!!$        END IF
+!!$        ! End requirement
+!!$        ! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         IF (orbit_format_out == "des") THEN
            CALL writeDESOrbitFile(lu_orb_out, i==1, "cometary", &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
