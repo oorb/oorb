@@ -26,7 +26,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-07-29
+!! @version 2009-07-30
 !!
 MODULE io
 
@@ -4184,6 +4184,7 @@ CONTAINS
     DEALLOCATE(res_arr, stat=err)
     DEALLOCATE(ellipse_fac, stat=err)
     DEALLOCATE(sor_pair_arr_prm, stat=err)
+    DEALLOCATE(obs_stdev_arr, stat=err)
     DEALLOCATE(obs_masks, stat=err)
     DEALLOCATE(mask_arr, stat=err)
 
