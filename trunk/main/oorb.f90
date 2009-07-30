@@ -25,7 +25,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-07-29
+!! @version 2009-07-30
 !!
 PROGRAM oorb
 
@@ -1358,6 +1358,7 @@ PROGRAM oorb
               DEALLOCATE(HG_arr_in)
               HG_arr_in => getGDistribution(physparam)
               temp_arr(:,3:4) = HG_arr_in(:,1:2)
+              DEALLOCATE(HG_arr_in)
               ALLOCATE(HG_arr_in(SIZE(temp_arr,dim=1),4))
               HG_arr_in = temp_arr
               DEALLOCATE(temp_arr)              
@@ -1626,6 +1627,9 @@ PROGRAM oorb
         IF (info_verb >= 2) THEN
            WRITE(stdout,*)
            WRITE(stdout,*)
+        END IF
+        IF (ASSOCIATED(HG_arr_in)) THEN
+           DEALLOCATE(HG_arr_in, stat=err)
         END IF
         CALL NULLIFY(obss_sep(i))
      END DO
