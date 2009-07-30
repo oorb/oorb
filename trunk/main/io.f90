@@ -26,7 +26,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-04-14
+!! @version 2009-07-29
 !!
 MODULE io
 
@@ -55,41 +55,41 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  subroutine decodeMPCDate(encoded_date, year, month, day)
+  SUBROUTINE decodeMPCDate(encoded_date, year, month, day)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(inout) :: encoded_date
-    integer, intent(out) :: year, month
-    real(bp), intent(out) :: day
+    INTEGER, INTENT(out) :: year, month
+    REAL(bp), INTENT(out) :: day
 
-    real(bp) :: tmp
+    REAL(bp) :: tmp
     INTEGER :: i
 
     CALL removeLeadingBlanks(encoded_date)
-    call toInt(encoded_date(2:3), year, error)
-    if (encoded_date(1:1) == "J") then
+    CALL toInt(encoded_date(2:3), year, error)
+    IF (encoded_date(1:1) == "J") THEN
        year = year + 1900
-    else if (encoded_date(1:1) == "K") then
+    ELSE IF (encoded_date(1:1) == "K") THEN
        year = year + 2000
-    end if
-    do i=1,size(mpc_conv_table)
+    END IF
+    DO i=1,SIZE(mpc_conv_table)
        IF (mpc_conv_table(i) == encoded_date(4:4)) THEN
           EXIT
        END IF
-    end do
+    END DO
     month = i
-    do i=1,size(mpc_conv_table)
+    DO i=1,SIZE(mpc_conv_table)
        IF (mpc_conv_table(i) == encoded_date(5:5)) THEN
           EXIT
        END IF
-    end do
-    day = real(i,bp)
-    if (len_trim(encoded_date) > 5) then
-       call toReal("0." // trim(encoded_date(6:)), tmp, error)
+    END DO
+    day = REAL(i,bp)
+    IF (LEN_TRIM(encoded_date) > 5) THEN
+       CALL toReal("0." // TRIM(encoded_date(6:)), tmp, error)
        day = day + tmp
-    end if
+    END IF
 
-  END subroutine decodeMPCDate
+  END SUBROUTINE decodeMPCDate
 
 
 
@@ -1676,7 +1676,7 @@ CONTAINS
 
     ! Jump over header:
     line = ""
-    do while (line(1:5) /= "-----")
+    DO WHILE (line(1:5) /= "-----")
        READ(lu, "(A)", iostat=err) line
        IF (err /= 0) THEN
           error = .TRUE.
@@ -1684,7 +1684,7 @@ CONTAINS
                "Could not jump over header line of MPC orbit file.", 1)
           RETURN
        END IF
-    end do
+    END DO
 
     norb = 0
     DO WHILE (norb + 1 <= SIZE(id_arr))
@@ -1704,44 +1704,44 @@ CONTAINS
        ! Designation or number
        id_arr(norb) = line(1:7)
        ! H
-       if (len_trim(line(9:13)) == 0) then
+       IF (LEN_TRIM(line(9:13)) == 0) THEN
           HG_arr(norb,1) = 99.9_bp
-       else
-          call toReal(line(9:13), HG_arr(norb,1), error)
-       end if
+       ELSE
+          CALL toReal(line(9:13), HG_arr(norb,1), error)
+       END IF
        ! G
-       if (len_trim(line(15:19)) == 0) then
+       IF (LEN_TRIM(line(15:19)) == 0) THEN
           HG_arr(norb,2) = 9.9_bp
-       else
-          call toReal(line(15:19), HG_arr(norb,2), error)
-       end if
+       ELSE
+          CALL toReal(line(15:19), HG_arr(norb,2), error)
+       END IF
        IF (error) THEN
           CALL errorMessage("io / readMPCOrbitFile", &
                "TRACE BACK (5)", 1)
           RETURN
        END IF
        ! Epoch
-       call decodeMPCDate(line(21:25), year, month, day)
-       call new(epoch, year, month, day, "TT")
+       CALL decodeMPCDate(line(21:25), year, month, day)
+       CALL NEW(epoch, year, month, day, "TT")
        IF (error) THEN
           CALL errorMessage("io / readMPCOrbitFile", &
                "TRACE BACK (10)", 1)
           RETURN
        END IF
        ! M
-       call toReal(line(27:35), elements(6), error)
+       CALL toReal(line(27:35), elements(6), error)
        ! ap
-       call toReal(line(38:46), elements(5), error)
+       CALL toReal(line(38:46), elements(5), error)
        ! an
-       call toReal(line(49:57), elements(4), error)
+       CALL toReal(line(49:57), elements(4), error)
        ! i
-       call toReal(line(60:68), elements(3), error)
+       CALL toReal(line(60:68), elements(3), error)
        ! e
-       call toReal(line(71:79), elements(2), error)
+       CALL toReal(line(71:79), elements(2), error)
        ! n
-       call toReal(line(81:91), n, error)       
+       CALL toReal(line(81:91), n, error)       
        ! a
-       call toReal(line(93:103), elements(1), error)
+       CALL toReal(line(93:103), elements(1), error)
        elements(3:6) = elements(3:6)*rad_deg
        CALL NEW(orb_arr(norb), elements, "keplerian", "ecliptic", epoch)
        IF (error) THEN
@@ -1750,13 +1750,13 @@ CONTAINS
           RETURN
        END IF
        CALL NULLIFY(epoch)
-       if (line(132:132) == "-") then
-          call toInt(line(128:131), y1, error)
-          call toInt(line(133:136), y2, error)
-          arc_arr(norb) = real(y2-y1)*day_year
-       else
-          call toReal(line(128:131), arc_arr(norb), error)          
-       end if
+       IF (line(132:132) == "-") THEN
+          CALL toInt(line(128:131), y1, error)
+          CALL toInt(line(133:136), y2, error)
+          arc_arr(norb) = REAL(y2-y1)*day_year
+       ELSE
+          CALL toReal(line(128:131), arc_arr(norb), error)          
+       END IF
        IF (error) THEN
           CALL errorMessage("io / readMPCOrbitFile", &
                "TRACE BACK (20)", 1)
@@ -2553,7 +2553,7 @@ CONTAINS
     REAL(bp), INTENT(in), OPTIONAL :: pdf, rchi2, reg_apr, &
          jac_sph_inv, jac_car_kep, jac_equ_kep, H, G, rho1, rho2, &
          rms, npdf
-    logical, intent(in), optional :: mjd
+    LOGICAL, INTENT(in), OPTIONAL :: mjd
 
     TYPE (Time) :: t
     CHARACTER(len=1024), DIMENSION(4) :: header
@@ -2756,27 +2756,27 @@ CONTAINS
                "Output orbital elements are unknown to the software.", 1)       
           RETURN          
        END IF
-       if (present(mjd)) then
-          if (mjd) then
+       IF (PRESENT(mjd)) THEN
+          IF (mjd) THEN
              header(1)(indx:indx+17) = "    Epoch (TT)   "
              header(2)(indx:indx+17) = "       MJD       "
              header(3)(indx:indx+17) = "                 "
              header(4)(indx:indx+17) = ">------0074-----<"
              indx = indx + 17             
-          else
+          ELSE
              header(1)(indx:indx+17) = "    Epoch (TT)   "
              header(2)(indx:indx+17) = " YYYY MM DD.ddddd"
              header(3)(indx:indx+17) = "                 "
              header(4)(indx:indx+17) = ">------0008-----<"
              indx = indx + 17
-          end if
-       else
+          END IF
+       ELSE
           header(1)(indx:indx+17) = "    Epoch (TT)   "
           header(2)(indx:indx+17) = " YYYY MM DD.ddddd"
           header(3)(indx:indx+17) = "                 "
           header(4)(indx:indx+17) = ">------0008-----<"
           indx = indx + 17
-       end if
+       END IF
        IF (PRESENT(element_type_pdf)) THEN
           header(1)(indx:indx+13) = "  Inversion  "
           header(2)(indx:indx+13) = "   orbital   "
@@ -3008,8 +3008,8 @@ CONTAINS
             "TRACE BACK (10)", 1)
        RETURN
     END IF
-    if (present(mjd)) then
-       if (mjd) then
+    IF (PRESENT(mjd)) THEN
+       IF (mjd) THEN
           mjd_tt = getMJD(t, "TT")
           WRITE(lu, "(A16,6(1X,E21.14),2X,F15.7)", &
                advance="no", iostat=err) id, elements(1:6), mjd_tt
@@ -3020,9 +3020,9 @@ CONTAINS
              RETURN
           END IF
           CALL NULLIFY(t)
-       end if
-    end if
-    if (exist(t)) then ! MJD not requested...
+       END IF
+    END IF
+    IF (exist(t)) THEN ! MJD not requested...
        CALL getCalendarDate(t, "tdt", year, month, day)
        IF (error) THEN
           CALL errorMessage("io / writeOpenOrbOrbitFile", &
@@ -3039,7 +3039,7 @@ CONTAINS
                "Write error (5).", 1)
           RETURN
        END IF
-    end if
+    END IF
     IF (PRESENT(element_type_pdf)) THEN
        IF (LEN_TRIM(element_type_pdf) > 12) THEN
           error = .TRUE.
