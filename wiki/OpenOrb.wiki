@@ -51,7 +51,8 @@ The output is divided into the following columns (as marked by a single-line hea
 
   * Mac OS X 10.5.7 + gfortran 4.4.0
   * Mac OS X 10.5.7 + g95 0.91
-  * Fedora Core 9 + intel 11.8  
+  * Fedora Core 9 + intel 11.8
+  * linux + intel 10.1  
 
 === Which OS + compiler combos have problems with OpenOrb? ===
 
