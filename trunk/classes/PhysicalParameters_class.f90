@@ -28,7 +28,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2009-04-14
+!! @version 2009-07-30
 !!
 MODULE PhysicalParameters_cl
 
@@ -154,10 +154,18 @@ CONTAINS
     IMPLICIT NONE
     TYPE (PhysicalParameters), INTENT(inout) :: this
 
+    INTEGER :: err
+
+    CALL NULLIFY(this%storb)
     this%H0_nominal = 99.9_bp
     this%H0_unc = 99.0_bp
     this%G_nominal = -9.9_bp
-
+    IF (ASSOCIATED(this%H0_arr)) THEN
+       DEALLOCATE(this%H0_arr, stat=err)
+    END IF
+    IF (ASSOCIATED(this%G_arr)) THEN
+       DEALLOCATE(this%G_arr, stat=err)
+    END IF
     this%is_initialized = .FALSE.
 
   END SUBROUTINE nullify_PP
@@ -226,7 +234,7 @@ CONTAINS
          hel_dist_arr, topo_dist_arr
     REAL(bp), DIMENSION(:), POINTER :: obs_mag_arr, obs_mag_unc_arr
     REAL(bp), DIMENSION(6) :: coordinates
-    INTEGER :: i, j, norb, nobs
+    INTEGER :: err, i, j, norb, nobs
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask_arr
 
     IF (.NOT.this%is_initialized) THEN
@@ -352,6 +360,33 @@ CONTAINS
        END IF
     END IF
 
+    ! Deallocate memory
+    DEALLOCATE(obsy_ccoord_arr, stat=err)
+    DEALLOCATE(mask_arr, stat=err)
+    DEALLOCATE(obs_mag_arr, stat=err)
+    DEALLOCATE(obs_mag_unc_arr, stat=err)
+    DEALLOCATE(filter_arr, stat=err)
+    DEALLOCATE(ephemerides_arr, stat=err)
+    DEALLOCATE(orb_lt_corr_arr, stat=err)
+    IF (ASSOCIATED(cov_arr)) THEN
+       DEALLOCATE(cov_arr, stat=err)
+    END IF
+    IF (ASSOCIATED(pdfs_arr)) THEN
+       DEALLOCATE(pdfs_arr, stat=err)
+    END IF
+    IF (ASSOCIATED(phase_angle_arr_)) THEN
+       DEALLOCATE(phase_angle_arr_, stat=err)
+    END IF
+    IF (ALLOCATED(phase_angle_arr)) THEN
+       DEALLOCATE(phase_angle_arr, stat=err)
+    END IF
+    IF (ALLOCATED(hel_dist_arr)) THEN
+       DEALLOCATE(hel_dist_arr, stat=err)
+    END IF
+    IF (ALLOCATED(topo_dist_arr)) THEN
+       DEALLOCATE(topo_dist_arr, stat=err)
+    END IF
+
   END SUBROUTINE estimateHAndG
 
 
@@ -366,6 +401,7 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(bp), INTENT(in) :: H, G, r, Delta, phase_angle
+
     REAL(bp), DIMENSION(2) :: phi
 
     phi = HGPhaseFunctions(phase_angle)
@@ -599,6 +635,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(bp), DIMENSION(2) :: HGPhaseFunctions
     REAL(bp), INTENT(in) :: phase_angle
+
     REAL(bp), DIMENSION(2) :: a, b, c
     REAL(bp) :: w, phis, phil
     INTEGER :: i
