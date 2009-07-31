@@ -67,7 +67,7 @@ pdf: $(DVIFILE)
 	rm -f prepdf_$(PSFILE)
 
 clean:
-	rm -f $(PSFILE) prepdf_$(PSFILE) $(PDFFILE) \
+	rm -f $(PSFILE) prepdf_$(PSFILE) \
 	*.dvi *.log *.aux *~ core *.bbl *.blg *.out \
 	*.toc
 
