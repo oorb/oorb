@@ -39,6 +39,8 @@
 \usepackage{harvard}
 \usepackage{ae}    
 \usepackage{aecompl}  
+\usepackage{url}
+
 \pagestyle{plain} 
 \renewcommand{\baselinestretch}{1}
 \renewcommand{\deg}{^\circ}
@@ -83,8 +85,8 @@
 \renewcommand{\g}{\mathnormal{g}}
 \title{OpenOrb Tutorial v.0.2}
 \author{Mikael Granvik (mgranvik@iki.fi) \\ Jenni Virtanen (jenni.virtanen@fgi.fi)}
-\date{February 19, 2009}
-%\usepackage[pdftex]{hyperref} 
+\date{\today}
+\usepackage{hyperref} 
 \begin{document}
 \maketitle
 \citationstyle{agsm}
@@ -270,10 +272,10 @@ Planet Center. However, if you do not use observations from
 observatories that have recently acquired an observatory code, there
 is no need to update this file more often than, say, once every year
 or so. Note that the format of the OBSCODE.dat is identical to the
-HTML page with the exception that all HTML tags have been
-deleted. TAI-UTC.dat and ET-UT.dat have to be updated manually. A
-suitable interval to check the availability of updates is every six
-months or so.
+HTML page with the exception that all HTML tags and the header line
+have been deleted. TAI-UTC.dat and ET-UT.dat have to be updated
+manually. A suitable interval to check the availability of updates is
+every six months or so.
 
 To generate the JPL planetary ephemeris file \verb|de405.dat|, go to
 the \\ \verb|OpenOrb/data/JPL_ephemeris/| directory \\ \\ 
