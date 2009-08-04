@@ -25,7 +25,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-07-30
+!! @version 2009-08-04
 !!
 PROGRAM oorb
 
@@ -1087,7 +1087,7 @@ PROGRAM oorb
         elements = getElements(orb_arr_in(i), "keplerian")
 !!$        ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 !!$        ! Discard some orbits depending on the following requirement:
-!!$        IF (arc_arr(i) > 30.0_bp .AND. elements(1) < 30.0_bp) THEN
+!!$        IF (arc_arr(i) > 30.0_bp .OR. elements(1) < 30.0_bp) THEN
 !!$           CYCLE
 !!$        END IF
 !!$        ! End requirement
@@ -2358,6 +2358,7 @@ PROGRAM oorb
 
      CALL NULLIFY(epoch)
      IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        ! New epoch given as MJD TT
         mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
         CALL NEW(epoch, mjd_tt, "TT")
         IF (error) THEN
@@ -2367,6 +2368,7 @@ PROGRAM oorb
         END IF
      ELSE IF (get_cl_option("--epoch-mjd-utc=", .FALSE.)) THEN
         mjd_utc = get_cl_option("--epoch-mjd-utc=", 0.0_bp)
+        ! New epoch given as MJD UTC
         CALL NEW(epoch, mjd_utc, "UTC")
         IF (error) THEN
            CALL errorMessage("oorb / propagation", &
@@ -2396,24 +2398,88 @@ PROGRAM oorb
                    "TRACE BACK (15)", 1)
               STOP
            END IF
-
-           IF (.NOT.exist(epoch) .AND. & 
+           IF (.NOT.exist(epoch) .AND. &
+                .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
+                get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) THEN
+              ! New epoch relative to current epoch of orbit 
               dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
               epoch = getTime(storb_arr_in(i))
               mjd_tt = getMJD(epoch, "TT")
               CALL NULLIFY(epoch)
               CALL NEW(epoch, mjd_tt + dt, "TT")
-           ELSE IF (.NOT.exist(epoch) .AND. & 
-                .NOT.get_cl_option("--delta-epoch-mjd=", .FALSE.) .AND. &
-                exist(obss_in)) THEN
-              dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
-              epoch = getTime(storb_arr_in(i))
-              mjd_tt = getMJD(epoch, "TT")
-              CALL NULLIFY(epoch)
-              CALL NEW(epoch, mjd_tt + dt, "TT")
+           ELSE IF (.NOT.exist(epoch) .AND. &
+                .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
+                get_cl_option("--epoch-mjd-utc=", .FALSE.) .OR. & 
+                get_cl_option("--delta-epoch-mjd=", .FALSE.)) .AND. &
+                ASSOCIATED(obss_sep)) THEN
+              ! New epoch relative to observations...
+              DO j=1,SIZE(obss_sep)
+                 IF (id_arr_in(i) == getID(obss_sep(j))) THEN
+                    EXIT
+                 END IF
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (20)", 1)
+                    STOP
+                 END IF
+              END DO
+              IF (get_cl_option("--last-observation-date", .FALSE.)) THEN
+                 ! New epoch equal to last observation date
+                 obs = getObservation(obss_sep(j),getNrOfObservations(obss_sep(j)))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (25)", 1)
+                    STOP
+                 END IF
+                 epoch = getTime(obs)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (30)", 1)
+                    STOP
+                 END IF
+                 CALL NULLIFY(obs)                 
+              ELSE
+                 ! New epoch equal to observational mid-date
+                 dt = getObservationalTimespan(obss_sep(j))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (35)", 1)
+                    STOP
+                 END IF
+                 obs = getObservation(obss_sep(j),1)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (40)", 1)
+                    STOP
+                 END IF
+                 epoch = getTime(obs)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (45)", 1)
+                    STOP
+                 END IF
+                 CALL NULLIFY(obs)
+                 mjd = getMJD(epoch, "tt")
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (50)", 1)
+                    STOP
+                 END IF
+                 CALL NULLIFY(epoch)
+                 mjd = mjd + dt/2.0_bp
+                 CALL NEW(epoch, mjd, "tt")
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (55)", 1)
+                    STOP
+                 END IF
+              END IF
+           ELSE IF (.NOT.exist(epoch)) THEN
+              CALL errorMessage("oorb / propagation", &
+                   "No epoch specified (10).", 1)
+              STOP              
            END IF
-
            IF (info_verb >= 2) THEN
               epoch0 = getTime(storb_arr_in(i))
            END IF
@@ -2422,16 +2488,16 @@ PROGRAM oorb
            CALL propagate(storb_arr_in(i), epoch, encounters=encounters)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (20)", 1)
+                   "TRACE BACK (60)", 1)
               STOP
            END IF
 
-           IF (info_verb >= 2) THEN
+           IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
               CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
               CALL getCalendarDate(epoch, "TT", year1, month1, day1)
               CALL NULLIFY(epoch0)
               WRITE(stderr,'(A)') ""
-              WRITE(stderr,'(A,I0,A,I0,A,F0.5,A,I0,A,I0,F0.5,A)') &
+              WRITE(stderr,'(A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
                    "Planetary encounters by object " // TRIM(id_arr_in(i)) // &
                    " between ", year0, "-", month0, "-", day0, " and ", &
                    year1, "-", month1, "-", day1, ":"
@@ -2454,25 +2520,29 @@ PROGRAM oorb
               END DO
            END IF
            DEALLOCATE(encounters, stat=err)
+           IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
+                get_cl_option("--epoch-mjd-utc=", .FALSE.))) THEN
+              CALL NULLIFY(epoch)
+           END IF
 
            IF (containsSampledPDF(storb_arr_in(1))) THEN
               ! Sampled orbital-element pdf:
               orb_arr_cmp => getSampleOrbits(storb_arr_in(i))
               IF (error) THEN
                  CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (25)", 1)
+                      "TRACE BACK (65)", 1)
                  STOP
               END IF
               pdf_arr_cmp => getPDFValues(storb_arr_in(i))
               IF (error) THEN
                  CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (30)", 1)
+                      "TRACE BACK (70)", 1)
                  STOP
               END IF
               rchi2_arr_cmp => getReducedChi2Distribution(storb_arr_in(i))
               IF (error) THEN
                  CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (35)", 1)
+                      "TRACE BACK (75)", 1)
                  STOP
               END IF
               CALL getResults(storb_arr_in(i), &
@@ -2480,7 +2550,7 @@ PROGRAM oorb
                    jac_arr=jac_arr_cmp)
               IF (error) THEN
                  CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (40)", 1)
+                      "TRACE BACK (80)", 1)
                  STOP
               END IF
               IF (separately) THEN
@@ -2488,7 +2558,7 @@ PROGRAM oorb
                  CALL OPEN(out_file)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (45)", 1)
+                         "TRACE BACK (85)", 1)
                     STOP
                  END IF
                  lu_orb_out = getUnit(out_file)
@@ -2516,7 +2586,7 @@ PROGRAM oorb
                  END IF
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation ", &
-                         "TRACE BACK (50)", 1)
+                         "TRACE BACK (90)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(orb_arr_cmp(j))
@@ -2535,13 +2605,13 @@ PROGRAM oorb
               orb = getNominalOrbit(storb_arr_in(i))
               IF (error) THEN
                  CALL errorMessage("oorb / propagation", &
-                      "TRACE BACK (55)", 1)
+                      "TRACE BACK (95)", 1)
                  STOP
               END IF
               cov = getCovarianceMatrix(storb_arr_in(i), element_type_out_prm, "ecliptic")
               IF (error) THEN
                  CALL errorMessage("oorb / propagation", &
-                      "TRACE BACK (60)", 1)
+                      "TRACE BACK (100)", 1)
                  STOP
               END IF
               IF (separately) THEN
@@ -2549,7 +2619,7 @@ PROGRAM oorb
                  CALL OPEN(out_file)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (65)", 1)
+                         "TRACE BACK (105)", 1)
                     STOP
                  END IF
                  lu_orb_out = getUnit(out_file)
@@ -2570,7 +2640,7 @@ PROGRAM oorb
               END IF
               IF (error) THEN
                  CALL errorMessage("oorb / propagation", &
-                      "TRACE BACK (70)", 1)
+                      "TRACE BACK (110)", 1)
                  STOP
               END IF
               IF (separately) THEN
@@ -2590,7 +2660,7 @@ PROGRAM oorb
            obss_sep => getSeparatedSets(obss_in)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (10)", 1)
+                   "TRACE BACK (115)", 1)
               STOP
            END IF
            CALL NULLIFY(obss_in)
@@ -2603,13 +2673,15 @@ PROGRAM oorb
                 integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (75)", 1)
+                   "TRACE BACK (120)", 1)
               STOP
            END IF
            IF (.NOT.exist(epoch) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) THEN
+              ! New epoch relative to current epoch of orbit 
+              dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
               epoch = getTime(orb_arr_in(i))
               mjd_tt = getMJD(epoch, "TT")
               CALL NULLIFY(epoch)
@@ -2619,54 +2691,57 @@ PROGRAM oorb
                 get_cl_option("--epoch-mjd-utc=", .FALSE.) .OR. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) .AND. &
                 ASSOCIATED(obss_sep)) THEN
+              ! New epoch relative to observations...
               DO j=1,SIZE(obss_sep)
                  IF (id_arr_in(i) == getID(obss_sep(j))) THEN
                     EXIT
                  END IF
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (25)", 1)
+                         "TRACE BACK (125)", 1)
                     STOP
                  END IF
               END DO
               IF (get_cl_option("--last-observation-date", .FALSE.)) THEN
+                 ! New epoch equal to last observation date
                  obs = getObservation(obss_sep(j),getNrOfObservations(obss_sep(j)))
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (35)", 1)
+                         "TRACE BACK (130)", 1)
                     STOP
                  END IF
                  epoch = getTime(obs)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (40)", 1)
+                         "TRACE BACK (135)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(obs)                 
-              ELSE ! observational mid-date
+              ELSE
+                 ! New epoch equal to observational mid-date
                  dt = getObservationalTimespan(obss_sep(j))
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (30)", 1)
+                         "TRACE BACK (140)", 1)
                     STOP
                  END IF
                  obs = getObservation(obss_sep(j),1)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (35)", 1)
+                         "TRACE BACK (145)", 1)
                     STOP
                  END IF
                  epoch = getTime(obs)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (40)", 1)
+                         "TRACE BACK (150)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(obs)
                  mjd = getMJD(epoch, "tt")
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (45)", 1)
+                         "TRACE BACK (155)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(epoch)
@@ -2674,13 +2749,13 @@ PROGRAM oorb
                  CALL NEW(epoch, mjd, "tt")
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (50)", 1)
+                         "TRACE BACK (160)", 1)
                     STOP
                  END IF
               END IF
            ELSE IF (.NOT.exist(epoch)) THEN
               CALL errorMessage("oorb / propagation", &
-                   "No epoch specified (10).", 1)
+                   "No epoch specified (15).", 1)
               STOP              
            END IF
            IF (info_verb >= 2) THEN
@@ -2689,10 +2764,10 @@ PROGRAM oorb
            CALL propagate(orb_arr_in(i), epoch, encounters=encounters)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (80)", 1)
+                   "TRACE BACK (165)", 1)
               STOP
            END IF
-           IF (info_verb >= 2) THEN
+           IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
               CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
               CALL getCalendarDate(epoch, "TT", year1, month1, day1)
               CALL NULLIFY(epoch0)
@@ -2717,8 +2792,7 @@ PROGRAM oorb
            END IF
            DEALLOCATE(encounters, stat=err)
            IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
-                get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
-                get_cl_option("--delta-epoch-mjd=", .FALSE.)) THEN
+                get_cl_option("--epoch-mjd-utc=", .FALSE.))) THEN
               CALL NULLIFY(epoch)
            END IF
         END DO
@@ -2735,7 +2809,7 @@ PROGRAM oorb
            END IF
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (85) " // TRIM(id_arr_in(i)), 1)
+                   "TRACE BACK (170) " // TRIM(id_arr_in(i)), 1)
               STOP              
            END IF
         END DO
