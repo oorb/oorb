@@ -25,7 +25,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2009-02-19
+!! @version 2009-08-03
 !!
 MODULE statistics
 
@@ -91,7 +91,7 @@ CONTAINS
 
     IF (PRESENT(pdf)) THEN
        ! Use given pdf the sum of which is normalized to unity:
-       pdf_ = pdf/(SUM(pdf))
+       pdf_ = pdf/SUM(pdf)
     ELSE
        ! Use number density:
        pdf_ = 1.0_rprec8
@@ -221,6 +221,10 @@ CONTAINS
 
   !! *Description*:
   !!
+  !! This routine calculates the end points of the confidence interval
+  !! (or credible interval) by incorporating bins of a histogram until
+  !! the sum of normalized weights is larger than the requested
+  !! probability mass.
   !!
   SUBROUTINE confidence_limits_hist_r8(indata, pdf, nhist, &
        mask, probability_mass, peak, bounds, error)
@@ -314,7 +318,10 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! 
+  !! This routine calculates the end points of the confidence interval
+  !! (or credible interval) by descending from the ML solution until
+  !! the sum of normalized weights is larger than the requested
+  !! probability mass.
   !!
   SUBROUTINE confidence_limits_sample_r8(indata, pdf, mask, &
        probability_mass, peak, bounds, error)
@@ -362,6 +369,7 @@ CONTAINS
     WHERE (.NOT.mask_)
        pdf_ = 0.0_rprec8
     END WHERE
+    pdf_ = pdf_/SUM(pdf_)
 
     IF (PRESENT(bounds) .AND. .NOT.PRESENT(probability_mass)) THEN
        error = .TRUE.
