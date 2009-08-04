@@ -67,10 +67,10 @@
 !!                                                                         
 !! matrix_norm            - Finds the matrix norm of a given matrix.       
 !!                                                                         
-!! matrix_output          - Writes the given matrix to the given i/o-unit  
+!! matrix_print          - Writes the given matrix to the given i/o-unit  
 !!                          using a nice layout.                           
 !!                                                                         
-!! vector_output          - Writes the given vector to the given i/o-unit  
+!! vector_print          - Writes the given vector to the given i/o-unit  
 !!                          using a nice layout.                           
 !!                                                                         
 !! outer_product          - Computes the outer product of two given vectors.
@@ -104,7 +104,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2008-12-10
+!! @version 2009-08-03
 !!
 MODULE linal
 
@@ -123,8 +123,8 @@ MODULE linal
   INTEGER, PARAMETER           :: max_iter = 1000000
   CHARACTER(len=30), PARAMETER :: frmt_default = '(E22.14,1X)'
 
-  PRIVATE :: matrix_output_r8
-  PRIVATE :: matrix_output_r16
+  PRIVATE :: matrix_print_r8
+  PRIVATE :: matrix_print_r16
   PRIVATE :: outer_product_r4
   PRIVATE :: outer_product_r8
   PRIVATE :: outer_product_r16
@@ -133,9 +133,9 @@ MODULE linal
      MODULE PROCEDURE identity_matrix_r8
   END INTERFACE
 
-  INTERFACE matrix_output
-     MODULE PROCEDURE matrix_output_r8
-     MODULE PROCEDURE matrix_output_r16
+  INTERFACE matrix_print
+     MODULE PROCEDURE matrix_print_r8
+     MODULE PROCEDURE matrix_print_r16
   END INTERFACE
 
   INTERFACE matinv
@@ -567,7 +567,7 @@ CONTAINS
        WRITE(0,'(A,E15.8)') 'Error! linal.f90 / LU_factor: ' // &
             'maximum element for a row less than', &
             1.0e-32_rprec8*EPSILON(vv)
-       !CALL matrix_output(A2LU,0)
+       !CALL matrix_print(A2LU,0)
        error = .TRUE.
        DEALLOCATE(vv, stat=err)
        DEALLOCATE(helpvec, stat=err)
@@ -592,7 +592,7 @@ CONTAINS
                ABS(A2LU(i,i)), ' which is less than ', &
                1.0e-32_rprec8*EPSILON(vv), ' at index ', i, &
                '. A2LU matrix:'
-          CALL matrix_output(A2LU,0)
+          CALL matrix_print(A2LU,0)
           DEALLOCATE(vv, stat=err)
           DEALLOCATE(helpvec, stat=err)
           RETURN
@@ -673,7 +673,7 @@ CONTAINS
                ABS(A2LU(i,i)), ' which is less than ', &
                1.0e-32_rprec16*EPSILON(vv), ' at index ', i, &
                '. A2LU matrix:'
-          CALL matrix_output(A2LU,0)
+          CALL matrix_print(A2LU,0)
           DEALLOCATE(vv, stat=err)
           DEALLOCATE(helpvec, stat=err)
           RETURN
@@ -1368,7 +1368,7 @@ CONTAINS
 
 
 
-  SUBROUTINE matrix_output_r8(A, lu, frmt, row_indx, column_indx)
+  SUBROUTINE matrix_print_r8(A, lu, frmt, row_indx, column_indx)
 
     !! Writes the given matrix to the given i/o-unit using a nice
     !! layout.
@@ -1430,13 +1430,13 @@ CONTAINS
        RETURN       
     END IF
 
-  END SUBROUTINE matrix_output_r8
+  END SUBROUTINE matrix_print_r8
 
 
 
 
 
-  SUBROUTINE matrix_output_r16(A, lu, frmt)
+  SUBROUTINE matrix_print_r16(A, lu, frmt)
 
     !! Writes the given matrix to the given i/o-unit using a nice
     !! layout.
@@ -1493,7 +1493,7 @@ CONTAINS
        RETURN       
     END IF
 
-  END SUBROUTINE matrix_output_r16
+  END SUBROUTINE matrix_print_r16
 
 
 
@@ -1594,7 +1594,7 @@ CONTAINS
 
 
 
-  SUBROUTINE vector_output(b, lu, column, frmt)
+  SUBROUTINE vector_print(b, lu, column, frmt)
 
     !! Writes the given vector to the given i/o-unit using a nice
     !! layout.
@@ -1666,7 +1666,7 @@ CONTAINS
        RETURN
     END IF
 
-  END SUBROUTINE vector_output
+  END SUBROUTINE vector_print
 
 
 
