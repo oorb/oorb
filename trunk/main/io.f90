@@ -26,7 +26,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-07-30
+!! @version 2009-08-03
 !!
 MODULE io
 
@@ -2944,8 +2944,8 @@ CONTAINS
        END IF
        IF (PRESENT(G)) THEN
           IF (G < 9.0_bp) THEN
-             header(1)(indx:indx+10) = " Geometric"
-             header(2)(indx:indx+10) = "  albedo  "
+             header(1)(indx:indx+10) = "  Slope   "
+             header(2)(indx:indx+10) = " parameter"
              header(3)(indx:indx+10) = "     G    "
              header(4)(indx:indx+10) = ">---0037-<"
              indx = indx + 10
@@ -3750,6 +3750,15 @@ CONTAINS
 
     TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr_cmp
     TYPE (Time) :: t
+    CHARACTER(len=ELEMENT_TYPE_LEN) :: &
+         element_type_prm
+    CHARACTER(len=DYN_MODEL_LEN) :: &    
+         dyn_model_prm
+    CHARACTER(len=INTEGRATOR_LEN) :: &
+         integrator
+    CHARACTER(len=1024) :: frmt
+    CHARACTER(len=145) :: str1, str2, str3
+    CHARACTER(len=64) :: sor_2point_method
     REAL(bp), DIMENSION(:,:,:), POINTER :: &
          res_arr_cmp, sor_deviates_prm
     REAL(bp), DIMENSION(:,:), POINTER :: &
@@ -3758,12 +3767,15 @@ CONTAINS
     REAL(bp), DIMENSION(:), POINTER :: &
          pdf_arr_cmp, reg_apr_arr_cmp, rchi2_arr_cmp
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
-         res_arr
+         res_arr, elements_arr
     REAL(bp), DIMENSION(:), ALLOCATABLE :: &
          ellipse_fac
+    REAL(bp), DIMENSION(6,2) :: &
+         conf_limits 
     REAL(bp), DIMENSION(2,2) :: &
-         sor_rho_prm, sor_rho_cmp
-    REAL(bp), DIMENSION(6)     :: elements, elem_stdevs
+         sor_rho_prm, &
+         sor_rho_cmp 
+    REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: &
          sor_generat_multiplier_prm, accept_multiplier_prm, obsarc, &
          prob_mass, pdf_ml_prm, apriori_a_min_prm, apriori_a_max_prm, &
@@ -3782,14 +3794,6 @@ CONTAINS
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask_arr
     LOGICAL :: impact_, sor_random_obs_prm, regularization_prm, uniform_pdf_prm
-    CHARACTER(len=ELEMENT_TYPE_LEN) :: &
-         element_type_prm
-    CHARACTER(len=DYN_MODEL_LEN) :: &    
-         dyn_model_prm
-    CHARACTER(len=INTEGRATOR_LEN) :: &
-         integrator
-    CHARACTER(len=145)       :: str1, str2
-    CHARACTER(len=64)        :: sor_2point_method
 
     IF (.NOT. exist(storb)) THEN
        error = .TRUE.
@@ -3809,13 +3813,13 @@ CONTAINS
        impact_ = impact
     ELSE
        impact_ = .FALSE.
-    ENDIF
+    END IF
 
     IF (impact_) THEN
        WRITE(lu,"(A,3X,A,A)", advance="no") "#","IMPACT PROBABILITY (MC) FOR ", getID(obss)
     ELSE
        WRITE(lu,"(A,3X,A,A)", advance="no") "#","STATISTICAL ORBITAL RANGING FOR ", getID(obss)
-    ENDIF
+    END IF
 
     nobs = getNumberOfObservations(obss)
     IF (error) THEN
@@ -3856,25 +3860,19 @@ CONTAINS
     nra=COUNT(obs_masks(:,2))
     ndec=COUNT(obs_masks(:,3))
 
-    WRITE(lu,200) nobs, nra, ndec, obsarc
-200 FORMAT(/"#",3X,"Number of initial observations = ",I14/ &
-         "#",3X,"Number of R.A. included        = ",I14/ &
-         "#",3X,"Number of Dec. included        = ",I14/ &
-         "#",3X,"Observational time arc         = ",F14.4,3X,"days")
-
-    WRITE(lu,"(A)") "#"
+    frmt = "(/'#',3X,'Number of initial observations = ',I14/ &
+         '#',3X,'Number of R.A. included        = ',I14/ &
+         '#',3X,'Number of Dec. included        = ',I14/ &
+         '#',3X,'Observational time arc         = ',F14.4,3X,'days'/ &
+         '#')"
+    WRITE(lu,TRIM(frmt)) nobs, nra, ndec, obsarc
 
     CALL getParameters(storb, &
          dyn_model=dyn_model_prm, integrator=integrator, &
-                                !t_inv, &
          element_type = element_type_prm, &
-                                !multiple_objects, &
-                                !outlier_rejection, &
          uniform_pdf = uniform_pdf_prm, regularized_pdf = regularization_prm, &
          accept_multiplier = accept_multiplier_prm, &
-                                !outlier_multiplier, &
          res_accept = res_accept_prm, &
-                                !gaussian_pdf, &
          pdf_ml_prm = pdf_ml_prm, &
          prob_mass = prob_mass, &
          apriori_a_min = apriori_a_min_prm, &
@@ -3887,11 +3885,9 @@ CONTAINS
          apriori_rho_max = apriori_rho_max_prm, &
          sor_2point_method = sor_2point_method, &
          sor_norb = sor_norb_prm, sor_ntrial = sor_ntrial_prm, &
-                                !sor_norb_sw, sor_ntrial_sw, &
          sor_rho1_l=sor_rho_prm(1,1), sor_rho1_u=sor_rho_prm(1,2), &
          sor_rho2_l=sor_rho_prm(2,1), sor_rho2_u=sor_rho_prm(2,2), &
          sor_random_obs_selection=sor_random_obs_prm, & 
-                                !sor_niter = sor_niter, &
          sor_generat_multiplier = sor_generat_multiplier_prm, &
          sor_deviates = sor_deviates_prm)
     IF (error) THEN
@@ -3950,69 +3946,95 @@ CONTAINS
                "TRACE BACK 25", 1)
           RETURN
        END IF
-
        indx_ml = MAXLOC(pdf_arr_cmp,dim=1)
-
-       elements = getElements(orb_arr_cmp(indx_ml), "keplerian")
+       ALLOCATE(elements_arr(SIZE(orb_arr_cmp),6))
+       str1 = "KEP elements     = "
+       str2 = "Confid. limit lo = "
+       str3 = "Confid. limit hi = "
+       DO i=1,SIZE(orb_arr_cmp)
+          elements_arr(i,1:6) =  getElements(orb_arr_cmp(i), "keplerian")
+          IF (error) THEN
+             EXIT
+          END IF
+       END DO
        IF (error) THEN
           error = .FALSE.
-          elements = getElements(orb_arr_cmp(indx_ml), "cartesian")
-          str1 = "CAR elements    = "
-          str2 = "CAR stdevs      = "
+          str1 = "CAR elements     = "
+          str2 = "Confid. limit lo = "
+          str3 = "Confid. limit hi = "
+          DO i=1,SIZE(orb_arr_cmp)
+             elements_arr(i,1:6) =  getElements(orb_arr_cmp(i), "cartesian", "ecliptic")
+             IF (error) THEN
+                CALL errorMessage("io / writeSORResults", &
+                     "TRACE BACK 26", 1)
+                RETURN
+             END IF
+          END DO
        ELSE
-          elements(3:6) = elements(3:6)/rad_deg
-          str1 = "KEP elements    = "
-          str2 = "KEP stdevs      = "
+          elements_arr(:,3:6) = elements_arr(:,3:6)/rad_deg
        END IF
-
-       elem_stdevs = getStandardDeviations(storb, "keplerian")
-       IF (error) THEN
-          error = .TRUE.
-          CALL errorMessage("io / writeSORResults", &
-               "TRACE BACK 30", 1)
-          RETURN
+       ! Compute 3-sigma-equivalent bounds for elements 
+       DO i=1,6
+          CALL confidence_limits(elements_arr(:,i), pdf_arr_cmp, &
+               probability_mass=0.9973002_bp, peak=elements(i), bounds=conf_limits(i,:), &
+               error=error)
+       END DO
+       IF (ANY(elements-elements_arr(indx_ml,:) /= 0.0_bp)) THEN
+          WRITE(stdout,*) elements
+          WRITE(stdout,*) elements_arr(indx_ml,:)
        END IF
-       elem_stdevs(3:6) = elem_stdevs(3:6)/rad_deg
+       DEALLOCATE(elements_arr, stat=err)
 
-       WRITE(lu,700) getCalendarDateString(t,"tdt"), getJD(t,"tdt"), &
-            str1(1:18), elements, str2(1:18), elem_stdevs, & 
-            pdf_arr_cmp(indx_ml),rchi2_arr_cmp(indx_ml)+nra+ndec,&
+       frmt = "('#',3X,'ORBITAL-ELEMENT PDF' /&
+            '#',3X,' Epoch            = ',A,' = ',F13.5,' TDT'/&
+            '#',3X,' Maximum likelihood (ML) orbit' /&
+            '#',3X,'  ',A19,6(F15.10,1X)/&
+            '#',3X,'  ',A19,6(F15.10,1X)/&
+            '#',3X,'  ',A19,6(F15.10,1X)/&
+            '#',3X,'  ML value        =',E16.6/ &
+            '#',3X,'  ML reduced chi2 =',E16.6/ &
+            '#',3X,'  ML rms          =',E16.6,3X,'arcsec'/ &            
+            '#',3X,' Apriori pdf, min =',E16.6/ &
+            '#',3X,'              max =',E16.6/ &
+            '#',3X,' Jacobian,    min =',E16.6/ &
+            '#',3X,'              max =',E16.6/ &
+            '#',3X,' Rms,         min =',E16.6,3X,'arcsec'/ &
+            '#',3X,'              max =',E16.6,3X,'arcsec'/ &
+            '#')"
+       WRITE(lu,TRIM(frmt)) getCalendarDateString(t,"tdt"), getJD(t,"tdt"), &
+            str1(1:19), elements, str2(1:19), conf_limits(:,1), str3(1:19), &
+            conf_limits(:,2), pdf_arr_cmp(indx_ml),rchi2_arr_cmp(indx_ml)+nra+ndec,&
             SQRT(0.5*(rms_arr_cmp(indx_ml,2)**2+rms_arr_cmp(indx_ml,3)**2))/rad_asec,&
             MINVAL(reg_apr_arr_cmp),MAXVAL(reg_apr_arr_cmp),&
             MINVAL(jac_arr_cmp(:,1)),MAXVAL(jac_arr_cmp(:,1)),&
             MINVAL(SQRT(0.5*(rms_arr_cmp(:,2)**2+rms_arr_cmp(:,3)**2)))/rad_asec,&
             MAXVAL(SQRT(0.5*(rms_arr_cmp(:,2)**2+rms_arr_cmp(:,3)**2)))/rad_asec
 
-700    FORMAT("#",3X,"ORBITAL-ELEMENT PDF" /&
-            "#",3X," Epoch            = ",A," = ",F13.5," TDT"/&
-            "#",3X," Maximum likelihood (ML) orbit" /&
-            "#",3X,"  ",A18,6(F15.10,1X)/&
-            "#",3X,"  ",A18,6(F15.10,1X)/&
-            "#",3X,"  ML value        =",E16.6/ &
-            "#",3X,"  ML reduced chi2 =",E16.6/ &
-            "#",3X,"  ML rms          =",E16.6,3X,"arcsec"/ &            
-            "#",3X," Apriori pdf, min =",E16.6/ &
-            "#",3X,"              max =",E16.6/ &
-            "#",3X," Jacobian,    min =",E16.6/ &
-            "#",3X,"              max =",E16.6/ &
-            "#",3X," Rms,         min =",E16.6,3X,"arcsec"/ &
-            "#",3X,"              max =",E16.6,3X,"arcsec")
-
-       WRITE(lu,"(A)") "#"
-
-       WRITE(lu,220) element_type_prm,TRIM(sor_2point_method), &
+       frmt = "('#',3X,'COMPUTATIONAL PARAMETERS'/ &
+            '#',3X,'Element set      = ',A/ &
+            '#',3X,'Two-point method = ',A/ &
+            '#',3X,'Dynamical model  = ',A/ &
+            '#',3X,'Regularization   = ',L2/ &
+            '#',3X,'Uniform PDF      = ',L2/ &
+            '#')"
+       WRITE(lu,TRIM(frmt)) element_type_prm, &
+            TRIM(sor_2point_method), &
             TRIM(dyn_model_prm), &
-            regularization_prm, uniform_pdf_prm
-220    FORMAT("#",3X,"COMPUTATIONAL PARAMETERS"/&
-            "#",3X,"Element set      = ",A/ &
-            "#",3X,"Two-point method = ",A/ &
-            "#",3X,"Dynamical model  = ",A/ &
-            "#",3X,"Regularization   = ",L2/&
-            "#",3X,"Uniform PDF      = ",L2)
+            regularization_prm, &
+            uniform_pdf_prm
 
-       WRITE(lu,"(A)") "#"
 
-       WRITE(lu,230) apriori_a_min_prm, &
+       frmt = "('#',3X,'BAYESIAN A PRIORI INFORMATION'/ &
+            '#',3X,'Semimajor axis (AU), min      = ',F15.9/ &
+            '#',3X,'                     max      = ',F15.9/ &
+            '#',3X,'Periapsis distance (AU),  min = ',F15.9/ &
+            '#',3X,'                          max = ',F15.9/ &
+            '#',3X,'Apoapsis distance (AU),   min = ',F15.9/ &
+            '#',3X,'                          max = ',F15.9/ &
+            '#',3X,'Topocentric range (AU),   min = ',F15.9/ &
+            '#',3X,'                          max = ',F15.9/ &
+            '#')"
+       WRITE(lu,TRIM(frmt)) apriori_a_min_prm, &
             apriori_a_max_prm, &
             apriori_periapsis_min_prm, &
             apriori_periapsis_max_prm, &
@@ -4020,29 +4042,32 @@ CONTAINS
             apriori_apoapsis_max_prm, &
             apriori_rho_min_prm, &
             apriori_rho_max_prm
-230    FORMAT("#",3X,"BAYESIAN A PRIORI INFORMATION"/&
-            "#",3X,"Semimajor axis (AU), min      = ",F15.9/ &
-            "#",3X,"                     max      = ",F15.9/ &
-            "#",3X,"Periapsis distance (AU),  min = ",F15.9/ &
-            "#",3X,"                          max = ",F15.9/ &
-            "#",3X,"Apoapsis distance (AU),   min = ",F15.9/ &
-            "#",3X,"                          max = ",F15.9/ &
-            "#",3X,"Topocentric range (AU),   min = ",F15.9/ &
-            "#",3X,"                          max = ",F15.9)
     END IF
 
-    WRITE(lu,"(A)") "#"
-
-    WRITE(lu,250) sor_norb_cmp, sor_norb_prm, sor_ntrial_cmp,&
+    frmt = "('#',3X,'Final   number of sample orbits  = ',I14/ &
+         '#',3X,'Initial number of sample orbits  = ',I14/ &
+         '#',3X,'Final   number of trials         = ',I14/ &
+         '#',3X,'Initial number of trials         = ',I14/ &
+         '#')"
+    WRITE(lu,TRIM(frmt)) sor_norb_cmp, &
+         sor_norb_prm, &
+         sor_ntrial_cmp,&
          sor_ntrial_prm
-250 FORMAT("#",3X,"Final   number of sample orbits  = ",I14/ &
-         "#",3X,"Initial number of sample orbits  = ",I14/ &
-         "#",3X,"Final   number of trials         = ",I14/ &
-         "#",3X,"Initial number of trials         = ",I14)
 
-    WRITE(lu,"(A)") "#"
-
-    WRITE(lu,300) & 
+    frmt = "('#',3X,'RESIDUALS AND PDF'/ &
+         '#',3X,'R.A.*cos Dec. std        (min)   = ',E14.4,3X,'arcsec'/ &
+         '#',3X,'Dec. std                 (min)   = ',E14.4,3X,'arcsec'/ &
+         '#',3X,'Acceptance, residuals'/  &
+         '#',3X,'  sigma multiplier               = ',E14.4/ &
+         '#',3X,'  window for 1st R.A.            = ',E14.4,3X,'arcsec'/ &
+         '#',3X,'  window for 1st Dec.            = ',E14.4,3X,'arcsec'/ &
+         '#',3X,'Acceptance, PDF                  ',3X,/&
+         '#',3X,'  reference ML value             = ',E14.4/ &
+         '#',3X,'  chi-square difference          = ',E14.4/ &
+         '#',3X,'  corresponding relative bound   = ',E14.4/ &
+         '#',3X,'  Delta dchi-square              = ',E14.4/ &
+         '#')"
+    WRITE(lu,TRIM(frmt)) & 
          MINVAL(obs_stdev_arr(:,2:3),dim=1), &
          accept_multiplier_prm, &
          res_accept_prm(1,2:3)/rad_asec,&
@@ -4051,34 +4076,18 @@ CONTAINS
          EXP(-0.5_bp*prob_mass), &
          ABS(2.0_bp*LOG(pdf_arr_cmp(indx_ml)/pdf_ml_prm))
 
-300 FORMAT(&
-         "#",3X,"R.A.*cos Dec. std        (min)   = ",E14.4,3X,"arcsec"/ &
-         "#",3X,"Dec. std                 (min)   = ",E14.4,3X,"arcsec"/ &
-         "#",3X,"Acceptance, residuals"/  &
-         "#",3X,"  sigma multiplier               = ",E14.4/ &
-         "#",3X,"  window for 1st R.A.            = ",E14.4,3X,"arcsec"/ &
-         "#",3X,"  window for 1st Dec.            = ",E14.4,3X,"arcsec"/ &
-         "#",3X,"Acceptance, PDF                  ",3X,/&
-         "#",3X,"  reference ML value             = ",E14.4/ &
-         "#",3X,"  chi-square difference          = ",E14.4/ &
-         "#",3X,"  corresponding relative bound   = ",E14.4/ &
-         "#",3X,"  Delta dchi-square              = ",E14.4)
-
-    WRITE(lu,"(A)") "#"
-
     IF (impact_) THEN
 
        mask_arr(:) = .FALSE.
        WHERE(sor_rho_arr_cmp(:,1) <= planetary_radii(3))
           mask_arr = .TRUE.
        END WHERE
-       WRITE(lu,350) SUM(pdf_arr_cmp,mask_arr)/SUM(pdf_arr_cmp)
-
-350    FORMAT("#",3X,"Impact probability  = ",E14.4/)
+       frmt = "('#',3X,'Impact probability  = ',E14.4/)"
+       WRITE(lu,TRIM(frmt)) SUM(pdf_arr_cmp,mask_arr)/SUM(pdf_arr_cmp)
 
     ELSE
-       sor_pair_arr_prm => getObservationPairs(storb)
 
+       sor_pair_arr_prm => getObservationPairs(storb)
        IF (.NOT. sor_random_obs_prm) THEN
           CALL toString(sor_pair_arr_prm(1,1), str1, error)
           IF (error) THEN
@@ -4121,52 +4130,55 @@ CONTAINS
              mask_arr = .TRUE.
           endwhere
           npoints(k) = COUNT(mask_arr)
-       ENDDO
+       END DO
 
        sor_deviates_prm = sor_deviates_prm/rad_asec
 
-       WRITE(lu,400) ADJUSTR(str1(1:14)), ADJUSTR(str2(1:14)), &
+       frmt = "('#',3X,'GENERATION WINDOWS FOR RHO, R.A., AND DEC.' / &
+            '#',3X,'  Id. number of 1st observation  = ',A14/ &
+            '#',3X,'  Id. number of 2nd observation  = ',A14/ &
+            '#',3X,'  Bound for rho1;      lower     = ',E14.4,3X,'AU'/ &
+            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
+            '#',3X,'  Bound for rho2-rho1; lower     = ',E14.4,3X,'AU'/ &
+            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
+            '#',3X,'  sigma multiplier               = ',E14.4/ &
+            '#',3X,'  window shift for 1st R.A.      = ',E14.4,3X,'arcsec'/ &
+            '#',3X,'                   1st Dec.      = ',E14.4,3X,'arcsec'/ &
+            '#',3X,'  window width for 1st R.A.      = ',E14.4,3X,'arcsec'/ &
+            '#',3X,'                   1st Dec.      = ',E14.4,3X,'arcsec'/ &
+            '#',3X,'  window shift for 2nd R.A.      = ',E14.4,3X,'arcsec'/ &
+            '#',3X,'                   2nd Dec.      = ',E14.4,3X,'arcsec'/ &
+            '#',3X,'  window width for 2nd R.A.      = ',E14.4,3X,'arcsec'/ &
+            '#',3X,'                   2nd Dec.      = ',E14.4,3X,'arcsec'/ &
+            '#')"
+       WRITE(lu,TRIM(frmt)) ADJUSTR(str1(1:14)), &
+            ADJUSTR(str2(1:14)), &
+            sor_rho_prm(1,1:2), &
+            sor_rho_prm(2,1:2), &
             sor_generat_multiplier_prm, &
             sor_deviates_prm(sor_pair_arr_prm(1,1),2:3,1),&
             sor_deviates_prm(sor_pair_arr_prm(1,1),2:3,2),&
             sor_deviates_prm(sor_pair_arr_prm(1,2),2:3,1),&
             sor_deviates_prm(sor_pair_arr_prm(1,2),2:3,2)
 
-400    FORMAT("#",3X,"Generation, R.A. and Dec. "/ &
-            "#",3X,"  Id. number of 1st observation  = ",A14/ &
-            "#",3X,"  Id. number of 2nd observation  = ",A14/ &
-            "#",3X,"  sigma multiplier               = ",E14.4/ &
-            "#",3X,"  window shift for 1st R.A.      = ",E14.4,3X,"arcsec"/ &
-            "#",3X,"                   1st Dec.      = ",E14.4,3X,"arcsec"/ &
-            "#",3X,"  window width for 1st R.A.      = ",E14.4,3X,"arcsec"/ &
-            "#",3X,"                   1st Dec.      = ",E14.4,3X,"arcsec"/ &
-            "#",3X,"  window shift for 2nd R.A.      = ",E14.4,3X,"arcsec"/ &
-            "#",3X,"                   2nd Dec.      = ",E14.4,3X,"arcsec"/ &
-            "#",3X,"  window width for 2nd R.A.      = ",E14.4,3X,"arcsec"/ &
-            "#",3X,"                   2nd Dec.      = ",E14.4,3X,"arcsec")
+       frmt = "('#',3X,'COMPUTED VALUES FOR RHO, R.A., AND DEC.'/ &
+            '#',3X,'Computed, rho' / &
+            '#',3X,'  Bound for rho1,      lower     = ',E14.4,3X,'AU'/ &
+            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
+            '#',3X,'  Bound for rho2-rho1, lower     = ',E14.4,3X,'AU'/ &
+            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
+            '#',3X,'  Histogram flag                 = ',I14/ &
+            '#',3X,'Computed, R.A. and Dec. residuals' /&
+            '#',3X,'  Fraction outside ref. ellipse, 1st obs =',E12.4/ &
+            '#',3X,'  Fraction outside ref. ellipse, 2nd obs =',E12.4/ &
+            '#')"
+       WRITE(lu,TRIM(frmt)) sor_rho_cmp(1,1:2), &
+            sor_rho_cmp(2,1:2), &
+            sor_rho_histo_cmp, & 
+            npoints(1)/REAL(sor_norb_cmp), &
+            npoints(2)/REAL(sor_norb_cmp)
 
-       WRITE(lu,500) sor_rho_prm(1,1:2), sor_rho_prm(2,1:2)
-500    FORMAT("#",3X,"Generation, rho "/ &
-            "#",3X,"  Bound for rho1;      lower     = ",E14.4,3X,"AU"/ &
-            "#",3X,"                       upper     = ",E14.4,3X,"AU"/ &
-            "#",3X,"  Bound for rho2-rho1; lower     = ",E14.4,3X,"AU"/ &
-            "#",3X,"                       upper     = ",E14.4,3X,"AU")
-
-       WRITE(lu,"(A)") "#"
-
-       WRITE(lu,550) npoints(1)/REAL(sor_norb_cmp),npoints(2)/REAL(sor_norb_cmp)
-550    FORMAT("#",3X,"Computed, R.A. and Dec. residuals" /&
-            "#",3X,"  Fraction outside ref. ellipse, 1st obs =",E12.4/ &
-            "#",3X,"  Fraction outside ref. ellipse, 2nd obs =",E12.4)
-
-       WRITE(lu,600) sor_rho_cmp(1,1:2), sor_rho_cmp(2,1:2), sor_rho_histo_cmp
-600    FORMAT("#",3X,"Computed, rho" /&
-            "#",3X,"  Bound for rho1,      lower     = ",E14.4,3X,"AU"/ &
-            "#",3X,"                       upper     = ",E14.4,3X,"AU"/ &
-            "#",3X,"  Bound for rho2-rho1, lower     = ",E14.4,3X,"AU"/ &
-            "#",3X,"                       upper     = ",E14.4,3X,"AU"/ &
-            "#",3X,"  Histogram flag                 = ",I14)
-    ENDIF
+    END IF
 
     DO i=1,SIZE(orb_arr_cmp)
        CALL NULLIFY(orb_arr_cmp(i))
@@ -4234,7 +4246,7 @@ CONTAINS
          dyn_model_prm
     CHARACTER(len=INTEGRATOR_LEN) :: &
          integrator
-    CHARACTER(len=145)       :: str1, str2
+    CHARACTER(len=20) :: str1, str2
 
     IF (.NOT. exist(storb)) THEN
        error = .TRUE.
@@ -4435,7 +4447,7 @@ CONTAINS
 !!$          mask_arr = .TRUE.
 !!$       endwhere
 !!$       npoints(k) = COUNT(mask_arr)
-!!$    ENDDO
+!!$    END DO
 !!$
 !!$    sor_deviates_prm=sor_deviates_prm/rad_asec
 !!$
