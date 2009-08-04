@@ -25,7 +25,7 @@
 !! Contains generic routines for parameter estimation.
 !!
 !! @author  MG
-!! @version 2008-08-12
+!! @version 2009-08-03
 !!
 MODULE estimators
 
@@ -129,7 +129,7 @@ CONTAINS
        WRITE(0,*) "Could not find inverse of inverse covariance matrix."
        RETURN
     END IF
-    CALL matrix_output(MATMUL(cov_mat_param(:,:),inform_mat_param(:,:)),0)
+    CALL matrix_print(MATMUL(cov_mat_param(:,:),inform_mat_param(:,:)),0)
 
     ! Enforce symmetry:
     DO i=1,nparam
@@ -160,7 +160,7 @@ CONTAINS
 !!$    IF (ANY(ABS(test(:,:) - identity(:,:)) > 10*EPSILON(test(:,:)))) THEN
 !!$       error = .TRUE.
 !!$       WRITE(0,*) 'Error: Identity criterion not fulfilled:'
-!!$       call matrix_output(test,0)
+!!$       call matrix_print(test,0)
 !!$       RETURN
 !!$    END IF
 
@@ -335,7 +335,7 @@ CONTAINS
 !!$    IF (ANY(ABS(test(:,:) - identity(:,:)) > 10*EPSILON(test(:,:)))) THEN
 !!$       error = .TRUE.
 !!$       WRITE(0,*) 'Error: Identity criterion not fulfilled:'
-!!$       call matrix_output(test,0)
+!!$       call matrix_print(test,0)
 !!$       RETURN
 !!$    END IF
 
@@ -499,7 +499,7 @@ CONTAINS
     IF (ANY(ABS(test(:,:) - identity(:,:)) > 100*EPSILON(test(:,:)))) THEN
        error = .TRUE.
        WRITE(0,*) 'Error: Identity criterion not fulfilled:'
-       CALL matrix_output(test,0)
+       CALL matrix_print(test,0)
        RETURN
     END IF
 
