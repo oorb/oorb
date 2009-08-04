@@ -27,7 +27,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-06-05
+!! @version 2009-08-03
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1844,7 +1844,7 @@ CONTAINS
                      "Computation of determinant of partials between " // &
                      "ephemeris and orbital elements failed. " // &
                      "Problematic Jacobian matrix:", 1)
-                CALL matrix_output(partials_arr4(i,:,:,j),stderr)
+                CALL matrix_print(partials_arr4(i,:,:,j),stderr)
                 DEALLOCATE(ephemerides_arr, stat=err)
                 DEALLOCATE(partials_arr4, stat=err)
                 DEALLOCATE(pdfs_arr, stat=err)
@@ -5128,7 +5128,7 @@ CONTAINS
           END IF
           IF (info_verb >= 4) THEN 
              WRITE(stdout,"(2X,A)") "Covariance matrix:"
-             CALL matrix_output(cov,stdout)
+             CALL matrix_print(cov,stdout)
              WRITE(stdout,"(2X,A)") "Residuals RA & Dec [as]:"
           END IF
 
@@ -5165,7 +5165,7 @@ CONTAINS
                      "leastSquares", &
                      "Negative diagonal in covariance matrix:", 1)
                 IF (err_verb >= 1) THEN
-                   CALL matrix_output(cov,stderr)
+                   CALL matrix_print(cov,stderr)
                    WRITE(stderr,*) "Orbital elements:"
                    WRITE(stderr,*) elements_iter_arr(iiter,1:6)                  
                 END IF
@@ -6563,7 +6563,7 @@ CONTAINS
           END IF
           IF (info_verb >= 4) THEN 
              WRITE(stdout,"(2X,A)") "Covariance matrix:"
-             CALL matrix_output(cov,stdout)
+             CALL matrix_print(cov,stdout)
              WRITE(stdout,"(2X,A)") "Residuals RA & Dec [as]:"
           END IF
 
@@ -6600,7 +6600,7 @@ CONTAINS
                      "leastSquares", &
                      "Negative diagonal in covariance matrix:", 1)
                 IF (err_verb >= 1) THEN
-                   CALL matrix_output(cov,stderr)
+                   CALL matrix_print(cov,stderr)
                    WRITE(stderr,*) "Orbital elements:"
                    WRITE(stderr,*) elements_iter_arr(iiter,1:6)                  
                 END IF
@@ -8879,7 +8879,7 @@ CONTAINS
           DO i=1,nobs
              WRITE(stdout,"(2X,A,I0,A)") "Covariance matrix for ", i, &
                   ". observation: "
-             CALL matrix_output(cov_matrices(i,:,:)/rad_asec**2.0_bp, &
+             CALL matrix_print(cov_matrices(i,:,:)/rad_asec**2.0_bp, &
                   stdout)
           END DO
           WRITE(stdout,"(2X,A,6(I0,1X))") "Number of included observations " // &
@@ -9948,7 +9948,7 @@ CONTAINS
                    CALL errorMessage("StochasticOrbit / statisticalRanging", &
                         "Unsuccessful computation of determinant of orbital element " // &
                         "information matrix:", 1)
-                   CALL matrix_output(information_matrix_elem, stderr)
+                   CALL matrix_print(information_matrix_elem, stderr)
                    error = .FALSE.
                    CYCLE
                 END IF
@@ -9970,7 +9970,7 @@ CONTAINS
                    CALL errorMessage("StochasticOrbit / statisticalRanging", &
                         "Unsuccessful computation of determinant of orbital element " // &
                         "jacobian matrix:", 1)
-                   CALL matrix_output(jacobian_matrix, stderr)
+                   CALL matrix_print(jacobian_matrix, stderr)
                    error = .FALSE.
                    CYCLE
                 END IF
@@ -9984,7 +9984,7 @@ CONTAINS
                    CALL errorMessage("StochasticOrbit / statisticalRanging", &
                         "Unsuccessful computation of " // &
                         "jacobian matrix:", 1)
-                   CALL matrix_output(jacobian_matrix, stderr)
+                   CALL matrix_print(jacobian_matrix, stderr)
                    DO j=1,SIZE(orb_arr_)
                       CALL NULLIFY(orb_arr_(j))
                    END DO
