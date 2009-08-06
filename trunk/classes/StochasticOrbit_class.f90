@@ -27,7 +27,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-08-03
+!! @version 2009-08-05
 !!  
 MODULE StochasticOrbit_cl
 
@@ -981,16 +981,18 @@ CONTAINS
   !! Returns error.
   !!
   !! @author  JV, MG
-  !! @version 2008-06-05
+  !! @version 2009-08-04
   !!
   SUBROUTINE autoStatisticalRanging(this)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
-    REAL(bp), DIMENSION(2,2)             :: rho_bounds_
-    REAL(bp)                             :: ddchi2, & ! difference to the given dchi2 limit
+
+    REAL(bp), DIMENSION(2,2) :: rho_bounds_
+    REAL(bp) :: ddchi2, & ! difference to the given dchi2 limit
          pdf_ml_final, pdf_ml_
-    INTEGER                              :: niter_, norb_prm
+    INTEGER :: niter_, norb_prm 
+    LOGICAL :: uniform_pdf_prm
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -1001,6 +1003,7 @@ CONTAINS
 
     this%sor_niter_cmp = 0
     norb_prm = this%sor_norb_prm
+    uniform_pdf_prm = this%uniform_pdf_prm    
 
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A)") "***************"
@@ -1008,19 +1011,17 @@ CONTAINS
        WRITE(stdout,"(2X,A)") "***************"
     END IF
 
+    ! Force 10 orbits and uniform pdf in the first step
     this%sor_norb_prm = 10
+    this%uniform_pdf_prm = .TRUE.
     CALL statisticalRanging(this)
     IF (error .OR. this%sor_norb_cmp <= 1) THEN
        CALL errorMessage("StochasticOrbit / autoStatisticalRanging", &
             "First iteration failed.", 1)
        RETURN
     END IF
-
     this%sor_niter_cmp = 1
     CALL updateRanging(this, automatic=.TRUE.)
-
-    ! Draw rho from uniform p.d.f. regardless of initial choice
-    this%sor_gaussian_pdf_prm = .FALSE.
 
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(1X)")
@@ -1028,16 +1029,22 @@ CONTAINS
        WRITE(stdout,"(2X,A)") "SECOND ITERATION "
        WRITE(stdout,"(2X,A)") "*****************"
     END IF
+
+    ! Force 200 orbits and uniform pdf in the second step
     this%sor_norb_prm = 200
+    ! Draw rho from uniform p.d.f. regardless of initial choice
+    this%sor_gaussian_pdf_prm = .FALSE.
     CALL statisticalRanging(this)
     IF (error .OR. this%sor_norb_cmp <= 1) THEN
        CALL errorMessage("StochasticOrbit / autoStatisticalRanging", &
             "Second iteration failed.", 1)
        RETURN
     END IF
-
     this%sor_niter_cmp = 2
     CALL updateRanging(this, automatic=.TRUE.)
+
+    ! Return to user-defined pdf mode 
+    this%uniform_pdf_prm = uniform_pdf_prm
 
     ! Additional iteration, if requested nr of orbits very large
     IF (norb_prm/this%sor_norb_prm >= 50) THEN
@@ -9727,8 +9734,7 @@ CONTAINS
        IF (ASSOCIATED(scoords)) THEN
           DEALLOCATE(scoords, stat=err)
        END IF
-       IF (.NOT.this%uniform_pdf_prm .AND. &
-            (this%regularization_prm .OR. this%jacobians_prm)) THEN
+       IF (this%regularization_prm .OR. this%jacobians_prm) THEN
           IF (ASSOCIATED(partials_arr)) THEN
              DEALLOCATE(partials_arr, stat=err)
           END IF
@@ -9855,8 +9861,7 @@ CONTAINS
                 WRITE(stdout,"(2X,A,3(1X,F15.10))") "observed pos.", observed_coord(1:3)
                 WRITE(stdout,"(2X,A,3(1X,F15.10))") "computed pos.", computed_coord(1:3)
              END IF
-             IF (.NOT.this%uniform_pdf_prm .AND. &
-                  (this%regularization_prm .OR. this%jacobians_prm)) THEN
+             IF (this%regularization_prm .OR. this%jacobians_prm) THEN
                 ! Multiply RA partials with cosine of observed declination:
                 partials_arr(i,2,:,j) = partials_arr(i,2,:,j)*cosdec0_arr(j)
              END IF
@@ -9885,19 +9890,98 @@ CONTAINS
              CYCLE sor_orb_acc
           END IF
 
-          ! A uniform p.d.f. is used in tasks such as outlier detection
-          IF (this%uniform_pdf_prm) THEN
-             apriori = 1.0_bp
-             jac_sph_inv = 1.0_bp
-             jac_car_kep = 1.0_bp
-             jac_equ_kep = 1.0_bp
-             pdf_val = 1.0_bp
-          ELSE
-             ! Compute chi2:
-             chi2 = getChi2(residuals(iorb+1,:,:), information_matrix_obs, this%obs_masks_prm)
+          ! Compute chi2:
+          chi2 = getChi2(residuals(iorb+1,:,:), information_matrix_obs, this%obs_masks_prm)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / statisticalRanging", &
+                  "TRACE BACK (125)", 1)
+             DO j=1,SIZE(orb_arr_)
+                CALL NULLIFY(orb_arr_(j))
+             END DO
+             DO j=1,SIZE(orb_arr)
+                CALL NULLIFY(orb_arr(j))
+             END DO
+             DEALLOCATE(orb_arr_, stat=err)
+             DEALLOCATE(rho_distribution, stat=err)
+             DEALLOCATE(residuals, stat=err)
+             DEALLOCATE(pdf_arr, stat=err)
+             DEALLOCATE(reg_apriori_arr, stat=err)
+             DEALLOCATE(jacobians, stat=err)
+             DEALLOCATE(rchi2_arr, stat=err)
+             DEALLOCATE(rms, stat=err)
+             DEALLOCATE(pair_histogram, stat=err)
+             DEALLOCATE(cosdec0_arr, stat=err)
+             DEALLOCATE(residual_vector, stat=err)
+             DEALLOCATE(maskarr, stat=err)
+             DEALLOCATE(obs_scoords, stat=err)
+             DEALLOCATE(information_matrix_obs, stat=err)
+             DEALLOCATE(cov_matrices, stat=err)
+             DEALLOCATE(obsies_ccoords, stat=err)
+             DEALLOCATE(orb_arr, stat=err)
+             DEALLOCATE(obs_pair_arr, stat=err)
+             DEALLOCATE(rho1, stat=err)
+             DEALLOCATE(rho2,stat=err)
+             DEALLOCATE(sphdev, stat=err)
+             DEALLOCATE(mjd_lt, stat=err)
+             DEALLOCATE(scoords, stat=err)
+             DEALLOCATE(partials_arr, stat=err)
+             RETURN          
+          END IF
+
+          ! Jeffrey's apriori:
+          ! Monitor the matrix inversion?
+          IF (this%regularization_prm) THEN
+             ! Sigma_elements^(-1) = A^T Sigma_obs^(-1) A, where A is the
+             ! partial derivatives matrix of ephemerides wrt elements:
+             information_matrix_elem = 0.0_bp
+             DO j=1,nobs
+                information_matrix_elem = information_matrix_elem + &
+                     MATMUL(MATMUL(TRANSPOSE(partials_arr(i,1:6,1:6,j)), &
+                     information_matrix_obs(j,1:6,1:6)), &
+                     partials_arr(i,1:6,1:6,j))
+             END DO
+             apriori = SQRT(ABS(determinant(information_matrix_elem, error)))
              IF (error) THEN
                 CALL errorMessage("StochasticOrbit / statisticalRanging", &
-                     "TRACE BACK (125)", 1)
+                     "Unsuccessful computation of determinant of orbital element " // &
+                     "information matrix:", 1)
+                CALL matrix_print(information_matrix_elem, stderr)
+                error = .FALSE.
+                CYCLE
+             END IF
+          ELSE
+             apriori = 1.0_bp
+          END IF
+
+          IF (this%jacobians_prm) THEN
+             ! Determinant of Jacobian between topocentric
+             ! coordinates (inverse problem coordinates)
+             ! and orbital parameters required for output
+             ! ("Topocentric Wrt Cartesian/Keplerian"):
+             jacobian_matrix(1:3,:) = partials_arr(i,1:3,:,obs_pair_arr(i,1)) / &
+                  cosdec0_arr(obs_pair_arr(i,1))
+             jacobian_matrix(4:6,:) = partials_arr(i,1:3,:,obs_pair_arr(i,2)) / &
+                  cosdec0_arr(obs_pair_arr(i,2))
+             jac_sph_inv = ABS(determinant(jacobian_matrix, error))
+             IF (error) THEN
+                CALL errorMessage("StochasticOrbit / statisticalRanging", &
+                     "Unsuccessful computation of determinant of orbital element " // &
+                     "jacobian matrix:", 1)
+                CALL matrix_print(jacobian_matrix, stderr)
+                error = .FALSE.
+                CYCLE
+             END IF
+
+             ! Determinant of Jacobian between Cartesian and Keplerian
+             ! orbital elements ("Cartesian Wrt Keplerian"):
+             CALL partialsCartesianWrtKeplerian(orb_arr(i), &
+                  jacobian_matrix, "equatorial")
+             jac_car_kep = ABS(determinant(jacobian_matrix, error))
+             IF (error) THEN
+                CALL errorMessage("StochasticOrbit / statisticalRanging", &
+                     "Unsuccessful computation of " // &
+                     "jacobian matrix:", 1)
+                CALL matrix_print(jacobian_matrix, stderr)
                 DO j=1,SIZE(orb_arr_)
                    CALL NULLIFY(orb_arr_(j))
                 END DO
@@ -9928,128 +10012,42 @@ CONTAINS
                 DEALLOCATE(mjd_lt, stat=err)
                 DEALLOCATE(scoords, stat=err)
                 DEALLOCATE(partials_arr, stat=err)
-                RETURN          
+                RETURN
              END IF
 
-             ! Jeffrey's apriori:
-             ! Monitor the matrix inversion?
-             IF (this%regularization_prm) THEN
-                ! Sigma_elements^(-1) = A^T Sigma_obs^(-1) A, where A is the
-                ! partial derivatives matrix of ephemerides wrt elements:
-                information_matrix_elem = 0.0_bp
-                DO j=1,nobs
-                   information_matrix_elem = information_matrix_elem + &
-                        MATMUL(MATMUL(TRANSPOSE(partials_arr(i,1:6,1:6,j)), &
-                        information_matrix_obs(j,1:6,1:6)), &
-                        partials_arr(i,1:6,1:6,j))
-                END DO
-                apriori = SQRT(ABS(determinant(information_matrix_elem, error)))
-                IF (error) THEN
-                   CALL errorMessage("StochasticOrbit / statisticalRanging", &
-                        "Unsuccessful computation of determinant of orbital element " // &
-                        "information matrix:", 1)
-                   CALL matrix_print(information_matrix_elem, stderr)
-                   error = .FALSE.
-                   CYCLE
-                END IF
-             ELSE
-                apriori = 1.0_bp
+             ! Determinant of Jacobian between equinoctial and
+             ! Keplerian orbital elements ("Equinoctial Wrt
+             ! Keplerian"):
+             elements = getElements(orb_arr(i), "keplerian")
+             jac_equ_kep = 0.5_bp*elements(2) * &
+                  SIN(0.5_bp*elements(3)) / COS(0.5_bp*elements(3))**3
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,"(2X,A,F15.12)") "Chi2 new: ", chi2
+                WRITE(stdout,"(2X,A,3(1X,F10.5))") "PDF values:", pdf_val, &
+                     pdf_val/this%pdf_ml_prm, pdf_relative_bound
              END IF
+          ELSE
+             jac_sph_inv = 1.0_bp
+             jac_car_kep = 1.0_bp
+             jac_equ_kep = 1.0_bp
+          END IF
 
-             IF (this%jacobians_prm) THEN
-                ! Determinant of Jacobian between topocentric
-                ! coordinates (inverse problem coordinates)
-                ! and orbital parameters required for output
-                ! ("Topocentric Wrt Cartesian/Keplerian"):
-                jacobian_matrix(1:3,:) = partials_arr(i,1:3,:,obs_pair_arr(i,1)) / &
-                     cosdec0_arr(obs_pair_arr(i,1))
-                jacobian_matrix(4:6,:) = partials_arr(i,1:3,:,obs_pair_arr(i,2)) / &
-                     cosdec0_arr(obs_pair_arr(i,2))
-                jac_sph_inv = ABS(determinant(jacobian_matrix, error))
-                IF (error) THEN
-                   CALL errorMessage("StochasticOrbit / statisticalRanging", &
-                        "Unsuccessful computation of determinant of orbital element " // &
-                        "jacobian matrix:", 1)
-                   CALL matrix_print(jacobian_matrix, stderr)
-                   error = .FALSE.
-                   CYCLE
-                END IF
+          !rchi2 = chi2/real(max(1,(SUM(n0(1:6))-6)),bp)
+          exp_rchi2 = EXP(chi2 - (SUM(n0(1:6)) - 6))
 
-                ! Determinant of Jacobian between Cartesian and Keplerian
-                ! orbital elements ("Cartesian Wrt Keplerian"):
-                CALL partialsCartesianWrtKeplerian(orb_arr(i), &
-                     jacobian_matrix, "equatorial")
-                jac_car_kep = ABS(determinant(jacobian_matrix, error))
-                IF (error) THEN
-                   CALL errorMessage("StochasticOrbit / statisticalRanging", &
-                        "Unsuccessful computation of " // &
-                        "jacobian matrix:", 1)
-                   CALL matrix_print(jacobian_matrix, stderr)
-                   DO j=1,SIZE(orb_arr_)
-                      CALL NULLIFY(orb_arr_(j))
-                   END DO
-                   DO j=1,SIZE(orb_arr)
-                      CALL NULLIFY(orb_arr(j))
-                   END DO
-                   DEALLOCATE(orb_arr_, stat=err)
-                   DEALLOCATE(rho_distribution, stat=err)
-                   DEALLOCATE(residuals, stat=err)
-                   DEALLOCATE(pdf_arr, stat=err)
-                   DEALLOCATE(reg_apriori_arr, stat=err)
-                   DEALLOCATE(jacobians, stat=err)
-                   DEALLOCATE(rchi2_arr, stat=err)
-                   DEALLOCATE(rms, stat=err)
-                   DEALLOCATE(pair_histogram, stat=err)
-                   DEALLOCATE(cosdec0_arr, stat=err)
-                   DEALLOCATE(residual_vector, stat=err)
-                   DEALLOCATE(maskarr, stat=err)
-                   DEALLOCATE(obs_scoords, stat=err)
-                   DEALLOCATE(information_matrix_obs, stat=err)
-                   DEALLOCATE(cov_matrices, stat=err)
-                   DEALLOCATE(obsies_ccoords, stat=err)
-                   DEALLOCATE(orb_arr, stat=err)
-                   DEALLOCATE(obs_pair_arr, stat=err)
-                   DEALLOCATE(rho1, stat=err)
-                   DEALLOCATE(rho2,stat=err)
-                   DEALLOCATE(sphdev, stat=err)
-                   DEALLOCATE(mjd_lt, stat=err)
-                   DEALLOCATE(scoords, stat=err)
-                   DEALLOCATE(partials_arr, stat=err)
-                   RETURN
-                END IF
+          ! Probability density function:
+          !pdf_val = apriori*EXP(-0.5_bp*rchi2)/jac_sph_inv
+          pdf_val = apriori/(SQRT(exp_rchi2)*jac_sph_inv)
 
-                ! Determinant of Jacobian between equinoctial and
-                ! Keplerian orbital elements ("Equinoctial Wrt
-                ! Keplerian"):
-                elements = getElements(orb_arr(i), "keplerian")
-                jac_equ_kep = 0.5_bp*elements(2) * &
-                     SIN(0.5_bp*elements(3)) / COS(0.5_bp*elements(3))**3
-                IF (info_verb >= 5) THEN
-                   WRITE(stdout,"(2X,A,F15.12)") "Chi2 new: ", chi2
-                   WRITE(stdout,"(2X,A,3(1X,F10.5))") "PDF values:", pdf_val, &
-                        pdf_val/this%pdf_ml_prm, pdf_relative_bound
-                END IF
-             ELSE
-                jac_sph_inv = 1.0_bp
-                jac_car_kep = 1.0_bp
-                jac_equ_kep = 1.0_bp
+          IF (.NOT.this%uniform_pdf_prm .AND. &
+               pdf_val / this%pdf_ml_prm < pdf_relative_bound) THEN
+             ! The PDF is used and its value is not acceptable.
+             failed_flag(7) = failed_flag(7) + 1
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,"(2X,A,1X,E10.5)") &
+                     "Failed (PDF value not acceptable)", pdf_val
              END IF
-
-             !rchi2 = chi2/real(max(1,(SUM(n0(1:6))-6)),bp)
-             exp_rchi2 = EXP(chi2 - (SUM(n0(1:6)) - 6))
-
-             ! Probability density function:
-             !pdf_val = apriori*EXP(-0.5_bp*rchi2)/jac_sph_inv
-             pdf_val = apriori/(SQRT(exp_rchi2)*jac_sph_inv)
-             IF (pdf_val / this%pdf_ml_prm < pdf_relative_bound) THEN
-                ! PDF value is not acceptable.
-                failed_flag(7) = failed_flag(7) + 1
-                IF (info_verb >= 5) THEN
-                   WRITE(stdout,"(2X,A,1X,E10.5)") &
-                        "Failed (PDF value not acceptable)", pdf_val
-                END IF
-                CYCLE sor_orb_acc
-             END IF
+             CYCLE sor_orb_acc
           END IF
 
           ! Update metrics for computational accuracy:
@@ -10208,8 +10206,7 @@ CONTAINS
              RETURN
           END IF
        END IF
-       IF (this%regularization_prm .OR. this%jacobians_prm &
-            .AND. .NOT.this%uniform_pdf_prm) THEN
+       IF (this%regularization_prm .OR. this%jacobians_prm) THEN
           DEALLOCATE(scoords, partials_arr, stat=err)
        ELSE
           DEALLOCATE(scoords, stat=err)
@@ -10912,15 +10909,16 @@ CONTAINS
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout)  :: this
     LOGICAL, INTENT(in), OPTIONAL         :: automatic
-    CHARACTER(len=128)                    :: str, frmt
-    REAL(bp), DIMENSION(:,:), POINTER     :: stdevs
-    REAL(bp), DIMENSION(:), ALLOCATABLE   :: ra_mean, dec_mean
-    REAL(bp)                              :: ra_std, dec_std
-    INTEGER, DIMENSION(:), ALLOCATABLE    :: nr_array
-    INTEGER                               :: i, nobs, err, nr_of_omitted
-    LOGICAL                               :: automatic_
-    LOGICAL, DIMENSION(:,:), ALLOCATABLE    :: obs_masks
-    LOGICAL, DIMENSION(:), ALLOCATABLE    :: maskarr
+
+    CHARACTER(len=128) :: str, frmt
+    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: ra_mean, dec_mean
+    REAL(bp) :: ra_std, dec_std
+    INTEGER, DIMENSION(:), ALLOCATABLE :: nr_array
+    INTEGER :: i, nobs, err, nr_of_omitted
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    LOGICAL, DIMENSION(:), ALLOCATABLE :: maskarr
+    LOGICAL :: automatic_
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -10930,12 +10928,11 @@ CONTAINS
     END IF
 
     nobs = getNrOfObservations(this%obss)
-    ALLOCATE(nr_array(nobs), ra_mean(nobs), dec_mean(nobs), &
-         obs_masks(nobs,6), maskarr(nobs), stat=err)
+    ALLOCATE(ra_mean(nobs), dec_mean(nobs), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / updateRanging", &
-            "Could not allocate memory.", 1)
+            "Could not allocate memory (5).", 1)
        RETURN
     END IF
 
@@ -10961,13 +10958,20 @@ CONTAINS
     END IF
 
     DO i=1,nobs
-       !          CALL statistics(this%res_arr_cmp(:,i,2), pdf=this%pdf_arr_cmp,mean=ra_mean(i), std_dev=ra_std)
        CALL moments(this%res_arr_cmp(:,i,2), mean=ra_mean(i), &
             std_dev=ra_std, error=error)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / updateRanging", &
+               "Error in moment computation for RA.", 1)
+          RETURN
+       END IF
        CALL moments(this%res_arr_cmp(:,i,3), mean=dec_mean(i), &
             std_dev=dec_std, error=error)
-       !       WRITE(stdout,"(2X,A,I0,A,2(1X,F10.5))") "Obs no ", i, ":", &
-       !            ra_std/rad_asec,dec_std/rad_asec
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / updateRanging", &
+               "Error in moment computation for Dec.", 1)
+          RETURN
+       END IF
     END DO
 
     IF (info_verb >= 3) THEN
@@ -10979,66 +10983,89 @@ CONTAINS
     END IF
 
     ! Update maximum probability density value and generating windows
-
-    ! Except for automated ranging iteration rounds 1 and 2
-    ! (go faster when pdf_ml not updated)
-    !    IF (.NOT. (this%sor_automatic_prm .AND. this%sor_niter_cmp < 2)) THEN
     this%pdf_ml_prm = MAXVAL(this%pdf_arr_cmp)
 
     ! Recognize outlier observations
-    nr_array = RESHAPE((/ (i, i = 1,nobs) /), (/ nobs /))
-    obs_masks = this%obs_masks_prm
-    stdevs => getStandardDeviations(this%obss)
-    maskarr = .FALSE.
-    DO i=1,nobs
-       IF (ABS(ra_mean(i)) > this%res_accept_prm(i,2) .OR. &
-            ABS(dec_mean(i)) > this%res_accept_prm(i,3)) THEN
-          obs_masks(i,1:6) = .FALSE.
-          maskarr(i) = .TRUE.
+    IF (this%outlier_multiplier_prm > 0.0_bp) THEN
+       ALLOCATE(nr_array(nobs), maskarr(nobs), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / updateRanging", &
+               "Could not allocate memory (10).", 1)
+          RETURN
        END IF
-    END DO
+       nr_array = RESHAPE((/ (i, i = 1,nobs) /), (/ nobs /))
+       obs_masks => getObservationMasks(this%obss, use_notes=.TRUE.)
+       stdevs => getStandardDeviations(this%obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / updateRanging", &
+               "TRACE BACK ()", 1)
+          RETURN
+       END IF
+       maskarr = .FALSE.
+       DO i=1,nobs
+          IF (ABS(ra_mean(i)) > this%outlier_multiplier_prm*stdevs(i,2) .OR. &
+               ABS(dec_mean(i)) > this%outlier_multiplier_prm*stdevs(i,3)) THEN
+             obs_masks(i,1:6) = .FALSE.
+             maskarr(i) = .TRUE.
+          END IF
+       END DO
 
-    nr_of_omitted = COUNT(maskarr)
-    IF (this%outlier_rejection_prm) THEN
-       this%obs_masks_prm = obs_masks
-       IF (info_verb >= 2) THEN
-          IF (nr_of_omitted == 0) THEN
-             WRITE(stdout,"(2X,A)") "No of omitted: 0"
-          ELSE IF (nr_of_omitted == 1) THEN
-             WRITE(stdout,"(2X,A,2(I0,A))") "No of omitted: ", &
-                  nr_of_omitted,"(",PACK(nr_array,maskarr),")"
-          ELSE IF (nr_of_omitted >= 2) THEN
-             str = " "
-             CALL toString(nr_of_omitted-1, str, error)
-             frmt = "(A,I0,A,I0," // TRIM(str) // "(1X,I0),A)"
-             WRITE(stdout,TRIM(frmt)) "No of omitted: ", &
-                  nr_of_omitted,"(",PACK(nr_array,maskarr),")"
+       nr_of_omitted = COUNT(maskarr)
+       IF (this%outlier_rejection_prm) THEN
+          ! Remove outliers
+          this%obs_masks_prm = obs_masks
+          IF (info_verb >= 2) THEN
+             IF (nr_of_omitted == 0) THEN
+                WRITE(stdout,"(2X,A)") "No of omitted: 0"
+             ELSE IF (nr_of_omitted == 1) THEN
+                WRITE(stdout,"(2X,A,2(I0,A))") "No of omitted: ", &
+                     nr_of_omitted,"(",PACK(nr_array,maskarr),")"
+             ELSE IF (nr_of_omitted >= 2) THEN
+                str = " "
+                CALL toString(nr_of_omitted-1, str, error)
+                IF (error) THEN
+                   CALL errorMessage("StochasticOrbit / updateRanging", &
+                        "Error in conversion from integer to character.", 1)
+                   RETURN
+                END IF
+                frmt = "(A,I0,A,I0," // TRIM(str) // "(1X,I0),A)"
+                WRITE(stdout,TRIM(frmt)) "No of omitted: ", &
+                     nr_of_omitted," (",PACK(nr_array,maskarr),")"
+             END IF
+          END IF
+       ELSE IF (nr_of_omitted > 0) THEN
+          IF (info_verb >= 2) THEN
+             WRITE(stdout,"(1X)")
+             WRITE(stdout,"(2X,A,I0)") "WARNING from updateRanging: " // &
+                  "potential outlier observations detected! No: ", nr_of_omitted
           END IF
        END IF
-    ELSE IF (nr_of_omitted > 0) THEN
-       IF (info_verb >= 2) THEN
-          WRITE(stdout,"(1X)")
-          WRITE(stdout,"(2X,A,I0)") "WARNING from updateRanging: " // &
-               "outlier observations detected! No: ", nr_of_omitted
+       IF (info_verb >= 3 .AND. this%outlier_rejection_prm) THEN
+          WRITE(stdout,"(2X,A)") &
+               "Obs mask after update + mean RA and Dec:"
+          DO i=1,SIZE(this%obs_masks_prm,dim=1)
+             WRITE(stdout,"(2X,A,I0,A,6(1X,L1),2(1X,F10.5))") &
+                  "Obs #", i, ":", this%obs_masks_prm(i,:), &
+                  ra_mean(i)/rad_asec, dec_mean(i)/rad_asec
+          END DO
+       END IF
+       DEALLOCATE(nr_array, obs_masks, maskarr, stdevs, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / updateRanging", &
+               "Could not deallocate memory (5).", 1)
+          RETURN
        END IF
     END IF
 
-    !IF (info_verb > 3) THEN
-    !   CALL toString(size(this%obs_masks_prm), str, error)
-    !   WRITE(stdout,"(2X,A," // trim(str) // "(1X,L))") "Obs mask after update:", this%obs_masks_prm
-    !END IF
-
-    DEALLOCATE(nr_array, ra_mean, dec_mean, obs_masks, maskarr, stdevs, stat=err)
+    DEALLOCATE(ra_mean, dec_mean, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       DEALLOCATE(nr_array, stat=err)
        DEALLOCATE(ra_mean, stat=err)
        DEALLOCATE(dec_mean, stat=err)
-       DEALLOCATE(obs_masks, stat=err)
-       DEALLOCATE(maskarr, stat=err)
-       DEALLOCATE(stdevs, stat=err)
        CALL errorMessage("StochasticOrbit / updateRanging", &
-            "Could not deallocate memory.", 1)
+            "Could not deallocate memory (10).", 1)
        RETURN
     END IF
 
