@@ -25,7 +25,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-08-04
+!! @version 2009-08-05
 !!
 PROGRAM oorb
 
@@ -4112,14 +4112,14 @@ PROGRAM oorb
   CASE ("encode_designation")
 
      IF (.NOT.(get_cl_option("--mpc", .FALSE.) .OR. &
-          get_cl_option("--mpc3", .FALSE.))) THEN     
+          get_cl_option("--9char-mpc", .FALSE.))) THEN     
         CALL errorMessage("oorb / encode_designation", &
-             "Either the '--mpc' or the '--mpc3' option has to be specified.", 1)                
+             "Either the '--mpc' or the '--9char-mpc' option has to be specified.", 1)                
         STOP
      ELSE IF (get_cl_option("--mpc", .FALSE.) .AND. &
-          get_cl_option("--mpc3", .FALSE.)) THEN     
+          get_cl_option("--9char-mpc", .FALSE.)) THEN     
         CALL errorMessage("oorb / encode_designation", &
-             "Both '--mpc' and '--mpc3' options cannot be used simultaneously.", 1)                
+             "Both '--mpc' and '--9char-mpc' options cannot be used simultaneously.", 1)                
         STOP
      END IF
 
@@ -4144,7 +4144,7 @@ PROGRAM oorb
            END IF
            IF (get_cl_option("--mpc", .FALSE.)) THEN
               CALL encodeMPCDesignation(id)
-           ELSE IF (get_cl_option("--mpc3", .FALSE.)) THEN
+           ELSE IF (get_cl_option("--9char-mpc", .FALSE.)) THEN
               CALL encodeMPC3Designation(id)
            END IF
            WRITE(stdout,"(A)") TRIM(id)
