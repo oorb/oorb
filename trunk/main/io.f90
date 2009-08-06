@@ -26,7 +26,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-08-03
+!! @version 2009-08-05
 !!
 MODULE io
 
@@ -3860,11 +3860,11 @@ CONTAINS
     nra=COUNT(obs_masks(:,2))
     ndec=COUNT(obs_masks(:,3))
 
-    frmt = "(/'#',3X,'Number of initial observations = ',I14/ &
-         '#',3X,'Number of R.A. included        = ',I14/ &
-         '#',3X,'Number of Dec. included        = ',I14/ &
-         '#',3X,'Observational time arc         = ',F14.4,3X,'days'/ &
-         '#')"
+    frmt = "(/'#',3X,'Number of initial observations = ',I14/" // &
+         "'#',3X,'Number of R.A. included        = ',I14/" // &
+         "'#',3X,'Number of Dec. included        = ',I14/" // &
+         "'#',3X,'Observational time arc         = ',F14.4,3X,'days'/" // &
+         "'#')"
     WRITE(lu,TRIM(frmt)) nobs, nra, ndec, obsarc
 
     CALL getParameters(storb, &
@@ -3985,22 +3985,22 @@ CONTAINS
        END IF
        DEALLOCATE(elements_arr, stat=err)
 
-       frmt = "('#',3X,'ORBITAL-ELEMENT PDF' /&
-            '#',3X,' Epoch            = ',A,' = ',F13.5,' TDT'/&
-            '#',3X,' Maximum likelihood (ML) orbit' /&
-            '#',3X,'  ',A19,6(F15.10,1X)/&
-            '#',3X,'  ',A19,6(F15.10,1X)/&
-            '#',3X,'  ',A19,6(F15.10,1X)/&
-            '#',3X,'  ML value        =',E16.6/ &
-            '#',3X,'  ML reduced chi2 =',E16.6/ &
-            '#',3X,'  ML rms          =',E16.6,3X,'arcsec'/ &            
-            '#',3X,' Apriori pdf, min =',E16.6/ &
-            '#',3X,'              max =',E16.6/ &
-            '#',3X,' Jacobian,    min =',E16.6/ &
-            '#',3X,'              max =',E16.6/ &
-            '#',3X,' Rms,         min =',E16.6,3X,'arcsec'/ &
-            '#',3X,'              max =',E16.6,3X,'arcsec'/ &
-            '#')"
+       frmt = "('#',3X,'ORBITAL-ELEMENT PDF' /" // &
+            "'#',3X,' Epoch            = ',A,' = ',F13.5,' TDT'/" // &
+            "'#',3X,' Maximum likelihood (ML) orbit' /" // &
+            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,'  ML value        =',E16.6/" // &
+            "'#',3X,'  ML reduced chi2 =',E16.6/" // &
+            "'#',3X,'  ML rms          =',E16.6,3X,'arcsec'/" // &            
+            "'#',3X,' Apriori pdf, min =',E16.6/" // &
+            "'#',3X,'              max =',E16.6/" // &
+            "'#',3X,' Jacobian,    min =',E16.6/" // &
+            "'#',3X,'              max =',E16.6/" // &
+            "'#',3X,' Rms,         min =',E16.6,3X,'arcsec'/" // &
+            "'#',3X,'              max =',E16.6,3X,'arcsec'/" // &
+            "'#')"
        WRITE(lu,TRIM(frmt)) getCalendarDateString(t,"tdt"), getJD(t,"tdt"), &
             str1(1:19), elements, str2(1:19), conf_limits(:,1), str3(1:19), &
             conf_limits(:,2), pdf_arr_cmp(indx_ml),rchi2_arr_cmp(indx_ml)+nra+ndec,&
@@ -4010,13 +4010,13 @@ CONTAINS
             MINVAL(SQRT(0.5*(rms_arr_cmp(:,2)**2+rms_arr_cmp(:,3)**2)))/rad_asec,&
             MAXVAL(SQRT(0.5*(rms_arr_cmp(:,2)**2+rms_arr_cmp(:,3)**2)))/rad_asec
 
-       frmt = "('#',3X,'COMPUTATIONAL PARAMETERS'/ &
-            '#',3X,'Element set      = ',A/ &
-            '#',3X,'Two-point method = ',A/ &
-            '#',3X,'Dynamical model  = ',A/ &
-            '#',3X,'Regularization   = ',L2/ &
-            '#',3X,'Uniform PDF      = ',L2/ &
-            '#')"
+       frmt = "('#',3X,'COMPUTATIONAL PARAMETERS'/" // &
+            "'#',3X,'Element set      = ',A/" // &
+            "'#',3X,'Two-point method = ',A/" // &
+            "'#',3X,'Dynamical model  = ',A/" // &
+            "'#',3X,'Regularization   = ',L2/" // &
+            "'#',3X,'Uniform PDF      = ',L2/" // &
+            "'#')"
        WRITE(lu,TRIM(frmt)) element_type_prm, &
             TRIM(sor_2point_method), &
             TRIM(dyn_model_prm), &
@@ -4024,16 +4024,16 @@ CONTAINS
             uniform_pdf_prm
 
 
-       frmt = "('#',3X,'BAYESIAN A PRIORI INFORMATION'/ &
-            '#',3X,'Semimajor axis (AU), min      = ',F15.9/ &
-            '#',3X,'                     max      = ',F15.9/ &
-            '#',3X,'Periapsis distance (AU),  min = ',F15.9/ &
-            '#',3X,'                          max = ',F15.9/ &
-            '#',3X,'Apoapsis distance (AU),   min = ',F15.9/ &
-            '#',3X,'                          max = ',F15.9/ &
-            '#',3X,'Topocentric range (AU),   min = ',F15.9/ &
-            '#',3X,'                          max = ',F15.9/ &
-            '#')"
+       frmt = "('#',3X,'BAYESIAN A PRIORI INFORMATION'/" // &
+            "'#',3X,'Semimajor axis (AU), min      = ',F15.9/" // &
+            "'#',3X,'                     max      = ',F15.9/" // &
+            "'#',3X,'Periapsis distance (AU),  min = ',F15.9/" // &
+            "'#',3X,'                          max = ',F15.9/" // &
+            "'#',3X,'Apoapsis distance (AU),   min = ',F15.9/" // &
+            "'#',3X,'                          max = ',F15.9/" // &
+            "'#',3X,'Topocentric range (AU),   min = ',F15.9/" // &
+            "'#',3X,'                          max = ',F15.9/" // &
+            "'#')"
        WRITE(lu,TRIM(frmt)) apriori_a_min_prm, &
             apriori_a_max_prm, &
             apriori_periapsis_min_prm, &
@@ -4044,29 +4044,29 @@ CONTAINS
             apriori_rho_max_prm
     END IF
 
-    frmt = "('#',3X,'Final   number of sample orbits  = ',I14/ &
-         '#',3X,'Initial number of sample orbits  = ',I14/ &
-         '#',3X,'Final   number of trials         = ',I14/ &
-         '#',3X,'Initial number of trials         = ',I14/ &
-         '#')"
+    frmt = "('#',3X,'Final   number of sample orbits  = ',I14/" // &
+         "'#',3X,'Initial number of sample orbits  = ',I14/" // &
+         "'#',3X,'Final   number of trials         = ',I14/" // &
+         "'#',3X,'Initial number of trials         = ',I14/" // &
+         "'#')"
     WRITE(lu,TRIM(frmt)) sor_norb_cmp, &
          sor_norb_prm, &
          sor_ntrial_cmp,&
          sor_ntrial_prm
 
-    frmt = "('#',3X,'RESIDUALS AND PDF'/ &
-         '#',3X,'R.A.*cos Dec. std        (min)   = ',E14.4,3X,'arcsec'/ &
-         '#',3X,'Dec. std                 (min)   = ',E14.4,3X,'arcsec'/ &
-         '#',3X,'Acceptance, residuals'/  &
-         '#',3X,'  sigma multiplier               = ',E14.4/ &
-         '#',3X,'  window for 1st R.A.            = ',E14.4,3X,'arcsec'/ &
-         '#',3X,'  window for 1st Dec.            = ',E14.4,3X,'arcsec'/ &
-         '#',3X,'Acceptance, PDF                  ',3X,/&
-         '#',3X,'  reference ML value             = ',E14.4/ &
-         '#',3X,'  chi-square difference          = ',E14.4/ &
-         '#',3X,'  corresponding relative bound   = ',E14.4/ &
-         '#',3X,'  Delta dchi-square              = ',E14.4/ &
-         '#')"
+    frmt = "('#',3X,'RESIDUALS AND PDF'/" // &
+         "'#',3X,'R.A.*cos Dec. std        (min)   = ',E14.4,3X,'arcsec'/" // &
+         "'#',3X,'Dec. std                 (min)   = ',E14.4,3X,'arcsec'/" // &
+         "'#',3X,'Acceptance, residuals'/" // &
+         "'#',3X,'  sigma multiplier               = ',E14.4/" // &
+         "'#',3X,'  window for 1st R.A.            = ',E14.4,3X,'arcsec'/" // &
+         "'#',3X,'  window for 1st Dec.            = ',E14.4,3X,'arcsec'/" // &
+         "'#',3X,'Acceptance, PDF                  ',3X,/" // &
+         "'#',3X,'  reference ML value             = ',E14.4/" // &
+         "'#',3X,'  chi-square difference          = ',E14.4/" // &
+         "'#',3X,'  corresponding relative bound   = ',E14.4/" // &
+         "'#',3X,'  Delta dchi-square              = ',E14.4/" // &
+         "'#')"
     WRITE(lu,TRIM(frmt)) & 
          MINVAL(obs_stdev_arr(:,2:3),dim=1), &
          accept_multiplier_prm, &
@@ -4134,23 +4134,23 @@ CONTAINS
 
        sor_deviates_prm = sor_deviates_prm/rad_asec
 
-       frmt = "('#',3X,'GENERATION WINDOWS FOR RHO, R.A., AND DEC.' / &
-            '#',3X,'  Id. number of 1st observation  = ',A14/ &
-            '#',3X,'  Id. number of 2nd observation  = ',A14/ &
-            '#',3X,'  Bound for rho1;      lower     = ',E14.4,3X,'AU'/ &
-            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
-            '#',3X,'  Bound for rho2-rho1; lower     = ',E14.4,3X,'AU'/ &
-            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
-            '#',3X,'  sigma multiplier               = ',E14.4/ &
-            '#',3X,'  window shift for 1st R.A.      = ',E14.4,3X,'arcsec'/ &
-            '#',3X,'                   1st Dec.      = ',E14.4,3X,'arcsec'/ &
-            '#',3X,'  window width for 1st R.A.      = ',E14.4,3X,'arcsec'/ &
-            '#',3X,'                   1st Dec.      = ',E14.4,3X,'arcsec'/ &
-            '#',3X,'  window shift for 2nd R.A.      = ',E14.4,3X,'arcsec'/ &
-            '#',3X,'                   2nd Dec.      = ',E14.4,3X,'arcsec'/ &
-            '#',3X,'  window width for 2nd R.A.      = ',E14.4,3X,'arcsec'/ &
-            '#',3X,'                   2nd Dec.      = ',E14.4,3X,'arcsec'/ &
-            '#')"
+       frmt = "('#',3X,'GENERATION WINDOWS FOR RHO, R.A., AND DEC.' /" // &
+            "'#',3X,'  Id. number of 1st observation  = ',A14/" // &
+            "'#',3X,'  Id. number of 2nd observation  = ',A14/" // &
+            "'#',3X,'  Bound for rho1;      lower     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'  Bound for rho2-rho1; lower     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'  sigma multiplier               = ',E14.4/" // &
+            "'#',3X,'  window shift for 1st R.A.      = ',E14.4,3X,'arcsec'/" // &
+            "'#',3X,'                   1st Dec.      = ',E14.4,3X,'arcsec'/" // &
+            "'#',3X,'  window width for 1st R.A.      = ',E14.4,3X,'arcsec'/" // &
+            "'#',3X,'                   1st Dec.      = ',E14.4,3X,'arcsec'/" // &
+            "'#',3X,'  window shift for 2nd R.A.      = ',E14.4,3X,'arcsec'/" // &
+            "'#',3X,'                   2nd Dec.      = ',E14.4,3X,'arcsec'/" // &
+            "'#',3X,'  window width for 2nd R.A.      = ',E14.4,3X,'arcsec'/" // &
+            "'#',3X,'                   2nd Dec.      = ',E14.4,3X,'arcsec'/" // &
+            "'#')"
        WRITE(lu,TRIM(frmt)) ADJUSTR(str1(1:14)), &
             ADJUSTR(str2(1:14)), &
             sor_rho_prm(1,1:2), &
@@ -4161,17 +4161,17 @@ CONTAINS
             sor_deviates_prm(sor_pair_arr_prm(1,2),2:3,1),&
             sor_deviates_prm(sor_pair_arr_prm(1,2),2:3,2)
 
-       frmt = "('#',3X,'COMPUTED VALUES FOR RHO, R.A., AND DEC.'/ &
-            '#',3X,'Computed, rho' / &
-            '#',3X,'  Bound for rho1,      lower     = ',E14.4,3X,'AU'/ &
-            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
-            '#',3X,'  Bound for rho2-rho1, lower     = ',E14.4,3X,'AU'/ &
-            '#',3X,'                       upper     = ',E14.4,3X,'AU'/ &
-            '#',3X,'  Histogram flag                 = ',I14/ &
-            '#',3X,'Computed, R.A. and Dec. residuals' /&
-            '#',3X,'  Fraction outside ref. ellipse, 1st obs =',E12.4/ &
-            '#',3X,'  Fraction outside ref. ellipse, 2nd obs =',E12.4/ &
-            '#')"
+       frmt = "('#',3X,'COMPUTED VALUES FOR RHO, R.A., AND DEC.'/" // &
+            "'#',3X,'Computed, rho' /" // &
+            "'#',3X,'  Bound for rho1,      lower     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'  Bound for rho2-rho1, lower     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'  Histogram flag                 = ',I14/" // &
+            "'#',3X,'Computed, R.A. and Dec. residuals' /" // &
+            "'#',3X,'  Fraction outside ref. ellipse, 1st obs =',E12.4/" // &
+            "'#',3X,'  Fraction outside ref. ellipse, 2nd obs =',E12.4/" // &
+            "'#')"
        WRITE(lu,TRIM(frmt)) sor_rho_cmp(1,1:2), &
             sor_rho_cmp(2,1:2), &
             sor_rho_histo_cmp, & 
