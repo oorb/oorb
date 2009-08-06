@@ -312,7 +312,7 @@ CONTAINS
 
     str = " "
     str = TRIM(id) // "_" // TRIM(str) // "resid_stamp.gp"
-    CALL system("echo set terminal postscript eps enhanced linewidth 1.0 8.0 > " // TRIM(str))
+    CALL system("echo set terminal postscript eps enhanced color linewidth 1.0 8.0 > " // TRIM(str))
     CALL system("echo set out \'residual_stamps.eps\' >> " // TRIM(str))
     CALL system("echo unset key >> " // TRIM(str))
     CALL system("echo set pointsize 0.2 >> " // TRIM(str))
@@ -457,10 +457,10 @@ CONTAINS
              CALL NULLIFY(tmpfile)
              IF (ALL(obs_masks(k,2:3))) THEN
                 CALL system("echo plot \'" // TRIM(str1) // &
-                     "\' using 1:2 7 >> " // TRIM(str))
+                     "\' using 1:2 0 >> " // TRIM(str))
              ELSE
                 CALL system("echo plot \'" // TRIM(str1) // &
-                     "\' using 1:2 8 >> " // TRIM(str))
+                     "\' using 1:2 1 >> " // TRIM(str))
              END IF
           END DO
        END DO
