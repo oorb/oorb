@@ -43,7 +43,7 @@ wrapper.o: wrapper.f90 liboorb.o
 	wrapper.f90
 
 
-liboorb.$(LIBEXT): wrapper.o liboorb.o
+liboorb.$(LIBEXT): modules classes main wrapper.o liboorb.o
 	$(FC) $(FCOPTIONS) -shared -o liboorb.$(LIBEXT) \
 	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
 	liboorb.o wrapper.o \
@@ -51,8 +51,14 @@ liboorb.$(LIBEXT): wrapper.o liboorb.o
 	../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
 
+main:
+	cd ../main/ ; make io.o
 
+classes:
+	cd ../$(CLASSPATH) ; $(MAKE) all
 
+modules:
+	cd ../$(MODULEPATH) ; $(MAKE) all
 
 
 # Remove library and modules:
