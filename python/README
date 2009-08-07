@@ -37,5 +37,7 @@ liboorb.so (or liboorb.dylib if you are on a Mac) somewhere in your
 LD_LIBRARY_PATH (or DYLD_LIBRARY_PATH if you are on a Mac).
 
 
+Tested on a Mac OS X system running OSX 10.5.x and gfortran 4.4.x
+
 These wrappers are not in their final version and so they should not be used in
 production software. You have been warned!
