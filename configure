@@ -123,3 +123,15 @@ else
     rm -f $include_file
 
 fi
+
+
+set SYSTEM=`uname -s`
+if [[ ${SYSTEM} == Darwin ]] ; then
+
+    echo 'LIBEXT = so' >> $include_file
+
+else
+
+    echo 'LIBEXT = dylib' >> $include_file
+
+fi
