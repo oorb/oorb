@@ -59,14 +59,14 @@ The output is divided into the following columns (as marked by a single-line hea
 
 === Which OS + compiler combos seem to work with OpenOrb? ===
 
-  * Mac OS X 10.5.7 + gfortran 4.4.0
-  * Mac OS X 10.5.7 + g95 0.91
-  * Fedora Core 9 + intel 11.8
-  * linux + intel 10.1  
+  * Fedora Core 9 + intel versions 11.8
+  * Linux + intel 10.1  
+  * Mac OS X 10.5.8 + gfortran 4.4.0
+  * Mac OS X 10.5.8 + g95 0.91
 
 === Which OS + compiler combos have problems with OpenOrb? ===
 
-  * Mac 10.5.7 + gfortran 4.2.3
+  * Mac OS X 10.5.7 + gfortran versions 4.2.3 and 4.3.1
   * Fedora Core 9 + gfortran 4.3.0
 
 == Running ==
