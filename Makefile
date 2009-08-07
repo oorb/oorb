@@ -24,7 +24,7 @@
 # and documentation in the OpenOrb-project.
 #
 # Author:  MG
-# Version: 2008-08-12
+# Version: 2009-08-07
 
 include make.config
 
@@ -42,6 +42,7 @@ all_clean: clean
 	cd $(CLASSPATH)  ; $(MAKE) clean
 	cd $(MODULEPATH) ; $(MAKE) clean
 	cd $(MAINPATH)   ; $(MAKE) clean
+	cd $(PYTHONPATH) ; $(MAKE) clean
 
 # Remove library and modules:
 clean:
