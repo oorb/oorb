@@ -21,8 +21,35 @@
 #
 # F. Pierfederici <fpierfed@gmail.com>
 from constants import *
-from api import *
+# from api import *
 
+
+
+
+def findLibrary(root):
+    import ctypes
+    import os
+    import sys
+    
+    
+    # ctypes.util.find_library works just fine on OSX.
+    if(sys.platform.startswith('darwin')):
+        return(ctypes.util.find_library(root))
+    
+    # It does not on Linux/Solaris etc. (IMHO).
+    libPath = ctypes.util.find_library(root)
+    if(libPath):
+        return(libPath)
+    
+    # Now we are in trouble. Try and see if we find it somewhere in the user
+    # LD_LIBRARY_PATH.
+    if(sys.platform.startswith('linux')):
+        dirPaths = os.environ.get('LD_LIBRARY_PATH', '').split(':')
+        for dirPath in dirPaths:
+            path = os.path.join(dirPath, 'lib%s.so' %(root))
+            if(os.path.exists(path)):
+                return(path)
+    return(None)
 
 
 def sexagesimalHoursToDecimalDegrees(h, m, s):
@@ -243,3 +270,5 @@ def splitObservations(obs):
     if(currentObs not in separatedObs):
         separatedObs.append(currentObs)
     return(separatedObs)
+
+
