@@ -26,11 +26,11 @@ import ctypes.util
 import numpy
 
 from constants import *
-
+import utils
 
 
 # Find the oorb library
-libPath = ctypes.util.find_library('oorb')
+libPath = utils.findLibrary('oorb')
 if(not libPath):
     raise(Exception('Could not find liboorb!'))
 ffi = ctypes.CDLL(libPath)
@@ -928,6 +928,7 @@ if(__name__ == '__main__'):
     print("Class             Probability")
     for j in range(len(weights)):
         print(" %s  %f" %(classes[j], weights[j]))
+
 
 
 
