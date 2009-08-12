@@ -124,14 +124,13 @@ else
 
 fi
 
-
-set SYSTEM=`uname -s`
-if [[ ${SYSTEM} == Darwin ]] ; then
-
+# Options for liboorb and Python wrappers.
+SYSTEM=`uname -s`
+if [[ ${SYSTEM} == "Linux" ]] ; then
     echo 'LIBEXT = so' >> $include_file
-
-else
-
+elif [[ ${SYSTEM} == "Darwin" ]] ; then
     echo 'LIBEXT = dylib' >> $include_file
-
+else
+    echo 'LIBEXT = so' >> $include_file
 fi
+
