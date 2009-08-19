@@ -28,7 +28,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-06-25
+!! @version 2009-08-18
 !!
 MODULE Orbit_cl
 
@@ -518,6 +518,75 @@ CONTAINS
        this%elements(6) = elements(6)
 
        this%element_type = "cometary"
+       this%frame = frame
+       this%is_initialized = .TRUE.
+
+    CASE ("cometary_ta")
+
+       !! Same as 'cometary', but time of perihelion changed to the
+       !! true anomaly.
+
+       ! Check soundness of cometary elements:
+       IF (elements(1) < 0.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Perihelion distance is negative.", 1)
+          RETURN
+       ELSE
+          this%elements(1) = elements(1)
+       END IF
+
+       IF (elements(2) < 0.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Eccentricity is negative.", 1)
+          RETURN
+       ELSE IF (elements(2) == 1.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Eccentricity is exactly 1 (not possible, too few digits used).", 1)
+          RETURN
+       ELSE
+          this%elements(2) = elements(2)
+       END IF
+
+       IF (elements(3) < 0.0_bp .OR. elements(3) >= pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Inclination is outside the range [0,pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(3) = elements(3)
+       END IF
+
+       IF (elements(4) < 0.0_bp .OR. elements(4) >= two_pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Longitude of Ascending Node is outside the range [0,two_pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(4) = elements(4)
+       END IF
+
+       IF (elements(5) < 0.0_bp .OR. elements(5) >= two_pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Argument of Perihelion is outside the range [0,two_pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(5) = elements(5)
+       END IF
+
+       IF (elements(6) < 0.0_bp .OR. elements(6) >= two_pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "True Anomaly is outside the range [0,two_pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(6) = elements(6)
+       END IF
+
+       this%element_type = "cometary_ta"
        this%frame = frame
        this%is_initialized = .TRUE.
 
@@ -2313,8 +2382,11 @@ CONTAINS
     REAL(bp), DIMENSION(0:3) :: stumpff_c, stumpff_cs
     REAL(bp), DIMENSION(3) :: pos, vel, k, sin_angles, cos_angles, &
          evec, fb, gb
+
     REAL(bp) :: r0, ru, alpha, a, e, i, an, ap, varpi, tmp1, tmp2, &
-         div, q, tp, r, rp, rpp, xv, s, ds, x, dt, cosu, u0, mjd_tt, p
+         div, q, tp, r, rp, rpp, xv, s, ds, x, dt, cosu, u0, mjd_tt, &
+         p, ea, sin_ea, cos_ea
+
     INTEGER :: iiter
 
     IF (.NOT.this%is_initialized) THEN
@@ -2333,6 +2405,32 @@ CONTAINS
 
        ! Return immediately if elements are cometary
        RETURN
+
+    CASE ("cometary_ta")
+
+       this_ = copy(this)
+       IF (this%elements(2) < 1.0_bp) THEN
+          cos_ea = -(COS(this%elements(6) + this%elements(2))) / &
+               (1.0_bp + this%elements(2)*COS(this%elements(6)))
+          sin_ea = SIN(this%elements(6)) / &
+               SQRT(1.0_bp - this%elements(2)**2.0_bp) * &
+               (1.0_bp + this%elements(2) * & 
+               (COS(this%elements(6)) + this%elements(2)) / &
+               (1.0_bp + this%elements(2)*COS(this%elements(6))))
+          ea = ATAN2(sin_ea,cos_ea)
+          this_%elements(6) = ea - this%elements(2)*SIN(ea)
+          ! Time of periapsis:
+          getCometaryElements(6) = getMJD(this_%t,"TT") - &
+               this_%elements(6) * SQRT((this_%elements(1) / &
+               (1.0_bp-this%elements(2)))**3.0_bp / &
+               planetary_mu(this_%central_body))
+       ELSE
+          error = .TRUE.
+          CALL errorMessage("Orbit / getCometaryElements", &
+               "Conversion from ta to tp not yet available for e>=1 orbits.", 1)
+          RETURN
+       END IF
+       CALL NULLIFY(this_)
 
     CASE ("keplerian")
 
