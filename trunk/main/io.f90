@@ -26,7 +26,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-08-05
+!! @version 2009-08-18
 !!
 MODULE io
 
@@ -1641,8 +1641,18 @@ CONTAINS
                "TRACE BACK (5)", 1)
           RETURN
        END IF
-       elements(3:5) = elements(3:5)*rad_deg
-       CALL NEW(orb_arr(norb+1), elements, "cometary", "ecliptic", epoch)
+       IF (frmt == "COM") THEN
+          elements(3:5) = elements(3:5)*rad_deg
+          CALL NEW(orb_arr(norb+1), elements, "cometary", "ecliptic", epoch)
+       ELSE IF (frmt == "COT") THEN
+          elements(3:6) = elements(3:6)*rad_deg
+          CALL NEW(orb_arr(norb+1), elements, "cometary_ta", "ecliptic", epoch)
+       ELSE
+          error = .TRUE.
+          CALL errorMessage("io / readDESOrbitFile", &
+               "No such option available: " // TRIM(frmt), 1)
+          RETURN          
+       END IF
        IF (error) THEN
           CALL errorMessage("io / readDESOrbitFile", &
                "TRACE BACK (10)", 1)
