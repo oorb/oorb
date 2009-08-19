@@ -61,7 +61,7 @@ The output is divided into the following columns (as marked by a single-line hea
 
   * Fedora Core 9 + intel versions 11.8
   * Linux + intel 10.1  
-  * Mac OS X 10.5.8 + gfortran 4.4.0
+  * Mac OS X 10.5.8 + gfortran 4.3.4 and 4.4.0
   * Mac OS X 10.5.8 + g95 0.91
 
 === Which OS + compiler combos have problems with OpenOrb? ===
@@ -70,5 +70,17 @@ The output is divided into the following columns (as marked by a single-line hea
   * Fedora Core 9 + gfortran 4.3.0
 
 == Running ==
+
+=== Can I specify a date for which I want an ephemeris to be computed? ===
+
+No. At the moment the only option is to first explicitly propagate the orbits to the desired date by using, e.g.,
+
+ `oorb --task=propagation --epoch-mjd-utc=DATE --orb-in=ORBITFILEIN --orb-out=ORBITFILEOUT`
+
+and then compute the ephemeris using, e.g.,
+
+ `oorb --task=ephemeris --orb-in=ORBBITFILEOUT`
+
+Note that there is no algorithmic reason why you couldn't specify an option like `--epoch-mjd-utc=DATE` to `--task=ephemeris`. The option just doesn't exist (yet!).
 
 == Miscellaneous == 
