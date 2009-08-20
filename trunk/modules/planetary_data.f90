@@ -48,7 +48,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2009-06-12
+!! @version 2009-08-19
 !!
 MODULE planetary_data
 
@@ -253,6 +253,7 @@ CONTAINS
        INQUIRE(unit=lu, opened=used, iostat=err)
        IF (err /= 0) THEN
           error = .TRUE.
+          WRITE(0,*) "JPL_ephemeris_init(): Error when inquiring for status of logical unit."
           RETURN
        END IF
        IF (used) THEN
@@ -262,6 +263,7 @@ CONTAINS
           ! A free unit could not be found: 
           IF (count > max_lu) THEN
              error = .TRUE.
+             WRITE(0,*) "JPL_ephemeris_init(): Could not find a free logical unit."
              RETURN
           END IF
           lu = lu + 1
@@ -277,6 +279,7 @@ CONTAINS
          recl=RECORD_LENGTH*RECORD_SIZE, action='read', iostat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could not open file '" // TRIM(fname) // "'."
        RETURN
     END IF
 
@@ -284,18 +287,21 @@ CONTAINS
          au, emrat, ipt(1:3,1:12), numde, ipt(1:3,13)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could not read record #1."
        RETURN
     END IF
 
     READ(lu, rec=2, iostat=err) cval
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could not read record #2."
        RETURN
     END IF
 
     ALLOCATE(tmp(RECORD_SIZE/2,NRECORD_MAX), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
@@ -304,7 +310,7 @@ CONTAINS
        READ(lu, rec=i+2, iostat=err) tmp(:,i)
        IF (err > 0) THEN
           error = .TRUE.
-          WRITE(0,*) "planetary_data: Error while reading ephemeris file."
+          WRITE(0,*) "JPL_ephemeris_init(): Could not read ephemeris record."
           DEALLOCATE(tmp, stat=err)
           RETURN
        ELSE IF (err < 0) THEN
@@ -323,6 +329,7 @@ CONTAINS
     ALLOCATE(buf(SIZE(tmp,dim=1),i), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
@@ -330,6 +337,7 @@ CONTAINS
     DEALLOCATE(tmp, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could not deallocate memory."
        RETURN
     END IF
     CLOSE(lu)
@@ -426,7 +434,7 @@ CONTAINS
     IF (first) THEN
        CALL JPL_ephemeris_init(error)
        IF (error) THEN
-          WRITE(0,*) "planetary_data: Could not initialize ephemerides."
+          WRITE(0,*) "JPL_ephemeris_r8(): Error when calling JPL_ephemeris_init()."
           RETURN
        END IF
     END IF
@@ -435,6 +443,7 @@ CONTAINS
        ALLOCATE(JPL_ephemeris_r8(1,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
+          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (1)."
           RETURN
        END IF
        JPL_ephemeris_r8(1,1:6) = 0.0_rprec8
@@ -462,7 +471,7 @@ CONTAINS
           list(12) = 2
           celements(1:12,1:6) = states(tt2, list, error)
           IF (error) THEN
-             WRITE(0,*) 'Target object and center object are the same.'
+             WRITE(0,*) 'JPL_ephemeris_r8(): Target object and center object are the same.'
              RETURN
           ELSE
              !state = celements(11,:)
@@ -470,7 +479,7 @@ CONTAINS
           END IF
        ELSE
           error = .TRUE.
-          WRITE(0,*) 'No librations available on the ephemeris file.'
+          WRITE(0,*) 'JPL_ephemeris_r8(): No librations available on the ephemeris file.'
           RETURN
        END IF
     END IF
@@ -500,7 +509,7 @@ CONTAINS
     !  make call to state
     celements(1:12,1:6) = states(tt2, list, error)
     IF (error) THEN
-       WRITE(0,*) 'Error when calling state() from JPL_ephemeris_r8().'
+       WRITE(0,*) 'JPL_ephemeris_r8(): Error when calling states() (1).'
        RETURN
     END IF
 
@@ -530,6 +539,7 @@ CONTAINS
        ALLOCATE(JPL_ephemeris_r8(1,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
+          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (2)."
           RETURN
        END IF
        JPL_ephemeris_r8(1,1:6) = celements(ntarget,1:6)
@@ -560,6 +570,7 @@ CONTAINS
        ALLOCATE(JPL_ephemeris_r8(9,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
+          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (3)."
           RETURN
        END IF
        DO i=1,9
@@ -569,6 +580,7 @@ CONTAINS
        ALLOCATE(JPL_ephemeris_r8(10,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
+          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (4)."
           RETURN
        END IF
        DO i=1,10
@@ -578,11 +590,13 @@ CONTAINS
        ALLOCATE(JPL_ephemeris_r8(1,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
+          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (5)."
           RETURN
        END IF
        JPL_ephemeris_r8(1,1:6) = celements(ntarget,1:6)
     ELSE
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_r8(): Could not decide what kind of output caller requested."
        RETURN
     END IF
 
@@ -614,9 +628,14 @@ CONTAINS
     ELSE
        tmp => JPL_ephemeris(REAL(mjd_tt,rprec8), ntarget, ncenter, error)
     END IF
+    IF (error) THEN
+       WRITE(0,*) "JPL_ephemeris_r16(): Error when calling JPL_ephemeris_r8()."
+       RETURN
+    END IF
     ALLOCATE(JPL_ephemeris_r16(SIZE(tmp,dim=1),SIZE(tmp,dim=2)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_r16(): Could not allocate memory."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
@@ -624,6 +643,7 @@ CONTAINS
     DEALLOCATE(tmp, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_r16(): Could not deallocate memory."
        RETURN
     END IF
 
@@ -699,7 +719,7 @@ CONTAINS
     IF (first) THEN
        CALL JPL_ephemeris_init(error)
        IF (error) THEN
-          WRITE(0,*) "planetary_data: Could not initialize ephemerides."
+          WRITE(0,*) "JPL_ephemeris_perturbers_r8(): Could not initialize ephemerides."
           RETURN
        END IF
     END IF
@@ -730,7 +750,7 @@ CONTAINS
     !  make call to state
     celements(1:12,1:6) = states(tt2, list, error)
     IF (error) THEN
-       WRITE(0,*) 'Error when calling state() from JPL_ephemeris_perturbers_r8().'
+       WRITE(0,*) "JPL_ephemeris_perturbers_r8(): Error when calling states() (1)."
        RETURN
     END IF
 
@@ -762,6 +782,7 @@ CONTAINS
     ALLOCATE(JPL_ephemeris_perturbers_r8(COUNT(ntargets),6), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_perturbers_r8(): Could not allocate memory."
        RETURN
     END IF
     j = 0
@@ -801,9 +822,14 @@ CONTAINS
     ELSE
        tmp => JPL_ephemeris(REAL(mjd_tt,rprec8), ntargets, ncenter, error)
     END IF
+    IF (error) THEN
+       WRITE(0,*) "JPL_ephemeris_perturbers_r16(): Error when calling JPL_ephemeris_perturbers_r8()."
+       RETURN
+    END IF
     ALLOCATE(JPL_ephemeris_perturbers_r16(SIZE(tmp,dim=1),SIZE(tmp,dim=2)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_perturbers_r16(): Could not allocate memory."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
@@ -811,6 +837,7 @@ CONTAINS
     DEALLOCATE(tmp, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_perturbers_r16(): Could not deallocate memory."
        RETURN
     END IF
 
@@ -870,7 +897,10 @@ CONTAINS
 
     IF (first) THEN
        CALL JPL_ephemeris_init(error)
-       IF (error) RETURN
+       IF (error) THEN
+          WRITE(0,*) "nutations(): Could not initialize ephemerides."
+          RETURN
+       END IF
     END IF
 
     tt2(1) = t
@@ -889,7 +919,7 @@ CONTAINS
 
        IF (tt2(1) == 0.0_rprec8) THEN
           error = .TRUE.
-          WRITE(0,*) 'Input Julian date is zero.'
+          WRITE(0,*) 'nutations(): Input Julian date is zero.'
           RETURN
        END IF
 
@@ -904,7 +934,7 @@ CONTAINS
        IF (pjd(1) + pjd(4) < ss(1) .OR. &
             pjd(1) + pjd(4) > ss(2)) THEN
           error = .TRUE.
-          WRITE(0,*) 'Requested Julian ET not within limits.'
+          WRITE(0,*) 'nutations(): Requested Julian ET not within limits.'
           RETURN
        END IF
 
@@ -936,7 +966,7 @@ CONTAINS
           nutations = 0.0_rprec8
        END IF
        IF (error) THEN
-          WRITE(0,*) 'No nutations on the ephemeris file.'
+          WRITE(0,*) 'nutations(): No nutations on the ephemeris file.'
           RETURN
        END IF
     END IF
@@ -1063,7 +1093,7 @@ CONTAINS
 
     IF (ABS(tt2(1) - 0.0_rprec8) < EPSILON(tt2(1))) THEN
        error = .TRUE.
-       WRITE(0,*) 'Input Julian date is zero.'
+       WRITE(0,*) 'states(): Input Julian date is zero.'
        RETURN
     END IF
 
@@ -1078,7 +1108,7 @@ CONTAINS
     IF (pjd(1) + pjd(4) < ss(1) .OR. &
          pjd(1) + pjd(4) > ss(2)) THEN
        error = .TRUE.
-       WRITE(0,*) 'Requested Julian ET not within limits:'
+       WRITE(0,*) 'states(): Requested Julian ET not within limits:'
        WRITE(0,*) tt2
        RETURN
     END IF
@@ -1094,7 +1124,7 @@ CONTAINS
     ! Read correct record if not in core:
     IF (record_nr < 1 .OR. record_nr > SIZE(buf,dim=2)) THEN
        error = .TRUE.
-       WRITE(0,*) 'Requested Julian ephemeris date not within limits.'
+       WRITE(0,*) 'states(): Requested Julian ephemeris date not within limits.'
        RETURN
     END IF
 
@@ -1109,12 +1139,20 @@ CONTAINS
     ! Interpolate ssbary sun: 
     CALL interpolate(buf(:,record_nr), ipt(1,11), t, ipt(2,11), &
          3, ipt(3,11), states(12,1:6), error)
+    IF (error) THEN
+       WRITE(0,*) "states(): Error when calling interpolate() (1)."
+       RETURN
+    END IF
     states(12,1:6) = states(12,1:6)*aufac
     ! Check and interpolate whichever bodies are requested:
     DO i=1, 10
        IF (list(i) == 0) CYCLE
        CALL interpolate(buf(:,record_nr), ipt(1,i), t, ipt(2,i), &
             3, ipt(3,i), states(i,:), error)
+       IF (error) THEN
+          WRITE(0,*) "states(): Error when calling interpolate() (2)."
+          RETURN
+       END IF
        IF (i <= 9 .AND. .NOT.barycenter) THEN
           states(i,:) = states(i,:) * aufac - states(12,:)
        ELSE
@@ -1125,6 +1163,10 @@ CONTAINS
     IF (list(12) > 0 .AND. ipt(2,13) > 0) THEN
        CALL interpolate(buf(:,record_nr), ipt(1,13), t, ipt(2,13), &
             3, ipt(3,13), states(11,:), error)
+       IF (error) THEN
+          WRITE(0,*) "states(): Error when calling interpolate() (3)."
+          RETURN
+       END IF
     ELSE
        states(11,1) = 0.0_rprec8
     END IF
@@ -1242,7 +1284,7 @@ CONTAINS
     ! derivative polynomials have been generated and stored.
     IF (ABS(time(2)) < EPSILON(time(2))) THEN
        error = .TRUE.
-       WRITE(0,*) 'Attempted division by zero.'
+       WRITE(0,*) 'interpolate(): Attempted division by zero.'
        RETURN
     END IF
     vfac = (dna + dna)/time(2)
