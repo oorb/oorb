@@ -28,7 +28,7 @@
 !! Pluto are included.
 !!
 !! @author  MG
-!! @version 2008-08-12
+!! @version 2009-08-19
 !!
 PROGRAM de405_tester
 
@@ -41,16 +41,26 @@ PROGRAM de405_tester
   INTEGER :: i, ntarget, ncenter, ncoord, err
   LOGICAL :: error
 
-  OPEN(12,file="testpo.405")
+  error = .FALSE.
+  OPEN(12,file="testpo.405",status="old")
   str = ""
   DO WHILE (str(1:3) /= "EOT")
      READ(12,"(A)") str
   END DO
   CALL JPL_ephemeris_init(error, "de405.dat")
+  IF (error) THEN
+     WRITE(0,*) "***** INITIALIZATION ERROR OCCURRED *****"     
+     STOP
+  END IF
   DO
      READ(12,*,iostat=err) i, str, jd_tt, ntarget, ncenter, ncoord, value
-     IF (err /= 0) THEN
+     IF (err < 0) THEN
         EXIT
+     ELSE IF (err > 0) THEN
+        IF (error) THEN
+           WRITE(0,*) "***** READ ERROR OCCURRED *****"     
+           STOP
+        END IF
      END IF
      IF (ncenter == 0 .OR. ncenter > 11 .OR. ntarget > 11) THEN
         CYCLE
@@ -58,11 +68,13 @@ PROGRAM de405_tester
      mjd_tt = jd_tt - 2400000.5_rprec8
      ephemeris => JPL_ephemeris(mjd_tt, ntarget, ncenter, error)
      IF (ABS(ephemeris(1,ncoord)-value) > 10.0E-13_rprec8) THEN
-        STOP "*********** ERROR OCCURRED ***************"
+        WRITE(0,*) "***** COMPARISON ERROR OCCURRED *****"
+        STOP
      END IF
      DEALLOCATE(ephemeris)
   END DO
   CLOSE(12)
+  CALL JPL_ephemeris_nullify()
   WRITE(*,*) "*********** EVERYTHING OK ***************"
 
 END PROGRAM de405_tester
