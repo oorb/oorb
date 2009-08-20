@@ -25,7 +25,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-08-05
+!! @version 2009-08-19
 !!
 PROGRAM oorb
 
@@ -305,6 +305,7 @@ PROGRAM oorb
        write_residuals
 
   ! Defaults:
+  error = .FALSE.
   task = " "
   compress = .FALSE.
   orbit_format_out = "des"
