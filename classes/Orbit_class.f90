@@ -28,7 +28,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-08-18
+!! @version 2009-08-24
 !!
 MODULE Orbit_cl
 
@@ -2410,7 +2410,7 @@ CONTAINS
 
        this_ = copy(this)
        IF (this%elements(2) < 1.0_bp) THEN
-          cos_ea = -(COS(this%elements(6) + this%elements(2))) / &
+          cos_ea = (COS(this%elements(6)) + this%elements(2)) / &
                (1.0_bp + this%elements(2)*COS(this%elements(6)))
           sin_ea = SIN(this%elements(6)) / &
                SQRT(1.0_bp - this%elements(2)**2.0_bp) * &
@@ -2422,7 +2422,7 @@ CONTAINS
           ! Time of periapsis:
           getCometaryElements(6) = getMJD(this_%t,"TT") - &
                this_%elements(6) * SQRT((this_%elements(1) / &
-               (1.0_bp-this%elements(2)))**3.0_bp / &
+               (1.0_bp-this_%elements(2)))**3.0_bp / &
                planetary_mu(this_%central_body))
        ELSE
           error = .TRUE.
