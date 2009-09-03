@@ -23,7 +23,7 @@
 # Makefile for main programs.
 #
 # Author: MG
-# Date:   2009-03-12
+# Date:   2009-09-02
 
 include ../make.config
 include ../Makefile.include
@@ -38,6 +38,11 @@ $(ORBITBIN): classes $(IOMOD).o
 	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
 	$(IOMOD).o ../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
+
+tico: classes
+	$(FC) $(FCOPTIONS) tico.f90 -o tico \
+	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
+	../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o
 
 oorb4mops: classes $(IOMOD).o
 	$(FC) $(FCOPTIONS) oorb4mops.f90 -o oorb4mops \
@@ -71,6 +76,5 @@ modules:
 
 # Remove program binaries and trash:
 clean:
-	rm -f *~ *.o *.mod $(ORBITBIN) oorb4mops oorb4research oorb4neossat
-
-
+	rm -f *~ *.o *.mod $(ORBITBIN) \
+	tico oorb4mops oorb4research oorb4neossat
