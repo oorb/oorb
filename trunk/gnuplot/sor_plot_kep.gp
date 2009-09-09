@@ -1,7 +1,8 @@
 #====================================================================#
 #                                                                    #
-# Copyright 2009 Mikael Granvik, Jenni Virtanen, Karri Muinonen,     #
-#                Teemu Laakso, Dagmara Oszkiewicz                    #
+# Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  #
+# Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      #
+# Dagmara Oszkiewicz                                                 #
 #                                                                    #
 # This file is part of OpenOrb.                                      #
 #                                                                    #
@@ -24,17 +25,21 @@
 # function in Keplerian phase space.
 #
 # Author:  MG
-# Version: 2008-08-12
+# Version: 2009-08-11
 #
 reset
 set terminal postscript eps enhanced linewidth 1.0 12.0
 set out 'sor_results.eps'
 set logscale x
 unset key
-set pointsize 0.2
+set pointsize 0.3
 set size 1.0,1.0
 set origin 0.0,0.0
 set multiplot
+set lmargin 11
+set rmargin 2
+set tmargin 1
+set bmargin 3
 set size 0.5,0.33
 set origin 0.0,0.66
 set xlabel 'a [AU]'
@@ -43,7 +48,7 @@ plot 'sor_orbits.out' using 1:2 7
 set size 0.5,0.33
 set origin 0.5,0.66
 set xlabel 'a [AU]'
-set ylabel 'i [deg]'
+set ylabel '{/Symbol i} [deg]'
 plot 'sor_orbits.out' using 1:3 7
 set size 0.5,0.33
 set origin 0.0,0.33
@@ -61,6 +66,7 @@ set xlabel 'a [AU]'
 set ylabel 'M [deg]'
 plot 'sor_orbits.out' using 1:6 7
 set logscale y
+set format y '10^{%L}'
 set size 0.5,0.33
 set origin 0.5,0.0
 set xlabel 'a [AU]'
