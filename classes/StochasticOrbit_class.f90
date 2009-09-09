@@ -1,7 +1,8 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2009 Mikael Granvik, Jenni Virtanen, Karri Muinonen,     !
-!                Teemu Laakso, Dagmara Oszkiewicz                    !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
+! Dagmara Oszkiewicz                                                 !
 !                                                                    !
 ! This file is part of OpenOrb.                                      !
 !                                                                    !
@@ -27,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-08-05
+!! @version 2009-09-08
 !!  
 MODULE StochasticOrbit_cl
 
@@ -10032,12 +10033,9 @@ CONTAINS
              jac_equ_kep = 1.0_bp
           END IF
 
-          !rchi2 = chi2/real(max(1,(SUM(n0(1:6))-6)),bp)
-          exp_rchi2 = EXP(chi2 - (SUM(n0(1:6)) - 6))
-
-          ! Probability density function:
-          !pdf_val = apriori*EXP(-0.5_bp*rchi2)/jac_sph_inv
-          pdf_val = apriori/(SQRT(exp_rchi2)*jac_sph_inv)
+          ! Probability density function (note that the '- nobs' term
+          ! is there for practical reasons):
+          pdf_val = apriori*EXP(-0.5_bp*(chi2 - COUNT(this%obs_masks_prm)))/jac_sph_inv
 
           IF (.NOT.this%uniform_pdf_prm .AND. &
                pdf_val / this%pdf_ml_prm < pdf_relative_bound) THEN
@@ -10112,11 +10110,8 @@ CONTAINS
           ! - determinant of jacobian between Equinoctial and Keplerian
           !   elements:
           jacobians(iorb,3) = jac_equ_kep
-          ! Reduced chi2 (chi2/(number of measurements - number of orbital elements))
-          ! Note that the reduced chi2 is not well defined for DOF < 1
-          !rchi2_arr(iorb) = chi2 - (SUM(n0(1:6)) - 6)
-          !rchi2_arr(iorb) = chi2 - (SUM(n0(1:6)) - 6)
-          rchi2_arr(iorb) = chi2
+          ! Nonlinear reduced chi2 (= chi2/(number of measurements))
+          rchi2_arr(iorb) = chi2/REAL(COUNT(this%obs_masks_prm),bp)
 
           n0_ = n0
           WHERE (n0_ == 0)
