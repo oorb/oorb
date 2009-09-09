@@ -395,9 +395,10 @@ CONTAINS
   !! If nutations are wanted, set ntarget = 14, and for librations,
   !! set ntarget = 15. Set ncenter = 0.
   !!
-  !! Output is a CartesianCoordinates object (crtcrd) containing position and velocity
-  !! of point 'ntarget' relative to 'ncenter'. the units are AU and AU/day.
-  !! For librations the units are radians and radians per day.
+  !! Output is a 6-vector containing position and velocity of point
+  !! 'ntarget' relative to 'ncenter' in an equatorial reference
+  !! frame. The units are AU and AU/day.  For librations the units are
+  !! radians and radians per day.
   !!
   !! Returns error.
   !! 
