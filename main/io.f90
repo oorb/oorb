@@ -1,7 +1,8 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2009 Mikael Granvik, Jenni Virtanen, Karri Muinonen,     !
-!                Teemu Laakso, Dagmara Oszkiewicz                    !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
+! Dagmara Oszkiewicz                                                 !
 !                                                                    !
 ! This file is part of OpenOrb.                                      !
 !                                                                    !
@@ -26,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-08-18
+!! @version 2009-09-03
 !!
 MODULE io
 
@@ -1799,7 +1800,7 @@ CONTAINS
     CHARACTER(len=128) :: str
     REAL(bp), DIMENSION(15) :: correlation
     REAL(bp), DIMENSION(6) :: elements, stdev
-    REAL(bp) :: day, r
+    REAL(bp) :: day, r, mjd
     INTEGER :: year, month, err, i
 
     correlation = 2.0_bp
@@ -1844,8 +1845,8 @@ CONTAINS
     END IF
 
     ! Read id, elements, and epoch
-    READ(lu,"(A16,6(1X,E21.14),1X,I4,1X,I2,1X,F8.5)", advance="no", &
-         iostat=err) id, elements, year, month, day
+    READ(lu,"(A16,6(1X,E21.14))", advance="no", iostat=err) id, &
+         elements
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("io / readOpenOrbOrbitFile", &
@@ -1858,7 +1859,31 @@ CONTAINS
           id(i:i) = CHAR(32)
        END IF
     END DO
-    CALL NEW(t, year, month, day, "TT")
+    IF (INDEX(header(4),"-0008-") /= 0) THEN
+       READ(lu,"(1X,I4,1X,I2,1X,F8.5)", advance="no", iostat=err) year, &
+            month, day
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (6).", 1)
+          RETURN
+       END IF
+       CALL NEW(t, year, month, day, "TT")
+    ELSE IF (INDEX(header(4),"-0074-") /= 0) THEN
+       READ(lu,"(2X,F15.7)", advance="no", iostat=err) mjd
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (7).", 1)
+          RETURN
+       END IF
+       CALL NEW(t, mjd, "TT")
+    ELSE
+       error = .TRUE.
+       CALL errorMessage("io / readOpenOrbOrbitFile", &
+            "Epoch not given or given in wrong format.", 1)
+       RETURN       
+    END IF
     IF (error) THEN
        CALL errorMessage("io / readOpenOrbOrbitFile", &
             "TRACE BACK (5)", 1)
