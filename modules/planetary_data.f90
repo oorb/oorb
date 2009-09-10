@@ -1,26 +1,27 @@
-!=====================================================================!
-!                                                                     !
-! Copyright 2009                                                      !
-! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso        !
-!                                                                     !
-! This file is part of OpenOrb.                                       !
-!                                                                     !
-! OpenOrb is free software: you can redistribute it and/or modify it  !
-! under the terms of the GNU General Public License as published by   !
-! the Free Software Foundation, either version 3 of the License, or   !
-! (at your option) any later version.                                 !
-!                                                                     !
-! OpenOrb is distributed in the hope that it will be useful, but      !
-! WITHOUT ANY WARRANTY; without even the implied warranty of          !
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU   !
-! General Public License for more details.                            !
-!                                                                     !
-! You should have received a copy of the GNU General Public License   !
-! along with OpenOrb. If not, see <http://www.gnu.org/licenses/>.     !
-!                                                                     !
-!=====================================================================!
+!====================================================================!
+!                                                                    !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
+! Dagmara Oszkiewicz                                                 !
+!                                                                    !
+! This file is part of OpenOrb.                                      !
+!                                                                    !
+! OpenOrb is free software: you can redistribute it and/or modify it !
+! under the terms of the GNU General Public License as published by  !
+! the Free Software Foundation, either version 3 of the License, or  !
+! (at your option) any later version.                                !
+!                                                                    !
+! OpenOrb is distributed in the hope that it will be useful, but     !
+! WITHOUT ANY WARRANTY; without even the implied warranty of         !
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU  !
+! General Public License for more details.                           !
+!                                                                    !
+! You should have received a copy of the GNU General Public License  !
+! along with OpenOrb. If not, see <http://www.gnu.org/licenses/>.    !
+!                                                                    !
+!====================================================================!
 !
-!! *Class*description*:
+!! *Module*description*:
 !!
 !! Defines parameters relating to planets and minor planets in the 
 !! solar system, and contains the routines for using planetary
@@ -48,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2009-08-19
+!! @version 2009-09-10
 !!
 MODULE planetary_data
 
@@ -155,34 +156,6 @@ MODULE planetary_data
        0.0_rprec8, &                             !! (13) Earth-Moon barycenter,
        0.0_rprec8 /)                             !! (14) Asteroid
 
-  !! The Roche limit 'd' for a fluid satellite where 
-  !!
-  !!    d ~ 2.44 * R_planet * (rho_planet/rho_satellite)^(1/3))
-  !!
-  !! and R_planet and rho_planet are the radius and bulk density of
-  !! the planet, and rho_satellite is the bulk density of the
-  !! satellite. Here we assume that rho_satellite=rho_asteroid from
-  !! the table above.
-  !!
-  REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_roche_limits = (/ &
-       2.44_rprec8 * planetary_radii(1) * (planetary_densities(1)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (1) Mercury,
-       2.44_rprec8 * planetary_radii(2) * (planetary_densities(2)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (2) Venus,
-       2.44_rprec8 * planetary_radii(3) * (planetary_densities(3)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (3) Earth,
-       2.44_rprec8 * planetary_radii(4) * (planetary_densities(4)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (4) Mars,
-       2.44_rprec8 * planetary_radii(5) * (planetary_densities(5)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (5) Jupiter,
-       2.44_rprec8 * planetary_radii(6) * (planetary_densities(6)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (6) Saturn,
-       2.44_rprec8 * planetary_radii(7) * (planetary_densities(7)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (7) Uranus,
-       2.44_rprec8 * planetary_radii(8) * (planetary_densities(8)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (8) Neptune,
-       2.44_rprec8 * planetary_radii(9) * (planetary_densities(9)/planetary_densities(14))**(1.0_rprec8/3), &   !!  (9) Pluto,
-       2.44_rprec8 * planetary_radii(10) * (planetary_densities(10)/planetary_densities(14))**(1.0_rprec8/3), & !! (10) Moon,
-       2.44_rprec8 * planetary_radii(11) * (planetary_densities(11)/planetary_densities(14))**(1.0_rprec8/3), & !! (11) Sun,
-       -1.e0_rprec8,                                                                                          & !! (12) solar system barycenter,
-       -1.e0_rprec8,                                                                                          & !! (13) Earth-Moon barycenter,
-       2.44_rprec8 * planetary_radii(14),                                                                     & !! (14) Asteroid,
-       -1.0_rprec8, &   !! (15) Ceres,
-       -1.0_rprec8, &   !! (16) Pallas,
-       -1.0_rprec8  /)  !! (17) Vesta
-
   CHARACTER(len=6), DIMENSION(14,3)     :: ttl
   CHARACTER(len=6), DIMENSION(400)      :: cnam
   REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: buf
@@ -207,6 +180,47 @@ MODULE planetary_data
   END INTERFACE
 
 CONTAINS
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the radius of the Hill sphere 
+  !!
+  !!    r_H ~ a_1(1-e_1) * (mass_1/3mass_2)^(1/3))
+  !!
+  !! where M_1 and M_2 are the masses of the object whose Hill-sphere
+  !! radius is sought (e.g., the Earth) and the object around which
+  !! the previous revolves (e.g., the Sun), respectively. The
+  !! semimajor axis a_1 and eccentricity e_1 refer to the previous
+  !! object. The default values for a_1 (= 1.0 AU) and e_1 (= 0) will
+  !! be used if they are not explicitly given.
+  !!
+  REAL(rprec8) FUNCTION Hill_radius(mass_1, mass_2, a_1, e_1)
+
+    IMPLICIT NONE
+    REAL(rprec8), INTENT(in) :: mass_1, mass_2
+    REAL(rprec8), OPTIONAL, INTENT(in) :: a_1, e_1
+
+    REAL(rprec8) :: a_, e_
+
+    IF (PRESENT(a_1)) THEN
+       a_ = a_1
+    ELSE
+       a_ = 1.0_rprec8
+    END IF
+    IF (PRESENT(e_1)) THEN
+       e_ = e_1
+    ELSE
+       e_ = 0.0_rprec8
+    END IF
+
+    Hill_radius =  a_*(1.0_rprec8-e_) * (mass_1/(3*mass_2))**(1.0_rprec8/3)
+
+  END FUNCTION Hill_radius
+
 
 
 
@@ -1347,6 +1361,29 @@ CONTAINS
     END IF
 
   END FUNCTION split
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! The Roche limit 'd' for a fluid satellite where 
+  !!
+  !!    d ~ 2.44 * r_planet * (rho_planet/rho_satellite)^(1/3))
+  !!
+  !! and r_planet and rho_planet are the radius and bulk density of
+  !! the planet, and rho_satellite is the bulk density of the
+  !! satellite.
+  !!
+  REAL(rprec8) FUNCTION Roche_limit(radius_1, density_1, density_2)
+
+    IMPLICIT NONE
+    REAL(rprec8), INTENT(in) :: radius_1, density_1, density_2
+
+    Roche_limit =  2.44_rprec8 * radius_1 * (density_1/density_2)**(1.0_rprec8/3)
+
+  END FUNCTION Roche_limit
 
 
 
