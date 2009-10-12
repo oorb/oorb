@@ -83,4 +83,9 @@ and then compute the ephemeris using, e.g.,
 
 Note that there is no algorithmic reason why you couldn't specify an option like `--epoch-mjd-utc=DATE` to `--task=ephemeris`. The option just doesn't exist (yet!).
 
+=== I've been seeing the following warning message quite frequently: "Could not find inverse of inverse covariance matrix." Should I be concerned, or is this normal? ===
+
+This is normal and has to do with the numerical instability of the matrix       
+inversion. The information matrix, for which the inversion fails, typically has a large condition number, that is, the inversion results are not accurate, and in this particular case a solution cannot even be found. For a sampling method the impact of the failure on the overall results is expected to be negligible because a successful solution can probably be obtained in the immediate vicinity of the failed one.
+
 == Miscellaneous == 
