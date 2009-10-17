@@ -30,7 +30,7 @@
 !! @see Orbit_class
 !! 
 !! @author  MG, JV
-!! @version 2009-06-15
+!! @version 2009-10-16
 !!
 MODULE Time_cl
 
@@ -338,6 +338,7 @@ CONTAINS
        ! Load table of TAI-UTC as a function of the day:
        CALL NEW(datafile, TRIM(OORB_DATA_DIR) // &
             "/" // TRIM(TAIUTC_FNAME))
+       CALL setActionRead(datafile)
        CALL setStatusOld(datafile)
        CALL OPEN(datafile)
        IF (error) THEN
@@ -411,6 +412,7 @@ CONTAINS
        ! Load table of ET-UT as a function of UT:
        CALL NEW(datafile, TRIM(OORB_DATA_DIR) // "/" &
             // TRIM(ETUT_FNAME))
+       CALL setActionRead(datafile)
        CALL setStatusOld(datafile)
        CALL OPEN(datafile)
        IF (error) THEN
