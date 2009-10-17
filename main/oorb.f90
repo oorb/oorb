@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-08-19
+!! @version 2009-10-16
 !!
 PROGRAM oorb
 
@@ -194,63 +194,29 @@ PROGRAM oorb
        vec3
   REAL(bp) :: &
        Delta, &
-       H_value, &
+       H_max, H_value, &
        G_value, &
-       accwin_multiplier, &
-       apriori_a_max, &
-       apriori_a_min, &
-       apriori_apoapsis_max, &
-       apriori_apoapsis_min, &
-       apriori_periapsis_max, &
-       apriori_periapsis_min, &
+       accwin_multiplier, apriori_a_max, apriori_a_min, &
+       apriori_apoapsis_max, apriori_apoapsis_min, &
+       apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, &
        cos_obj_phase, &
-       day0, day1, &
-       dDelta, &
-       ddec, &
-       dec, &
-       dra, &
-       dt, dt_fulfill_night, &
+       day0, day1, dDelta, ddec, dec, dra, dt, dt_fulfill_night, &
        ephemeris_r2, &
-       H_max, &
-       hdist, &
-       heliocentric_r2, &
-       hlat, &
-       hlon, &
-       hoclat, &
-       hoclon, &
-       i_min, i_max, &
-       integration_step, &
-       integration_step_init, &
-       ls_correction_factor, &
-       lunar_alt, lunar_alt_max, &
-       lunar_elongation, lunar_elongation_min, &
-       lunar_phase, lunar_phase_min, lunar_phase_max, &
-       mjd, mjd_tai, mjd_tt, mjd_utc, &
-       moid, &
-       obj_alt, obj_alt_min, &
-       obj_phase, &
-       obj_vmag, obj_vmag_max, &
-       observer_r2, &
-       obsy_moon_r2, &
-       opplat, &
-       opplon, &
-       outlier_multiplier_prm, &
-       pdf_ml_init, &
-       pp_G, pp_G_unc, &
+       hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
+       i_min, i_max, integration_step, integration_step_init, &
+       ls_correction_factor, lunar_alt, lunar_alt_max, &
+       lunar_elongation, lunar_elongation_min, lunar_phase, &
+       lunar_phase_min, lunar_phase_max, &
+       mjd, mjd_tai, mjd_tt, mjd_utc, moid, &
+       obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_max, &
+       observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
+       pdf_ml_init, pp_G, pp_G_unc, &
        ra, &
-       sec, &
-       solar_elongation, solar_elon_min, solar_elon_max, &
-       solar_alt, solar_alt_max, &
-       sor_genwin_multiplier, &
-       stdev, &
-       step, &
-       sun_moon_r2, &
-       timespan, &
-       tlat, &
-       tlon, &
-       toclat, &
-       toclon
+       sec, solar_elongation, solar_elon_min, solar_elon_max, &
+       solar_alt, solar_alt_max, sor_genwin_multiplier, stdev, &
+       step, sun_moon_r2, &
+       timespan, tlat, tlon, toclat, toclon
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
        indx_arr, &
        int_arr
@@ -378,6 +344,7 @@ PROGRAM oorb
   ! Third, (if specified) the command-line option overrides the previous:
   conf_fname = get_cl_option("--conf=",conf_fname)
   CALL NEW(conf_file, conf_fname)
+  CALL setActionRead(conf_file)
   CALL setStatusOld(conf_file)
   CALL OPEN(conf_file)
   IF (error) THEN
@@ -415,6 +382,7 @@ PROGRAM oorb
   obs_fname = get_cl_option("--obs-in="," ")
   IF (LEN_TRIM(obs_fname) /= 0) THEN
      CALL NEW(obs_file, TRIM(obs_fname))
+     CALL setActionRead(obs_file)
      CALL setStatusOld(obs_file)
      CALL OPEN(obs_file)
      IF (error) THEN
@@ -456,6 +424,7 @@ PROGRAM oorb
              "TRACE BACK (40)", 1)
         STOP
      END IF
+     CALL setActionRead(orb_in_file)
      CALL setStatusOld(orb_in_file)
      CALL OPEN(orb_in_file)
      IF (error) THEN
