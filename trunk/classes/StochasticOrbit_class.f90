@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-09-08
+!! @version 2009-10-22
 !!  
 MODULE StochasticOrbit_cl
 
@@ -185,6 +185,7 @@ MODULE StochasticOrbit_cl
 
      ! Parameters for the least-squares fit:
      REAL(bp)                            :: ls_corr_fac_prm        = 1.0_bp
+     REAL(bp)                            :: ls_rchi2_frac_prm      = 0.01_bp
      INTEGER                             :: ls_niter_major_max_prm = 10
      INTEGER                             :: ls_niter_major_min_prm = 2
      INTEGER                             :: ls_niter_minor_prm     = 20
@@ -217,7 +218,6 @@ MODULE StochasticOrbit_cl
   END INTERFACE
 
   INTERFACE getChi2
-     MODULE PROCEDURE getChi2_blockdiag
      MODULE PROCEDURE getChi2_matrix
      MODULE PROCEDURE getChi2_this_orb
   END INTERFACE
@@ -277,6 +277,10 @@ MODULE StochasticOrbit_cl
 
   INTERFACE leastSquares
      MODULE PROCEDURE leastSquares_SO
+  END INTERFACE
+
+  INTERFACE levenbergMarquardt
+     MODULE PROCEDURE levenbergMarquardt_SO
   END INTERFACE
 
   INTERFACE getTime
@@ -1276,10 +1280,13 @@ CONTAINS
           DEALLOCATE(pdf_arr, stat=err)
           RETURN
        END IF
-       jac = ABS(determinant(partials, error))
-       IF (error) THEN
+       jac = ABS(determinant(partials, errstr))
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("Orbit / getApoapsisDistance", &
-               "Could not compute determinant for Jacobian.", 1)
+               "Could not compute determinant for Jacobian " // &
+               TRIM(errstr), 1)
+          errstr = ""
           DEALLOCATE(pdf_arr, stat=err)
           RETURN
        END IF
@@ -1484,10 +1491,12 @@ CONTAINS
        RETURN
     END IF
     IF (PRESENT(obs_masks)) THEN
-       getChi2_this_orb = getChi2(residuals, information_matrix, obs_masks)
-       IF (error) THEN
+       getChi2_this_orb = chi_square(residuals, information_matrix, obs_masks, errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("StochasticOrbit / getChi2", &
-               "TRACE BACK (20)", 1)
+               "TRACE BACK (15) " // TRIM(errstr), 1)
+          errstr = ""
           DEALLOCATE(residuals, stat=err)
           DEALLOCATE(information_matrix, stat=err)
           RETURN
@@ -1496,16 +1505,18 @@ CONTAINS
        obs_masks_ => getObservationMasks(this%obss)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / getChi2", &
-               "TRACE BACK (15)", 1)
+               "TRACE BACK (20)", 1)
           DEALLOCATE(residuals, stat=err)
           DEALLOCATE(information_matrix, stat=err)
           DEALLOCATE(obs_masks_, stat=err)
           RETURN
        END IF
-       getChi2_this_orb = getChi2(residuals, information_matrix, obs_masks_)
-       IF (error) THEN
+       getChi2_this_orb = chi_square(residuals, information_matrix, obs_masks_, errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("StochasticOrbit / getChi2", &
-               "TRACE BACK (20)", 1)
+               "TRACE BACK (25) " // TRIM(errstr), 1)
+          errstr = ""
           DEALLOCATE(residuals, stat=err)
           DEALLOCATE(information_matrix, stat=err)
           DEALLOCATE(obs_masks_, stat=err)
@@ -1515,7 +1526,7 @@ CONTAINS
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / getChi2", &
-               "Could not deallocate memory.", 1)
+               "Could not deallocate memory (5).", 1)
           DEALLOCATE(residuals, stat=err)
           DEALLOCATE(information_matrix, stat=err)
           RETURN
@@ -1525,80 +1536,13 @@ CONTAINS
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / getChi2", &
-            "Could not deallocate memory.", 1)
+            "Could not deallocate memory (10).", 1)
        DEALLOCATE(residuals, stat=err)
        DEALLOCATE(information_matrix, stat=err)
        RETURN
     END IF
 
   END FUNCTION getChi2_this_orb
-
-
-
-
-
-  !! *Description*:
-  !!
-  !! Tested.
-  !!
-  !! @author  MG
-  !! @version 11.07.2006
-  !!
-  REAL(bp) FUNCTION getChi2_blockdiag(residuals, information_matrix, mask)
-
-    IMPLICIT NONE
-    REAL(bp), DIMENSION(:,:), INTENT(in)          :: residuals
-    REAL(bp), DIMENSION(:,:,:), INTENT(in)        :: information_matrix
-    LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: mask
-
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: residuals_
-    REAL(bp), DIMENSION(1) :: getChi2_blockdiag_
-    INTEGER :: i, nobs, nmulti, err
-
-    getChi2_blockdiag = 0.0_bp
-    getChi2_blockdiag_ = 0.0_bp
-    nobs = SIZE(residuals,dim=1)
-    nmulti = SIZE(residuals,dim=2)
-
-    IF (SIZE(information_matrix,dim=1) /= nobs .OR. &
-         SIZE(information_matrix,dim=2) /= nmulti .OR. &
-         SIZE(information_matrix,dim=3) /= nmulti) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / getChi2", &
-            "Shape of information matrix does not " // &
-            "conform with shape of residual array", 1)       
-       RETURN
-    END IF
-
-    ALLOCATE(residuals_(nobs,nmulti), stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / getChi2", &
-            "Could not allocate memory.", 1)
-       RETURN
-    END IF
-    residuals_ = residuals
-    IF (PRESENT(mask)) THEN
-       WHERE (.NOT. mask)
-          residuals_ = 0.0_bp
-       END WHERE
-    END IF
-    DO i=1,nobs
-       getChi2_blockdiag_ = getChi2_blockdiag_ + &
-            MATMUL(MATMUL(residuals_(i,1:nmulti), &
-            information_matrix(i,1:nmulti,1:nmulti)), &
-            TRANSPOSE(residuals_(i:i,1:nmulti)))
-    END DO
-    getChi2_blockdiag = getChi2_blockdiag_(1)
-    DEALLOCATE(residuals_, stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / getChi2", &
-            "Could not deallocate memory.", 1)
-       RETURN
-    END IF
-
-  END FUNCTION getChi2_blockdiag
 
 
 
@@ -1846,13 +1790,18 @@ CONTAINS
        END IF
        DO i=1,norb
           DO j=1,nobs
-             det = determinant(partials_arr4(i,:,:,j), error)
-             IF (error) THEN
+             det = determinant(partials_arr4(i,:,:,j), errstr)
+             IF (LEN_TRIM(errstr) /= 0) THEN
+                error = .TRUE.
                 CALL errorMessage("StochasticOrbit / getEphemerides", &
                      "Computation of determinant of partials between " // &
                      "ephemeris and orbital elements failed. " // &
-                     "Problematic Jacobian matrix:", 1)
-                CALL matrix_print(partials_arr4(i,:,:,j),stderr)
+                     TRIM(errstr), 1)
+                errstr = ""
+                IF (err_verb >= 1) THEN
+                   CALL matrix_print(partials_arr4(i,:,:,j),stderr, errstr)
+                END IF
+                errstr = ""
                 DEALLOCATE(ephemerides_arr, stat=err)
                 DEALLOCATE(partials_arr4, stat=err)
                 DEALLOCATE(pdfs_arr, stat=err)
@@ -2042,11 +1991,14 @@ CONTAINS
           RETURN
        END IF
        DO i=1,norb
-          det = determinant(partials_arr(i,:,:), error)
-          IF (error) THEN
+          det = determinant(partials_arr(i,:,:), errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             error = .TRUE.
              CALL errorMessage("StochasticOrbit / getEphemeris", &
                   "Computation of determinant of partials between " // &
-                  "ephemeris and orbital elements failed.", 1)
+                  "ephemeris and orbital elements failed. " // &
+                  TRIM(errstr), 1)
+             errstr = ""
              DEALLOCATE(ephemeris_arr, stat=err)
              DEALLOCATE(partials_arr, stat=err)
              IF (PRESENT(this_lt_corr_arr)) THEN
@@ -2090,11 +2042,14 @@ CONTAINS
           END IF
           DO i=1,norb
              det = determinant(MATMUL(jacobian_lt_corr_arr(i,:,:), &
-                  jacobian_prop_arr(i,:,:)), error)
-             IF (error) THEN
+                  jacobian_prop_arr(i,:,:)), errstr)
+             IF (LEN_TRIM(errstr) /= 0) THEN
+                error = .TRUE.
                 CALL errorMessage("StochasticOrbit / getEphemeris", &
                      "Computation of determinant of partials between " // &
-                     "orbital elements at different epochs failed.", 1)
+                     "orbital elements at different epochs failed. " // &
+                     TRIM(errstr), 1)
+                errstr = ""
                 DEALLOCATE(ephemeris_arr, stat=err)
                 DEALLOCATE(this_lt_corr_arr, stat=err)
                 DEALLOCATE(jacobian_lt_corr_arr, stat=err)
@@ -2522,10 +2477,13 @@ CONTAINS
              DEALLOCATE(pdf_arr, stat=err)
              RETURN
           END IF
-          jac = ABS(determinant(partials, error))
-          IF (error) THEN
+          jac = ABS(determinant(partials, errstr))
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             error = .TRUE.
              CALL errorMessage("Orbit / getPeriapsisDistance", &
-                  "Could not compute determinant for Jacobian.", 1)
+                  "Could not compute determinant for Jacobian. " // &
+                  TRIM(errstr), 1)
+             errstr = ""
              DEALLOCATE(pdf_arr, stat=err)
              RETURN
           END IF
@@ -3267,10 +3225,12 @@ CONTAINS
           DEALLOCATE(pdf_arr, stat=err)
           RETURN
        END IF
-       jac = ABS(determinant(partials, error))
-       IF (error) THEN
+       jac = ABS(determinant(partials, errstr))
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("Orbit / getPhaseAngle", &
                "Could not compute determinant for Jacobian.", 1)
+          errstr = ""
           DEALLOCATE(pdf_arr, stat=err)
           RETURN
        END IF
@@ -4093,7 +4053,13 @@ CONTAINS
     END DO
     DO i=1,6
        CALL moments(element_arr(:,i), pdf=pdf, std_dev=stdev(i), &
-            error=error)
+            error=errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getStandardDeviations", &
+               "TRACE BACK (15) " // TRIM(errstr), 1)
+          RETURN
+       END IF
     END DO
     getStandardDeviations_SO = stdev
 
@@ -4931,21 +4897,22 @@ CONTAINS
           rmss_iter_arr(iiter,1:6) = 0.0_bp
 
           ! Perform least squares fit:
-          CALL leastSquares(observed(1:nobs,:), &
-               inform_mat_obs_bd(:,:,:), &
-               obs_masks_(1:nobs,:), &
-               computed(1:nobs,:), &
-               design_mat(:,1:nobs,1:6), &
+          CALL leastSquares(observed(1:nobs,1:6), &
+               inform_mat_obs_bd(1:nobs,1:6,1:6), &
+               obs_masks_(1:nobs,1:6), &
+               computed(1:nobs,1:6), &
+               design_mat(1:6,1:nobs,1:6), &
                correction_factor, &
                element_mask(1:6), &
                cov(1:6,1:6), &
                elements_iter_arr(iiter,1:6), &
-               error)
-          IF (error) THEN
+               errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
              CALL errorMessage("StochasticOrbit / " // &
                   "leastSquares", &
-                  "Could not find a linear least-squares solution.", 1)
-             error = .FALSE.
+                  "Could not find a linear least-squares solution. " // &
+                  TRIM(errstr), 1)
+             errstr = ""
              elements_converge = .FALSE.
              elements_iter_arr(iiter,1:6) = elements_iter_arr(iiter-1,1:6)
              EXIT ls_j
@@ -5136,7 +5103,8 @@ CONTAINS
           END IF
           IF (info_verb >= 4) THEN 
              WRITE(stdout,"(2X,A)") "Covariance matrix:"
-             CALL matrix_print(cov,stdout)
+             CALL matrix_print(cov, stdout, errstr)
+             errstr = ""
              WRITE(stdout,"(2X,A)") "Residuals RA & Dec [as]:"
           END IF
 
@@ -5173,7 +5141,8 @@ CONTAINS
                      "leastSquares", &
                      "Negative diagonal in covariance matrix:", 1)
                 IF (err_verb >= 1) THEN
-                   CALL matrix_print(cov,stderr)
+                   CALL matrix_print(cov,stderr,errstr)
+                   errstr = ""
                    WRITE(stderr,*) "Orbital elements:"
                    WRITE(stderr,*) elements_iter_arr(iiter,1:6)                  
                 END IF
@@ -5682,42 +5651,36 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE leastSquares2(this, preliminary_orbit)
+  SUBROUTINE levenbergMarquardt_SO(this, preliminary_orbit)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
     TYPE (Orbit), INTENT(in)              :: preliminary_orbit    
 
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords, ephemerides
+    INTEGER, PARAMETER :: niter_size = 3
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords
     TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
     TYPE (Time) :: t, t_
     TYPE (Orbit) :: orb
     CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: obsy_codes
-    CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type, element_type_ls
-    CHARACTER(len=FRAME_LEN) :: frame
-    CHARACTER(len=DYN_MODEL_LEN) :: dyn_model, dyn_model_
-    CHARACTER(len=INTEGRATOR_LEN) :: orb_integrator
+    CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type_
+    CHARACTER(len=FRAME_LEN) :: frame_
+    CHARACTER(len=DYN_MODEL_LEN) :: dyn_model_
+    CHARACTER(len=INTEGRATOR_LEN) :: integrator_
     CHARACTER(len=32) :: str
-    REAL(bp), DIMENSION(:,:,:), POINTER :: partials_arr, &
-         cov_mat_obs, inform_mat_obs_bd
-    REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: design_mat ! (data,obs,parameter)
-    REAL(bp), DIMENSION(:,:), POINTER :: stdev_arr_obs, &
-         elements_iter_arr, rmss_iter_arr
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: observed, & ! incl. cos(dec)
-         computed, & ! incl. cos(dec)
-         residuals
-    REAL(bp), DIMENSION(6,6) :: cov
-    REAL(bp), DIMENSION(6) :: elements, elements_pre, &
-         elem_diff, stdev, stdev_max, rms_pre, orb_finite_diff
-    REAL(bp) :: sigma_multiplier_rms, &
-         correction_factor, orb_integration_step, obs_, comp_
-    INTEGER, DIMENSION(6) :: nobs_arr
-    INTEGER, DIMENSION(3) :: approach_direction
-    INTEGER :: i, j, k, err, iiter, approach, &
-         final_iterations, nobs, err_verb_
-    LOGICAL, DIMENSION(:,:), ALLOCATABLE :: obs_masks_
-    LOGICAL, DIMENSION(6) :: element_mask
-    LOGICAL :: elements_converge, rmss_converge, elements_exist
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix_measur
+    REAL(bp), DIMENSION(:,:), POINTER :: stdev_arr_measur
+    REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: jacobians
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: measur, & ! incl. cos(dec)
+         residuals, &
+         alpha
+    REAL(bp), DIMENSION(6,6) :: cov_mat_param
+    REAL(bp), DIMENSION(niter_size,6) :: elements_iter_arr
+    REAL(bp), DIMENSION(6) :: params, finite_diff_
+    REAL(bp) :: rchi2, integration_step_, rchi2_previous, rchi2_old, lambda
+    INTEGER :: i, j, k, err, ndata, nparam, nmultidata
+    LOGICAL, DIMENSION(:,:), ALLOCATABLE :: mask_measur
+    LOGICAL, DIMENSION(6) :: mask_param
 
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A)") "LEAST SQUARES"
@@ -5725,95 +5688,65 @@ CONTAINS
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
+       CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
             "Object has not yet been initialized.", 1)
        RETURN
     END IF
 
     IF (.NOT.exist(preliminary_orbit)) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
+       CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
             "Preliminary orbit has not been initialized.", 1)
-       RETURN
-    END IF
-
-    IF (this%accept_multiplier_prm < 0.0_bp) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
-            "Acceptance criterion has not been defined.", 1)
        RETURN
     END IF
 
     IF (this%outlier_rejection_prm) THEN
        IF (this%outlier_multiplier_prm < 0.0_bp) THEN
           error = .TRUE.
-          CALL errorMessage("StochasticOrbit / leastSquares", &
+          CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
                "Outlier criterion has not been defined.", 1)
           RETURN
        END IF
     END IF
-    sigma_multiplier_rms = this%accept_multiplier_prm
-    stdev_max = 0.0_bp
-    ! Number of previous iteration rounds to consider
-    iiter = 3
 
     IF (.NOT.ASSOCIATED(this%obs_masks_prm)) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
+       CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
             "Observation mask is missing.", 1)
        RETURN
     END IF
 
     IF (this%ls_niter_minor_prm <= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
+       CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
             "ls_niter_minor_prm undefined.", 1)
-       RETURN       
-    END IF
-
-    IF (this%ls_niter_major_min_prm <= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
-            "ls_niter_major_min_prm undefined.", 1)
        RETURN       
     END IF
 
     IF (this%ls_niter_major_max_prm <= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
+       CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
             "ls_niter_major_max_prm undefined.", 1)
        RETURN       
     END IF
 
     ! Allocate memory:
-    nobs = getNrOfObservations(this%obss)
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (5)", 1)
-       RETURN
-    END IF
-    ALLOCATE(observed(nobs,6), computed(nobs,6), residuals(nobs,6), &
-         design_mat(6,nobs,6), elements_iter_arr(iiter,8), &
-         rmss_iter_arr(iiter,6), stat=err)
+    ndata = SIZE(this%obs_masks_prm,dim=1)
+    nmultidata = SIZE(this%obs_masks_prm,dim=2)
+    nparam = 6
+    ALLOCATE(measur(ndata,nmultidata), residuals(ndata,nmultidata), &
+         alpha(nparam,nparam), jacobians(nmultidata,nparam,ndata), &
+         mask_measur(ndata,nmultidata), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "Could not allocate memory (5).", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
     orb = copy(preliminary_orbit)
@@ -5822,166 +5755,128 @@ CONTAINS
     t = getTime(orb)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (10)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+            "levenbergMarquardt", &
+            "TRACE BACK (5)", 1)
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
 
     ! Find parameters of the peliminary orbit:
-    CALL getParameters(orb, dyn_model=dyn_model)
+    CALL getParameters(orb, dyn_model=dyn_model_)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "TRACE BACK (10)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    IF (dyn_model /= this%dyn_model_prm) THEN
+    IF (dyn_model_ /= this%dyn_model_prm) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "Inconsistent propagation schemes: " // &
-            "orb=" // TRIM(dyn_model) // " and storb=" // &
+            "orb=" // TRIM(dyn_model_) // " and storb=" // &
             TRIM(this%dyn_model_prm) // ".", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    dyn_model_ = dyn_model
-
-    ! Initialize elements:
-    frame = getFrame(orb)
+    CALL getParameters(orb, &
+         integration_step=integration_step_, &
+         integrator=integrator_, &
+         finite_diff=finite_diff_)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "TRACE BACK (15)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    element_type = this%element_type_prm
-    CALL locase(element_type, error)
+
+    ! Initialize elements:
+    frame_ = getFrame(orb)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / leastSquares", &
-            "The element type string contains forbidden characters.", 1)
+       CALL errorMessage("StochasticOrbit / " // &
+            "levenbergMarquardt", &
+            "TRACE BACK (20)", 1)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    SELECT CASE (TRIM(element_type))
+    element_type_ = this%element_type_prm
+    CALL locase(element_type_, error)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
+            "The element type string contains forbidden characters.", 1)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
+       RETURN
+    END IF
+    SELECT CASE (TRIM(element_type_))
     CASE ("cartesian")
-       CALL toCartesian(orb, frame=frame)
+       CALL toCartesian(orb, frame=frame_)
     CASE ("keplerian")
        CALL toKeplerian(orb)
     CASE default
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / leastSquares", &
-            "Can not use elements of type: " // TRIM(element_type), 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+       CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
+            "Can not use elements of type: " // TRIM(element_type_), 1)
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END SELECT
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "TRACE BACK (25)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    elements_pre(1:6) = getElements(orb, element_type)
-    DO i=1,iiter
-       elements_iter_arr(i,1:6) = elements_pre(1:6)
+    params(1:6) = getElements(orb, element_type_)
+    DO i=1,niter_size
+       elements_iter_arr(i,1:6) = params(1:6)
     END DO
-    element_type_ls = element_type
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (27)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+            "levenbergMarquardt", &
+            "TRACE BACK (30)", 1)
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
     IF (info_verb >= 2) THEN
-       WRITE(stdout,"(1X,3(1X,A,1X,A))") "Using", TRIM(element_type), &
+       WRITE(stdout,"(1X,3(1X,A,1X,A))") "Using", TRIM(element_type_), &
             "elements."
     END IF
 
@@ -5989,1065 +5884,221 @@ CONTAINS
     obs_scoords => getObservationSCoords(this%obss)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (30)", 1)
+            "levenbergMarquardt", &
+            "TRACE BACK (35)", 1)
        DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
+       DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    ALLOCATE(obs_masks_(SIZE(this%obs_masks_prm,dim=1),SIZE(this%obs_masks_prm,dim=2)), stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "Could not allocate memory.", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(obs_masks_, stat=err)
-       RETURN
-    END IF
-    obs_masks_ = this%obs_masks_prm
-    DO i=1,6
-       nobs_arr(i) = COUNT(obs_masks_(:,i))
-    END DO
+    mask_measur = this%obs_masks_prm
     obsy_codes => getObservatoryCodes(this%obss)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (45)", 1)
+            "levenbergMarquardt", &
+            "TRACE BACK (40)", 1)
        DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
        DEALLOCATE(obsy_codes, stat=err)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
     obsy_ccoords => getObservatoryCCoords(this%obss)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "TRACE BACK (45)", 1)
        DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
        DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
        DEALLOCATE(obsy_codes, stat=err)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    DO i=1,nobs
-       observed(i,:) = getCoordinates(obs_scoords(i))
+    DO i=1,ndata
+       measur(i,:) = getCoordinates(obs_scoords(i))
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / " // &
-               "leastSquares", &
+               "levenbergMarquardt", &
                "TRACE BACK (50)", 1)
           DEALLOCATE(obs_scoords, stat=err) 
-          DEALLOCATE(ephemerides, stat=err) 
           DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(partials_arr, stat=err)
-          DEALLOCATE(cov_mat_obs, stat=err)
-          DEALLOCATE(design_mat, stat=err) 
-          DEALLOCATE(stdev_arr_obs, stat=err) 
-          DEALLOCATE(elements_iter_arr, stat=err)
-          DEALLOCATE(rmss_iter_arr, stat=err) 
-          DEALLOCATE(observed, stat=err)
-          DEALLOCATE(computed, stat=err) 
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
           DEALLOCATE(obsy_codes, stat=err)
+          DEALLOCATE(measur, stat=err)
+          DEALLOCATE(residuals, stat=err) 
+          DEALLOCATE(mask_measur, stat=err)
+          DEALLOCATE(alpha, stat=err)
+          DEALLOCATE(jacobians, stat=err)
           RETURN
        END IF
     END DO
-    observed(:,2) = observed(:,2)*COS(observed(:,3))
+    measur(:,2) = measur(:,2)*COS(measur(:,3))
     DEALLOCATE(obs_scoords, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "Could not deallocate memory (5).", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
        DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
        DEALLOCATE(obsy_codes, stat=err)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-
-    ! Covariance matrix for observations:
-    stdev_arr_obs => getStandardDeviations(this%obss)
+    information_matrix_measur => getBlockDiagInformationMatrix(this%obss)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (51)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
-       DEALLOCATE(obsy_codes, stat=err)
-       RETURN
-    END IF
-    stdev_max(2) = MAXVAL(stdev_arr_obs(:,2))
-    stdev_max(3) = MAXVAL(stdev_arr_obs(:,3))
-
-    inform_mat_obs_bd => getBlockDiagInformationMatrix(this%obss)
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (53)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(inform_mat_obs_bd, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
-       DEALLOCATE(obsy_codes, stat=err)
-       RETURN
-    END IF
-
-    ! Compute positions and partial derivatives:
-    CALL getEphemerides(orb, obsy_ccoords, ephemerides, &
-         partials_arr=partials_arr)
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
+            "levenbergMarquardt", &
             "TRACE BACK (55)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
        DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(inform_mat_obs_bd, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(information_matrix_measur, stat=err) 
        DEALLOCATE(obsy_codes, stat=err)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    CALL propagate(orb, t)
+    stdev_arr_measur => getStandardDeviations(this%obss)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "TRACE BACK (56)", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
+            "levenbergMarquardt", &
+            "TRACE BACK (60)", 1)
        DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(inform_mat_obs_bd, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
+       DEALLOCATE(information_matrix_measur, stat=err) 
        DEALLOCATE(obsy_codes, stat=err)
+       DEALLOCATE(stdev_arr_measur, stat=err)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
+    mask_param = this%ls_elem_mask_prm
 
-    ! Write design matrix and add cosine term to it and the computed positions:
-    design_mat = 0.0_bp
-    DO j=1,nobs
-       computed(j,:) = getCoordinates(ephemerides(j))
-       computed(j,2) = computed(j,2)*COS(observed(j,3))
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / " // &
-               "leastSquares", &
-               "TRACE BACK (60)", 1)
-          DEALLOCATE(obs_scoords, stat=err) 
-          DEALLOCATE(ephemerides, stat=err) 
-          DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(partials_arr, stat=err)
-          DEALLOCATE(cov_mat_obs, stat=err)
-          DEALLOCATE(design_mat, stat=err) 
-          DEALLOCATE(stdev_arr_obs, stat=err) 
-          DEALLOCATE(elements_iter_arr, stat=err)
-          DEALLOCATE(rmss_iter_arr, stat=err) 
-          DEALLOCATE(inform_mat_obs_bd, stat=err) 
-          DEALLOCATE(observed, stat=err)
-          DEALLOCATE(computed, stat=err) 
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          DEALLOCATE(obsy_codes, stat=err)
-          RETURN
-       END IF
-       design_mat(2,j,:) = partials_arr(2,:,j)*COS(observed(j,3))
-       design_mat(3,j,:) = partials_arr(3,:,j)
-    END DO
-    DEALLOCATE(ephemerides, partials_arr, stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "Could not deallocate memory (10).", 1)
-       DEALLOCATE(obs_scoords, stat=err) 
-       DEALLOCATE(ephemerides, stat=err) 
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(partials_arr, stat=err)
-       DEALLOCATE(cov_mat_obs, stat=err)
-       DEALLOCATE(design_mat, stat=err) 
-       DEALLOCATE(stdev_arr_obs, stat=err) 
-       DEALLOCATE(elements_iter_arr, stat=err)
-       DEALLOCATE(rmss_iter_arr, stat=err) 
-       DEALLOCATE(inform_mat_obs_bd, stat=err) 
-       DEALLOCATE(observed, stat=err)
-       DEALLOCATE(computed, stat=err) 
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(obs_masks_, stat=err)
-       DEALLOCATE(obsy_codes, stat=err)
-       RETURN
-    END IF
+    rchi2_old = HUGE(rchi2_old)
+    rchi2_previous = HUGE(rchi2_previous)
+    DO i=1,this%ls_niter_major_max_prm
 
-
-    ! Output orbital elements and sky-plane residuals and rms if needed:
-    IF (info_verb >= 2) THEN
-       t_ = getTime(orb)
-       WRITE(stdout,"(2X,A,I0,A)") "Initial elements, residuals, and rms:"
-       str = getCalendarDateString(t_, "TT")
-       SELECT CASE (element_type)
-       CASE ("keplerian")
-          elements = getElements(orb, element_type)
-          WRITE(stdout,"(2X,A,6(1X,F20.13),1X,A)") "Kep: ", &
-               elements(1:2), elements(3:6)/rad_deg, &
-               TRIM(str)
-       CASE ("cartesian")
-          elements = getElements(orb, element_type, frame=frame)
-          WRITE(stdout,'(2X,A,6(1X,F20.13),1X,A)') "Car: ", &
-               elements(1:6),TRIM(str)
-       END SELECT
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / " // &
-               "leastSquares", &
-               "TRACE BACK (65)", 1)
-          DEALLOCATE(obs_scoords, stat=err) 
-          DEALLOCATE(ephemerides, stat=err) 
-          DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(partials_arr, stat=err)
-          DEALLOCATE(cov_mat_obs, stat=err)
-          DEALLOCATE(design_mat, stat=err) 
-          DEALLOCATE(stdev_arr_obs, stat=err) 
-          DEALLOCATE(elements_iter_arr, stat=err)
-          DEALLOCATE(rmss_iter_arr, stat=err) 
-          DEALLOCATE(inform_mat_obs_bd, stat=err) 
-          DEALLOCATE(observed, stat=err)
-          DEALLOCATE(computed, stat=err) 
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          DEALLOCATE(obsy_codes, stat=err)
-          RETURN
-       END IF
-       CALL NULLIFY(t_)
-       WRITE(stdout,"(2X,A)") "Residuals RA & Dec [as]:"
-    END IF
-    DO j=1,nobs
-       residuals(j,1:6) = observed(j,1:6) - computed(j,1:6)
-       IF (ABS(residuals(j,2)) > pi) THEN
-          obs_ = observed(j,2)
-          comp_ = computed(j,2)
-          IF (obs_ < comp_) THEN
-             obs_ = obs_ + two_pi
-          ELSE
-             comp_ = comp_ + two_pi
-          END IF
-          residuals(j,2) = obs_ - comp_
-       END IF
-       IF (info_verb >= 2) THEN
-          IF (ALL(obs_masks_(j,2:3))) THEN
-             WRITE(stdout,"(2X,A,2(F20.7,1X),A,1X,A)") " ", &
-                  residuals(j,2:3)/rad_asec, " ", TRIM(obsy_codes(j))
-          ELSE
-             WRITE(stdout,"(2X,A,2(F15.7,1X),A,1X,A)") "(", &
-                  residuals(j,2:3)/rad_asec, ")", TRIM(obsy_codes(j))
-          END IF
-       END IF
-    END DO
-    rmss_iter_arr = 0.0_bp
-    rms_pre = 0.0_bp
-    rms_pre(2) = SQRT(SUM(residuals(:,2)**2.0_bp,mask=obs_masks_(:,2))/nobs_arr(2))
-    rms_pre(3) = SQRT(SUM(residuals(:,3)**2.0_bp,mask=obs_masks_(:,3))/nobs_arr(3))
-    DO i=1,iiter
-       rmss_iter_arr(i,:) = rms_pre
-    END DO
-    IF (info_verb >= 2) THEN
-       WRITE(stdout,"(2X,A,2(1X,F15.7))") "RA & Dec RMS [as]: ", &
-            rmss_iter_arr(iiter,2)/rad_asec, rmss_iter_arr(iiter,3)/rad_asec
-       WRITE(stdout,"(2X,A)") ""
-    END IF
-
-    final_iterations = 0
-    approach = 11
-    approach_direction(1:3) = 1
-    correction_factor = this%ls_corr_fac_prm
-    element_mask(1:6) = this%ls_elem_mask_prm
-
-    ! Main LSL loop
-    ls_i: DO i=1,this%ls_niter_major_max_prm
-
-       ! Perform linear least-squares fit:
-       elements_converge = .FALSE.
-!!$       rmss_converge = .FALSE.
-       rmss_converge = .TRUE.
-       ! "Correction factor" loop
-       ls_j: DO j=1,this%ls_niter_minor_prm
-
-          ! Save results from last two rounds for convergence checks
-          elements_iter_arr(1:iiter-1,1:6) = elements_iter_arr(2:iiter,1:6)
-          rmss_iter_arr(1:iiter-1,1:6) = rmss_iter_arr(2:iiter,1:6)
-          rmss_iter_arr(iiter,1:6) = 0.0_bp
-
-          ! Perform least squares fit:
-          CALL leastSquares(observed(1:nobs,:), &
-               inform_mat_obs_bd(:,:,:), &
-               obs_masks_(1:nobs,:), &
-               computed(1:nobs,:), &
-               design_mat(:,1:nobs,1:6), &
-               correction_factor, &
-               element_mask(1:6), &
-               cov(1:6,1:6), &
-               elements_iter_arr(iiter,1:6), &
-               error)
+       lambda = -1.0_bp
+       DO j=1,this%ls_niter_minor_prm
+          CALL LevenbergMarquardt_private
           IF (error) THEN
              CALL errorMessage("StochasticOrbit / " // &
-                  "leastSquares", &
-                  "Could not find a linear least-squares solution.", 1)
-             error = .FALSE.
-             elements_converge = .FALSE.
-             elements_iter_arr(iiter,1:6) = elements_iter_arr(iiter-1,1:6)
-             EXIT ls_j
-          END IF
-
-          ! Update orbit:
-          CALL getParameters(orb, &
-               integration_step=orb_integration_step, &
-               integrator=orb_integrator, &
-               finite_diff=orb_finite_diff)
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / " // &
-                  "leastSquares", &
-                  "TRACE BACK (69)", 1)
-             RETURN
-          END IF
-          CALL NULLIFY(orb)
-          err_verb_ = err_verb
-          err_verb = err_verb! + 1
-          IF (element_type_ls == "keplerian") THEN
-             elements_iter_arr(iiter,4:6) = &
-                  MODULO(elements_iter_arr(iiter,4:6), two_pi)
-          ELSE IF (element_type_ls == "cometary") THEN
-             elements_iter_arr(iiter,4:5) = &
-                  MODULO(elements_iter_arr(iiter,4:5), two_pi)
-          ELSE IF (element_type_ls == "cartesian" .AND. &
-               SQRT(DOT_PRODUCT(elements_iter_arr(iiter,4:6), &
-               elements_iter_arr(iiter,4:6))) > sol) THEN
-             CALL errorMessage("StochasticOrbit / " // &
-                  "leastSquares", &
-                  "Speed of object is larger than speed of light.", 1)
-             elements_converge = .FALSE.
-             elements_iter_arr(iiter,1:6) = elements_iter_arr(iiter-1,1:6)
-             EXIT ls_j
-          END IF
-          CALL NEW(orb, elements_iter_arr(iiter,1:6), &
-               TRIM(element_type_ls), TRIM(frame), copy(t))
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / " // &
-                  "leastSquares", &
-                  "TRACE BACK (70)", 1)
-             error = .FALSE.
-             elements_converge = .FALSE.
-             rmss_converge = .FALSE.
-             elements_exist = .FALSE.
-             elements_iter_arr(iiter,1:6) = elements_iter_arr(iiter-1,1:6)
-             err_verb = err_verb_
-             EXIT ls_j
-          END IF
-          elements_exist = .TRUE.
-          err_verb = err_verb_
-          CALL setParameters(orb, &
-               dyn_model=dyn_model_, &
-               perturbers=this%perturbers_prm, &
-               integration_step=orb_integration_step, &
-               integrator=orb_integrator, &
-               finite_diff=orb_finite_diff)
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / " // &
-                  "leastSquares", &
-                  "TRACE BACK (75)", 1)
-             DEALLOCATE(obs_scoords, stat=err) 
-             DEALLOCATE(ephemerides, stat=err) 
+                  "levenbergMarquardt", &
+                  "Could not find a least-squares solution (1).", 1)
              DEALLOCATE(obsy_ccoords, stat=err)
-             DEALLOCATE(partials_arr, stat=err)
-             DEALLOCATE(cov_mat_obs, stat=err)
-             DEALLOCATE(design_mat, stat=err) 
-             DEALLOCATE(stdev_arr_obs, stat=err) 
-             DEALLOCATE(elements_iter_arr, stat=err)
-             DEALLOCATE(rmss_iter_arr, stat=err) 
-             DEALLOCATE(inform_mat_obs_bd, stat=err) 
-             DEALLOCATE(observed, stat=err)
-             DEALLOCATE(computed, stat=err) 
-             DEALLOCATE(residuals, stat=err)
-             DEALLOCATE(obs_masks_, stat=err)
+             DEALLOCATE(information_matrix_measur, stat=err) 
              DEALLOCATE(obsy_codes, stat=err)
+             DEALLOCATE(stdev_arr_measur, stat=err)
+             DEALLOCATE(measur, stat=err)
+             DEALLOCATE(residuals, stat=err) 
+             DEALLOCATE(mask_measur, stat=err)
+             DEALLOCATE(alpha, stat=err)
+             DEALLOCATE(jacobians, stat=err)
              RETURN
           END IF
-
-          ! Compute positions and partial derivatives:
-          CALL getEphemerides(orb, obsy_ccoords, ephemerides, &
-               partials_arr=partials_arr)
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / " // &
-                  "leastSquares", &
-                  "TRACE BACK (80)", 1)
-             error = .FALSE.
-             elements_converge = .FALSE.
-             elements_iter_arr(iiter,1:6) = elements_iter_arr(iiter-1,1:6)
-             DEALLOCATE(ephemerides, partials_arr, stat=err)
-             EXIT ls_j
-          END IF
-          CALL propagate(orb, t)
-
-          ! Write design matrix and add cosine term to it and the computed positions:
-          design_mat = 0.0_bp
-          DO k=1,nobs
-             computed(k,:) = getCoordinates(ephemerides(k))
-             computed(k,2) = computed(k,2)*COS(observed(k,3))
-             IF (error) THEN
-                CALL errorMessage("StochasticOrbit / " // &
-                     "leastSquares", &
-                     "TRACE BACK (85)", 1)
-                DEALLOCATE(obs_scoords, stat=err) 
-                DEALLOCATE(ephemerides, stat=err) 
-                DEALLOCATE(obsy_ccoords, stat=err)
-                DEALLOCATE(partials_arr, stat=err)
-                DEALLOCATE(cov_mat_obs, stat=err)
-                DEALLOCATE(design_mat, stat=err) 
-                DEALLOCATE(stdev_arr_obs, stat=err) 
-                DEALLOCATE(elements_iter_arr, stat=err)
-                DEALLOCATE(rmss_iter_arr, stat=err) 
-                DEALLOCATE(inform_mat_obs_bd, stat=err) 
-                DEALLOCATE(observed, stat=err)
-                DEALLOCATE(computed, stat=err) 
-                DEALLOCATE(residuals, stat=err) 
-                DEALLOCATE(obs_masks_, stat=err)
-                DEALLOCATE(obsy_codes, stat=err)
-                RETURN
-             END IF
-             design_mat(2,k,:) = partials_arr(2,:,k)*COS(observed(k,3))
-             design_mat(3,k,:) = partials_arr(3,:,k)
-          END DO
-          DEALLOCATE(ephemerides, partials_arr, stat=err)
-          IF (err /= 0) THEN
-             error = .TRUE.
-             CALL errorMessage("StochasticOrbit / " // &
-                  "leastSquares", &
-                  "Could not deallocate memory (15).", 1)
-             DEALLOCATE(obs_scoords, stat=err) 
-             DEALLOCATE(ephemerides, stat=err) 
-             DEALLOCATE(obsy_ccoords, stat=err)
-             DEALLOCATE(partials_arr, stat=err)
-             DEALLOCATE(cov_mat_obs, stat=err)
-             DEALLOCATE(design_mat, stat=err) 
-             DEALLOCATE(stdev_arr_obs, stat=err) 
-             DEALLOCATE(elements_iter_arr, stat=err)
-             DEALLOCATE(rmss_iter_arr, stat=err) 
-             DEALLOCATE(inform_mat_obs_bd, stat=err) 
-             DEALLOCATE(observed, stat=err)
-             DEALLOCATE(computed, stat=err) 
-             DEALLOCATE(residuals, stat=err)
-             DEALLOCATE(obs_masks_, stat=err)
-             DEALLOCATE(obsy_codes, stat=err)
-             RETURN
-          END IF
-
-          ! Output orbital elements if needed:
-          IF (info_verb >= 3) THEN
-             t_ = getTime(orb)
-             WRITE(stdout,"(1X,A,2(1X,I0,1X,A))") &
-                  "Elements, residuals, and rms after major iteration", i, &
-                  "and minor iteration", j, ":"
-             SELECT CASE (element_type)
-             CASE ("keplerian")
-                elements = getElements(orb, element_type)
-                WRITE(stdout,"(2X,A,6(1X,F20.13),1X,A)") "Kep: ", &
-                     elements(1:2), elements(3:6)/rad_deg, &
-                     getCalendarDateString(t_, "tdt")
-             CASE ("cartesian")
-                elements = getElements(orb, element_type, frame=frame)
-                WRITE(stdout,"(2X,A,6(1X,F20.13),1X,A)") "Car: ", &
-                     elements(1:6), &
-                     getCalendarDateString(t_, "tdt")
-             END SELECT
-             IF (error) THEN
-                CALL errorMessage("StochasticOrbit / " // &
-                     "leastSquares", &
-                     "TRACE BACK (90)", 1)
-                DEALLOCATE(obs_scoords, stat=err) 
-                DEALLOCATE(ephemerides, stat=err) 
-                DEALLOCATE(obsy_ccoords, stat=err)
-                DEALLOCATE(partials_arr, stat=err)
-                DEALLOCATE(cov_mat_obs, stat=err)
-                DEALLOCATE(design_mat, stat=err) 
-                DEALLOCATE(stdev_arr_obs, stat=err) 
-                DEALLOCATE(elements_iter_arr, stat=err)
-                DEALLOCATE(rmss_iter_arr, stat=err) 
-                DEALLOCATE(inform_mat_obs_bd, stat=err) 
-                DEALLOCATE(observed, stat=err)
-                DEALLOCATE(computed, stat=err) 
-                DEALLOCATE(residuals, stat=err) 
-                DEALLOCATE(obs_masks_, stat=err)
-                DEALLOCATE(obsy_codes, stat=err)
-                RETURN
-             END IF
-             CALL NULLIFY(t_)
-          END IF
-          IF (info_verb >= 4) THEN 
-             WRITE(stdout,"(2X,A)") "Covariance matrix:"
-             CALL matrix_print(cov,stdout)
-             WRITE(stdout,"(2X,A)") "Residuals RA & Dec [as]:"
-          END IF
-
-          ! Compute sky-plane residuals and rmss, and output them if needed:
-          DO k=1,nobs
-             residuals(k,1:6) = observed(k,1:6) - computed(k,1:6)
-             IF (ABS(residuals(k,2)) > pi) THEN
-                obs_ = observed(k,2)
-                comp_ = computed(k,2)
-                IF (obs_ < comp_) THEN
-                   obs_ = obs_ + two_pi
-                ELSE
-                   comp_ = comp_ + two_pi
-                END IF
-                residuals(k,2) = obs_ - comp_
-             END IF
-             IF (info_verb >= 4) THEN
-                WRITE(stdout,"(2X,2(F15.7,1X),A)") residuals(k,2:3)/rad_asec, TRIM(obsy_codes(k))
-             END IF
-          END DO
-          rmss_iter_arr(iiter,2) = SQRT(SUM(residuals(:,2)**2.0_bp,mask=obs_masks_(:,2))/nobs_arr(2))
-          rmss_iter_arr(iiter,3) = SQRT(SUM(residuals(:,3)**2.0_bp,mask=obs_masks_(:,3))/nobs_arr(3))
-          IF (info_verb >= 3) THEN
-             WRITE(stdout,"(2X,A,2(1X,F15.7))") "RA & Dec RMS [as]: ", &
-                  rmss_iter_arr(iiter,2)/rad_asec, rmss_iter_arr(iiter,3)/rad_asec
-          END IF
-
-          ! Exit iteration loop if the difference between the elements of
-          ! the new and the old orbit are sufficiently small:
-          DO k=1,SIZE(cov,dim=1)
-             IF (cov(k,k) < 0.0_bp) THEN
-                error = .TRUE.
-                CALL errorMessage("StochasticOrbit / " // &
-                     "leastSquares", &
-                     "Negative diagonal in covariance matrix:", 1)
-                IF (err_verb >= 1) THEN
-                   CALL matrix_print(cov,stderr)
-                   WRITE(stderr,*) "Orbital elements:"
-                   WRITE(stderr,*) elements_iter_arr(iiter,1:6)                  
-                END IF
-                DEALLOCATE(obs_scoords, stat=err) 
-                DEALLOCATE(ephemerides, stat=err) 
-                DEALLOCATE(obsy_ccoords, stat=err)
-                DEALLOCATE(partials_arr, stat=err)
-                DEALLOCATE(cov_mat_obs, stat=err)
-                DEALLOCATE(design_mat, stat=err) 
-                DEALLOCATE(stdev_arr_obs, stat=err) 
-                DEALLOCATE(elements_iter_arr, stat=err)
-                DEALLOCATE(rmss_iter_arr, stat=err) 
-                DEALLOCATE(inform_mat_obs_bd, stat=err) 
-                DEALLOCATE(observed, stat=err)
-                DEALLOCATE(computed, stat=err) 
-                DEALLOCATE(residuals, stat=err) 
-                DEALLOCATE(obs_masks_, stat=err)
-                DEALLOCATE(obsy_codes, stat=err)
-                RETURN
-             END IF
-             stdev(k) = SQRT(cov(k,k))
-          END DO
-          elem_diff = ABS(elements_iter_arr(iiter,1:6) - &
-               elements_iter_arr(iiter-1,1:6)) / correction_factor
-          IF (ALL(elem_diff < stdev) .AND. j >= 3) THEN
-             elements_converge = .TRUE.
-          END IF
-
-          IF (elements_converge .AND. approach == 11 .AND. &
-               ((ALL(rmss_iter_arr(iiter,2:3) < &
-               sigma_multiplier_rms*stdev_max(2:3))) .OR. &
-               (j > 1 .AND. ALL(ABS(rmss_iter_arr(iiter,2:3) - &
-               rmss_iter_arr(iiter-1,2:3)) < &
-               1000.0_bp*EPSILON(rmss_iter_arr(iiter,2:3)))))) THEN
-             IF (info_verb >= 3) THEN
-                WRITE(stdout,"(1X,A,I0)") "Exiting @", j
-             END IF
-             EXIT ls_j
-          ELSE IF (elements_converge .AND. approach /= 11) THEN
-             IF (info_verb >= 3) THEN
-                WRITE(stdout,"(1X,A,I0)") "Exiting @", j
-             END IF
-             EXIT ls_j
-          END IF
-
-       END DO ls_j
-
-!!$       IF (iiter >= 3) THEN
-!!$          IF (elements_exist .AND. &
-!!$               ((SQRT(SUM((rmss_iter_arr(iiter-2,:) - rmss_iter_arr(iiter-1,:))**2.0_bp)) >= &
-!!$               SQRT(SUM((rmss_iter_arr(iiter-1,:) - rmss_iter_arr(iiter,:))**2.0_bp)) .OR. &
-!!$               SQRT(SUM((rmss_iter_arr(iiter-1,:) - rmss_iter_arr(iiter,:))**2.0_bp)) < &
-!!$               0.000001_bp*SQRT(SUM((rmss_iter_arr(iiter,:))**2.0_bp))) )) THEN
-!!$             rmss_converge = .TRUE.
-!!$          ELSE
-!!$             rmss_converge = .FALSE.                
-!!$          END IF
-!!$       END IF
-
-       IF (elements_converge .AND. rmss_converge .AND. &
-            final_iterations == this%ls_niter_major_min_prm) THEN
-          IF (info_verb >= 2) THEN
-             WRITE(stdout,*) "LS solution found (1)."
-          END IF
-          IF (this%outlier_rejection_prm) THEN
-             DO k=1,6
-                nobs_arr(k) = COUNT(obs_masks_(:,k))
-             END DO
-             IF (ANY(nobs_arr(2:3) < 0.2_bp*nobs)) THEN
-                IF (info_verb >= 2) THEN
-                   WRITE(*,*) "WARNING from LS: More than 20% of the observations excluded!", &
-                        " Check the assumptions used for outlier rejection (e.g., noise)."
-                END IF
-             END IF
-             IF (ALL(nobs_arr < 4)) THEN
-                error = .TRUE.
-                CALL errorMessage("StochasticOrbit / leastSquares", &
-                     "Least squares approach not suitable when " // &
-                     "possible outliers have been excluded.", 1)
-                DEALLOCATE(obs_scoords, stat=err) 
-                DEALLOCATE(ephemerides, stat=err) 
-                DEALLOCATE(obsy_ccoords, stat=err)
-                DEALLOCATE(partials_arr, stat=err)
-                DEALLOCATE(cov_mat_obs, stat=err)
-                DEALLOCATE(design_mat, stat=err) 
-                DEALLOCATE(stdev_arr_obs, stat=err) 
-                DEALLOCATE(elements_iter_arr, stat=err)
-                DEALLOCATE(rmss_iter_arr, stat=err) 
-                DEALLOCATE(inform_mat_obs_bd, stat=err) 
-                DEALLOCATE(observed, stat=err)
-                DEALLOCATE(computed, stat=err) 
-                DEALLOCATE(residuals, stat=err) 
-                DEALLOCATE(obs_masks_, stat=err)
-                DEALLOCATE(obsy_codes, stat=err)
-                RETURN
-             END IF
-             IF (ANY(rmss_iter_arr(iiter,2:3) > sigma_multiplier_rms*stdev_max(2:3))) THEN
-                error = .TRUE.
-                CALL errorMessage("StochasticOrbit / leastSquares", &
-                     "Least squares solution not reliable when " // &
-                     "rms values are so large as compared to assumed " // &
-                     "observational uncertainty. (Check noise assumption!)", 1)
-                RETURN
-             END IF
-          END IF
-          EXIT ls_i
-       ELSE IF (elements_converge .AND. rmss_converge .AND. approach == 11) THEN
-          final_iterations = final_iterations + 1
-          IF (this%outlier_rejection_prm .AND. &
-               ALL(rmss_iter_arr(iiter,2:3) <= sigma_multiplier_rms*stdev_max(2:3))) THEN
-             obs_masks_ = this%obs_masks_prm
-             DO k=1,nobs
-                ! The following assumes that the stdevs are equal for
-                ! both coordinates:
-                IF (SQRT(SUM(residuals(k,2:3)**2)) > &
-                     this%outlier_multiplier_prm*MAXVAL(stdev_arr_obs(k,2:3))) THEN
-                   obs_masks_(k,:) = .FALSE.
-                END IF
-             END DO
-             DO k=1,6
-                nobs_arr(k) = COUNT(obs_masks_(:,k))
-             END DO
-             IF (ANY(nobs_arr(2:3) < 0.2*nobs)) THEN
-                IF (info_verb >= 2) THEN
-                   WRITE(stdout,*) "More than 20% of the observations excluded! Keeping all."
-                END IF
-                obs_masks_ = this%obs_masks_prm
-                DO k=1,6
-                   nobs_arr(k) = COUNT(obs_masks_(:,k))
-                END DO
-             END IF
-             IF (ALL(nobs_arr < 4)) THEN
-                error = .TRUE.
-                CALL errorMessage("StochasticOrbit / leastSquares", &
-                     "Least squares approach not suitable when " // &
-                     "possible outliers have been excluded.", 1)
-                DEALLOCATE(obs_scoords, stat=err) 
-                DEALLOCATE(ephemerides, stat=err) 
-                DEALLOCATE(obsy_ccoords, stat=err)
-                DEALLOCATE(partials_arr, stat=err)
-                DEALLOCATE(cov_mat_obs, stat=err)
-                DEALLOCATE(design_mat, stat=err) 
-                DEALLOCATE(stdev_arr_obs, stat=err) 
-                DEALLOCATE(elements_iter_arr, stat=err)
-                DEALLOCATE(rmss_iter_arr, stat=err) 
-                DEALLOCATE(inform_mat_obs_bd, stat=err) 
-                DEALLOCATE(observed, stat=err)
-                DEALLOCATE(computed, stat=err) 
-                DEALLOCATE(residuals, stat=err) 
-                DEALLOCATE(obs_masks_, stat=err)
-                DEALLOCATE(obsy_codes, stat=err)
-                RETURN
-             END IF
-          END IF
-       ELSE IF (elements_converge .AND. rmss_converge .AND. approach /= 11) THEN
-          final_iterations = 0
-          approach_direction(1:2) = approach_direction(2:3)
-          approach_direction(3) = -1
-          approach = approach - 1
-          IF (approach == 40) THEN
-             approach = 12
-          END IF
-       ELSE IF (elements_converge .AND. .NOT.rmss_converge) THEN
-          final_iterations = 0
-          approach_direction(1:2) = approach_direction(2:3)
-          approach_direction(3) = 1
-          IF (approach < 21) THEN
-             approach = 21
+          IF (ABS(rchi2 - rchi2_previous)/rchi2 < this%ls_rchi2_frac_prm .AND. &
+               rchi2 <= rchi2_previous) THEN
+             rchi2_previous = rchi2
+             EXIT
           ELSE
-             approach = approach + 1
-          END IF
-       ELSE IF (.NOT.elements_converge .AND. rmss_converge) THEN
-          final_iterations = 0
-          approach_direction(1:2) = approach_direction(2:3)
-          approach_direction(3) = 1
-          approach = approach + 1
-       ELSE IF (.NOT.elements_converge .AND. .NOT.rmss_converge) THEN
-          final_iterations = 0
-          CALL NULLIFY(orb)
-          orb = copy(preliminary_orbit)
-          DO k=1,iiter
-             elements_iter_arr(k,1:6) = elements_pre(1:6)
-          END DO
-          DO k=1,iiter
-             rmss_iter_arr(k,1:6) = rms_pre(1:6)
-          END DO
-          IF (approach >= 41) THEN
-             approach_direction(1:2) = approach_direction(2:3)
-             approach_direction(3) = 1
-             approach = approach + 1
-          ELSE IF (approach == 11) THEN
-             approach = 12
-          ELSE IF (approach < 41) THEN
-             approach = 41
-          END IF
-       END IF
-       !IF (approach > 48) THEN
-       IF (approach >= 43) THEN
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / leastSquares", &
-               "No converging solution found (5).", 1)
-          DEALLOCATE(obs_scoords, stat=err) 
-          DEALLOCATE(ephemerides, stat=err) 
-          DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(partials_arr, stat=err)
-          DEALLOCATE(cov_mat_obs, stat=err)
-          DEALLOCATE(design_mat, stat=err) 
-          DEALLOCATE(stdev_arr_obs, stat=err) 
-          DEALLOCATE(elements_iter_arr, stat=err)
-          DEALLOCATE(rmss_iter_arr, stat=err) 
-          DEALLOCATE(inform_mat_obs_bd, stat=err) 
-          DEALLOCATE(observed, stat=err)
-          DEALLOCATE(computed, stat=err) 
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          DEALLOCATE(obsy_codes, stat=err)
-          RETURN
-       END IF
-       IF (approach_direction(3) < 0 .AND. &
-            i > 25 .AND. approach < 44) THEN
-          IF (info_verb >= 2) THEN
-             WRITE(stdout,*) "LS solution found (2)."
-          END IF
-          EXIT ls_i
-       END IF
-
-       DO
-          SELECT CASE (approach)
-          CASE (11)
-             dyn_model_ = dyn_model
-             correction_factor = this%ls_corr_fac_prm
-             element_mask(1:6) = this%ls_elem_mask_prm
-             EXIT
-          CASE (12)
-             dyn_model_ = dyn_model
-             correction_factor = this%ls_corr_fac_prm
-             element_mask(1:6) = this%ls_elem_mask_prm
-             EXIT
-          CASE (21)
-             dyn_model_ = dyn_model
-             correction_factor = this%ls_corr_fac_prm
-             element_mask(1:6) = this%ls_elem_mask_prm
-             EXIT
-          CASE (41)
-             dyn_model_ = dyn_model
-             correction_factor = 0.1_bp*this%ls_corr_fac_prm
-             element_mask(1:6) = this%ls_elem_mask_prm
-             EXIT
-          CASE (42)
-             dyn_model_ = dyn_model
-             correction_factor = 0.01_bp*this%ls_corr_fac_prm
-             element_mask(1:6) = this%ls_elem_mask_prm
-             EXIT
-          CASE (43)
-             dyn_model_ = dyn_model
-             correction_factor = 0.001_bp*this%ls_corr_fac_prm
-             element_mask(1:6) = this%ls_elem_mask_prm
-             EXIT
-          CASE (44)
-             dyn_model_ = dyn_model
-             correction_factor = 0.0001_bp*this%ls_corr_fac_prm
-             IF (element_type_ls /= element_type) THEN
-                element_type_ls = element_type
-                IF (element_type_ls == "keplerian") THEN
-                   CALL toKeplerian(orb)
-                ELSE IF (element_type_ls == "cartesian") THEN
-                   CALL toCartesian(orb, frame=frame)
-                END IF
-                elements_iter_arr(iiter,1:6) = getElements(orb, element_type_ls, frame=frame)
-             END IF
-             IF (error) THEN
-                CALL errorMessage("StochasticOrbit / " // &
-                     "leastSquares", &
-                     "TRACE BACK (105)", 1)
-                DEALLOCATE(obs_scoords, stat=err) 
-                DEALLOCATE(ephemerides, stat=err) 
-                DEALLOCATE(obsy_ccoords, stat=err)
-                DEALLOCATE(partials_arr, stat=err)
-                DEALLOCATE(cov_mat_obs, stat=err)
-                DEALLOCATE(design_mat, stat=err) 
-                DEALLOCATE(stdev_arr_obs, stat=err) 
-                DEALLOCATE(elements_iter_arr, stat=err)
-                DEALLOCATE(rmss_iter_arr, stat=err) 
-                DEALLOCATE(inform_mat_obs_bd, stat=err) 
-                DEALLOCATE(observed, stat=err)
-                DEALLOCATE(computed, stat=err) 
-                DEALLOCATE(residuals, stat=err) 
-                DEALLOCATE(obs_masks_, stat=err)
-                DEALLOCATE(obsy_codes, stat=err)
-                RETURN
-             END IF
-             element_mask(1:6) = this%ls_elem_mask_prm
-             EXIT
-          CASE (45)
-             dyn_model_ = dyn_model
-             correction_factor = 0.001_bp*this%ls_corr_fac_prm
-             IF (element_type_ls == "keplerian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(1) = .FALSE.
-             ELSE IF (element_type_ls == "cartesian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(1) = .FALSE.
-             END IF
-             EXIT
-          CASE (46)
-             dyn_model_ = dyn_model
-             correction_factor = 0.001_bp*this%ls_corr_fac_prm
-             IF (element_type_ls == "keplerian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(2) = .FALSE.
-             ELSE IF (element_type_ls == "cartesian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(1) = .FALSE.
-                element_mask(4) = .FALSE.
-             END IF
-             EXIT
-          CASE (47)
-             dyn_model_ = dyn_model
-             correction_factor = 0.001_bp*this%ls_corr_fac_prm
-             IF (element_type_ls == "keplerian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(1:2) = .FALSE.
-             ELSE IF (element_type_ls == "cartesian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(1) = .FALSE.
-                element_mask(4:5) = .FALSE.
-             END IF
-             EXIT
-          CASE (48)
-             dyn_model_ = dyn_model
-             correction_factor = 0.0001_bp*this%ls_corr_fac_prm
-             IF (element_type_ls == "keplerian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(1:2) = .FALSE.
-             ELSE IF (element_type_ls == "cartesian") THEN
-                element_mask(1:6) = .TRUE.
-                element_mask(1) = .FALSE.
-                element_mask(4:5) = .FALSE.
-             END IF
-             EXIT
-          CASE default
-             IF (approach > 48) THEN
-                error = .TRUE.
-                CALL errorMessage("StochasticOrbit / leastSquares", &
-                     "No converging solution found (10).", 1)
-                DEALLOCATE(obs_scoords, stat=err) 
-                DEALLOCATE(ephemerides, stat=err) 
-                DEALLOCATE(obsy_ccoords, stat=err)
-                DEALLOCATE(partials_arr, stat=err)
-                DEALLOCATE(cov_mat_obs, stat=err)
-                DEALLOCATE(design_mat, stat=err) 
-                DEALLOCATE(stdev_arr_obs, stat=err) 
-                DEALLOCATE(elements_iter_arr, stat=err)
-                DEALLOCATE(rmss_iter_arr, stat=err) 
-                DEALLOCATE(inform_mat_obs_bd, stat=err) 
-                DEALLOCATE(observed, stat=err)
-                DEALLOCATE(computed, stat=err) 
-                DEALLOCATE(residuals, stat=err) 
-                DEALLOCATE(obs_masks_, stat=err)
-                DEALLOCATE(obsy_codes, stat=err)
-                WRITE(stderr,*) "Returning from leastSquares"
-                RETURN
-             ELSE
-                approach = approach + approach_direction(3)
-             END IF
-          END SELECT
-       END DO
-       IF (info_verb >= 3) THEN
-          WRITE(stdout,"(2X,A,L1)") "Elements converge: ", elements_converge
-          WRITE(stdout,"(2X,A,L1)") "RMSs converge: ", rmss_converge
-          WRITE(stdout,"(2X,A,I0)") "Approach to be used: ", approach
-          WRITE(stdout,"(2X,A,3(I0,1X))") "Approach directions: ", approach_direction
-          WRITE(stdout,"(2X,A,6(I0,1X))") "Observation included: ",nobs_arr 
-       END IF
-
-    END DO ls_i
-
-    ! Orbital elements and sky-plane residuals and rms":
-    IF (info_verb >= 2) THEN
-       t_ = getTime(orb)
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / " // &
-               "leastSquares", &
-               "TRACE BACK (130)", 1)
-          DEALLOCATE(obs_scoords, stat=err) 
-          DEALLOCATE(ephemerides, stat=err) 
-          DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(partials_arr, stat=err)
-          DEALLOCATE(cov_mat_obs, stat=err)
-          DEALLOCATE(design_mat, stat=err) 
-          DEALLOCATE(stdev_arr_obs, stat=err) 
-          DEALLOCATE(elements_iter_arr, stat=err)
-          DEALLOCATE(rmss_iter_arr, stat=err) 
-          DEALLOCATE(inform_mat_obs_bd, stat=err) 
-          DEALLOCATE(observed, stat=err)
-          DEALLOCATE(computed, stat=err) 
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          DEALLOCATE(obsy_codes, stat=err)
-          RETURN
-       END IF
-       WRITE(stdout,"(2X,A)") "# Final results:"
-       err_verb_ = err_verb
-       err_verb = 0
-       elements = getElements(orb, "keplerian")
-       err_verb = err_verb_
-       IF (error) THEN
-          error = .FALSE.
-       ELSE
-          str = getCalendarDateString(t_, "TT")
-          WRITE(stdout,"(2X,A,2X,A,6(1X,F20.13),1X,A)") "#", "Kep: ", &
-               elements(1:2), elements(3:6)/rad_deg, &
-               TRIM(str)
-       END IF
-       elements = getElements(orb, "cartesian", frame="ecliptic")
-       IF (error) THEN
-          error = .FALSE.
-       ELSE
-          str = getCalendarDateString(t_, "TT")
-          WRITE(stdout,"(2X,A,2X,A,6(1X,F20.13),1X,A)") "#", "Car: ", &
-               elements(1:6), TRIM(str)
-       END IF
-       CALL NULLIFY(t_)
-       WRITE(stdout,"(2X,A,2X,A)") "#", "Residuals RA & Dec [as]:"
-       DO j=1,nobs
-          IF (ALL(obs_masks_(j,2:3))) THEN
-             WRITE(stdout,"(2X,A,2X,A,2(F15.7,1X),A,1X,A)") "#", " ", &
-                  residuals(j,2:3)/rad_asec, " ", TRIM(obsy_codes(j))
-          ELSE
-             WRITE(stdout,"(2X,A,2X,A,2(F15.7,1X),A,1X,A)") "#", "(", &
-                  residuals(j,2:3)/rad_asec, ")", TRIM(obsy_codes(j))
+             rchi2_previous = rchi2
           END IF
        END DO
-       WRITE(stdout,"(2X,A,2X,A,2(1X,F15.7))") "#", "RA & Dec RMS [as]: ", &
-            rmss_iter_arr(iiter,2)/rad_asec, rmss_iter_arr(iiter,3)/rad_asec
-    END IF
+       lambda = 0.0_bp
+       CALL levenbergMarquardt_private
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / " // &
+               "levenbergMarquardt", &
+               "Could not find a least-squares solution (2).", 1)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(information_matrix_measur, stat=err) 
+          DEALLOCATE(obsy_codes, stat=err)
+          DEALLOCATE(stdev_arr_measur, stat=err)
+          DEALLOCATE(measur, stat=err)
+          DEALLOCATE(residuals, stat=err) 
+          DEALLOCATE(mask_measur, stat=err)
+          DEALLOCATE(alpha, stat=err)
+          DEALLOCATE(jacobians, stat=err)
+          RETURN
+       END IF
+       rchi2_previous = rchi2
+
+       ! Outlier rejection
+       IF (this%outlier_rejection_prm .AND. ABS(rchi2 - rchi2_old)/rchi2 > this%ls_rchi2_frac_prm) THEN
+          mask_measur = this%obs_masks_prm
+          DO k=1,ndata
+             IF (ANY(ABS(residuals(k,2:3)) > &
+                  this%outlier_multiplier_prm*stdev_arr_measur(k,2:3))) THEN
+                mask_measur(k,:) = .FALSE.
+             END IF
+          END DO
+          rchi2_old = rchi2
+       ELSE
+          EXIT
+       END IF
+
+    END DO
+
+    DEALLOCATE(obsy_ccoords, stat=err)
+    DEALLOCATE(information_matrix_measur, stat=err) 
+    DEALLOCATE(obsy_codes, stat=err)
+    DEALLOCATE(stdev_arr_measur, stat=err)
+    DEALLOCATE(measur, stat=err)
+    DEALLOCATE(residuals, stat=err) 
+    DEALLOCATE(alpha, stat=err)
+    DEALLOCATE(jacobians, stat=err)
 
     CALL NULLIFY(this%orb_ml_cmp)
-    this%orb_ml_cmp = copy(orb)
+    IF (element_type_ == "keplerian") THEN
+       params(4:6) = MODULO(params(4:6), two_pi)
+    ELSE IF (element_type_ == "cometary") THEN
+       params(4:5) = MODULO(params(4:5), two_pi)
+    ELSE IF (element_type_ == "cartesian" .AND. &
+         SQRT(DOT_PRODUCT(params(4:6),params(4:6))) > sol) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / " // &
+            "levenbergMarquardt", &
+            "Speed of object is larger than speed of light.", 1)
+       DEALLOCATE(mask_measur, stat=err)
+       RETURN
+    END IF
+    CALL NEW(this%orb_ml_cmp, params, TRIM(element_type_), TRIM(frame_), copy(t))
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / " // &
+            "levenbergMarquardt", &
+            "TRACE BACK (65)", 1)
+       DEALLOCATE(mask_measur, stat=err)
+       RETURN
+    END IF
+    CALL setParameters(this%orb_ml_cmp, &
+         dyn_model=dyn_model_, &
+         perturbers=this%perturbers_prm, &
+         integration_step=integration_step_, &
+         integrator=integrator_, &
+         finite_diff=finite_diff_)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / " // &
+            "levenbergMarquardt", &
+            "TRACE BACK (70)", 1)
+       DEALLOCATE(mask_measur, stat=err)
+       RETURN
+    END IF
     IF (.NOT.ASSOCIATED(this%cov_ml_cmp)) THEN
        ALLOCATE(this%cov_ml_cmp(6,6), stat=err)
        IF (err /= 0) THEN
@@ -7055,55 +6106,268 @@ CONTAINS
           CALL errorMessage("StochasticOrbit / " // &
                "leastSquares", &
                "Could not allocate memory (10).", 1)
-          DEALLOCATE(obs_scoords, stat=err) 
-          DEALLOCATE(ephemerides, stat=err) 
-          DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(partials_arr, stat=err)
-          DEALLOCATE(cov_mat_obs, stat=err)
-          DEALLOCATE(design_mat, stat=err) 
-          DEALLOCATE(stdev_arr_obs, stat=err) 
-          DEALLOCATE(elements_iter_arr, stat=err)
-          DEALLOCATE(rmss_iter_arr, stat=err) 
-          DEALLOCATE(inform_mat_obs_bd, stat=err) 
-          DEALLOCATE(observed, stat=err)
-          DEALLOCATE(computed, stat=err) 
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          DEALLOCATE(obsy_codes, stat=err)
+          DEALLOCATE(mask_measur, stat=err)
           RETURN
        END IF
     END IF
-    this%cov_ml_cmp = cov
-    this%cov_type_prm = element_type_ls
-    this%obs_masks_prm = obs_masks_
+    DO i=1,nparam
+       IF (.NOT.mask_param(i)) THEN
+          cov_mat_param(i,i) = 0.0_bp
+       END IF
+    END DO
+    this%cov_ml_cmp = cov_mat_param
+    this%cov_type_prm = element_type_
+    this%obs_masks_prm = mask_measur
+    DEALLOCATE(mask_measur, stat=err)
 
-    CALL NULLIFY(orb)
-    CALL NULLIFY(t)
-    CALL NULLIFY(t_)
-    DEALLOCATE(obs_scoords, stat=err) 
-    DEALLOCATE(ephemerides, stat=err) 
-    DEALLOCATE(obsy_ccoords, stat=err)
-    DEALLOCATE(partials_arr, stat=err)
-    DEALLOCATE(cov_mat_obs, stat=err)
-    DEALLOCATE(design_mat, stat=err) 
-    DEALLOCATE(stdev_arr_obs, stat=err) 
-    DEALLOCATE(elements_iter_arr, stat=err)
-    DEALLOCATE(rmss_iter_arr, stat=err) 
-    DEALLOCATE(inform_mat_obs_bd, stat=err) 
-    DEALLOCATE(observed, stat=err)
-    DEALLOCATE(computed, stat=err) 
-    DEALLOCATE(residuals, stat=err)
-    DEALLOCATE(obs_masks_, stat=err)
-    DEALLOCATE(obsy_codes, stat=err)
 
-    IF (final_iterations /= this%ls_niter_major_min_prm) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / " // &
-            "leastSquares", &
-            "Could not reach final iteration rounds.", 1)
-    END IF
+  CONTAINS
 
-  END SUBROUTINE leastSquares2
+    ! LevenbergMarquardt_private and coefficients are essentially
+    ! identical to the subroutines found in estimators.f90.
+
+    SUBROUTINE levenbergMarquardt_private
+
+      REAL(bp), SAVE :: rchi2_
+      REAL(bp), DIMENSION(:), ALLOCATABLE, SAVE :: params_, beta
+      REAL(bp), DIMENSION(:,:), ALLOCATABLE, SAVE :: param_corrections
+
+      IF (lambda < 0.0_bp) THEN
+         ALLOCATE(params_(nparam),beta(nparam),param_corrections(nparam,1))
+         lambda = 0.001_bp
+         params_ = params
+         CALL coefficients(params_, alpha, beta)
+         IF (error) THEN
+            CALL errorMessage("StochasticOrbit / " // &
+                 "levenbergMarquardt / levenbergMarquardt_private", &
+                 "TRACE BACK (5)", 1)
+            RETURN
+         END IF
+         rchi2_ = rchi2
+      END IF
+      cov_mat_param = alpha
+      cov_mat_param = diagonal_multiplication(cov_mat_param, 1.0_bp+lambda, errstr, mask_param)
+      IF (LEN_TRIM(errstr) /= 0) THEN
+         error = .TRUE.
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / levenbergMarquardt_private", &
+              TRIM(errstr), 1)
+         errstr = ""
+         RETURN
+      END IF
+      param_corrections(:,1) = beta
+      CALL gauss_jordan(cov_mat_param, param_corrections, errstr)
+      IF (LEN_TRIM(errstr) /= 0) THEN
+         error = .TRUE.
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / levenbergMarquardt_private", &
+              TRIM(errstr), 1)
+         errstr = ""
+         RETURN
+      END IF
+      IF (lambda == 0.0_bp) THEN
+         DEALLOCATE(params_, beta, param_corrections)
+         RETURN
+      END IF
+      params_ = params + param_corrections(:,1)
+      CALL coefficients(params_, cov_mat_param, param_corrections(:,1))
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / levenbergMarquardt_private", &
+              "TRACE BACK (10)", 1)
+         RETURN
+      END IF
+      IF (rchi2 < rchi2_) THEN
+         lambda = 0.1_bp*lambda
+         rchi2_ = rchi2
+         alpha = cov_mat_param
+         beta = param_corrections(:,1)
+         params = params_
+      ELSE
+         lambda = 10.0_bp*lambda
+         rchi2 = rchi2_
+      END IF
+
+    END SUBROUTINE levenbergMarquardt_private
+
+
+    SUBROUTINE coefficients(params, alpha, beta)
+
+      !IMPLICIT NONE
+      REAL(bp), DIMENSION(:), INTENT(inout) :: params
+      REAL(bp), DIMENSION(:), INTENT(out) :: beta
+      REAL(bp), DIMENSION(:,:), INTENT(out) :: alpha
+
+      REAL(bp), DIMENSION(nparam,nmultidata) :: tmp
+      INTEGER :: i
+
+      CALL ephemeris_lsl(params, residuals, jacobians, rchi2)
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / coefficients", &
+              "TRACE BACK (5)", 1)
+         RETURN
+      END IF
+      ! Approximate Hessian by multiplying Jacobians
+      ! alpha = cov_param^(-1) = J^T Sigma_obs^(-1) J:
+      ! beta = J^T Sigma_obs^(-1) y:
+      alpha = 0.0_bp
+      beta = 0.0_bp
+      DO i=1,ndata
+         tmp = MATMUL(TRANSPOSE(jacobians(1:nmultidata,1:nparam,i)), &
+              information_matrix_measur(i,1:nmultidata,1:nmultidata))
+         alpha = alpha + MATMUL(tmp, jacobians(1:nmultidata,1:nparam,i))
+         beta = beta + MATMUL(tmp, residuals(i,1:nmultidata))
+      END DO
+      DO i=1,nparam
+         IF (.NOT.mask_param(i)) THEN
+            alpha(i,:) = 0.0_bp
+            alpha(:,i) = 0.0_bp
+            alpha(i,i) = 1.0_bp
+            beta(i) = 0.0_bp
+         END IF
+      END DO
+
+    END SUBROUTINE coefficients
+
+
+    SUBROUTINE ephemeris_lsl(elements, residuals, jacobians, rchi2)
+
+      !implicit none
+      REAL(bp), DIMENSION(:), INTENT(inout) :: elements ! nparam
+      REAL(bp), DIMENSION(:,:), INTENT(out) :: residuals ! ndata,nmultidata
+      REAL(bp), DIMENSION(:,:,:), INTENT(out) :: jacobians ! nmultidata,nparam,ndata
+      REAL(bp), INTENT(out) :: rchi2
+
+      TYPE (Orbit) :: orb
+      TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemerides
+      REAL(bp), DIMENSION(:,:,:), POINTER :: partials_arr
+      REAL(bp), DIMENSION(SIZE(residuals,dim=1),SIZE(residuals,dim=2)) :: computed
+      INTEGER :: j
+
+      IF (element_type_ == "keplerian") THEN
+         elements(4:6) = MODULO(elements(4:6), two_pi)
+      ELSE IF (element_type_ == "cometary") THEN
+         elements(4:5) = MODULO(elements(4:5), two_pi)
+      ELSE IF (element_type_ == "cartesian" .AND. &
+           SQRT(DOT_PRODUCT(elements(4:6),elements(4:6))) > sol) THEN
+         error = .TRUE.
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / ephemeris_lsl", &
+              "Speed of object is larger than speed of light.", 1)
+         RETURN
+      END IF
+      CALL NEW(orb, elements, TRIM(element_type_), TRIM(frame_), copy(t))
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / ephemeris_lsl", &
+              "TRACE BACK (5)", 1)
+         RETURN
+      END IF
+      CALL setParameters(orb, &
+           dyn_model=dyn_model_, &
+           perturbers=this%perturbers_prm, &
+           integration_step=integration_step_, &
+           integrator=integrator_, &
+           finite_diff=finite_diff_)
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / ephemeris_lsl", &
+              "TRACE BACK (10)", 1)
+         RETURN
+      END IF
+
+      ! Compute positions and partial derivatives:
+      CALL getEphemerides(orb, obsy_ccoords, ephemerides, &
+           partials_arr=partials_arr)
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / ephemeris_lsl", &
+              "TRACE BACK (15)", 1)
+         RETURN
+      END IF
+
+      ! Write design matrix and add cosine term to it and the computed positions:
+      jacobians = 0.0_bp
+      DO j=1,ndata
+         computed(j,:) = getCoordinates(ephemerides(j))
+         computed(j,2) = computed(j,2)*COS(measur(j,3))
+         IF (error) THEN
+            CALL errorMessage("StochasticOrbit / " // &
+                 "levenbergMarquardt / ephemeris_lsl", &
+                 "TRACE BACK (20)", 1)
+            RETURN
+         END IF
+         jacobians(:,:,j) = partials_arr(:,:,j)
+         jacobians(2,:,j) = jacobians(2,:,j)*COS(measur(j,3))
+      END DO
+      DEALLOCATE(ephemerides, partials_arr, stat=err)
+      IF (err /= 0) THEN
+         error = .TRUE.
+         CALL errorMessage("StochasticOrbit / " // &
+              "levenbergMarquardt / ephemeris_lsl", &
+              "Could not deallocate memory.", 1)
+         RETURN
+      END IF
+      ! Output orbital elements and sky-plane residuals and rms if needed:
+      IF (info_verb >= 2) THEN
+         t_ = getTime(orb)
+         WRITE(stdout,"(2X,A,I0,A)") "Elements, residuals, RMS, and reduced chi2:"
+         str = getCalendarDateString(t_, "TT")
+         SELECT CASE (element_type_)
+         CASE ("keplerian")
+            elements = getElements(orb, element_type_)
+            WRITE(stdout,"(2X,A,6(1X,F20.13),1X,A)") "Kep: ", &
+                 elements(1:2), elements(3:6)/rad_deg, &
+                 TRIM(str)
+         CASE ("cartesian")
+            elements = getElements(orb, element_type_, frame=frame_)
+            WRITE(stdout,'(2X,A,6(1X,F20.13),1X,A)') "Car: ", &
+                 elements(1:6),TRIM(str)
+         END SELECT
+         IF (error) THEN
+            CALL errorMessage("StochasticOrbit / " // &
+                 "levenbergMarquardt / ephemeris_lsl", &
+                 "TRACE BACK (25)", 1)
+            RETURN
+         END IF
+         CALL NULLIFY(t_)
+         WRITE(stdout,"(2X,A)") "Residuals RA & Dec [as]:"
+      END IF
+      CALL NULLIFY(orb)
+      residuals = 0.0_bp
+      DO j=1,ndata
+         residuals(j,1:6) = measur(j,1:6) - computed(j,1:6)
+         IF (ABS(residuals(j,2)) > pi) THEN
+            residuals(j,2) = two_pi - residuals(j,2)
+         END IF
+         IF (info_verb >= 2) THEN
+            IF (ALL(mask_measur(j,2:3))) THEN
+               WRITE(stdout,"(2X,A,2(F20.7,1X),A,1X,A)") " ", &
+                    residuals(j,2:3)/rad_asec, " ", TRIM(obsy_codes(j))
+            ELSE
+               WRITE(stdout,"(2X,A,2(F15.7,1X),A,1X,A)") "(", &
+                    residuals(j,2:3)/rad_asec, ")", TRIM(obsy_codes(j))
+            END IF
+         END IF
+      END DO
+
+      ! Compute reduced chi2:
+      rchi2 = chi_square(residuals, information_matrix_measur, mask_measur, errstr) / &
+           REAL(COUNT(mask_measur)-COUNT(mask_param),bp)
+
+      IF (info_verb >= 2) THEN
+         WRITE(stdout,"(2X,A,2(1X,F15.7))") "RMS RA & Dec [arcsec]: ", &
+              SQRT(SUM(residuals(:,2)**2,mask=mask_measur(:,2))/COUNT(mask_measur(:,2)))/rad_asec, &
+              SQRT(SUM(residuals(:,3)**2,mask=mask_measur(:,3))/COUNT(mask_measur(:,3)))/rad_asec
+         WRITE(stdout,"(2X,A,1X,F15.7)") "Reduced chi2: ", &
+              rchi2
+         WRITE(stdout,"(2X,A)") ""
+      END IF
+
+    END SUBROUTINE ephemeris_lsl
+
+  END SUBROUTINE levenbergMarquardt_SO
 
 
 
@@ -7245,7 +6509,14 @@ CONTAINS
        END IF
        ! Propagation of pdf
        DO i=1,SIZE(this%orb_arr_cmp)
-          det = determinant(jacobians(i,:,:), error)
+          det = determinant(jacobians(i,:,:), errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             CALL errorMessage("StochasticOrbit / propagate", &
+                  "TRACE BACK (10) " // TRIM(errstr), 1)
+             errstr = ""
+             DEALLOCATE(jacobians, stat=err)
+             RETURN
+          END IF
           ! Changed 2008-12-14
           !this%pdf_arr_cmp(i) = this%pdf_arr_cmp(i) / det
           !this%jac_arr_cmp(i,1) = this%jac_arr_cmp(i,1) / det
@@ -7276,7 +6547,7 @@ CONTAINS
        END IF
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / propagate", &
-               "TRACE BACK (10)", 1)
+               "TRACE BACK (15)", 1)
           RETURN
        END IF
        this%cov_ml_cmp = MATMUL(MATMUL(jacobian, cov), &
@@ -7440,7 +6711,14 @@ CONTAINS
        END IF
        DO i=1,nobs
           DO j=1,6
-             CALL moments(this%res_arr_cmp(:,i,j), mean=mean, error=error)!, std_dev=stdev)!, pdf=this%pdf_arr_cmp)
+             CALL moments(this%res_arr_cmp(:,i,j), mean=mean, error=errstr)!, std_dev=stdev)!, pdf=this%pdf_arr_cmp)
+             IF (LEN_TRIM(errstr) /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("StochasticOrbit / setGenerationWindow", &
+                     "Could not compute moments. " // TRIM(errstr), 1)
+                errstr = ""
+                RETURN
+             END IF
              this%sor_deviates_prm(i,j,1) = mean
              !this%sor_deviates_prm(i,j,2) = this%sor_generat_multiplier_prm*stdev
           END DO
@@ -8004,6 +7282,7 @@ CONTAINS
 
 
 
+
   !! *Description*:
   !!
   !! Updates the observation mask of the observation specified using
@@ -8265,7 +7544,14 @@ CONTAINS
        ! Compute mean and std for first topocentric range,
        ! create histogram:
        CALL moments(this%sor_rho_arr_cmp(:,1), mean=mean(1), &
-            std_dev=stdev(1), error=error)
+            std_dev=stdev(1), error=errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / setRangeBounds", &
+               "Could not compute moments (5). " // TRIM(errstr), 1)
+          errstr = ""
+          RETURN
+       END IF
        rhomin1 = MINVAL(this%sor_rho_arr_cmp(:,1))
        rhomax1 = MAXVAL(this%sor_rho_arr_cmp(:,1))
        ALLOCATE(histo(grid_num,2), stat=err)
@@ -8326,7 +7612,14 @@ CONTAINS
        rhomin2 = MINVAL(topo_range)
        rhomax2 = MAXVAL(topo_range)
        CALL moments(topo_range, mean=mean(2), std_dev=stdev(2), &
-            error=error)
+            error=errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / setRangeBounds", &
+               "Could not compute moments (10). " // TRIM(errstr), 1)
+          errstr = ""
+          RETURN
+       END IF
        DEALLOCATE(topo_range, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
@@ -8506,7 +7799,7 @@ CONTAINS
          pdf_relative_bound, apriori, jac_sph_inv, rho_comp1, rho_comp2, tdt, &
          rho_mid, a, ran, tmp, chi2, integration_step, &
          trials_per_orb, jac_car_kep, jac_equ_kep, obs_arc, &
-         rang, distance, q, ftol, exp_rchi2
+         rang, distance, q, ftol
     INTEGER, DIMENSION(:,:), POINTER                     :: obs_pair_arr
     INTEGER, DIMENSION(:), ALLOCATABLE                   :: pair_histogram
     INTEGER, DIMENSION(6)                                :: n0, n0_
@@ -8888,7 +8181,14 @@ CONTAINS
              WRITE(stdout,"(2X,A,I0,A)") "Covariance matrix for ", i, &
                   ". observation: "
              CALL matrix_print(cov_matrices(i,:,:)/rad_asec**2.0_bp, &
-                  stdout)
+                  stdout, errstr)
+             IF (LEN_TRIM(errstr) /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("StochasticOrbit / statisticalRanging", &
+                     "Could not print covariance matrix " // &
+                     TRIM(errstr), 1) 
+                RETURN
+             END IF
           END DO
           WRITE(stdout,"(2X,A,6(I0,1X))") "Number of included observations " // &
                "(r,ra,dec,dr,dra,ddec): ", n0(1:6)
@@ -9892,8 +9192,9 @@ CONTAINS
           END IF
 
           ! Compute chi2:
-          chi2 = getChi2(residuals(iorb+1,:,:), information_matrix_obs, this%obs_masks_prm)
-          IF (error) THEN
+          chi2 = chi_square(residuals(iorb+1,:,:), information_matrix_obs, this%obs_masks_prm, errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             error = .TRUE.
              CALL errorMessage("StochasticOrbit / statisticalRanging", &
                   "TRACE BACK (125)", 1)
              DO j=1,SIZE(orb_arr_)
@@ -9941,13 +9242,16 @@ CONTAINS
                      information_matrix_obs(j,1:6,1:6)), &
                      partials_arr(i,1:6,1:6,j))
              END DO
-             apriori = SQRT(ABS(determinant(information_matrix_elem, error)))
-             IF (error) THEN
+             apriori = SQRT(ABS(determinant(information_matrix_elem, errstr)))
+             IF (LEN_TRIM(errstr) /= 0) THEN
                 CALL errorMessage("StochasticOrbit / statisticalRanging", &
                      "Unsuccessful computation of determinant of orbital element " // &
-                     "information matrix:", 1)
-                CALL matrix_print(information_matrix_elem, stderr)
-                error = .FALSE.
+                     "information matrix " // TRIM(errstr), 1)
+                errstr = ""
+                IF (err_verb >= 1) THEN
+                   CALL matrix_print(information_matrix_elem, stderr, errstr)
+                END IF
+                errstr = ""
                 CYCLE
              END IF
           ELSE
@@ -9963,13 +9267,16 @@ CONTAINS
                   cosdec0_arr(obs_pair_arr(i,1))
              jacobian_matrix(4:6,:) = partials_arr(i,1:3,:,obs_pair_arr(i,2)) / &
                   cosdec0_arr(obs_pair_arr(i,2))
-             jac_sph_inv = ABS(determinant(jacobian_matrix, error))
-             IF (error) THEN
+             jac_sph_inv = ABS(determinant(jacobian_matrix, errstr))
+             IF (LEN_TRIM(errstr) /= 0) THEN
                 CALL errorMessage("StochasticOrbit / statisticalRanging", &
                      "Unsuccessful computation of determinant of orbital element " // &
-                     "jacobian matrix:", 1)
-                CALL matrix_print(jacobian_matrix, stderr)
-                error = .FALSE.
+                     "jacobian matrix " // TRIM(errstr), 1)
+                errstr = ""
+                IF (err_verb >= 1) THEN
+                   CALL matrix_print(jacobian_matrix, stderr, errstr)
+                END IF
+                errstr = ""
                 CYCLE
              END IF
 
@@ -9977,12 +9284,16 @@ CONTAINS
              ! orbital elements ("Cartesian Wrt Keplerian"):
              CALL partialsCartesianWrtKeplerian(orb_arr(i), &
                   jacobian_matrix, "equatorial")
-             jac_car_kep = ABS(determinant(jacobian_matrix, error))
-             IF (error) THEN
+             jac_car_kep = ABS(determinant(jacobian_matrix, errstr)) 
+             IF (LEN_TRIM(errstr) /= 0) THEN
                 CALL errorMessage("StochasticOrbit / statisticalRanging", &
                      "Unsuccessful computation of " // &
-                     "jacobian matrix:", 1)
-                CALL matrix_print(jacobian_matrix, stderr)
+                     "jacobian matrix " // TRIM(errstr), 1)
+                errstr = ""
+                IF (err_verb >= 1) THEN
+                   CALL matrix_print(jacobian_matrix, stderr, errstr)
+                END IF
+                errstr = ""
                 DO j=1,SIZE(orb_arr_)
                    CALL NULLIFY(orb_arr_(j))
                 END DO
@@ -10954,17 +10265,21 @@ CONTAINS
 
     DO i=1,nobs
        CALL moments(this%res_arr_cmp(:,i,2), mean=ra_mean(i), &
-            std_dev=ra_std, error=error)
-       IF (error) THEN
+            std_dev=ra_std, error=errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("StochasticOrbit / updateRanging", &
-               "Error in moment computation for RA.", 1)
+               "Error in moment computation for RA " // &
+               TRIM(errstr), 1)
           RETURN
        END IF
        CALL moments(this%res_arr_cmp(:,i,3), mean=dec_mean(i), &
-            std_dev=dec_std, error=error)
-       IF (error) THEN
+            std_dev=dec_std, error=errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("StochasticOrbit / updateRanging", &
-               "Error in moment computation for Dec.", 1)
+               "Error in moment computation for Dec " // &
+               TRIM(errstr), 1)
           RETURN
        END IF
     END DO
@@ -11008,7 +10323,7 @@ CONTAINS
 
        nr_of_omitted = COUNT(maskarr)
        IF (this%outlier_rejection_prm) THEN
-          ! Remove outliers
+          ! Remove outlier observations
           this%obs_masks_prm = obs_masks
           IF (info_verb >= 2) THEN
              IF (nr_of_omitted == 0) THEN
