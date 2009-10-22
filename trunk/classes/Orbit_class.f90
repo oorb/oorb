@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-08-24
+!! @version 2009-10-20
 !!
 MODULE Orbit_cl
 
@@ -90,19 +90,21 @@ MODULE Orbit_cl
   TYPE Orbit
 
      PRIVATE
-     TYPE (Time)                     :: t
-     CHARACTER(len=FRAME_LEN)        :: frame                = "equatorial"
-     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type         = "cartesian"
-     REAL(bp), DIMENSION(6)          :: elements
-     LOGICAL                         :: is_initialized       = .FALSE.
+     TYPE (Time)                       :: t
+     CHARACTER(len=FRAME_LEN)          :: frame                = "equatorial"
+     CHARACTER(len=ELEMENT_TYPE_LEN)   :: element_type         = "cartesian"
+     REAL(bp), DIMENSION(6)            :: elements
+     LOGICAL                           :: is_initialized       = .FALSE.
      ! Central body, default is Sun (for body id's, see module planetary_data)
-     INTEGER                         :: central_body         = 11
+     INTEGER                           :: central_body         = 11
      ! Parameters for propagation:
-     CHARACTER(len=DYN_MODEL_LEN)    :: dyn_model_prm        = "2-body"
-     CHARACTER(len=INTEGRATOR_LEN)   :: integrator_prm       = "bulirsch-stoer"
-     REAL(bp), DIMENSION(6)          :: finite_diff_prm      = -1.0_bp
-     REAL(bp)                        :: integration_step_prm = 5.0_bp 
-     LOGICAL, DIMENSION(10)          :: perturbers_prm       = .FALSE.
+     CHARACTER(len=DYN_MODEL_LEN)      :: dyn_model_prm        = "2-body"
+     CHARACTER(len=INTEGRATOR_LEN)     :: integrator_prm       = "bulirsch-stoer"
+     REAL(bp), DIMENSION(:,:), POINTER :: additional_perturbers => NULL() ! (car equ + mjdtt + mass)
+     TYPE (Orbit), DIMENSION(:), POINTER :: additional_perturbers2 => NULL() ! (car equ + mjdtt + mass)
+     REAL(bp), DIMENSION(6)            :: finite_diff_prm      = -1.0_bp
+     REAL(bp)                          :: integration_step_prm = 5.0_bp 
+     LOGICAL, DIMENSION(10)            :: perturbers_prm       = .FALSE.
 
   END TYPE Orbit
 
@@ -294,6 +296,7 @@ CONTAINS
     END IF
     this%element_type = "cartesian"
     this%frame = getFrame(ccoord)
+    NULLIFY(this%additional_perturbers)
     this%t = getTime(ccoord)
     this%central_body      = 11
     this%dyn_model_prm = "2-body"
@@ -600,6 +603,9 @@ CONTAINS
        RETURN       
 
     END SELECT
+
+    NULLIFY(this%additional_perturbers)
+
 
   END SUBROUTINE new_Orb_elements
 
@@ -1169,6 +1175,7 @@ CONTAINS
     END SELECT
 
     CALL NULLIFY(ccoord_)
+    NULLIFY(this%additional_perturbers)
 
 
   CONTAINS 
@@ -1633,6 +1640,7 @@ CONTAINS
     this%frame = getFrame(ccoord)
     this%t = getTime(ccoord)
     CALL NULLIFY(ccoord)
+    NULLIFY(this%additional_perturbers)
     this%dyn_model_prm = "2-body"
     this%finite_diff_prm = -1.0_bp
     this%is_initialized = .TRUE.
@@ -1652,6 +1660,7 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout) :: this
+    INTEGER :: err
 
     this%elements = 0.0_bp
     this%element_type = ""
@@ -1660,6 +1669,11 @@ CONTAINS
     this%frame = ""
     this%dyn_model_prm    = ""
     this%perturbers_prm = .FALSE.
+    IF (ASSOCIATED(this%additional_perturbers)) THEN
+       DEALLOCATE(this%additional_perturbers, stat=err)
+    ELSE
+       NULLIFY(this%additional_perturbers)
+    END IF
     this%is_initialized = .FALSE.
     this%central_body   = 11
 
@@ -1680,6 +1694,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Orbit), INTENT(in) :: this
     TYPE (Orbit)             :: copy_Orb
+    INTEGER :: err
 
     copy_Orb%elements       = this%elements
     copy_Orb%element_type   = this%element_type
@@ -1688,6 +1703,19 @@ CONTAINS
     copy_Orb%central_body   = this%central_body
     copy_Orb%dyn_model_prm  = this%dyn_model_prm
     copy_Orb%perturbers_prm(:) = this%perturbers_prm(:)
+    IF (ASSOCIATED(this%additional_perturbers)) THEN
+       ALLOCATE(copy_Orb%additional_perturbers(SIZE(this%additional_perturbers,dim=1), &
+            SIZE(this%additional_perturbers,dim=2)), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / copy", &
+               "Could not allocate memory.",1)
+          RETURN
+       END IF
+       copy_Orb%additional_perturbers = this%additional_perturbers
+    ELSE
+       NULLIFY(copy_Orb%additional_perturbers)
+    END IF
     copy_Orb%finite_diff_prm = this%finite_diff_prm
     copy_Orb%integrator_prm = this%integrator_prm
     copy_Orb%integration_step_prm = this%integration_step_prm
@@ -1880,10 +1908,8 @@ CONTAINS
        RETURN
     END IF
     vel0 = (pos1 - f*pos0)/g
-
     orb = copy(this)
     orb%elements(4:6) = vel0
-
     t1 = getTime(ccoord)
     CALL propagate(orb, t1)
     IF (error) THEN
@@ -1891,9 +1917,10 @@ CONTAINS
             "TRACE BACK 4", 1)
        RETURN
     END IF
-
     pos = orb%elements(1:3)
     estimateCosDf = DOT_PRODUCT(pos0,pos) / (r0*SQRT(DOT_PRODUCT(pos,pos)))
+
+    CALL NULLIFY(orb)
 
   END FUNCTION estimateCosDf
 
@@ -1998,6 +2025,43 @@ CONTAINS
 
   END SUBROUTINE GaussfgJacobian_Orb
 
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the current set of orbital elements for additional
+  !! perturbers if available. The shape of the table is (1:n,1:8)
+  !! where n is the number of perturbers. The first six elements on a
+  !! row (n,1:6) contain the Cartesian equatorial orbital elements,
+  !! (n,7) is the epoch given as MJD TT, and (n,8) is the mass of the
+  !! perturber given as solar masses.
+  !!
+  !! Returns error.
+  !!
+  FUNCTION getAdditionalPerturbers(this)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in)          :: this    
+    REAL(bp), DIMENSION(:,:), POINTER :: getAdditionalPerturbers
+    INTEGER :: err
+
+    IF (ASSOCIATED(this%additional_perturbers)) THEN
+       ALLOCATE(getAdditionalPerturbers(SIZE(this%additional_perturbers,dim=1), &
+            SIZE(this%additional_perturbers,dim=2)), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getAdditionalPerturbers", &
+               "Could not allocate memory.", 1)
+          RETURN
+       END IF
+       getAdditionalPerturbers = this%additional_perturbers
+    ELSE
+       NULLIFY(getAdditionalPerturbers)
+    END IF
+
+  END FUNCTION getAdditionalPerturbers
 
 
 
@@ -2375,6 +2439,11 @@ CONTAINS
     !! for SI whereas for e~1-10^-13 SL orbits the error on q is up to
     !! 0.2%. Note that the latter is only true for e~1-10^-13 orbits,
     !! not for e~1+10^-13 orbits which are a lot more accurate!
+    !! REAL(bp), PARAMETER :: tol1 = 1.0e-6_bp
+    !! REAL(bp), PARAMETER :: tol2 = 1.0e-8_bp
+    !! REAL(bp), PARAMETER :: tol3 = 1.0e-11_bp
+    !! REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
+    !! The tolerances have subsequently been updated using the S1b population
     REAL(bp), PARAMETER :: tol1 = 1.0e-6_bp
     REAL(bp), PARAMETER :: tol2 = 1.0e-8_bp
     REAL(bp), PARAMETER :: tol3 = 1.0e-11_bp
@@ -2983,12 +3052,12 @@ CONTAINS
     TYPE (SphericalCoordinates), DIMENSION(:), POINTER  :: ephemerides_
     TYPE (Orbit), DIMENSION(:), POINTER                 :: this_lt_corr_arr_
     TYPE (Time)                                         :: t
+    CHARACTER(len=FRAME_LEN), DIMENSION(:), ALLOCATABLE :: frames
     REAL(bp), DIMENSION(:,:,:), POINTER                 :: partials_arr_, jacobian_prop_arr
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE             :: jacobian_arr
     REAL(bp), DIMENSION(:), ALLOCATABLE                 :: mjd_tt_arr
-    CHARACTER(len=FRAME_LEN), DIMENSION(:), ALLOCATABLE :: frames
-    INTEGER, DIMENSION(:), ALLOCATABLE                  :: indx_arr, indx_smaller, indx_larger
     REAL(bp)                                            :: mjd_tt_orb
+    INTEGER, DIMENSION(:), ALLOCATABLE                  :: indx_arr, indx_smaller, indx_larger
     INTEGER                                             :: i, j, k, err, nthis, nobsy, indx
     LOGICAL                                             :: lt_corr_
 
@@ -3101,7 +3170,13 @@ CONTAINS
        mjd_tt_arr(i) = getMJD(t, "TT")
        CALL NULLIFY(t)
     END DO
-    CALL quicksort(mjd_tt_arr, indx_arr, error)
+    CALL quicksort(mjd_tt_arr, indx_arr, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / getEphemerides (multiple)", &
+            TRIM(errstr), 1)
+       RETURN
+    END IF
     indx = findLocation(mjd_tt_orb, mjd_tt_arr, indx_arr)
     ! NB: Here we use tricks possible with Fortran. The arrays below 
     ! have indices from 1:indx-1 and indx:nobsy, that is, the second
@@ -3728,6 +3803,7 @@ CONTAINS
           END IF
        END IF
     END IF
+    CALL NULLIFY(this_arr(1))
     IF (error) THEN
        CALL errorMessage("Orbit / getEphemeris (single)", &
             "TRACE BACK (5)", 1)
@@ -7042,12 +7118,13 @@ CONTAINS
     CHARACTER(len=INTEGRATOR_LEN) :: integrator
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: partials0, jacobian_
     REAL(bp), DIMENSION(:,:), POINTER :: elm_arr
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: addit_masses
     REAL(bp), DIMENSION(6,6) :: partials1
     REAL(bp), DIMENSION(0:3) :: stumpff_cs, ffs
     REAL(bp), DIMENSION(3) :: pos, vel
     REAL(bp) :: mjd_tt, mjd_tt0, dt, r0, u, alpha, s, f, g, df, &
          dg, mean_motion, step, mu_
-    INTEGER :: i, j, err, nthis, central_body
+    INTEGER :: i, j, err, nthis, central_body, naddit
     LOGICAL :: multiple_t0
 
     nthis = SIZE(this_arr,dim=1)
@@ -7342,11 +7419,17 @@ CONTAINS
           END IF
        END DO
 
-       ALLOCATE(elm_arr(6,nthis), element_type_arr(nthis), frame_arr(nthis), stat=err)
+       IF (ASSOCIATED(this_arr(1)%additional_perturbers)) THEN
+          naddit = SIZE(this_arr(1)%additional_perturbers,dim=1)
+       ELSE
+          naddit = 0
+       END IF
+
+       ALLOCATE(elm_arr(6,nthis+naddit), element_type_arr(nthis), frame_arr(nthis), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / propagate (multiple)", &
-               "Could not allocate memory (15).", 1)
+               "Could not allocate memory (20).", 1)
           IF (PRESENT(jacobian)) THEN
              DEALLOCATE(jacobian, stat=err)
           END IF
@@ -7358,24 +7441,29 @@ CONTAINS
        DO i=1,nthis
           elm_arr(:,i) = this_arr(i)%elements
        END DO
+       DO i=1,naddit
+          elm_arr(:,nthis+i) = this_arr(1)%additional_perturbers(i,:)
+       END DO
        IF (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
-          elm_arr => reallocate(elm_arr, 6, 13*nthis)
+          elm_arr => reallocate(elm_arr, 6, 13*(nthis+naddit))
           ! Initialize for finite difference technique:
-          DO i=1,nthis
+          DO i=1,nthis+naddit
              DO j=1,6
                 ! Change one element at a time by adding and substracting by a finite amount
-                elm_arr(:,nthis+(i-1)*12+j) = elm_arr(:,i)
-                elm_arr(:,nthis+(i-1)*12+j+6) = elm_arr(:,i)
-                elm_arr(j,nthis+(i-1)*12+j) = elm_arr(j,nthis+(i-1)*12+j) + this_arr(i)%finite_diff_prm(j)
-                elm_arr(j,nthis+(i-1)*12+j+6) = elm_arr(j,nthis+(i-1)*12+j+6) - this_arr(i)%finite_diff_prm(j)
+                elm_arr(:,nthis+naddit+(i-1)*12+j) = elm_arr(:,i)
+                elm_arr(:,nthis+naddit+(i-1)*12+j+6) = elm_arr(:,i)
+                elm_arr(j,nthis+naddit+(i-1)*12+j) = elm_arr(j,nthis+naddit+(i-1)*12+j) + &
+                     this_arr(i)%finite_diff_prm(j)
+                elm_arr(j,nthis+naddit+(i-1)*12+j+6) = elm_arr(j,nthis+naddit+(i-1)*12+j+6) - &
+                     this_arr(i)%finite_diff_prm(j)
              END DO
           END DO
        ELSE IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
-          ALLOCATE(jacobian_(6,6,nthis), stat=err)
+          ALLOCATE(jacobian_(6,6,nthis+naddit), stat=err)
           IF (err /= 0) THEN
              error = .TRUE.
              CALL errorMessage("Orbit / propagate (multiple)", &
-                  "Could not allocate memory (20).", 1)
+                  "Could not allocate memory (25).", 1)
              DEALLOCATE(jacobian, stat=err)
              DEALLOCATE(element_type_arr, stat=err)
              DEALLOCATE(frame_arr, stat=err)
@@ -7409,8 +7497,8 @@ CONTAINS
              END IF
              IF (PRESENT(jacobian) .AND. ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN
                 DO j=1,12
-                   this_%elements = elm_arr(:,nthis+(i-1)*12+j)
-                   elm_arr(:,nthis+(i-1)*12+j) = getElements(this_, "cartesian", frame="equatorial")
+                   this_%elements = elm_arr(:,nthis+naddit+(i-1)*12+j)
+                   elm_arr(:,nthis+naddit+(i-1)*12+j) = getElements(this_, "cartesian", frame="equatorial")
                    IF (error) THEN
                       CALL errorMessage("Orbit / propagate (multiple)", &
                            "TRACE BACK (35)", 1)
@@ -7426,11 +7514,11 @@ CONTAINS
              CALL NULLIFY(this_)
              IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN
                 IF (.NOT.ALLOCATED(partials0)) THEN
-                   ALLOCATE(partials0(nthis,6,6), stat=err)
+                   ALLOCATE(partials0(nthis+naddit,6,6), stat=err)
                    IF (err /= 0) THEN
                       error = .TRUE.
                       CALL errorMessage("Orbit / propagate (multiple)", &
-                           "Could not allocate memory (25).", 1)
+                           "Could not allocate memory (30).", 1)
                       DEALLOCATE(jacobian, stat=err)
                       DEALLOCATE(element_type_arr, stat=err)
                       DEALLOCATE(frame_arr, stat=err)
@@ -7459,9 +7547,9 @@ CONTAINS
              IF (this_arr(i)%frame /= "equatorial") THEN
                 ! Non-equatorial frame (here assumed to be ecliptic):
                 CALL rotateToEquatorial(elm_arr(1:6,i))
-                IF (PRESENT(jacobian) .AND. ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN                
+                IF (PRESENT(jacobian) .AND. ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN
                    DO j=1,12
-                      CALL rotateToEquatorial(elm_arr(1:6,nthis+(i-1)*12+j))
+                      CALL rotateToEquatorial(elm_arr(1:6,nthis+naddit+(i-1)*12+j))
                    END DO
                 END IF
              END IF
@@ -7472,9 +7560,78 @@ CONTAINS
 
        CASE ("bulirsch-stoer")
 
+          ! Make sure the additional perturbers share the same epoch
+          ! with the orbits to be integrated and integrate them to the
+          ! correct epoch if possible:
+          IF (naddit /= 0) THEN
+             IF (info_verb >= 3) THEN
+                WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
+             END IF
+             ALLOCATE(addit_masses(naddit), stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Orbit / propagate (multiple)",&
+                     "Could not allocate memory (35).", 1)          
+                RETURN
+             END IF
+             addit_masses = this_arr(1)%additional_perturbers(:,8)
+             IF (naddit >= 2) THEN
+                DO i=2,naddit
+                   IF (ABS(this_arr(1)%additional_perturbers(i-1,7) - &
+                        this_arr(1)%additional_perturbers(i,7)) > &
+                        10.0*EPSILON(this_arr(1)%additional_perturbers(1,7))) THEN
+                      error = .TRUE.
+                      CALL errorMessage("Orbit / propagate (multiple)",&
+                           "Additional perturbers do not have a common epoch.", 1)          
+                      RETURN
+                   END IF
+                END DO
+             END IF
+             IF (ABS(mjd_tt0 - this_arr(1)%additional_perturbers(1,7)) > &
+                  10.0*EPSILON(this_arr(1)%additional_perturbers(1,7))) THEN
+                IF (info_verb >= 3) THEN
+                   WRITE(stdout,"(2X,2(A,1X,F15.7,1X),A)") &
+                        "Integrating additional perturbers from epoch", &
+                        this_arr(1)%additional_perturbers(1,7), &
+                        "to starting epoch", mjd_tt0, "."
+                   WRITE(stdout,"(2X,A)") &
+                        "Initial elements (cartesian equatorial), epoch, and mass:"
+                   DO i=1,naddit
+                      WRITE(stdout,"(2X,I0,7(1X,F17.9),1X,E10.4)") &
+                           i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
+                           this_arr(1)%additional_perturbers(i,7:8)
+                   END DO
+                END IF
+                CALL bulirsch_full_jpl(this_arr(1)%additional_perturbers(1,7), &
+                     mjd_tt0, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
+                     this_arr(1)%perturbers_prm, error, &
+                     step=this_arr(1)%integration_step_prm, &
+                     ncenter=central_body, &
+                     addit_masses=this_arr(1)%additional_perturbers(:,8))
+             END IF
+             IF (info_verb >= 3) THEN
+                WRITE(stdout,"(2X,A)") &
+                     "Orbital elements for additional perturbers (cartesian equatorial), " // &
+                     "their epoch, and mass at starting epoch:"
+                DO i=1,naddit
+                   WRITE(stdout,"(2X,I0,7(1X,F17.9),1X,E10.4)") &
+                        i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
+                        mjd_tt0, this_arr(1)%additional_perturbers(i,8)
+                END DO
+             END IF
+          ELSE
+             ALLOCATE(addit_masses(0), stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Orbit / propagate (multiple)",&
+                     "Could not allocate memory (40).", 1)          
+                RETURN
+             END IF
+          END IF
+
           IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
              ! Variational equations technique:
-             DO i=1,nthis
+             DO i=1,nthis+naddit
                 jacobian_(:,:,i) = identity_matrix(6)
              END DO
              IF (PRESENT(encounters)) THEN
@@ -7482,14 +7639,15 @@ CONTAINS
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      jacobian=jacobian_, ncenter=central_body, &
-                     encounters=encounters)
+                     encounters=encounters, addit_masses=addit_masses)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
-                     jacobian=jacobian_, ncenter=central_body)
+                     jacobian=jacobian_, ncenter=central_body, &
+                     addit_masses=addit_masses)
              END IF
-             DO i=1,nthis
+             DO i=1,nthis+naddit
                 jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
              END DO
           ELSE IF (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
@@ -7499,12 +7657,12 @@ CONTAINS
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     encounters=encounters)
+                     encounters=encounters, addit_masses=addit_masses)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body)
+                     ncenter=central_body, addit_masses=addit_masses)
              END IF
           ELSE IF (.NOT.PRESENT(jacobian)) THEN
              IF (PRESENT(encounters)) THEN
@@ -7512,12 +7670,12 @@ CONTAINS
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     encounters=encounters)
+                     encounters=encounters, addit_masses=addit_masses)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body)
+                     ncenter=central_body, addit_masses=addit_masses)
              END IF
           END IF
           IF (error) THEN
@@ -7551,6 +7709,17 @@ CONTAINS
 
        END SELECT
 
+       IF (naddit > 0 .AND. info_verb >= 3) THEN
+          WRITE(stdout,"(2X,A)") &
+               "Orbital elements for additional perturbers (cartesian equatorial), " // &
+               "their epoch, and mass at final epoch:"
+          DO i=1,naddit
+             WRITE(stdout,"(2X,I0,7(1X,F17.9),1X,E10.4)") &
+                  i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
+                  mjd_tt, this_arr(1)%additional_perturbers(i,8)
+          END DO
+       END IF
+
        DO i=1,nthis
           this_arr(i)%t = copy(t_)
           IF (element_type_arr(i) == "cartesian" .AND. frame_arr(i) == "equatorial") THEN
@@ -7560,7 +7729,7 @@ CONTAINS
              this_arr(i)%elements = elm_arr(:,i)
              IF (PRESENT(jacobian) .AND. ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN
                 DO j=1,12
-                   CALL rotateToEcliptic(elm_arr(1:6,nthis+(i-1)*12+j))
+                   CALL rotateToEcliptic(elm_arr(1:6,nthis+naddit+(i-1)*12+j))
                 END DO
              END IF
           ELSE IF (element_type_arr(i) == "keplerian") THEN
@@ -7596,7 +7765,7 @@ CONTAINS
              CALL NULLIFY(this_)
              IF (PRESENT(jacobian) .AND. ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN
                 DO j=1,12
-                   CALL NEW(this_, elm_arr(1:6,nthis+(i-1)*12+j), "cartesian", "equatorial", copy(t_))
+                   CALL NEW(this_, elm_arr(1:6,nthis+naddit+(i-1)*12+j), "cartesian", "equatorial", copy(t_))
                    IF (error) THEN
                       CALL errorMessage("Orbit / propagate (multiple)", &
                            "TRACE BACK (55)", 1)
@@ -7608,7 +7777,7 @@ CONTAINS
                       DEALLOCATE(partials0, stat=err)
                       RETURN
                    END IF
-                   elm_arr(1:6,nthis+(i-1)*12+j) = getElements(this_, "keplerian")
+                   elm_arr(1:6,nthis+naddit+(i-1)*12+j) = getElements(this_, "keplerian")
                    IF (error) THEN
                       CALL errorMessage("Orbit / propagate (multiple)", &
                            "TRACE BACK (60)", 1)
@@ -7656,7 +7825,7 @@ CONTAINS
              CALL NULLIFY(this_)
              IF (PRESENT(jacobian) .AND. ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN
                 DO j=1,12
-                   CALL NEW(this_, elm_arr(1:6,nthis+(i-1)*12+j), "cartesian", "equatorial", copy(t_))
+                   CALL NEW(this_, elm_arr(1:6,nthis+naddit+(i-1)*12+j), "cartesian", "equatorial", copy(t_))
                    IF (error) THEN
                       CALL errorMessage("Orbit / propagate (multiple)", &
                            "TRACE BACK (55)", 1)
@@ -7668,7 +7837,7 @@ CONTAINS
                       DEALLOCATE(partials0, stat=err)
                       RETURN
                    END IF
-                   elm_arr(1:6,nthis+(i-1)*12+j) = getElements(this_, "cometary")
+                   elm_arr(1:6,nthis+naddit+(i-1)*12+j) = getElements(this_, "cometary")
                    IF (error) THEN
                       CALL errorMessage("Orbit / propagate (multiple)", &
                            "TRACE BACK (60)", 1)
@@ -7704,8 +7873,8 @@ CONTAINS
                 ! If fd approach, compute the Jacobian in the following way 
                 ! for all element types and frames:
                 DO j=1,6
-                   jacobian(i,:,j) = (elm_arr(:,nthis+(i-1)*12+j) - &
-                        elm_arr(:,nthis+(i-1)*12+j+6)) / &
+                   jacobian(i,:,j) = (elm_arr(:,nthis+naddit+(i-1)*12+j) - &
+                        elm_arr(:,nthis+naddit+(i-1)*12+j+6)) / &
                         (2.0_bp*this_arr(i)%finite_diff_prm(j))
                 END DO
              ELSE IF (element_type_arr(i) == "keplerian" .AND. &
@@ -7749,7 +7918,11 @@ CONTAINS
                 RETURN
              END IF
           END IF
-
+          ! Update additional perturbers' orbital elements and epochs
+          DO j=1,naddit
+             this_arr(i)%additional_perturbers(j,1:6) = elm_arr(:,nthis+j)
+             this_arr(i)%additional_perturbers(j,7) = mjd_tt
+          END DO
        END DO
 
        IF (ALLOCATED(partials0)) THEN
@@ -8040,20 +8213,23 @@ CONTAINS
   !!
   SUBROUTINE setParameters_Orb(this, &
        dyn_model, &
-       perturbers, &
        integration_step, &
        integrator, &
-       finite_diff)
+       finite_diff, &
+       perturbers, &
+       additional_perturbers)
 
     IMPLICIT NONE
     TYPE(Orbit), INTENT(inout)                   :: this
     CHARACTER(len=*), INTENT(in), OPTIONAL       :: dyn_model
-    REAL(bp), INTENT(in), OPTIONAL               :: integration_step
     CHARACTER(len=*), INTENT(in), OPTIONAL       :: integrator
+    REAL(bp), DIMENSION(:,:), OPTIONAL           :: additional_perturbers ! (car equ + mjd_tt + mass)
     REAL(bp), DIMENSION(6), INTENT(in), OPTIONAL :: finite_diff
+    REAL(bp), INTENT(in), OPTIONAL               :: integration_step
     LOGICAL, DIMENSION(10), OPTIONAL             :: perturbers
 
     CHARACTER(len=256) :: str
+    INTEGER :: err
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -8085,9 +8261,6 @@ CONTAINS
        END IF
        this%dyn_model_prm = TRIM(str)
     END IF
-    IF (PRESENT(perturbers)) THEN
-       this%perturbers_prm = perturbers
-    END IF
     IF (PRESENT(integration_step)) THEN
        this%integration_step_prm = integration_step
     END IF
@@ -8109,6 +8282,27 @@ CONTAINS
        ELSE
           this%finite_diff_prm = -1.0_bp
        END IF
+    END IF
+    IF (PRESENT(perturbers)) THEN
+       this%perturbers_prm = perturbers
+    END IF
+    IF (PRESENT(additional_perturbers)) THEN
+       IF (SIZE(additional_perturbers,dim=2) < 8) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / setParameters", &
+               "Too few parameters provided for additional perturbers. " // &
+               "Minimum information includes orbital elements, epoch, and perturber mass.", 1)
+          RETURN          
+       END IF
+       ALLOCATE(this%additional_perturbers(SIZE(additional_perturbers,dim=1), &
+            SIZE(additional_perturbers,dim=2)), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / setParameters", &
+               "Could not allocate memory.", 1)
+          RETURN
+       END IF
+       this%additional_perturbers = additional_perturbers
     END IF
 
   END SUBROUTINE setParameters_Orb
