@@ -2121,29 +2121,22 @@ CONTAINS
        END IF
     END IF
     IF (PRESENT(cov)) THEN
-       IF (ALL(stdev > 0.0_bp) .AND. ALL(ABS(correlation) <= 1.0_bp)) THEN
-          IF (element_type_in == "keplerian") THEN
-             stdev(3:6) = stdev(3:6)*rad_deg
-          END IF
-          DO i=1,6
-             cov(i,i) = stdev(i)**2
-          END DO
-          cov(1,2:6) = stdev(1)*stdev(2:6)*correlation(1:5)
-          cov(2:6,1) = cov(1,2:6)
-          cov(2,3:6) = stdev(2)*stdev(3:6)*correlation(6:9)
-          cov(3:6,2) = cov(2,3:6)
-          cov(3,4:6) = stdev(3)*stdev(4:6)*correlation(10:12)
-          cov(4:6,3) = cov(3,4:6)
-          cov(4,5:6) = stdev(4)*stdev(5:6)*correlation(13:14)
-          cov(5:6,4) = cov(4,5:6)
-          cov(5,6) = stdev(5)*stdev(6)*correlation(15)
-          cov(6,5) = cov(5,6)
-       ELSE
-          cov = 0.0_bp
-          DO i=1,6
-             cov(i,i) = -1.0_bp
-          END DO
+       IF (element_type_in == "keplerian") THEN
+          stdev(3:6) = stdev(3:6)*rad_deg
        END IF
+       DO i=1,6
+          cov(i,i) = stdev(i)**2
+       END DO
+       cov(1,2:6) = stdev(1)*stdev(2:6)*correlation(1:5)
+       cov(2:6,1) = cov(1,2:6)
+       cov(2,3:6) = stdev(2)*stdev(3:6)*correlation(6:9)
+       cov(3:6,2) = cov(2,3:6)
+       cov(3,4:6) = stdev(3)*stdev(4:6)*correlation(10:12)
+       cov(4:6,3) = cov(3,4:6)
+       cov(4,5:6) = stdev(4)*stdev(5:6)*correlation(13:14)
+       cov(5:6,4) = cov(4,5:6)
+       cov(5,6) = stdev(5)*stdev(6)*correlation(15)
+       cov(6,5) = cov(5,6)
     END IF
     IF (INDEX(header(4),"-0030-") /= 0) THEN
        READ(lu,"(1X,E18.10)", advance="no", iostat=err) r
@@ -2613,7 +2606,7 @@ CONTAINS
     CHARACTER(len=1024), DIMENSION(4) :: header
     REAL(bp), DIMENSION(6) :: elements, stdev
     REAL(bp) :: day, jac, mjd_tt
-    INTEGER :: year, month, err, indx, i
+    INTEGER :: year, month, err, indx, i, j
 
     ! Define format for output and construct header:
     IF (print_header) THEN
@@ -3124,11 +3117,15 @@ CONTAINS
                "Write error (10).", 1)
           RETURN
        END IF
-       WRITE(lu, "(5(1X,E15.7))", advance="no", iostat=err) cov(1,2:6)/(stdev(1)*stdev(2:6))
-       WRITE(lu, "(4(1X,E15.7))", advance="no", iostat=err) cov(2,3:6)/(stdev(2)*stdev(3:6))
-       WRITE(lu, "(3(1X,E15.7))", advance="no", iostat=err) cov(3,4:6)/(stdev(3)*stdev(4:6))
-       WRITE(lu, "(2(1X,E15.7))", advance="no", iostat=err) cov(4,5:6)/(stdev(4)*stdev(5:6))
-       WRITE(lu, "(1X,E15.7)", advance="no", iostat=err) cov(5,6)/(stdev(5)*stdev(6))
+       DO i=1,5
+          DO j=i+1,6
+             IF (stdev(i) == 0.0_bp .OR. stdev(j) == 0.0_bp) THEN
+                WRITE(lu, "(1X,E15.7)", advance="no", iostat=err) 0.0_bp
+             ELSE                
+                WRITE(lu, "(1X,E15.7)", advance="no", iostat=err) cov(i,j)/(stdev(i)*stdev(j))
+             END IF
+          END DO
+       END DO
     END IF
     IF (PRESENT(pdf)) THEN
        jac = 1.0_bp
