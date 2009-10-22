@@ -26,7 +26,7 @@
 !! Independent utilities.
 !!
 !! @author  MG
-!! @version 2008-06-05
+!! @version 2009-10-20
 !!
 MODULE utilities
 
@@ -558,6 +558,21 @@ CONTAINS
     is_downcase = ((d >= 'a') .AND. (d <= 'z'))
 
   END FUNCTION is_downcase
+
+
+
+
+
+  FUNCTION outerand(a,b)
+
+    IMPLICIT NONE
+    LOGICAL, DIMENSION(:), INTENT(IN) :: a,b
+    LOGICAL, DIMENSION(SIZE(a),SIZE(b)) :: outerand
+
+    outerand = SPREAD(a,dim=2,ncopies=SIZE(b)) .AND. &
+         SPREAD(b,dim=1,ncopies=SIZE(a))
+
+  END FUNCTION outerand
 
 
 
