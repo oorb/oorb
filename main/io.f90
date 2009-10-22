@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-09-03
+!! @version 2009-10-20
 !!
 MODULE io
 
@@ -2394,13 +2394,16 @@ CONTAINS
          integrator
     CHARACTER(len=64) :: &
          str
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         inform_mat_obs_bd
     REAL(bp), DIMENSION(:,:), POINTER :: &
          residuals
     REAL(bp), DIMENSION(6,6)   :: cov, corr
     REAL(bp), DIMENSION(6)     :: elements, sigmas
-    REAL(bp) :: obsarc
+    REAL(bp) :: obsarc, rchi2
     INTEGER :: k, l, err
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    LOGICAL, DIMENSION(6) :: ls_element_mask
 
     IF (.NOT. exist(storb)) THEN
        error = .TRUE.
@@ -2557,9 +2560,25 @@ CONTAINS
          SQRT(SUM(residuals(:,3)**2.0_bp,obs_masks(:,2) &
          .AND. obs_masks(:,3))/COUNT(obs_masks(:,2) &
          .AND. obs_masks(:,3)))/rad_asec
-    WRITE(lu,*)
+    WRITE(lu,"(A)") "#"
+    ! WRITE REDUCED CHI2:
+    CALL getParameters(storb, ls_element_mask=ls_element_mask)
+    inform_mat_obs_bd => getBlockDiagInformationMatrix(obss)
+    rchi2 = chi_square(residuals, inform_mat_obs_bd, obs_masks, errstr) / &
+         REAL(COUNT(obs_masks)-COUNT(ls_element_mask),bp)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeNominalSolution", &
+            "Could not compute chi2. " // TRIM(errstr), 1)
+       errstr = ""
+       RETURN
+    END IF
+    WRITE(lu,"(A6,2X,A7,1X,F14.6)") "#RCHI2", id(1:7), rchi2
+    WRITE(lu,"(A)") "#"
+    DEALLOCATE(inform_mat_obs_bd, stat=err)
+    ! WRITE OBSERVATIONAL TIMESPAN:
     obsarc = getObservationalTimespan(obss)
-    WRITE(lu,"(A,F14.4)") "#Observational arc ",obsarc
+    WRITE(lu,"(A7,1X,A7,1X,F14.4)") "#OBSARC", id(1:7), obsarc
     WRITE(lu,*)
 
     DEALLOCATE(obs_masks, stat=err)
@@ -4012,7 +4031,14 @@ CONTAINS
        DO i=1,6
           CALL confidence_limits(elements_arr(:,i), pdf_arr_cmp, &
                probability_mass=0.9973002_bp, peak=elements(i), bounds=conf_limits(i,:), &
-               error=error)
+               error=errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("io / writeSORResults", &
+                  "Could not compute confidence limits. " // TRIM(errstr), 1)
+             errstr = ""
+             RETURN
+          END IF
        END DO
        IF (ANY(elements-elements_arr(indx_ml,:) /= 0.0_bp)) THEN
           WRITE(stdout,*) elements
