@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2009-06-12
+!! @version 2009-09-16
 !!
 MODULE integrators
 
@@ -99,20 +99,18 @@ CONTAINS
   !!
   !! mjd_tdt0         integration start (MJD TT)
   !! mjd_tdt1         integration stop (MJD TT)
-  !! celements        initial coordinates for massless particles
+  !! celements        initial coordinates for massless particles (1:6,1:nparticles)
   !! error            returns true, if something fails 
   !! jacobian         jacobian matrix (coordinates wrt initial coordinates)
   !! step             step size
   !! ncenter          number of solar-system object to use as center (default=Sun)
   !! encounters       table containing the closest distances to, or earliest
   !!                  time of impact with solar-system objects
-  !! addit_mcelements initial coordinates for additional perturbing bodies to be
-  !!                  integrated simultaneously
   !! addit_masses     masses for additional perturbing bodies
   !!
   SUBROUTINE bulirsch_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
        perturbers, error, jacobian, step, ncenter, encounters, &
-       addit_celements, addit_masses)
+       addit_masses)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt0, mjd_tdt1
     REAL(prec), DIMENSION(:,:), INTENT(inout)             :: celements
@@ -122,28 +120,37 @@ CONTAINS
     REAL(prec), INTENT(in), OPTIONAL                      :: step
     INTEGER,  INTENT(in), OPTIONAL                        :: ncenter
     REAL(prec), DIMENSION(:,:,:), INTENT(out), OPTIONAL   :: encounters
-    REAL(prec), DIMENSION(:,:), INTENT(inout), OPTIONAL   :: addit_celements
     REAL(prec), DIMENSION(:), INTENT(in), OPTIONAL        :: addit_masses
 
     REAL(prec), DIMENSION(:,:,:), ALLOCATABLE :: pws, encounters_
     REAL(prec), DIMENSION(:,:), ALLOCATABLE :: ws
     REAL(prec) :: mjd_tdt, tmp, istep, rstep
-    INTEGER    :: k, m, n, total, err
+    INTEGER    :: k, m, n, total, err, naddit
 
-    IF (PRESENT(addit_celements) .AND. .NOT.PRESENT(addit_masses) .OR. &
-         .NOT.PRESENT(addit_celements) .AND. PRESENT(addit_masses)) THEN
-       error = .TRUE.
-       WRITE(0,"(A)") "bulirsch_full_jpl: Both addit_celements and addit_masses must be specified."
-       RETURN       
+    ! The 'addit_masses' variable refers to masses of additional
+    ! massive objects that need to be integrated and act as pertubers
+    ! for the massless particles. The orbital elements of the
+    ! additional perturbers are concatenated to the end of
+    ! 'celements'. Note that the particles are treated asymmetrically:
+    ! massless particles are not affecting the other particles (how
+    ! could they?) and additional massive particles are only affecting
+    ! the massless particles. In particular, ephemeris for planets and
+    ! large asteroids originating in de405 are not affected by the
+    ! additional massive particles.
+
+    IF (PRESENT(addit_masses)) THEN
+       naddit = SIZE(addit_masses)
+    ELSE
+       naddit = 0
     END IF
 
-    ALLOCATE(ws(SIZE(celements,dim=1),SIZE(celements,dim=2)), &
-         stat=err)
+    ALLOCATE(ws(6,SIZE(celements,dim=2)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        WRITE(0,"(A)") "bulirsch_full_jpl: Could not allocate memory (5)."
        RETURN
     END IF
+    ws(:,1:SIZE(celements,dim=2)) = celements
 
     IF (PRESENT(jacobian)) THEN
        ALLOCATE(pws(SIZE(jacobian,dim=1),SIZE(jacobian,dim=2), &
@@ -165,7 +172,7 @@ CONTAINS
 
     ! Initialize the encounter table
     IF (PRESENT(encounters)) THEN
-       IF (SIZE(encounters,dim=1) < SIZE(celements,dim=2)) THEN
+       IF (SIZE(encounters,dim=1) < SIZE(ws,dim=2)) THEN
           error = .TRUE.
           WRITE(0,"(A)") "bulirsch_full_jpl: 'encounters' array too small (1)."
           RETURN
@@ -199,13 +206,12 @@ CONTAINS
     ! Integration loop
     k       = 1
     mjd_tdt = mjd_tdt0
-    ws      = celements
     IF (PRESENT(jacobian)) THEN
        pws = jacobian
        DO WHILE (k <= total)
           IF (PRESENT(encounters)) THEN
              CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
-                  ws, error, pws, pws, encounters=encounters_)
+                  ws, naddit, error, pws, pws, encounters=encounters_, addit_masses=addit_masses)
              ! Log closest non-impacting encounter during the integration step
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                   encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -219,7 +225,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
-                  ws, error, pws, pws)
+                  ws, naddit, error, pws, pws, addit_masses=addit_masses)
           END IF
           IF (error) THEN
              DEALLOCATE(ws, pws, stat=err)
@@ -232,18 +238,19 @@ CONTAINS
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
              CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
-                  ws, error, pws, pws, encounters=encounters_)
+                  ws, naddit, error, pws, pws, encounters=encounters_, addit_masses=addit_masses)
           ELSE
              CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
-                  ws, error, pws, pws)
+                  ws, naddit, error, pws, pws, addit_masses=addit_masses)
           END IF
        ELSE
           IF (PRESENT(encounters)) THEN
              CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
-                  ws, ws, error, pws, pws, encounters=encounters_)
+                  ws, ws, naddit, error, pws, pws, encounters=encounters_, &
+                  addit_masses=addit_masses)
           ELSE
              CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
-                  ws, ws, error, pws, pws)             
+                  ws, ws, naddit, error, pws, pws, addit_masses=addit_masses)             
           END IF
        END IF
        IF (PRESENT(encounters)) THEN
@@ -271,7 +278,7 @@ CONTAINS
        DO WHILE (k <= total)
           IF (PRESENT(encounters)) THEN
              CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
-                  ws, error, encounters=encounters_)
+                  ws, naddit, error, encounters=encounters_, addit_masses=addit_masses)
              ! Log closest non-impacting encounter during the integration step
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                   encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -285,7 +292,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
-                  ws, error)
+                  ws, naddit, error, addit_masses=addit_masses)
           END IF
           IF (error) THEN
              DEALLOCATE(ws, stat=err)
@@ -298,18 +305,19 @@ CONTAINS
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
              CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
-                  ws, error, encounters=encounters_)
+                  ws, naddit, error, encounters=encounters_, addit_masses=addit_masses)
           ELSE
              CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
-                  ws, error)
+                  ws, naddit, error, addit_masses=addit_masses)
           END IF
        ELSE
           IF (PRESENT(encounters)) THEN
              CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
-                  ws, ws, error, encounters=encounters_)
+                  ws, ws, naddit, error, encounters=encounters_, &
+                  addit_masses=addit_masses)
           ELSE
              CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
-                  ws, ws, error)
+                  ws, ws, naddit, error, addit_masses=addit_masses)
           END IF
        END IF
        IF (PRESENT(encounters)) THEN
@@ -359,14 +367,16 @@ CONTAINS
   !!  pws1     final values of the partial derivatives
   !!  
   SUBROUTINE step_bulirsch_full_jpl(mjd_tdt, H, perturbers, ws0, ws1, &
-       error, pws0, pws1, encounters)
+       naddit, error, pws0, pws1, encounters, addit_masses)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt, H
     LOGICAL, DIMENSION(:), INTENT(in)                     :: perturbers
     REAL(prec), DIMENSION(:,:), INTENT(inout)             :: ws0, ws1
+    INTEGER, INTENT(in)                                   :: naddit
     LOGICAL, INTENT(inout)                                :: error
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(inout) :: pws0, pws1
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out)   :: encounters
+    REAL(prec), DIMENSION(:), OPTIONAL, INTENT(in)        :: addit_masses
 
     REAL(prec), DIMENSION(:,:,:,:,:), ALLOCATABLE :: pddif
     REAL(prec), DIMENSION(:,:,:,:), ALLOCATABLE :: pwa0, pwa1, ddif
@@ -435,7 +445,8 @@ CONTAINS
        IF (PRESENT(pws0) .AND. PRESENT(pws1)) THEN
           IF (PRESENT(encounters)) THEN
              CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
-                  ws0, wst, error, pws0, pwst, encounters=encounters_)
+                  ws0, wst, naddit, error, pws0, pwst, encounters=encounters_, &
+                  addit_masses=addit_masses)
              ! Log closest non-impacting encounter during the integration step
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                   encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -449,7 +460,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
-                  ws0, wst, error, pws0, pwst)
+                  ws0, wst, naddit, error, pws0, pwst, addit_masses=addit_masses)
           END IF
           DO k=1, NS
              wa0(:,i,k) = wst(:,k)
@@ -460,7 +471,7 @@ CONTAINS
        ELSE
           IF (PRESENT(encounters)) THEN
              CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
-                  ws0, wst, error, encounters=encounters_)
+                  ws0, wst, naddit, error, encounters=encounters_, addit_masses=addit_masses)
              ! Log closest non-impacting encounter during the integration step
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                   encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -474,7 +485,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
-                  ws0, wst, error)
+                  ws0, wst, naddit, error, addit_masses=addit_masses)
           END IF
           DO k=1, NS
              wa0(:,i,k) = wst(:,k)
@@ -620,15 +631,17 @@ CONTAINS
   !!  pws1     final values of the partial derivatives
   !!
   SUBROUTINE step_midpoint_full_jpl(mjd_tdt, h, nsteps, perturbers, &
-       ws0, ws1, error, pws0, pws1, encounters)
+       ws0, ws1, naddit, error, pws0, pws1, encounters, addit_masses)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt, h
     INTEGER, INTENT(in)                                   :: nsteps
     LOGICAL, DIMENSION(:), INTENT(in)                     :: perturbers
     REAL(prec), DIMENSION(:,:), INTENT(inout)             :: ws0, ws1
+    INTEGER, INTENT(in)                                   :: naddit
     LOGICAL, INTENT(inout)                                :: error
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(inout) :: pws0, pws1
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out)   :: encounters
+    REAL(prec), DIMENSION(:), OPTIONAL, INTENT(in)        :: addit_masses
 
     INTEGER               :: err, i, k, m, n, NS
     INTEGER, DIMENSION(2) :: sw
@@ -670,13 +683,13 @@ CONTAINS
        pq(:,:,:,sw(1)) = pws0
        IF (PRESENT(encounters)) THEN
           CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
-               COUNT(perturbers), qd, error, pqd, encounters=encounters_)
+               naddit, qd, error, pqd, encounters=encounters_, addit_masses=addit_masses)
           ! Initialize log
           encounters = encounters_
           encounters(:,:,4) = dt
        ELSE
           CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
-               COUNT(perturbers), qd, error, pqd)
+               naddit, qd, error, pqd, addit_masses=addit_masses)
        END IF
        IF (error) THEN
           RETURN
@@ -689,7 +702,8 @@ CONTAINS
        DO k=2, nsteps     
           IF (PRESENT(encounters)) THEN
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, COUNT(perturbers), qd, error, pqd, encounters=encounters_)
+                  perturbers, naddit, qd, error, pqd, &
+                  encounters=encounters_, addit_masses=addit_masses)
              ! Log closest non-impacting encounter during the integration substep
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                   encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -702,7 +716,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, COUNT(perturbers), qd, error, pqd)
+                  perturbers, naddit, qd, error, pqd, addit_masses=addit_masses)
           END IF
           IF (error) THEN
              RETURN
@@ -716,7 +730,7 @@ CONTAINS
        END DO
        IF (PRESENT(encounters)) THEN
           CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
-               COUNT(perturbers), qd, error, pqd, encounters=encounters_)
+               naddit, qd, error, pqd, encounters=encounters_, addit_masses=addit_masses)
           ! Log closest non-impacting encounter during the integration substep
           FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -729,7 +743,7 @@ CONTAINS
           END FORALL
        ELSE
           CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
-               COUNT(perturbers), qd, error, pqd)
+               naddit, qd, error, pqd, addit_masses=addit_masses)
        END IF
        IF (error) THEN
           RETURN
@@ -745,13 +759,13 @@ CONTAINS
        ! Plain integration.
        IF (PRESENT(encounters)) THEN
           CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
-               COUNT(perturbers), qd, error, encounters=encounters_)
+               naddit, qd, error, encounters=encounters_, addit_masses=addit_masses)
           ! Initialize log
           encounters(:,:,1:3) = encounters_(:,:,1:3)
           encounters(:,:,4) = dt
        ELSE
           CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
-               COUNT(perturbers), qd, error)
+               naddit, qd, error, addit_masses=addit_masses)
        END IF
        IF (error) THEN
           RETURN
@@ -760,7 +774,8 @@ CONTAINS
        DO k=2, nsteps     
           IF (PRESENT(encounters)) THEN
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, COUNT(perturbers), qd, error, encounters=encounters_)
+                  perturbers, naddit, qd, error, &
+                  encounters=encounters_, addit_masses=addit_masses)
              ! Log closest non-impacting encounter during the integration substep
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                   encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -773,7 +788,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, COUNT(perturbers), qd, error)
+                  perturbers, naddit, qd, error, addit_masses=addit_masses)
           END IF
           IF (error) THEN
              RETURN
@@ -783,7 +798,7 @@ CONTAINS
        END DO
        IF (PRESENT(encounters)) THEN
           CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
-               COUNT(perturbers), qd, error, encounters=encounters_)
+               naddit, qd, error, encounters=encounters_, addit_masses=addit_masses)
           ! Log closest non-impacting encounter during the integration substep
           FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
                encounters(m,n,2) > 1.1_prec .AND. encounters_(m,n,3) < encounters(m,n,3))
@@ -796,7 +811,7 @@ CONTAINS
           END FORALL
        ELSE
           CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
-               COUNT(perturbers), qd, error)
+               naddit, qd, error, addit_masses=addit_masses)
        END IF
        IF (error) THEN
           RETURN
@@ -813,7 +828,6 @@ CONTAINS
           RETURN
        END IF
     END IF
-
 
   END SUBROUTINE step_midpoint_full_jpl
 
@@ -1338,6 +1352,8 @@ CONTAINS
   !!                 massless bodies
   !!  mjd_tdt     modified Julian date (for ephemerides)
   !!  wds         evaluated force function
+  !!  perturbers  boolean mask for the basic set of perturbers available (true = use in force model)
+  !!  naddit      number of additional particles with masses and needing integration
   !!  error       true, if reading from ephemerides fails
   !!  pwds        evaluated partial derivatives of the force function
   !!  encounters  encounters(i,j) where i=massless particle,
@@ -1345,33 +1361,42 @@ CONTAINS
   !!              Roche limit and 2=within planetary radius
   !!              (~collision)
   !!
-  SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers, N, wds, error, pwds, encounters)
+  SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers, naddit, wds, error, pwds, encounters, addit_masses)
 
     REAL(prec), DIMENSION(:,:), INTENT(in)              :: ws
     REAL(prec), INTENT(in)                              :: mjd_tdt
-    LOGICAL, DIMENSION(:), INTENT(in)                   :: perturbers
-    INTEGER, INTENT(in)                                 :: N ! = objects with masses available
+    LOGICAL, DIMENSION(:), INTENT(in)                   :: perturbers ! = basic perturbers (planets + Moon + Pluto)
+    INTEGER, INTENT(in)                                 :: naddit ! = number of additional perturbers
     REAL(prec), DIMENSION(:,:), INTENT(out)             :: wds
     LOGICAL, INTENT(inout)                              :: error
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out) :: pwds 
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out) :: encounters
+    REAL(prec), DIMENSION(:), OPTIONAL, INTENT(in)      :: addit_masses
+
+    ! Number of basic perturbers.
+    INTEGER :: N
 
     ! Number of massless bodies.
-    INTEGER            :: NS
+    INTEGER :: NS
 
     ! Coordinates for the massive bodies.
     REAL(prec), DIMENSION(:,:), POINTER :: wc
 
     ! Various distances.
-    REAL(prec)                 :: r2s, ir3s, ir5s
-    REAL(prec), DIMENSION(N)   :: r2c, ir3c
-    REAL(prec), DIMENSION(3,N) :: drs 
-    REAL(prec), DIMENSION(N)   :: r2d, ir3d, ir5d
-    REAL(prec)                 :: ir4s, v2s, us, ir6s, dist
+    REAL(prec), DIMENSION(3,SIZE(perturbers)+naddit) :: drs 
+    REAL(prec), DIMENSION(SIZE(perturbers)+naddit) :: ir3c
+    REAL(prec), DIMENSION(SIZE(perturbers)+naddit) :: r2d, ir3d, ir5d
+    REAL(prec) :: r2c, r2s, ir3s, ir5s, ir4s, v2s, us, ir6s, dist
 
     ! Utility variables.
     REAL(prec), DIMENSION(3,3) :: A, B, P1, P2 
     INTEGER :: i, j, k, l, err
+
+    ! Number of basic perturbers.
+    N = SIZE(perturbers)
+
+    ! Number of massless bodies.
+    NS = SIZE(ws,dim=2) - naddit
 
     ! Get positions of massive bodies (-10 = 9 planets + Moon).
     !wc => JPL_ephemeris(mjd_tdt, perturbers(:), 11, error)
@@ -1382,37 +1407,60 @@ CONTAINS
     END IF
 
     ! Useful quantities. 
-    r2c = 0.0_prec ; ir3c = 0.0_prec
+    ir3c = 0.0_prec
+    ! Basic perturbers
     DO i=1,N
        IF (perturbers(i)) THEN
-          r2c(i)  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3)) 
-          ir3c(i) = 1.0_prec / (r2c(i) * SQRT(r2c(i))) 
+          r2c  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3)) 
+          ir3c(i) = 1.0_prec / (r2c * SQRT(r2c)) 
        END IF
     END DO
+    ! Additional perturbers
+    DO i=1,naddit
+       r2c  = DOT_PRODUCT(ws(1:3,NS+i), ws(1:3,NS+i)) 
+       ir3c(N+i) = 1.0_prec / (r2c * SQRT(r2c)) 
+    END DO
 
-    ! Number of massless bodies.
-    NS = SIZE(ws,dim=2)
-
-    ! Loop over massless bodies.
-    DO i=1,NS
+    ! Loop over bodies to be integrated (NS + naddit).
+    DO i=1,NS+naddit
 
        r2s  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i)) ! ws(6,NS) 
        ir3s = 1.0_prec / (r2s * SQRT(r2s)) 
        drs = 0.0_prec ; r2d = 0.0_prec ; ir3d = 0.0_prec
        ! Log impacts and distances to solar-system objects
-       DO j=1,N
-          IF (perturbers(j)) THEN
-             drs(1:3,j) = wc(j,1:3) - ws(1:3,i) 
+       DO j=1,N+naddit
+          IF (j <= N) THEN
+             ! Basic perturbers
+             IF (perturbers(j)) THEN
+                drs(1:3,j) = wc(j,1:3) - ws(1:3,i) 
+                r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j)) 
+                ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))
+             END IF
+          ELSE
+             ! Additional perturbers
+             IF (NS+j-N == i) THEN
+                ! Skip references to self
+                CYCLE
+             END IF
+             drs(1:3,j) = ws(1:3,NS+j-N) - ws(1:3,i) 
              r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j)) 
-             ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))
+             ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))             
           END IF
           IF (PRESENT(encounters)) THEN
              dist = SQRT(r2d(j))
-             IF (dist < planetary_radii(j)) THEN
-                encounters(i,j,1) = mjd_tdt
-                encounters(i,j,2) = 1          
-                encounters(i,j,3) = dist          
-             ELSE
+             IF (j <= N) THEN
+                ! Basic perturbers
+                IF (dist < planetary_radii(j)) THEN
+                   encounters(i,j,1) = mjd_tdt
+                   encounters(i,j,2) = 1          
+                   encounters(i,j,3) = dist          
+                ELSE
+                   encounters(i,j,1) = mjd_tdt
+                   encounters(i,j,2) = 2
+                   encounters(i,j,3) = dist
+                END IF
+             ELSE IF (NS+j-N /= i) THEN
+                ! Additional perturbers
                 encounters(i,j,1) = mjd_tdt
                 encounters(i,j,2) = 2
                 encounters(i,j,3) = dist
@@ -1438,11 +1486,20 @@ CONTAINS
        wds(4:6,i) = 0.0_prec
 
        ! Non-integrable part of the interaction.
+       ! Basic perturbers
        DO j=1,N
           IF (perturbers(j)) THEN
              wds(4:6,i) = wds(4:6,i) + &
                   planetary_masses(j)* (drs(1:3,j) * ir3d(j) - wc(j,1:3) * ir3c(j))
           END IF
+       END DO
+       ! Additional perturbers
+       DO j=1,naddit
+          IF (i == NS+j) THEN
+             CYCLE
+          END IF
+          wds(4:6,i) = wds(4:6,i) + &
+               addit_masses(j)* (drs(1:3,N+j) * ir3d(N+j) - ws(1:3,NS+j) * ir3c(N+j))
        END DO
        wds(4:6,i) = gc * wds(4:6,i)
 
@@ -1471,10 +1528,11 @@ CONTAINS
 
           ! Non-integrable part of the interaction
           A = 0.0_prec
-          DO j = 1, N
+          ! Basic perturbers
+          DO j=1,N
              IF (perturbers(j)) THEN
-                DO k = 1, 3
-                   DO l = 1, 3
+                DO k=1,3
+                   DO l=1,3
                       A(k,l) = A(k,l) + 3.0_prec * planetary_masses(j) &
                            * drs(k,j) * drs(l,j) * ir5d(j)
                    END DO
@@ -1482,11 +1540,24 @@ CONTAINS
                 END DO
              END IF
           END DO
+          ! Additional perturbers
+          DO j=1,naddit
+             IF (i == NS+j) THEN
+                CYCLE
+             END IF
+             DO k=1,3
+                DO l=1,3
+                   A(k,l) = A(k,l) + 3.0_prec * addit_masses(j) &
+                        * drs(k,N+j) * drs(l,N+j) * ir5d(N+j)
+                END DO
+                A(k,k) = A(k,k) - addit_masses(j) * ir3d(N+j)
+             END DO
+          END DO
           A = gc * A
 
           ! Integrable part of the interaction
-          DO k = 1, 3
-             DO l = 1, 3 
+          DO k=1,3
+             DO l=1,3 
                 B(k,l) = 3.0_prec * ws(k,i) * ws(l,i) * ir5s
              END DO
              B(k,k) = B(k,k) - ir3s
@@ -1495,8 +1566,8 @@ CONTAINS
 
           ! Relativistic term from the Sun
           IF (relativity) THEN
-             DO k = 1, 3
-                DO l = 1, 3 
+             DO k=1,3
+                DO l=1,3 
                    P1(k,l) = (3.0_prec * v2s * ir5s - &
                         16.0_prec * gc * ir6s) * ws(k,i) * ws(l,i) - &
                         12.0_prec * us * ir5s * ws(k+3,i) * ws(l,i) + &
@@ -1506,8 +1577,8 @@ CONTAINS
              END DO
              P1 = gc * ic2 * P1
 
-             DO k = 1, 3
-                DO l = 1, 3 
+             DO k=1,3
+                DO l=1,3 
                    P2(k,l) = 2.0_prec * ws(k+3,i) * ws(l,i) - ws(k,i) * ws(l+3,i)
                 END DO
                 P2(k,k) = P2(k,k) + 2.0_prec * us
@@ -1521,7 +1592,7 @@ CONTAINS
           ! Partial derivatives of the force function.
           ! Put the parts together.
           pwds(:,:,i) = 0.0_prec
-          DO k = 1, 3
+          DO k=1,3
              pwds(k,k+3,i) = 1.0_prec
           END DO
           pwds(4:6,1:3,i) = A + B + P1
