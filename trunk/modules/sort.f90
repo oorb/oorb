@@ -26,7 +26,7 @@
 !! Contains sorting and searching routines.
 !!
 !! @author  MG
-!! @version 2008-06-05
+!! @version 2009-10-22
 !!
 MODULE sort
 
@@ -192,7 +192,7 @@ CONTAINS
 
     IMPLICIT NONE
     INTEGER(iprec4), DIMENSION(:), INTENT(inout) :: array
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER(iprec4) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack
@@ -241,8 +241,7 @@ CONTAINS
           array(j)      = element
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -268,7 +267,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER(iprec4), DIMENSION(:), INTENT(in) :: array
     INTEGER, DIMENSION(SIZE(array)), INTENT(out) :: ind
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER(iprec4) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack, tmp
@@ -324,8 +323,7 @@ CONTAINS
           ind(j)      = tmp
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -350,7 +348,7 @@ CONTAINS
 
     IMPLICIT NONE
     INTEGER(rprec8), DIMENSION(:), INTENT(inout) :: array
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER(rprec8) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack
@@ -399,8 +397,7 @@ CONTAINS
           array(j)      = element
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -426,7 +423,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER(rprec8), DIMENSION(:), INTENT(in) :: array
     INTEGER, DIMENSION(SIZE(array)), INTENT(out) :: ind
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER(rprec8) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack, tmp
@@ -482,8 +479,7 @@ CONTAINS
           ind(j)      = tmp
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -508,7 +504,7 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:), INTENT(inout) :: array
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     REAL(rprec8) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack
@@ -557,8 +553,7 @@ CONTAINS
           array(j)      = element
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -584,7 +579,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:), INTENT(in) :: array
     INTEGER, DIMENSION(SIZE(array)), INTENT(out) :: ind
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     REAL(rprec8) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack, tmp
@@ -640,8 +635,7 @@ CONTAINS
           ind(j)      = tmp
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -666,7 +660,7 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(rprec16), DIMENSION(:), INTENT(inout) :: array
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     REAL(rprec16) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack
@@ -715,8 +709,7 @@ CONTAINS
           array(j)      = element
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -741,7 +734,7 @@ CONTAINS
 
     IMPLICIT NONE
     CHARACTER(len=*), DIMENSION(:), INTENT(inout) :: array
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     CHARACTER(len=LEN(array(1))) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack
@@ -790,8 +783,7 @@ CONTAINS
           array(j)      = element
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -817,7 +809,7 @@ CONTAINS
     IMPLICIT NONE
     CHARACTER(len=*), DIMENSION(:), INTENT(inout) :: array
     INTEGER, DIMENSION(SIZE(array)), INTENT(out) :: ind
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     CHARACTER(len=LEN(array(1))) :: element
     INTEGER, DIMENSION(NSTACK) :: stack
     INTEGER :: i, j, center, left, right, n, istack, tmp
@@ -873,8 +865,7 @@ CONTAINS
           ind(j)      = tmp
           istack = istack + 2
           IF (istack > NSTACK) THEN
-             error = .TRUE.
-             WRITE(0,*) 'Error: sort / quicksort: NSTACK too small...'
+             error = " -> sort : quickSort : NSTACK too small." // TRIM(error)
              RETURN
           END IF
           IF (right-i+1 >= j-1) THEN
@@ -910,13 +901,14 @@ CONTAINS
   !! procedure is continued until the value is found, or the interval
   !! is empty.
   !!
-  INTEGER FUNCTION binarySearch_i8(key, array)
+  INTEGER FUNCTION binarySearch_i8(key, array, error)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
     INTEGER(iprec8), INTENT(in)               :: key
     INTEGER(iprec8), DIMENSION(:), INTENT(in) :: array
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER                              :: n, left, right, center, i
 
     n = SIZE(array, dim=1)
@@ -951,10 +943,7 @@ CONTAINS
     END DO
 
     IF (i == n+2) THEN
-       WRITE(0,*) "ERROR! Binary search stuck in a loop with key:"
-       WRITE(0,*) key
-       WRITE(0,*) "and array:"
-       WRITE(0,*) array
+       error = " -> sort : binarySearch : Search stuck in a loop." // TRIM(error)
     END IF
 
     ! The key could not be found in the array. 
@@ -982,13 +971,14 @@ CONTAINS
   !! procedure is continued until the value is found, or the interval
   !! is empty.
   !!
-  INTEGER FUNCTION binarySearch_r8(key, array)
+  INTEGER FUNCTION binarySearch_r8(key, array, error)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
     REAL(rprec8), INTENT(in)               :: key
     REAL(rprec8), DIMENSION(:), INTENT(in) :: array
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER                           :: n, left, right, center, i
 
     n = SIZE(array, dim=1)
@@ -1023,10 +1013,7 @@ CONTAINS
     END DO
 
     IF (i == n+2) THEN
-       WRITE(0,*) "ERROR! Binary search stuck in a loop with key:"
-       WRITE(0,*) key
-       WRITE(0,*) "and array:"
-       WRITE(0,*) array
+       error = " -> sort : binarySearch : Search stuck in a loop." // TRIM(error)
     END IF
 
     ! The key could not be found in the array. 
@@ -1054,13 +1041,14 @@ CONTAINS
   !! procedure is continued until the value is found, or the interval
   !! is empty.
   !!
-  INTEGER FUNCTION binarySearch_r16(key, array)
+  INTEGER FUNCTION binarySearch_r16(key, array, error)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
     REAL(rprec16), INTENT(in)               :: key
     REAL(rprec16), DIMENSION(:), INTENT(in) :: array
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER                            :: n, left, right, center, i
 
     n = SIZE(array, dim=1)
@@ -1095,10 +1083,7 @@ CONTAINS
     END DO
 
     IF (i == n+2) THEN
-       WRITE(0,*) "ERROR! Binary search stuck in a loop with key:"
-       WRITE(0,*) key
-       WRITE(0,*) "and array:"
-       WRITE(0,*) array
+       error = " -> sort : binarySearch : Search stuck in a loop." // TRIM(error)
     END IF
 
     ! The key could not be found in the array. 
@@ -1126,7 +1111,7 @@ CONTAINS
   !! procedure is continued until the value is found, or the interval
   !! is empty.
   !!
-  INTEGER FUNCTION binarySearch_ch_index(key, array, indx)
+  INTEGER FUNCTION binarySearch_ch_index(key, array, indx, error)
 
     ! The input array needs to be sorted in ascending order.
 
@@ -1134,6 +1119,7 @@ CONTAINS
     CHARACTER(len=*), INTENT(in)               :: key
     CHARACTER(len=*), DIMENSION(:), INTENT(in) :: array
     INTEGER, DIMENSION(:), INTENT(in) :: indx
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER                            :: n, left, right, center, i
 
     n = SIZE(array, dim=1)
@@ -1168,10 +1154,7 @@ CONTAINS
     END DO
 
     IF (i == n+2) THEN
-       WRITE(0,*) "ERROR! Binary search stuck in a loop with key:"
-       WRITE(0,*) key
-       WRITE(0,*) "and array:"
-       WRITE(0,*) array
+       error = " -> sort : binarySearch : Search stuck in a loop." // TRIM(error)
     END IF
 
     ! The key could not be found in the array. 
