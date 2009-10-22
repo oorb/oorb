@@ -26,7 +26,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2009-08-03
+!! @version 2009-09-22
 !!
 MODULE statistics
 
@@ -36,9 +36,14 @@ MODULE statistics
 
   IMPLICIT NONE
 
+  PRIVATE :: chi_square_blockdiag
   PRIVATE :: moments_r8
   PRIVATE :: confidence_limits_hist_r8
   PRIVATE :: confidence_limits_sample_r8
+
+  INTERFACE chi_square
+     MODULE PROCEDURE chi_square_blockdiag
+  END INTERFACE
 
   INTERFACE moments
      MODULE PROCEDURE moments_r8
@@ -50,6 +55,71 @@ MODULE statistics
   END INTERFACE
 
 CONTAINS
+
+
+
+
+  !! *Description*:
+  !!
+  !! Tested.
+  !!
+  !! @author  MG
+  !! @version 2009-10-13
+  !!
+  REAL(rprec8) FUNCTION chi_square_blockdiag(residuals, information_matrix, mask, error)
+
+    IMPLICIT NONE
+    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: residuals
+    REAL(rprec8), DIMENSION(:,:,:), INTENT(in) :: information_matrix
+    LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: mask
+    CHARACTER(len=*), INTENT(inout) :: error
+
+    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: residuals_
+    REAL(rprec8), DIMENSION(1) :: chi_square_blockdiag_
+    INTEGER :: i, nobs, nmulti, err
+
+    chi_square_blockdiag = 0.0_rprec8
+    chi_square_blockdiag_ = 0.0_rprec8
+    nobs = SIZE(residuals,dim=1)
+    nmulti = SIZE(residuals,dim=2)
+
+    IF (SIZE(information_matrix,dim=1) /= nobs .OR. &
+         SIZE(information_matrix,dim=2) /= nmulti .OR. &
+         SIZE(information_matrix,dim=3) /= nmulti) THEN
+       error = " -> statistics : chi_square : Shape of input matrices do not conform." // &
+            TRIM(error)
+       RETURN
+    END IF
+
+    ALLOCATE(residuals_(nobs,nmulti), stat=err)
+    IF (err /= 0) THEN
+       error = " -> statistics : chi_square : Could not allocate memory." // &
+            TRIM(error)
+       RETURN
+    END IF
+    residuals_ = residuals
+    IF (PRESENT(mask)) THEN
+       WHERE (.NOT. mask)
+          residuals_ = 0.0_rprec8
+       END WHERE
+    END IF
+    DO i=1,nobs
+       chi_square_blockdiag_ = chi_square_blockdiag_ + &
+            MATMUL(MATMUL(residuals_(i,1:nmulti), &
+            information_matrix(i,1:nmulti,1:nmulti)), &
+            TRANSPOSE(residuals_(i:i,1:nmulti)))
+    END DO
+    chi_square_blockdiag = chi_square_blockdiag_(1)
+    DEALLOCATE(residuals_, stat=err)
+    IF (err /= 0) THEN
+       WRITE(0,*) "chi_square" // &
+            "Could not deallocate memory."
+       RETURN
+    END IF
+
+  END FUNCTION chi_square_blockdiag
+
+
 
 
 
@@ -133,7 +203,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:), INTENT(in), OPTIONAL :: pdf
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)      :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)              :: mean, std_dev, skew, kurt
-    LOGICAL, INTENT(inout)                           :: error
+    CHARACTER(len=*), INTENT(inout)                           :: error
 
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: pdf_
     REAL(rprec8) :: mean_, std_dev_
@@ -143,7 +213,6 @@ CONTAINS
     ndata = SIZE(indata)
     ALLOCATE(mask_(ndata), pdf_(ndata), stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
        RETURN
     END IF
     mask_ = .TRUE.
@@ -208,7 +277,6 @@ CONTAINS
 
     DEALLOCATE(pdf_, mask_, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
        DEALLOCATE(pdf_, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -238,7 +306,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)       :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)               :: peak
     REAL(rprec8), DIMENSION(2), OPTIONAL, INTENT(out) :: bounds
-    LOGICAL, INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                            :: error
 
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: histo, histo_
     REAL(rprec8) :: probability_mass_
@@ -248,7 +316,8 @@ CONTAINS
     ndata = SIZE(indata)
     ALLOCATE(mask_(ndata), histo(nhist,2), histo_(nhist,2), stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> statistics : confidence_limits : Could not allocate memory." // &
+            TRIM(error)
        DEALLOCATE(histo, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -261,7 +330,8 @@ CONTAINS
     END IF
 
     IF (PRESENT(bounds) .AND. .NOT.PRESENT(probability_mass)) THEN
-       error = .TRUE.
+       error = " -> statistics : confidence_limits : Probability mass not given." // &
+            TRIM(error)
        DEALLOCATE(histo, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -304,7 +374,8 @@ CONTAINS
 
     DEALLOCATE(histo, histo_, mask_, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> statistics : confidence_limits : Could not deallocate memory." // &
+            TRIM(error)
        DEALLOCATE(histo, stat=err)
        DEALLOCATE(histo_, stat=err)
        DEALLOCATE(mask_, stat=err)
@@ -334,22 +405,24 @@ CONTAINS
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)       :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)               :: peak
     REAL(rprec8), DIMENSION(2), OPTIONAL, INTENT(out) :: bounds
-    LOGICAL, INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                            :: error
 
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: pdf_
     REAL(rprec8) :: probability_mass_
     INTEGER, DIMENSION(:), ALLOCATABLE :: indx_arr
-    INTEGER :: ndata, err, imax, i
+    INTEGER :: ndata, imax, i, err
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask_
 
     ndata = SIZE(indata)
     IF (ndata /= SIZE(pdf)) THEN
-       error = .TRUE.
+       error = " -> statistics : confidence_limits : Size of vectors does not conform." // &
+            TRIM(error)
        RETURN
     END IF
     ALLOCATE(pdf_(ndata), mask_(ndata), stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> statistics : confidence_limits : Could not allocate memory." // &
+            TRIM(error)
        DEALLOCATE(pdf_, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -357,7 +430,8 @@ CONTAINS
     mask_ = .TRUE.
     IF (PRESENT(mask)) THEN
        IF (ndata /= SIZE(mask)) THEN
-          error = .TRUE.
+          error = " -> statistics : confidence_limits : Size of mask does not conform with data." // &
+               TRIM(error)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           RETURN
@@ -373,7 +447,8 @@ CONTAINS
     pdf_ = pdf_/SUM(pdf_)
 
     IF (PRESENT(bounds) .AND. .NOT.PRESENT(probability_mass)) THEN
-       error = .TRUE.
+       error = " -> statistics : confidence_limits : Probability mass not given." // &
+            TRIM(error)
        DEALLOCATE(pdf_, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -387,14 +462,17 @@ CONTAINS
     IF (PRESENT(bounds)) THEN
        ALLOCATE(indx_arr(ndata), stat=err)
        IF (err /= 0) THEN
-          error = .TRUE.
+          error = " -> statistics : confidence_limits : Caould not allocate memory." // &
+               TRIM(error)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           DEALLOCATE(indx_arr, stat=err)
           RETURN
        END IF
        CALL quicksort(pdf_, indx_arr, error)
-       IF (error) THEN
+       IF (LEN_TRIM(error) /= 0) THEN
+          error = " -> statistics : confidence_limits : ." // &
+               TRIM(error)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           DEALLOCATE(indx_arr, stat=err)
@@ -419,7 +497,8 @@ CONTAINS
        END DO
        DEALLOCATE(indx_arr, stat=err)
        IF (err /= 0) THEN
-          error = .TRUE.
+          error = " -> statistics : confidence_limits : Could not deallocate memory (1)." // &
+               TRIM(error)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           DEALLOCATE(indx_arr, stat=err)
@@ -429,7 +508,8 @@ CONTAINS
 
     DEALLOCATE(pdf_, mask_, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> statistics : confidence_limits : Could not deallocate memory (2)." // &
+            TRIM(error)
        DEALLOCATE(pdf_, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
