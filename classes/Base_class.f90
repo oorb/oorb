@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2009-04-17
+!! @version 2009-10-22
 !!
 MODULE Base_cl
 
@@ -138,6 +138,7 @@ MODULE Base_cl
   INTEGER :: err_verb = 1
   INTEGER :: info_verb = 1
   LOGICAL :: simulated_observations = .FALSE.
+  CHARACTER(len=1024) :: errstr = ""
   LOGICAL :: error = .FALSE.
 
 CONTAINS
