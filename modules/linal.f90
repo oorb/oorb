@@ -105,7 +105,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2009-08-03
+!! @version 2009-10-22
 !!
 MODULE linal
 
@@ -130,18 +130,13 @@ MODULE linal
   PRIVATE :: outer_product_r8
   PRIVATE :: outer_product_r16
 
+  INTERFACE diagonal_multiplication
+     MODULE PROCEDURE diagonal_multiplication_vec_r8
+     MODULE PROCEDURE diagonal_multiplication_sca_r8
+  END INTERFACE
+
   INTERFACE identity_matrix
      MODULE PROCEDURE identity_matrix_r8
-  END INTERFACE
-
-  INTERFACE matrix_print
-     MODULE PROCEDURE matrix_print_r8
-     MODULE PROCEDURE matrix_print_r16
-  END INTERFACE
-
-  INTERFACE matinv
-     MODULE PROCEDURE matinv_r8
-     MODULE PROCEDURE matinv_r16
   END INTERFACE
 
   INTERFACE LU_factor
@@ -152,6 +147,16 @@ MODULE linal
   INTERFACE LU_solve
      MODULE PROCEDURE LU_solve_r8
      MODULE PROCEDURE LU_solve_r16
+  END INTERFACE
+
+  INTERFACE matrix_print
+     MODULE PROCEDURE matrix_print_r8
+     MODULE PROCEDURE matrix_print_r16
+  END INTERFACE
+
+  INTERFACE matinv
+     MODULE PROCEDURE matinv_r8
+     MODULE PROCEDURE matinv_r16
   END INTERFACE
 
   INTERFACE outer_product
@@ -188,21 +193,23 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: a
     REAL(rprec8), DIMENSION(:), INTENT(out) :: p
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
 
     REAL(rprec8) :: summ
     INTEGER(iprec4) :: i, n
 
     n = SIZE(a,dim=1)
     IF (n /= SIZE(a,dim=2) .OR. n /= SIZE(p)) THEN
-       error = .TRUE.
+       error = " -> linal : cholesky_decomposition : Matrix and vector sizes are not compatible." // &
+            TRIM(error)
        RETURN
     END IF
     DO i=1,n
        summ = a(i,i) - DOT_PRODUCT(a(i,1:i-1),a(i,1:i-1))
        IF (summ <= 0.0) THEN 
           ! a, WITH rounding errors, is not positive definite
-          error = .TRUE.
+          error = " -> linal : cholesky_decomposition : Matrix is not positive definite." // &
+               TRIM(error)
           RETURN
        END IF
        p(i) = SQRT(summ)
@@ -233,14 +240,15 @@ CONTAINS
     REAL(rprec8), DIMENSION(:,:), INTENT(in) :: a
     REAL(rprec8), DIMENSION(:), INTENT(in) :: p, b
     REAL(rprec8), DIMENSION(:), INTENT(inout) :: x
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
 
     INTEGER(iprec4) :: i, n
 
     n = SIZE(a,dim=1)
     IF (n /= SIZE(a,dim=2) .OR. n /= SIZE(p) .OR. &
          n /= SIZE(b) .OR. n /= SIZE(x)) THEN
-       error = .TRUE.
+       error = " -> linal : cholesky_solve : Matrix and/or vector sizes are not compatible." // &
+            TRIM(error)
        RETURN
     END IF
     DO i=1,n ! Solve L · y = b, storing y in x.
@@ -251,6 +259,79 @@ CONTAINS
     END DO
 
   END SUBROUTINE cholesky_solve
+
+
+
+
+
+  FUNCTION diagonal_multiplication_vec_r8(matrix, diagonal, error, mask)
+
+    IMPLICIT NONE
+    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: matrix
+    REAL(rprec8), DIMENSION(:), INTENT(in) :: diagonal
+    REAL(rprec8), DIMENSION(SIZE(matrix,dim=1),SIZE(matrix,dim=2)) :: diagonal_multiplication_vec_r8
+    CHARACTER(len=*), INTENT(inout) :: error
+    LOGICAL, DIMENSION(:), INTENT(in) :: mask 
+    INTEGER :: i, n
+
+    n = MIN(SIZE(matrix,dim=1),SIZE(matrix,dim=2))
+    IF (SIZE(diagonal) < n) THEN
+       error = " -> linal : diagonal_multiplication : Matrix and diagonal vector are not compatible." // &
+            TRIM(error)
+       RETURN
+    END IF
+    IF (PRESENT(mask)) THEN
+       IF (SIZE(mask) < n) THEN
+          error = " -> linal : diagonal_multiplication : Matrix and mask vector are not compatible." // &
+               TRIM(error)
+          RETURN
+       END IF
+    END IF
+    diagonal_multiplication_vec_r8 = matrix
+    DO i=1,n
+       IF (PRESENT(mask)) THEN
+          IF (.NOT.mask) THEN
+             CYCLE
+          END IF
+       END IF
+       diagonal_multiplication_vec_r8(i,i) = matrix(i,i) * diagonal(i)
+    END DO
+
+  END FUNCTION diagonal_multiplication_vec_r8
+
+
+
+
+
+  FUNCTION diagonal_multiplication_sca_r8(matrix, diagonal, error, mask)
+
+    IMPLICIT NONE
+    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: matrix
+    REAL(rprec8), INTENT(in) :: diagonal
+    REAL(rprec8), DIMENSION(SIZE(matrix,dim=1),SIZE(matrix,dim=2)) :: diagonal_multiplication_sca_r8
+    CHARACTER(len=*), INTENT(inout) :: error
+    LOGICAL, DIMENSION(:), INTENT(in) :: mask 
+    INTEGER :: i, n
+
+    n = MIN(SIZE(matrix,dim=1),SIZE(matrix,dim=2))
+    IF (PRESENT(mask)) THEN
+       IF (SIZE(mask) < n) THEN
+          error = " -> linal : diagonal_multiplication : Matrix and mask vector are not compatible." // &
+               TRIM(error)
+          RETURN
+       END IF
+    END IF
+    diagonal_multiplication_sca_r8 = matrix
+    DO i=1,n
+       IF (PRESENT(mask)) THEN
+          IF (.NOT.mask) THEN
+             CYCLE
+          END IF
+       END IF
+       diagonal_multiplication_sca_r8(i,i) = matrix(i,i) * diagonal
+    END DO
+
+  END FUNCTION diagonal_multiplication_sca_r8
 
 
 
@@ -276,7 +357,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:), INTENT(out)   :: d
     REAL(rprec8), DIMENSION(:,:), INTENT(out) :: v
     INTEGER, INTENT(out)                      :: nrot
-    LOGICAL, INTENT(inout)                    :: error
+    CHARACTER(len=*), INTENT(inout)                    :: error
 
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: aa
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: b, z
@@ -287,13 +368,14 @@ CONTAINS
     n = SIZE(a,dim=1)
     IF (n /= SIZE(a,dim=2) .OR. n /= SIZE(d) .OR. &
          n /= SIZE(v,dim=1) .OR. n /= SIZE(v,dim=2)) THEN
-       error = .TRUE.
-       WRITE(0,*) 'Sizes of matrices and/or vector inconsistent.'
+       error = " -> linal : eigen_decomposition_jacobi : Matrix and/or vector sizes are not compatible." // &
+            TRIM(error)
        RETURN
     END IF
     ALLOCATE(aa(n,n), b(n), z(n), upper_triangle(n,n), stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : eigen_decomposition_jacobi : Could not allocate memory." // &
+            TRIM(error)
        DEALLOCATE(aa, stat=err)
        DEALLOCATE(b, stat=err)
        DEALLOCATE(z, stat=err)
@@ -315,7 +397,8 @@ CONTAINS
        IF(sm == 0.0_rprec8) THEN
           DEALLOCATE(aa, b, z, upper_triangle, stat=err)
           IF (err /= 0) THEN
-             error = .TRUE.
+             error = " -> linal : eigen_decomposition_jacobi : Could not deallocate memory (1)." // &
+                  TRIM(error)
              DEALLOCATE(aa, stat=err)
              DEALLOCATE(b, stat=err)
              DEALLOCATE(z, stat=err)
@@ -356,10 +439,14 @@ CONTAINS
                 d(iq) = d(iq) + h
                 aa(ip,iq) = 0.0_rprec8
                 CALL jrotate(aa(1:ip-1, ip), aa(1:ip-1, iq), error)
+                error = " -> linal : eigen_decomposition_jacobi : (1)" // TRIM(error) 
                 CALL jrotate(aa(ip, ip+1:iq-1), aa(ip+1:iq-1, iq), error)
+                error = " -> linal : eigen_decomposition_jacobi : (2)" // TRIM(error) 
                 CALL jrotate(aa(ip, iq+1:n), aa(iq, iq+1:n), error)
+                error = " -> linal : eigen_decomposition_jacobi : (3)" // TRIM(error) 
                 CALL jrotate(v(:,ip), v(:,iq), error)
-                IF (error) THEN
+                error = " -> linal : eigen_decomposition_jacobi : (4)" // TRIM(error) 
+                IF (LEN_TRIM(error) /= 0) THEN
                    DEALLOCATE(aa, stat=err)
                    DEALLOCATE(b, stat=err)
                    DEALLOCATE(z, stat=err)
@@ -374,11 +461,12 @@ CONTAINS
        d(:) = b(:)
        z(:) = 0.0_rprec8
     END DO
-    error = .TRUE.
-    WRITE(0,*) 'Too many iterations in eigen_decomposition_jacobi.'
+    error = " -> linal : eigen_decomposition_jacobi : Too many iterations." // &
+         TRIM(error)
     DEALLOCATE(aa, b, z, upper_triangle, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : eigen_decomposition_jacobi : Could not deallocate memory (2)." // &
+            TRIM(error)
        DEALLOCATE(aa, stat=err)
        DEALLOCATE(b, stat=err)
        DEALLOCATE(z, stat=err)
@@ -392,14 +480,15 @@ CONTAINS
 
       IMPLICIT NONE
       REAL(rprec8), DIMENSION(:), INTENT(inout) :: a1, a2
-      LOGICAL, INTENT(inout)                    :: error
+      CHARACTER(len=*), INTENT(inout)                    :: error
 
       REAL(rprec8), DIMENSION(:), ALLOCATABLE :: wk1
       INTEGER :: err
 
       ALLOCATE(wk1(SIZE(a1)), stat=err)
       IF (err /= 0) THEN
-         error = .TRUE.
+         error = " -> linal : jrotate : Could not allocate memory." // &
+              TRIM(error)
          RETURN
       END IF
 
@@ -409,7 +498,8 @@ CONTAINS
 
       DEALLOCATE(wk1, stat=err)
       IF (err /= 0) THEN
-         error = .TRUE.
+         error = " -> linal : jrotate : Could not deallocate memory." // &
+              TRIM(error)
          RETURN
       END IF
 
@@ -455,7 +545,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in) :: A
     INTEGER, INTENT(out) :: n
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER, DIMENSION(2) :: up_bound
 
     n = 0
@@ -463,11 +553,13 @@ CONTAINS
 
     ! Is A a square matrix?
     IF (up_bound(1) /= up_bound(2)) THEN
-       error = .TRUE.
+       error = " -> linal : sq_matrix_check : A is not a square matrix." // &
+            TRIM(error)
        RETURN
        ! Is it bigger than 1x1?
     ELSE IF (up_bound(1) < 2) THEN
-       error = .TRUE.
+       error = " -> linal : sq_matrix_check : A is a 1x1 matrix." // &
+            TRIM(error)
        RETURN
        ! If everything is ok, give n the right value:
     ELSE
@@ -492,7 +584,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in) :: A
     INTEGER, INTENT(out) :: n
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
     INTEGER, DIMENSION(2) :: up_bound
 
     n = 0
@@ -500,7 +592,8 @@ CONTAINS
 
     ! Is A a tridiagonal matrix?
     IF (up_bound(2) /= 3) THEN
-       error = .TRUE.
+       error = " -> linal : tri_matrix_check : A is not a compressed tridiagonal matrix." // &
+            TRIM(error)
        RETURN
        ! If everything is ok, give n the right value:
     ELSE
@@ -547,7 +640,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(inout)       :: A2LU
     INTEGER, DIMENSION(SIZE(A2LU,dim=1)), INTENT(out) :: indx
-    LOGICAL, INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                            :: error
 
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: vv, helpvec
     INTEGER :: n, i, imax, err
@@ -555,7 +648,8 @@ CONTAINS
     n = SIZE(A2LU,dim=1)
     ALLOCATE(vv(SIZE(indx)), helpvec(SIZE(indx)), stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : LU_factor : Could not allocate memory." // &
+            TRIM(error)
        DEALLOCATE(vv, stat=err)
        DEALLOCATE(helpvec, stat=err)
        RETURN
@@ -565,11 +659,8 @@ CONTAINS
     ! element of the row is equal to one:
     vv = MAXVAL(ABS(A2LU),dim=2)
     IF (MINVAL(vv) < 1.0e-32_rprec8*EPSILON(vv)) THEN
-       WRITE(0,'(A,E15.8)') 'Error! linal.f90 / LU_factor: ' // &
-            'maximum element for a row less than', &
-            1.0e-32_rprec8*EPSILON(vv)
-       !CALL matrix_print(A2LU,0)
-       error = .TRUE.
+       error = " -> linal : LU_factor : Maximum element of a row too small." // &
+            TRIM(error)
        DEALLOCATE(vv, stat=err)
        DEALLOCATE(helpvec, stat=err)
        RETURN
@@ -588,12 +679,8 @@ CONTAINS
        indx(i) = imax
        ! Avoid division with zero:
        IF (ABS(A2LU(i,i)) < 1.0e-32_rprec8*EPSILON(A2LU(i,i))) THEN
-          error = .TRUE.
-          WRITE(0,*) 'Error: trying division with ', &
-               ABS(A2LU(i,i)), ' which is less than ', &
-               1.0e-32_rprec8*EPSILON(vv), ' at index ', i, &
-               '. A2LU matrix:'
-          CALL matrix_print(A2LU,0)
+          error = " -> linal : LU_factor : Division by almost zero." // &
+               TRIM(error)
           DEALLOCATE(vv, stat=err)
           DEALLOCATE(helpvec, stat=err)
           RETURN
@@ -605,7 +692,8 @@ CONTAINS
 
     DEALLOCATE(vv, helpvec, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : LU_factor : Could not deallocate memory." // &
+            TRIM(error)
        DEALLOCATE(vv, stat=err)
        DEALLOCATE(helpvec, stat=err)
        RETURN
@@ -629,7 +717,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec16), DIMENSION(:,:), INTENT(inout)    :: A2LU
     INTEGER, DIMENSION(SIZE(A2LU,dim=1)), INTENT(out) :: indx
-    LOGICAL, INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                            :: error
 
     REAL(rprec16), DIMENSION(:), ALLOCATABLE :: vv, helpvec
     INTEGER :: n, i, imax, err
@@ -637,7 +725,8 @@ CONTAINS
     n = SIZE(A2LU,dim=1)
     ALLOCATE(vv(SIZE(indx)), helpvec(SIZE(indx)), stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : LU_factor : Could not allocate memory." // &
+            TRIM(error)
        DEALLOCATE(vv, stat=err)
        DEALLOCATE(helpvec, stat=err)
        RETURN
@@ -647,10 +736,8 @@ CONTAINS
     ! element of the row is equal to one:
     vv = MAXVAL(ABS(A2LU),dim=2)
     IF (MINVAL(vv) < 1.0e-32_rprec16*EPSILON(vv)) THEN
-       WRITE(0,'(A,E15.8)') 'Error! linal.f90 / LU_factor: ' // &
-            'maximum element for a row less than', &
-            1.0e-32_rprec16*EPSILON(vv)
-       error = .TRUE.
+       error = " -> linal : LU_factor : Maximum element of a row too small." // &
+            TRIM(error)
        DEALLOCATE(vv, stat=err)
        DEALLOCATE(helpvec, stat=err)
        RETURN
@@ -669,12 +756,8 @@ CONTAINS
        indx(i) = imax
        ! Avoid division with zero:
        IF (ABS(A2LU(i,i)) < 1.0e-32_rprec16*EPSILON(A2LU(i,i))) THEN
-          error = .TRUE.
-          WRITE(0,*) 'Error: trying division with ', &
-               ABS(A2LU(i,i)), ' which is less than ', &
-               1.0e-32_rprec16*EPSILON(vv), ' at index ', i, &
-               '. A2LU matrix:'
-          CALL matrix_print(A2LU,0)
+          error = " -> linal : LU_factor : Division by almost zero." // &
+               TRIM(error)
           DEALLOCATE(vv, stat=err)
           DEALLOCATE(helpvec, stat=err)
           RETURN
@@ -686,7 +769,8 @@ CONTAINS
 
     DEALLOCATE(vv, helpvec, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : LU_factor : Could not deallocate memory." // &
+            TRIM(error)
        DEALLOCATE(vv, stat=err)
        DEALLOCATE(helpvec, stat=err)
        RETURN
@@ -839,7 +923,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in)             :: A
     REAL(rprec8), DIMENSION(SIZE(A,dim=2),SIZE(A,dim=1)) :: matinv_r8
-    LOGICAL, INTENT(inout)                               :: error
+    CHARACTER(len=*), INTENT(inout)                               :: error
     CHARACTER(len=*), INTENT(in), OPTIONAL               :: method
 
     CHARACTER(len=16) :: method_
@@ -850,8 +934,8 @@ CONTAINS
 
     n = SIZE(A,dim=1)
     IF (n /= SIZE(A,dim=2)) THEN
-       error = .TRUE.
-       WRITE(0,*) 'Input not a square matrix.'
+       error = " -> linal : matinv : Input not a square matrix." // &
+            TRIM(error)
        RETURN
     END IF
 
@@ -866,7 +950,8 @@ CONTAINS
 
        ALLOCATE(LU(n,n), indx(n), stat=err)
        IF (err /= 0) THEN
-          error = .TRUE.
+          error = " -> linal : matinv : Could not allocate memory." // &
+               TRIM(error)
           DEALLOCATE(LU, stat=err)
           DEALLOCATE(indx, stat=err)
           RETURN
@@ -875,8 +960,9 @@ CONTAINS
        ! A => LU :
        LU(:,:) = A(:,:)
        CALL LU_factor(LU(:,:), indx, error)
-       IF (error) THEN
-          WRITE(0,*) 'LU factorization unsuccessful.'
+       IF (LEN_TRIM(error) /= 0) THEN
+          error = " -> linal : matinv : LU factorization unsuccessful." // &
+               TRIM(error)
           DEALLOCATE(LU, stat=err)
           DEALLOCATE(indx, stat=err)
           RETURN
@@ -895,7 +981,8 @@ CONTAINS
 
        DEALLOCATE(LU, indx, stat=err)
        IF (err /= 0) THEN
-          error = .TRUE.
+          error = " -> linal : matinv : Could not deallocate memory." // &
+               TRIM(error)
           DEALLOCATE(LU, stat=err)
           DEALLOCATE(indx, stat=err)
           RETURN
@@ -905,7 +992,8 @@ CONTAINS
 
        ALLOCATE(L(n,n), p(n), stat=err)
        IF (err /= 0) THEN
-          error = .TRUE.
+          error = " -> linal : matinv : Could not allocate memory." // &
+               TRIM(error)
           DEALLOCATE(L, stat=err)
           DEALLOCATE(p, stat=err)
           RETURN
@@ -913,7 +1001,9 @@ CONTAINS
 
        L(:,:) = A(:,:)
        CALL cholesky_decomposition(L, p, error)
-       IF (error) THEN
+       IF (LEN_TRIM(error) /= 0) THEN
+          error = " -> linal : matinv : ." // &
+               TRIM(error)
           DEALLOCATE(L, stat=err)
           DEALLOCATE(p, stat=err)
           RETURN
@@ -928,11 +1018,19 @@ CONTAINS
        ! Solve b from L * Transpose(L) * b = e_i and put A(:,i) = b:
        DO i=1,n
           CALL cholesky_solve(L, p, matinv_r8(1:n,i), matinv_r8(1:n,i), error)
+          IF (LEN_TRIM(error) /= 0) THEN
+             error = " -> linal : matinv : ." // &
+                  TRIM(error)
+             DEALLOCATE(L, stat=err)
+             DEALLOCATE(p, stat=err)
+             RETURN
+          END IF
        END DO
 
        DEALLOCATE(L, p, stat=err)
        IF (err /= 0) THEN
-          error = .TRUE.
+          error = " -> linal : matinv : Could not deallocate memory." // &
+               TRIM(error)
           DEALLOCATE(L, stat=err)
           DEALLOCATE(p, stat=err)
           RETURN
@@ -941,7 +1039,8 @@ CONTAINS
     ELSE
 
        ! No such option...
-       error = .TRUE.
+       error = " -> linal : matinv : No such option." // &
+            TRIM(error)
 
     END IF
 
@@ -962,7 +1061,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec16), DIMENSION(:,:), INTENT(in)             :: A
     REAL(rprec16), DIMENSION(SIZE(A,dim=2),SIZE(A,dim=1)) :: matinv_r16
-    LOGICAL, INTENT(inout)                                :: error
+    CHARACTER(len=*), INTENT(inout)                                :: error
 
     REAL(rprec16), DIMENSION(:,:), ALLOCATABLE :: LU
     INTEGER, DIMENSION(:), ALLOCATABLE :: indx
@@ -970,14 +1069,15 @@ CONTAINS
 
     n = SIZE(A,dim=1)
     IF (n /= SIZE(A,dim=2)) THEN
-       error = .TRUE.
-       WRITE(0,*) 'Input not a square matrix.'
+       error = " -> linal : matinv : Input not a square matrix." // &
+            TRIM(error)
        RETURN
     END IF
 
     ALLOCATE(LU(n,n), indx(n), stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : matinv : Could not allocate memory." // &
+            TRIM(error)
        DEALLOCATE(LU, stat=err)
        DEALLOCATE(indx, stat=err)
        RETURN
@@ -986,8 +1086,9 @@ CONTAINS
     ! A => LU :
     LU(:,:) = A(:,:)
     CALL LU_factor(LU(:,:), indx, error)
-    IF (error) THEN
-       WRITE(0,*) 'LU factorization unsuccessful.'
+    IF (LEN_TRIM(error) /= 0) THEN
+       error = " -> linal : matinv : LU factorization unsuccessful." // &
+            TRIM(error)
        DEALLOCATE(LU, stat=err)
        DEALLOCATE(indx, stat=err)
        RETURN
@@ -1006,7 +1107,8 @@ CONTAINS
 
     DEALLOCATE(LU, indx, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> linal : matinv : Could not deallocate memory." // &
+            TRIM(error)
        DEALLOCATE(LU, stat=err)
        DEALLOCATE(indx, stat=err)
        RETURN
@@ -1032,7 +1134,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in)             :: A
     REAL(rprec8), DIMENSION(:), INTENT(inout)            :: b
-    LOGICAL, INTENT(inout)                                  :: error
+    CHARACTER(len=*), INTENT(inout)                                  :: error
     REAL(rprec8), DIMENSION(SIZE(A,dim=1),SIZE(A,dim=2)) :: AA
     REAL(rprec8), DIMENSION(SIZE(b))                     :: help_b
     INTEGER, DIMENSION(SIZE(b))                             :: ind
@@ -1064,7 +1166,8 @@ CONTAINS
        ind(m) = l
        ii = ind(i)
        IF (ABS(AA(ii,i)) < EPSILON(AA(ii,i))) THEN
-          error = .TRUE.
+          error = " -> linal : Gauss_elimination : Attempted division by zero." // &
+               TRIM(error)
           RETURN
        END IF
        ! Calculate the upper triangular matrix by
@@ -1104,6 +1207,65 @@ CONTAINS
 
 
 
+  SUBROUTINE gauss_jordan(a, b, error)
+
+    IMPLICIT NONE
+    REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: a,b
+    CHARACTER(len=*), INTENT(inout) :: error
+    INTEGER, DIMENSION(SIZE(a,1)) :: ipiv,indxr,indxc
+    LOGICAL, DIMENSION(SIZE(a,1)) :: lpiv
+    REAL(rprec8) :: pivinv
+    REAL(rprec8), DIMENSION(SIZE(a,1)) :: dumc
+    INTEGER, DIMENSION(2), TARGET :: irc
+    INTEGER :: i,l,n
+    INTEGER, POINTER :: irow,icol
+
+    n = SIZE(a,dim=1)
+    irow => irc(1)
+    icol => irc(2)
+    ipiv = 0
+    DO i=1,n
+       lpiv = (ipiv == 0)
+       irc = MAXLOC(ABS(a),outerand(lpiv,lpiv))
+       ipiv(icol) = ipiv(icol) + 1
+       IF (ipiv(icol) > 1) THEN
+          error = " -> linal : gauss_jordan : Singular matrix (1)." // &
+               TRIM(error)
+          RETURN
+       END IF
+       IF (irow /= icol) THEN
+          CALL swap(a(irow,:),a(icol,:))
+          CALL swap(b(irow,:),b(icol,:))
+       END IF
+       indxr(i) = irow
+       indxc(i) = icol
+       IF (a(icol,icol) == 0.0) THEN
+          error = " -> linal : gauss_jordan : Singular matrix (2)." // &
+               TRIM(error)
+          RETURN
+       END IF
+       pivinv = 1.0_rprec8/a(icol,icol)
+       a(icol,icol) = 1.0_rprec8
+       a(icol,:) = a(icol,:)*pivinv
+       b(icol,:) = b(icol,:)*pivinv
+       dumc = a(:,icol)
+       a(:,icol) = 0.0
+       a(icol,icol) = pivinv
+       a(1:icol-1,:) = a(1:icol-1,:) - outer_product(dumc(1:icol-1),a(icol,:))
+       b(1:icol-1,:) = b(1:icol-1,:) - outer_product(dumc(1:icol-1),b(icol,:))
+       a(icol+1:,:) = a(icol+1:,:) - outer_product(dumc(icol+1:),a(icol,:))
+       b(icol+1:,:) = b(icol+1:,:) - outer_product(dumc(icol+1:),b(icol,:))
+    END DO
+    DO l=n,1,-1
+       CALL swap(a(:,indxr(l)),a(:,indxc(l)))
+    END DO
+
+  END SUBROUTINE gauss_jordan
+
+
+
+
+
   SUBROUTINE tridiagonal_solve(A, b, error)
 
     !! Solves a tridiagonal linear system. 
@@ -1116,7 +1278,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in)  :: A
     REAL(rprec8), DIMENSION(:), INTENT(inout) :: b
-    LOGICAL, INTENT(inout)                       :: error
+    CHARACTER(len=*), INTENT(inout)                       :: error
     REAL(rprec8), DIMENSION(SIZE(A,dim=1),3)  :: AA
     INTEGER                                      :: i, n
 
@@ -1125,7 +1287,8 @@ CONTAINS
 
     DO i=2, n
        IF (ABS(AA(i-1,2)) < EPSILON(AA(i-1,2))) THEN
-          error = .TRUE.
+          error = " -> linal : tridiagonal_solve : Attempted division by almost zero." // &
+               TRIM(error)
           RETURN
        END IF
        AA(i,2) = AA(i,2) - (AA(i,1) * AA(i-1,3)) / AA(i-1,2)
@@ -1162,7 +1325,7 @@ CONTAINS
     REAL(rprec8), PARAMETER                              :: iteration_factor = 1.0_rprec8
     REAL(rprec8), DIMENSION(:,:), INTENT(in)             :: A
     REAL(rprec8), DIMENSION(:), INTENT(inout)            :: b
-    LOGICAL, INTENT(inout)                                  :: error
+    CHARACTER(len=*), INTENT(inout)                                  :: error
     REAL(rprec8), DIMENSION(SIZE(A,dim=1),SIZE(A,dim=2)) :: LU
     REAL(rprec8), DIMENSION(SIZE(b))                     :: D, x, y
     REAL(rprec8)                                         :: diff, old_diff
@@ -1183,7 +1346,8 @@ CONTAINS
     DO WHILE (diff > iteration_factor*EPSILON(diff))
        DO i=1, n
           IF (ABS(D(i)) < EPSILON(D(i))) THEN
-             error = .TRUE.
+             error = " -> linal : Jacobi_iteration : Attempted division by almost zero." // &
+                  TRIM(error)
              RETURN
           END IF
           y(i) = (b(i) - DOT_PRODUCT(LU(i,:), x)) / D(i)
@@ -1191,13 +1355,15 @@ CONTAINS
        old_diff = diff
        diff = SQRT(DOT_PRODUCT(x-y, x-y))
        IF (diff > old_diff) THEN
-          error = .TRUE.
+          error = " -> linal : Jacobi_iteration : Iteration divergent." // &
+               TRIM(error)
           RETURN
        END IF
        x = y
        iter = iter + 1
        IF (iter > max_iter) THEN
-          error = .TRUE.
+          error = " -> linal : Jacobi_iteration : Reached maximum number of iterations." // &
+               TRIM(error)
           RETURN
        END IF
     END DO
@@ -1228,7 +1394,7 @@ CONTAINS
     REAL(rprec8), PARAMETER                               :: iteration_factor = 1.0_rprec8
     REAL(rprec8), DIMENSION(:,:), INTENT(in)              :: A
     REAL(rprec8), DIMENSION(SIZE(A,dim=1)), INTENT(inout) :: b
-    LOGICAL, INTENT(inout)                                   :: error
+    CHARACTER(len=*), INTENT(inout)                                   :: error
     REAL(rprec8), DIMENSION(SIZE(A,dim=1),SIZE(A,dim=2))  :: LU
     REAL(rprec8), DIMENSION(SIZE(b))                      :: D, x, y
     REAL(rprec8)                                          :: diff, old_diff
@@ -1252,7 +1418,8 @@ CONTAINS
     DO WHILE (diff > iteration_factor*EPSILON(diff))
        DO i=1, n
           IF (ABS(D(i)) < EPSILON(D(i))) THEN
-             error = .TRUE.
+             error = " -> linal : Gauss_Seidel_iteration : Attempted division by almost zero." // &
+                  TRIM(error)
              RETURN
           END IF
           y(i) = (b(i) - DOT_PRODUCT(LU(i,1:i-1), y(1:i-1)) - &
@@ -1261,13 +1428,15 @@ CONTAINS
        old_diff = diff
        diff = SQRT(DOT_PRODUCT(x - y, x - y))
        IF (diff > old_diff) THEN
-          error = .TRUE.
+          error = " -> linal : Gauss_Seidel_iteration : Iteration divergent." // &
+               TRIM(error)
           RETURN
        END IF
        x = y
        iter = iter + 1
        IF (iter > max_iter) THEN
-          error = .TRUE.
+          error = " -> linal : Gauss_Seidel_iteration : Reached maximum number of iterations." // &
+               TRIM(error)
           RETURN
        END IF
     END DO
@@ -1280,7 +1449,7 @@ CONTAINS
 
 
 
-  REAL(8) FUNCTION determinant(A, error)
+  REAL(rprec8) FUNCTION determinant(A, error)
 
     !! Returns the determinant of a square matrix.
     !!
@@ -1289,7 +1458,7 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in)             :: A
-    LOGICAL, INTENT(inout)                                  :: error
+    CHARACTER(len=*), INTENT(inout)                                  :: error
     REAL(rprec8), DIMENSION(SIZE(A,dim=1),SIZE(A,dim=2)) :: B
     INTEGER, DIMENSION(SIZE(A,dim=1))                       :: indx
     INTEGER                                                 :: i
@@ -1298,7 +1467,8 @@ CONTAINS
 
     ! A => LU :
     CALL LU_factor(B, indx, error)
-    IF (error) THEN
+    IF (LEN_TRIM(error) /= 0) THEN
+       error = " -> linal : determinant : ." // TRIM(error)
        determinant = 0.0_rprec8
        RETURN
     END IF
@@ -1314,7 +1484,7 @@ CONTAINS
 
 
 
-  REAL(8) FUNCTION cond_nr(A, error)
+  REAL(rprec8) FUNCTION cond_nr(A, error)
 
     !! Finds the condition number of a given matrix. A failure in the
     !! matrix inversion results in a huge condition number.
@@ -1327,13 +1497,14 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in)             :: A
-    LOGICAL, INTENT(inout)                               :: error
+    CHARACTER(len=*), INTENT(inout)                               :: error
     REAL(rprec8), DIMENSION(SIZE(A,dim=2),SIZE(A,dim=1)) :: inv_A
     REAL(rprec8)                                         :: A_norm, inv_A_norm
 
     A_norm = matnorm(A)
     inv_A = matinv(A, error)
-    IF (error) THEN
+    IF (LEN_TRIM(error) /= 0) THEN
+       error = " -> linal : cond_nr : ." // TRIM(error)
        cond_nr = HUGE(cond_nr)
        RETURN
     END IF
@@ -1346,7 +1517,7 @@ CONTAINS
 
 
 
-  REAL(8) FUNCTION matnorm(A)
+  REAL(rprec8) FUNCTION matnorm(A)
 
     !! Finds the matrix norm of a given matrix.
     !!
@@ -1369,7 +1540,7 @@ CONTAINS
 
 
 
-  SUBROUTINE matrix_print_r8(A, lu, frmt, row_indx, column_indx)
+  SUBROUTINE matrix_print_r8(A, lu, error, frmt, row_indx, column_indx)
 
     !! Writes the given matrix to the given i/o-unit using a nice
     !! layout.
@@ -1378,8 +1549,9 @@ CONTAINS
     !!         - I/O-unit                iounit
 
     IMPLICIT NONE
-    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: A
+    REAL(rprec8), DIMENSION(:,:), INTENT(in)    :: A
     INTEGER, INTENT(in)                         :: lu
+    CHARACTER(len=*), INTENT(inout)             :: error
     CHARACTER(len=*), INTENT(in), OPTIONAL      :: frmt
     INTEGER, DIMENSION(:), INTENT(in), OPTIONAL :: row_indx
     INTEGER, DIMENSION(:), INTENT(in), OPTIONAL :: column_indx
@@ -1391,7 +1563,8 @@ CONTAINS
     siz2 = SIZE(A, dim=2)
     ALLOCATE(indx1(siz1), indx2(siz2), stat=err)
     IF (err /= 0) THEN
-       WRITE(0,'(A)') 'Error: could not allocate required memory space.'
+       error = " -> linal : matrix_print : Could not allocate memory." // &
+            TRIM(error)
        RETURN
     END IF
 
@@ -1425,7 +1598,8 @@ CONTAINS
 
     DEALLOCATE(indx1, indx2, stat=err)
     IF (err /= 0) THEN
-       WRITE(0,'(A)') 'Error: could not deallocate required memory space.'
+       error = " -> linal : matrix_print : Could not deallocate memory." // &
+            TRIM(error)
        DEALLOCATE(indx1, stat=err)
        DEALLOCATE(indx2, stat=err)
        RETURN       
@@ -1437,7 +1611,7 @@ CONTAINS
 
 
 
-  SUBROUTINE matrix_print_r16(A, lu, frmt)
+  SUBROUTINE matrix_print_r16(A, lu, error, frmt)
 
     !! Writes the given matrix to the given i/o-unit using a nice
     !! layout.
@@ -1448,6 +1622,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec16), DIMENSION(:,:), INTENT(in)  :: A
     INTEGER, INTENT(in)                          :: lu
+    CHARACTER(len=*), INTENT(inout)       :: error
     CHARACTER(len=*), INTENT(in), OPTIONAL       :: frmt
     REAL(rprec16), DIMENSION(:,:), ALLOCATABLE :: AA
     CHARACTER(len=30)                            :: form, c
@@ -1461,7 +1636,8 @@ CONTAINS
     up_bound = UBOUND(A)
     ALLOCATE(AA(lo_bound(1):up_bound(1),lo_bound(2):up_bound(2)), stat=err)
     IF (err /= 0) THEN
-       WRITE(0,'(A)') 'Error: could not allocate required memory space.'
+       error = " -> linal : matrix_print : Could not allocate memory." // &
+            TRIM(error)
        RETURN       
     END IF
     AA = A
@@ -1490,7 +1666,8 @@ CONTAINS
 
     DEALLOCATE(AA, stat=err)
     IF (err /= 0) THEN
-       WRITE(0,'(A)') 'Error: could not deallocate required memory space.'
+       error = " -> linal : matrix_print : Could not deallocate memory." // &
+            TRIM(error)
        RETURN       
     END IF
 
@@ -1595,7 +1772,7 @@ CONTAINS
 
 
 
-  SUBROUTINE vector_print(b, lu, column, frmt)
+  SUBROUTINE vector_print(b, lu, column, error, frmt)
 
     !! Writes the given vector to the given i/o-unit using a nice
     !! layout.
@@ -1608,6 +1785,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:), INTENT(in)  :: b
     INTEGER, INTENT(in)                        :: lu
     LOGICAL, INTENT(in)                        :: column
+    CHARACTER(len=*), INTENT(inout)     :: error
     CHARACTER(len=*), INTENT(in), OPTIONAL     :: frmt
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: bb
     CHARACTER(len=30)                          :: form, c
@@ -1621,7 +1799,8 @@ CONTAINS
     up_bound = UBOUND(b)
     ALLOCATE(bb(lo_bound(1):up_bound(1)), stat=err)
     IF (err /= 0) THEN
-       WRITE(0,'(A)') 'Error: could not allocate required memory space.'
+       error = " -> linal : vector_print : Could not allocate memory." // &
+            TRIM(error)
        RETURN
     END IF
     bb = b
@@ -1663,7 +1842,8 @@ CONTAINS
 
     DEALLOCATE(bb, stat=err)
     IF (err /= 0) THEN
-       WRITE(0,'(A)') 'Error: could not deallocate required memory space.'
+       error = " -> linal : vector_print : Could not deallocate memory." // &
+            TRIM(error)
        RETURN
     END IF
 
