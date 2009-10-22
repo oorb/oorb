@@ -53,7 +53,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2009-04-07
+!! @version 2009-10-20
 !!  
 MODULE Observations_cl
 
@@ -1242,11 +1242,13 @@ CONTAINS
           END IF
        END DO
        getBlockDiagInformationMatrix(i,1:6,1:6) = &
-            matinv(covariance_matrices(i,:,:), error)
-       IF (error) THEN
+            matinv(covariance_matrices(i,:,:), errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("Observations / " // &
                "getBlockDiagInformationMatrix", &
-               "Could not invert covariance matrix for observations.", 1)
+               "Could not invert covariance matrix for observations " // &
+               TRIM(errstr), 1)
           DEALLOCATE(covariance_matrices, stat=err)
           DEALLOCATE(getBlockDiagInformationMatrix, stat=err)
           RETURN
@@ -1649,11 +1651,13 @@ CONTAINS
           END IF
        END DO
        getInformationMatrix(j+1:j+6,j+1:j+6) = &
-            matinv(covariance_matrices(i,:,:), error)
-       IF (error) THEN
+            matinv(covariance_matrices(i,:,:), errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
           CALL errorMessage("Observations / " // &
                "getInformationMatrix", &
-               "Could not invert covariance matrix for observations.", 1)
+               "Could not invert covariance matrix for observations " // &
+               TRIM(errstr), 1)
           DEALLOCATE(getInformationMatrix, stat=err)
           DEALLOCATE(covariance_matrices, stat=err)
           RETURN
@@ -5313,10 +5317,12 @@ CONTAINS
        this%criteria(i) = mjd_tdt
        CALL NULLIFY(t)
     END DO
-    CALL quicksort(this%criteria, this%ind, error)
-    IF (error) THEN
+    CALL quicksort(this%criteria, this%ind, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
        CALL errorMessage("Observations / sortObservations", &
-            "Could not quicksort observations.", 1)
+            "Could not quicksort observations " // &
+            TRIM(errstr), 1)
        RETURN
     END IF
 
