@@ -40,7 +40,6 @@ MODULE estimators
   INTERFACE leastSquares
      MODULE PROCEDURE leastSquares_r8_matrix
      MODULE PROCEDURE leastSquares_r8_blockdiag
-     MODULE PROCEDURE leastSquares_r16_matrix
   END INTERFACE
 
   INTERFACE LevenbergMarquardt
@@ -469,7 +468,12 @@ CONTAINS
          chi2_ = chi2
       END IF
       cov_mat_param = alpha
-      cov_mat_param = diagonal_multiplication(cov_mat_param,1.0_rprec8+lambda)
+      cov_mat_param = diagonal_multiplication(cov_mat_param,1.0_rprec8+lambda,errstr)
+      IF (LEN_TRIM(errstr) /= 0) THEN
+         errstr = " -> estimators : LevenbergMarquardt : LevenbergMarquardt_private : ." // &
+              TRIM(errstr)
+         RETURN
+      END IF
       param_corrections(:,1) = beta
       CALL gauss_jordan(cov_mat_param, param_corrections, errstr)
       IF (LEN_TRIM(errstr) /= 0) THEN
