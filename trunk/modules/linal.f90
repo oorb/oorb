@@ -271,7 +271,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:), INTENT(in) :: diagonal
     REAL(rprec8), DIMENSION(SIZE(matrix,dim=1),SIZE(matrix,dim=2)) :: diagonal_multiplication_vec_r8
     CHARACTER(len=*), INTENT(inout) :: error
-    LOGICAL, DIMENSION(:), INTENT(in) :: mask 
+    LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in) :: mask 
     INTEGER :: i, n
 
     n = MIN(SIZE(matrix,dim=1),SIZE(matrix,dim=2))
@@ -290,7 +290,7 @@ CONTAINS
     diagonal_multiplication_vec_r8 = matrix
     DO i=1,n
        IF (PRESENT(mask)) THEN
-          IF (.NOT.mask) THEN
+          IF (.NOT.mask(i)) THEN
              CYCLE
           END IF
        END IF
@@ -310,7 +310,7 @@ CONTAINS
     REAL(rprec8), INTENT(in) :: diagonal
     REAL(rprec8), DIMENSION(SIZE(matrix,dim=1),SIZE(matrix,dim=2)) :: diagonal_multiplication_sca_r8
     CHARACTER(len=*), INTENT(inout) :: error
-    LOGICAL, DIMENSION(:), INTENT(in) :: mask 
+    LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in) :: mask 
     INTEGER :: i, n
 
     n = MIN(SIZE(matrix,dim=1),SIZE(matrix,dim=2))
@@ -324,7 +324,7 @@ CONTAINS
     diagonal_multiplication_sca_r8 = matrix
     DO i=1,n
        IF (PRESENT(mask)) THEN
-          IF (.NOT.mask) THEN
+          IF (.NOT.mask(i)) THEN
              CYCLE
           END IF
        END IF
