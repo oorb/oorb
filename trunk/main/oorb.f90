@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-10-16
+!! @version 2009-10-22
 !!
 PROGRAM oorb
 
@@ -500,7 +500,12 @@ PROGRAM oorb
 
         ! Calculate the number of different objects in the orbit file:
         ALLOCATE(indx_arr(SIZE(id_arr_in)))
-        CALL quickSort(id_arr_in, indx_arr, error)
+        CALL quickSort(id_arr_in, indx_arr, errstr)
+        IF (LEN_TRIM(errstr) /= 0) THEN
+           CALL errorMessage("oorb", &
+                "Could not sort orbit id's. " // TRIM(errstr), 1)
+           STOP
+        END IF
         nobj = 1
         DO i=1,SIZE(id_arr_in)-1
            IF (id_arr_in(indx_arr(i)) /= id_arr_in(indx_arr(i+1))) THEN
@@ -1538,7 +1543,12 @@ PROGRAM oorb
               END IF
               DO j=1,6
                  CALL moments(elements_arr(:,j), &
-                      pdf=pdf_arr_cmp, std_dev=stdev, error=error)
+                      pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                 IF (LEN_TRIM(errstr) /= 0) THEN
+                    CALL errorMessage("oorb / ranging", &
+                         "Could not compute moments. " // TRIM(errstr), 1)
+                    STOP
+                 END IF
                  WRITE(getUnit(tmp_file), "(F22.15,1X)", &
                       advance="no") stdev
               END DO
@@ -1827,7 +1837,7 @@ PROGRAM oorb
                    "TRACE BACK (95)", 1)
               STOP
            END IF
-           CALL leastSquares(storb, orb_arr(j))
+           CALL levenbergMarquardt(storb, orb_arr(j))
            IF (.NOT.error) THEN
               EXIT
            ELSE IF (j < norb) THEN
@@ -1926,8 +1936,8 @@ PROGRAM oorb
               END IF
               HG_arr_in(i,1:2) = getH0(physparam)
               HG_arr_in(i,3:4) = getG(physparam)
+              CALL NULLIFY(physparam)
            END IF
-
 
            CALL NEW(out_file, TRIM(out_fname) // ".ls")
            IF (error) THEN
@@ -4190,6 +4200,15 @@ PROGRAM oorb
      END DO
      DEALLOCATE(storb_arr_in)
   END IF
+  IF (exist(obss_in)) THEN
+     CALL NULLIFY(obss_in)
+  END IF
+  IF (ASSOCIATED(obss_sep)) THEN
+     DO i=1,SIZE(obss_sep)
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep)
+  END IF
   IF (ASSOCIATED(HG_arr_in)) THEN
      DEALLOCATE(HG_arr_in)
   END IF
@@ -4198,5 +4217,11 @@ PROGRAM oorb
   IF (ASSOCIATED(perturbers)) THEN
      DEALLOCATE(perturbers, stat=err)
   END IF
+  DEALLOCATE(element_type_pdf_arr_in, stat=err)
+  DEALLOCATE(cov_arr_in, stat=err)
+  DEALLOCATE(pdf_arr_in, stat=err)
+  DEALLOCATE(rchi2_arr_in, stat=err)
+  DEALLOCATE(jac_arr_in, stat=err)
+  DEALLOCATE(reg_apr_arr_in, stat=err)
 
 END PROGRAM oorb
