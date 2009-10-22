@@ -26,13 +26,16 @@
 !! Contains generic routines for parameter estimation.
 !!
 !! @author  MG
-!! @version 2009-08-03
+!! @version 2009-10-22
 !!
 MODULE estimators
 
   USE parameters
   USE linal
+  USE statistics
   IMPLICIT NONE
+
+  PRIVATE :: LevenbergMarquardt_r8_blockdiag
 
   INTERFACE leastSquares
      MODULE PROCEDURE leastSquares_r8_matrix
@@ -40,6 +43,9 @@ MODULE estimators
      MODULE PROCEDURE leastSquares_r16_matrix
   END INTERFACE
 
+  INTERFACE LevenbergMarquardt
+     MODULE PROCEDURE LevenbergMarquardt_r8_blockdiag
+  END INTERFACE
 
 CONTAINS
 
@@ -59,7 +65,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), INTENT(in)        :: mask_param
     REAL(rprec8), DIMENSION(:,:), INTENT(out)  :: cov_mat_param
     REAL(rprec8), DIMENSION(:), INTENT(inout)  :: parameters
-    LOGICAL, INTENT(inout)                   :: error
+    CHARACTER(len=*), INTENT(inout)                   :: error
     REAL(rprec8), DIMENSION(SIZE(cov_mat_param,dim=1),SIZE(cov_mat_param,dim=2)) :: &
          inform_mat_param!, identity, test, matrix
     REAL(rprec8), DIMENSION(SIZE(indata,dim=1),SIZE(indata,dim=2)) :: data_minus_computed 
@@ -83,8 +89,8 @@ CONTAINS
          nparam < SIZE(mask_param) .OR. &
          nparam /= SIZE(cov_mat_param,dim=1) .OR. &
          nparam /= SIZE(cov_mat_param,dim=2)) THEN
-       error = .TRUE.
-       WRITE(0,*) "fitdata: leastSquares: Shapes of arrays do not conform."
+       error = " -> estimators : leastSquares : Shapes of arrays do not conform." // &
+            TRIM(error)
        RETURN
     END IF
 
@@ -126,11 +132,11 @@ CONTAINS
 
     ! Sigma_param = (Sigma_param^(-1))^(-1) 
     cov_mat_param(:,:) = matinv(inform_mat_param(:,:), error, method="Cholesky")
-    IF (error) THEN
+    IF (LEN_TRIM(error) /= 0) THEN
        WRITE(0,*) "Could not find inverse of inverse covariance matrix."
        RETURN
     END IF
-    CALL matrix_print(MATMUL(cov_mat_param(:,:),inform_mat_param(:,:)),0)
+    !CALL matrix_print(MATMUL(cov_mat_param(:,:),inform_mat_param(:,:)),0)
 
     ! Enforce symmetry:
     DO i=1,nparam
@@ -213,7 +219,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), INTENT(in)        :: mask_param
     REAL(rprec8), DIMENSION(:,:), INTENT(out)  :: cov_mat_param
     REAL(rprec8), DIMENSION(:), INTENT(inout)  :: parameters
-    LOGICAL, INTENT(inout)                   :: error
+    CHARACTER(len=*), INTENT(inout)                   :: error
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: &
          inform_mat_param!, identity, test, matrix
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: data_minus_computed 
@@ -238,8 +244,8 @@ CONTAINS
          nparam < SIZE(mask_param) .OR. &
          nparam /= SIZE(cov_mat_param,dim=1) .OR. &
          nparam /= SIZE(cov_mat_param,dim=2)) THEN
-       error = .TRUE.
-       WRITE(0,*) "fitdata: leastSquares: Shapes of arrays do not conform."
+       error = " -> estimators : leastSquares : Shapes of arrays do not conform." // &
+            TRIM(error)
        RETURN
     END IF
 
@@ -250,7 +256,8 @@ CONTAINS
          d(nparam), &
          stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> estimators : leastSquares : Could not allocate memory." // &
+            TRIM(error)
        DEALLOCATE(inform_mat_param, stat=err)
        DEALLOCATE(data_minus_computed, stat=err)
        DEALLOCATE(param_corrections, stat=err)
@@ -297,7 +304,7 @@ CONTAINS
 
     ! Sigma_param = (Sigma_param^(-1))^(-1) 
     cov_mat_param(:,:) = matinv(inform_mat_param(:,:), error, method="Cholesky")
-    IF (error) THEN
+    IF (LEN_TRIM(error) /= 0) THEN
        WRITE(0,*) "Could not find inverse of inverse covariance matrix."
        DEALLOCATE(inform_mat_param, stat=err)
        DEALLOCATE(data_minus_computed, stat=err)
@@ -371,7 +378,8 @@ CONTAINS
     DEALLOCATE(inform_mat_param, data_minus_computed, &
          param_corrections, tmp, d, stat=err)
     IF (err /= 0) THEN
-       error = .TRUE.
+       error = " -> estimators : leastSquares : Could not deallocate memory." // &
+            TRIM(error)
        DEALLOCATE(inform_mat_param, stat=err)
        DEALLOCATE(data_minus_computed, stat=err)
        DEALLOCATE(param_corrections, stat=err)
@@ -386,151 +394,141 @@ CONTAINS
 
 
 
-  SUBROUTINE leastSquares_r16_matrix(indata, inform_mat_indata, &
-       mask_indata, computed, design_mat, correction_factor, mask_param, &
-       cov_mat_param, parameters, error)
+  SUBROUTINE LevenbergMarquardt_r8_blockdiag(x, measur, &
+       information_matrix_measur, mask_measur, sub, &
+       niter, chi2_frac, cov_mat_param, params, &
+       residuals, chi2, errstr)
 
     IMPLICIT NONE
-    REAL(rprec16), DIMENSION(:,:), INTENT(in)   :: indata ! incl. cos(dec_obs)
-    REAL(rprec16), DIMENSION(:,:,:), INTENT(in) :: inform_mat_indata ! incl. cos(dec_obs)
-    LOGICAL, DIMENSION(:,:), INTENT(in)   :: mask_indata
-    REAL(rprec16), DIMENSION(:,:), INTENT(in)   :: computed ! incl. cos(dec_comp)
-    REAL(rprec16), DIMENSION(:,:,:), INTENT(in) :: design_mat ! (type,data,param) incl. cos(dec_obs)
-    REAL(rprec16), INTENT(in)                   :: correction_factor
-    LOGICAL, DIMENSION(:), INTENT(in)        :: mask_param
-    REAL(rprec16), DIMENSION(:,:), INTENT(out)  :: cov_mat_param
-    REAL(rprec16), DIMENSION(:), INTENT(inout)  :: parameters
-    LOGICAL, INTENT(inout)                   :: error
-    REAL(rprec16), DIMENSION(SIZE(parameters),SIZE(inform_mat_indata,dim=2)) :: tmp_mat
-    REAL(rprec16), DIMENSION(SIZE(cov_mat_param,dim=1),SIZE(cov_mat_param,dim=2)) :: &
-         inform_mat_param, identity, test
-    REAL(rprec16), DIMENSION(SIZE(indata,dim=1),SIZE(indata,dim=2)) :: data_minus_computed 
-    REAL(rprec16), DIMENSION(SIZE(parameters)) :: param_corrections, tmp, d
-    INTEGER :: i, j, ndata, nparam, nmultidata
+    REAL(rprec8), DIMENSION(:,:), INTENT(in)   :: x
+    REAL(rprec8), DIMENSION(:,:), INTENT(in)   :: measur ! incl. cos(dec_obs)
+    REAL(rprec8), DIMENSION(:,:,:), INTENT(in) :: information_matrix_measur ! incl. cos(dec_obs)
+    LOGICAL, DIMENSION(:,:), INTENT(in)        :: mask_measur
+    INTERFACE
+       SUBROUTINE sub(x, measur, params, residuals, jacobians, chi2, errstr)
+         USE parameters
+         IMPLICIT NONE
+         REAL(rprec8), DIMENSION(:,:), INTENT(in)    :: x
+         REAL(rprec8), DIMENSION(:,:), INTENT(in)    :: measur         
+         REAL(rprec8), DIMENSION(:), INTENT(inout)   :: params
+         REAL(rprec8), DIMENSION(:,:), INTENT(out)   :: residuals
+         REAL(rprec8), DIMENSION(:,:,:), INTENT(out) :: jacobians 
+         REAL(rprec8), INTENT(out)                   :: chi2
+         CHARACTER(len=*), INTENT(inout)             :: errstr
+       END SUBROUTINE sub
+    END INTERFACE
+    REAL(rprec8), INTENT(in)                   :: chi2_frac
+    INTEGER, INTENT(inout)                     :: niter
+    REAL(rprec8), DIMENSION(:,:), INTENT(out)  :: cov_mat_param
+    REAL(rprec8), DIMENSION(:), INTENT(inout)  :: params
+    REAL(rprec8), DIMENSION(:,:), INTENT(out)  :: residuals
+    REAL(rprec8), INTENT(out)                  :: chi2   
+    CHARACTER(len=*), INTENT(inout)            :: errstr
 
-    ndata = SIZE(indata,dim=1)
-    nmultidata = SIZE(indata,dim=2)
-    nparam = SIZE(parameters)
+    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: alpha
+    REAL(rprec8) :: chi2_previous, lambda
+    INTEGER :: i, ndata, nparam, nmultidata, nfit, err
 
-    ! Check shapes of matrices:
-    IF (nmultidata /= SIZE(inform_mat_indata,dim=1) .OR. &
-         ndata /= SIZE(inform_mat_indata,dim=2) .OR. &
-         ndata /= SIZE(inform_mat_indata,dim=3) .OR. &
-         nmultidata /= SIZE(design_mat,dim=1) .OR. &
-         ndata /= SIZE(design_mat,dim=2) .OR. &
-         nparam /= SIZE(design_mat,dim=3) .OR. &
-         ndata < SIZE(mask_indata,dim=1) .OR. &
-         nmultidata < SIZE(mask_indata,dim=2) .OR. &
-         ndata /= SIZE(computed,dim=1) .OR. &
-         nmultidata /= SIZE(computed,dim=2) .OR. &
-         nparam < SIZE(mask_param) .OR. &
-         nparam /= SIZE(cov_mat_param,dim=1) .OR. &
-         nparam /= SIZE(cov_mat_param,dim=2)) THEN
-       error = .TRUE.
-       RETURN
-    END IF
 
-    ! (1) Compute the parameters' covariance matrix COV_MAT_PARAM and
-    !     its inverse INFORM_MAT_PARAM.
+    ndata = SIZE(residuals,dim=1)
+    nmultidata = SIZE(residuals,dim=2)
+    nparam = SIZE(params)
 
-    ! Sigma_param^(-1) = A^T Sigma_data^(-1) A:
-    inform_mat_param(:,:) = 0.0_rprec16
-    DO i=1, nmultidata
-       tmp_mat = MATMUL(TRANSPOSE(design_mat(i,:,:)),inform_mat_indata(i,:,:))
-       inform_mat_param(:,:) = inform_mat_param(:,:) + &
-            MATMUL(tmp_mat(:,:),design_mat(i,:,:))
-    END DO
-    DO i=1,nparam
-       ! Check which parameters are not used:
-       IF (.NOT.mask_param(i)) THEN
-          ! Nullify the corresponding row..
-          inform_mat_param(i,:) = 0.0_rprec16
-          ! ..and column,
-          inform_mat_param(:,i) = 0.0_rprec16
-          ! and set the diagonal element to 1.
-          inform_mat_param(i,i) = 1.0_rprec16
+    ALLOCATE(alpha(nparam,nparam), stat=err)
+
+    chi2_previous = HUGE(chi2_previous)
+    lambda = -1.0_rprec8
+    DO i=1,niter
+       CALL LevenbergMarquardt_private
+       IF (ABS(chi2 - chi2_previous)/chi2 < chi2_frac .AND. &
+            chi2 < chi2_previous) THEN
+          EXIT
+       ELSE
+          chi2_previous = chi2
        END IF
     END DO
+    lambda = 0.0_rprec8
+    CALL LevenbergMarquardt_private
 
-    ! Renormalize to gain accuracy:
-    DO i=1,nparam
-       tmp(i) = SQRT(inform_mat_param(i,i)) 
-    END DO
-    DO i=1,nparam
-       DO j=i,nparam
-          inform_mat_param(i,j) = inform_mat_param(i,j)/(tmp(i)*tmp(j))
-          ! Due to symmetry:
-          inform_mat_param(j,i) = inform_mat_param(i,j)
-       END DO
-    END DO
+    DEALLOCATE(alpha, stat=err)
 
-    ! Sigma_param = (Sigma_param^(-1))^(-1) 
-    cov_mat_param(:,:) = matinv(inform_mat_param(:,:), error)
-    IF (error) THEN
-       WRITE(0,*) "Could not find inverse of inverse covariance matrix."
-       RETURN
-    END IF
+  CONTAINS
 
-    ! Enforce symmetry:
-    DO i=1,nparam
-       DO j=i,nparam
-          cov_mat_param(i,j) = 0.5_rprec16*(cov_mat_param(i,j) + cov_mat_param(j,i)) 
-          cov_mat_param(j,i) = cov_mat_param(i,j)
-       END DO
-    END DO
 
-    ! Renormalize back:
-    DO i=1,nparam
-       DO j=i,nparam
-          cov_mat_param(i,j) = cov_mat_param(i,j)/(tmp(i)*tmp(j))
-          ! Due to symmetry:
-          cov_mat_param(j,i) = cov_mat_param(i,j)
-          inform_mat_param(i,j) = inform_mat_param(i,j)*(tmp(i)*tmp(j))
-          ! Due to symmetry
-          inform_mat_param(j,i) = inform_mat_param(i,j)
-       END DO
-    END DO
+    SUBROUTINE LevenbergMarquardt_private
 
-    ! Is AA^(-1)=I ?
-    identity(:,:) = 0.0_rprec16
-    FORALL(i=1:nparam)
-       identity(i,i) = 1.0_rprec16
-    END FORALL
-    test(:,:) = MATMUL(inform_mat_param, cov_mat_param)
-    IF (ANY(ABS(test(:,:) - identity(:,:)) > 100*EPSILON(test(:,:)))) THEN
-       error = .TRUE.
-       WRITE(0,*) 'Error: Identity criterion not fulfilled:'
-       CALL matrix_print(test,0)
-       RETURN
-    END IF
+      REAL(rprec8), SAVE :: chi2_
+      REAL(rprec8), DIMENSION(:), ALLOCATABLE, SAVE :: params_, beta
+      REAL(rprec8), DIMENSION(:,:), ALLOCATABLE, SAVE :: param_corrections
 
-    ! (2) Compute parameter corrections and make the scaled
-    !     corrections. If COMPUTED and PARAMETERS are zero,
-    !     and CORRECTION_FACTOR is one, this corresponds to the 
-    !     basic least-squares fit.
+      IF (lambda < 0.0_rprec8) THEN
+         ALLOCATE(params_(nparam),beta(nparam),param_corrections(nparam,1))
+         lambda = 0.001_rprec8
+         params_ = params
+         CALL coefficients(params_, alpha, beta)
+         chi2_ = chi2
+      END IF
+      cov_mat_param = alpha
+      cov_mat_param = diagonal_multiplication(cov_mat_param,1.0_rprec8+lambda)
+      param_corrections(:,1) = beta
+      CALL gauss_jordan(cov_mat_param, param_corrections, errstr)
+      IF (LEN_TRIM(errstr) /= 0) THEN
+         errstr = " -> estimators : LevenbergMarquardt : LevenbergMarquardt_private : ." // &
+              TRIM(errstr)
+         RETURN         
+      END IF
+      IF (lambda == 0.0_rprec8) THEN
+         DEALLOCATE(params_, beta, param_corrections)
+         RETURN
+      END IF
+      params_ = params + param_corrections(:,1)
+      CALL coefficients(params_, cov_mat_param, param_corrections(:,1))
+      IF (chi2 < chi2_) THEN
+         lambda = 0.1_rprec8*lambda
+         chi2_ = chi2
+         alpha = cov_mat_param
+         beta = param_corrections(:,1)
+         params = params_
+      ELSE
+         lambda = 10.0_rprec8*lambda
+         chi2 = chi2_
+      END IF
 
-    data_minus_computed(:,:) = indata(:,:) - computed(:,:)
-    WHERE (mask_indata(:,:))
-       data_minus_computed(:,:) = 0.0_rprec16
-    END WHERE
-    ! d = A^T Sigma^(-1) y:
-    d(:) = 0.0_rprec16
-    DO i=1,nmultidata
-       tmp_mat = MATMUL(TRANSPOSE(design_mat(i,:,:)),inform_mat_indata(i,:,:))
-       d(:) = d(:) + MATMUL(tmp_mat, data_minus_computed(:,i))
-    END DO
-    WHERE (.NOT.mask_param(:))
-       d(:) = 0.0_rprec16
-    END WHERE
+    END SUBROUTINE LevenbergMarquardt_private
 
-    ! param = Sigma_param d:
-    param_corrections(:) = MATMUL(cov_mat_param(:,:), d(:))
-    WHERE (.NOT.mask_param(:))
-       param_corrections(:) = 0.0_rprec16
-    END WHERE
-    parameters(:) = parameters(:) + correction_factor*param_corrections(:)
 
-  END SUBROUTINE leastSquares_r16_matrix
+    SUBROUTINE coefficients(params, alpha, beta)
+
+      IMPLICIT NONE
+      REAL(rprec8), DIMENSION(:), INTENT(inout) :: params
+      REAL(rprec8), DIMENSION(:), INTENT(out) :: beta
+      REAL(rprec8), DIMENSION(:,:), INTENT(out) :: alpha
+
+      REAL(rprec8), DIMENSION(nmultidata,ndata,nparam) :: jacobians
+      REAL(rprec8), DIMENSION(nparam,nmultidata) :: tmp
+      INTEGER :: i
+
+      CALL sub(x, measur, params, residuals, jacobians, chi2, errstr)
+      IF (LEN_TRIM(errstr) /= 0) THEN
+         errstr = " -> estimators : LevenbergMarquardt : coefficients : ." // &
+              TRIM(errstr)
+         RETURN
+      END IF
+      ! Approximate Hessian by multiplying Jacobians
+      ! alpha = cov_param^(-1) = J^T Sigma_obs^(-1) J:
+      ! beta = J^T Sigma_obs^(-1) y:
+      alpha = 0.0_rprec8
+      beta = 0.0_rprec8
+      DO i=1,ndata
+         tmp = MATMUL(TRANSPOSE(jacobians(1:nmultidata,1:nparam,i)), &
+              information_matrix_measur(i,1:nmultidata,1:nmultidata))
+         alpha = alpha + MATMUL(tmp, jacobians(1:nmultidata,1:nparam,i))
+         beta = beta + MATMUL(tmp, residuals(i,1:nmultidata))
+      END DO
+
+    END SUBROUTINE coefficients
+
+  END SUBROUTINE LevenbergMarquardt_r8_blockdiag
 
 
 
@@ -556,10 +554,11 @@ CONTAINS
 
     IMPLICIT NONE
     INTERFACE
-       REAL(8) FUNCTION func(x, error)
+       REAL(rprec8) FUNCTION func(x, error)
+         USE parameters
          IMPLICIT NONE
-         REAL(8), DIMENSION(:), INTENT(in) :: x
-         LOGICAL, INTENT(inout) :: error
+         REAL(rprec8), DIMENSION(:), INTENT(in) :: x
+         CHARACTER(len=*), INTENT(inout) :: error
        END FUNCTION func
     END INTERFACE
     REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: p
@@ -567,7 +566,7 @@ CONTAINS
     REAL(rprec8), INTENT(in) :: ftol
     !real(rprec8), external :: func
     INTEGER(iprec4), INTENT(out) :: iter
-    LOGICAL, INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: error
 
 
     INTEGER(iprec4), PARAMETER :: ITMAX = 5000
@@ -588,7 +587,8 @@ CONTAINS
 
       ndim = SIZE(p,dim=2)
       IF (ndim /= SIZE(p,dim=1) - 1 .OR. ndim /= SIZE(y) - 1) THEN
-         error = .TRUE.
+         error = " -> estimators : amoeba : amoeba_private : Vectors are not compatible." // &
+              TRIM(error)
          RETURN
       END IF
       iter = 0 
@@ -613,7 +613,8 @@ CONTAINS
          END IF
          IF (iter >= ITMAX) THEN
             ! TMAX exceeded in amoeba
-            error = .TRUE.
+            error = " -> estimators : amoeba : amoeba_private : Maximum number of iterations exceeded." // &
+                 TRIM(error)
             RETURN
          END IF
          ! Begin a new iteration. First extrapolate by a factor -1
