@@ -28,7 +28,7 @@
 !! @see Observations_class
 !! 
 !! @author  MG
-!! @version 2009-03-20
+!! @version 2009-10-20
 !!
 MODULE SphericalCoordinates_cl
 
@@ -545,6 +545,7 @@ CONTAINS
     TYPE (SphericalCoordinates), INTENT(inout) :: this
     REAL(bp), DIMENSION(6), INTENT(in)         :: mean
     REAL(bp), DIMENSION(6,6), INTENT(in)       :: covariance
+
     REAL(bp), DIMENSION(6,6)                   :: eigenvectors, eigenvalues, A, covariance_
     REAL(bp), DIMENSION(6)                     :: norm, vector, deviates
     REAL(bp)                                   :: cosdelta
@@ -577,8 +578,9 @@ CONTAINS
 
     ! Solve U and LAMBDA from SIGMA = U LAMBDA transpose(U)
     CALL eigen_decomposition_jacobi(covariance_, vector, &
-         eigenvectors, nrotation, error)
-    IF (error) THEN
+         eigenvectors, nrotation, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
        CALL errorMessage("SphericalCoordinates / addMultinormalDeviate", &
             "Eigen decomposition unsuccessful.", 1)
        RETURN
