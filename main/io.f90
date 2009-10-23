@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-10-20
+!! @version 2009-10-22
 !!
 MODULE io
 
@@ -1788,12 +1788,12 @@ CONTAINS
     IMPLICIT NONE
     INTEGER, INTENT(in) :: lu
     CHARACTER(len=*), DIMENSION(4), INTENT(inout) :: header
-    CHARACTER(len=*), INTENT(out) :: element_type_in
-    CHARACTER(len=*), INTENT(out) :: id
-    TYPE (Orbit), INTENT(out) :: orb
-    CHARACTER(len=*), INTENT(out), OPTIONAL :: element_type_pdf
-    REAL(bp), DIMENSION(:,:), INTENT(out), OPTIONAL :: cov
-    REAL(bp), INTENT(out), OPTIONAL :: pdf, rchi2, &
+    CHARACTER(len=*), INTENT(inout) :: element_type_in
+    CHARACTER(len=*), INTENT(inout) :: id
+    TYPE (Orbit), INTENT(inout) :: orb
+    CHARACTER(len=*), INTENT(inout), OPTIONAL :: element_type_pdf
+    REAL(bp), DIMENSION(:,:), INTENT(inout), OPTIONAL :: cov
+    REAL(bp), INTENT(inout), OPTIONAL :: pdf, rchi2, &
          reg_apr, jac_sph_inv, jac_car_kep, jac_equ_kep, H, G, &
          rho1, rho2
     TYPE (Time) :: t
@@ -2121,22 +2121,26 @@ CONTAINS
        END IF
     END IF
     IF (PRESENT(cov)) THEN
-       IF (element_type_in == "keplerian") THEN
-          stdev(3:6) = stdev(3:6)*rad_deg
+       IF (INDEX(header(4),"-0009-") /= 0) THEN
+          ! Standard deviations appear to be present, so build the
+          ! covariance using the available information.
+          IF (element_type_in == "keplerian") THEN
+             stdev(3:6) = stdev(3:6)*rad_deg
+          END IF
+          DO i=1,6
+             cov(i,i) = stdev(i)**2
+          END DO
+          cov(1,2:6) = stdev(1)*stdev(2:6)*correlation(1:5)
+          cov(2:6,1) = cov(1,2:6)
+          cov(2,3:6) = stdev(2)*stdev(3:6)*correlation(6:9)
+          cov(3:6,2) = cov(2,3:6)
+          cov(3,4:6) = stdev(3)*stdev(4:6)*correlation(10:12)
+          cov(4:6,3) = cov(3,4:6)
+          cov(4,5:6) = stdev(4)*stdev(5:6)*correlation(13:14)
+          cov(5:6,4) = cov(4,5:6)
+          cov(5,6) = stdev(5)*stdev(6)*correlation(15)
+          cov(6,5) = cov(5,6)
        END IF
-       DO i=1,6
-          cov(i,i) = stdev(i)**2
-       END DO
-       cov(1,2:6) = stdev(1)*stdev(2:6)*correlation(1:5)
-       cov(2:6,1) = cov(1,2:6)
-       cov(2,3:6) = stdev(2)*stdev(3:6)*correlation(6:9)
-       cov(3:6,2) = cov(2,3:6)
-       cov(3,4:6) = stdev(3)*stdev(4:6)*correlation(10:12)
-       cov(4:6,3) = cov(3,4:6)
-       cov(4,5:6) = stdev(4)*stdev(5:6)*correlation(13:14)
-       cov(5:6,4) = cov(4,5:6)
-       cov(5,6) = stdev(5)*stdev(6)*correlation(15)
-       cov(6,5) = cov(5,6)
     END IF
     IF (INDEX(header(4),"-0030-") /= 0) THEN
        READ(lu,"(1X,E18.10)", advance="no", iostat=err) r
