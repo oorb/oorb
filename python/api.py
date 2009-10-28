@@ -1,6 +1,5 @@
-#
 # LSST Data Management System
-# Copyright 2008, 2009 LSST Corporation.
+# Copyright 2008, 2009 LSST Corporation, Mikael Granvik.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -20,6 +19,8 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 # F. Pierfederici <fpierfed@gmail.com>
+# M. Granvik <mgranvik@iki.fi>
+#
 import os
 import ctypes
 import ctypes.util
@@ -722,7 +723,7 @@ if(__name__ == '__main__'):
     # therefore need to be converted...
     
     sys.stdout.write('oorb.init:                        ')
-    ef = os.path.join(os.environ['OORB_DATA'], 'JPL_ephemeris', 'de405.dat')
+    ef = os.path.join(os.environ['OORB_DATA'], 'de405.dat')
     init(ef, verbosity=2)
     sys.stdout.write('.')
     sys.stdout.write(' (all tests ok)\n')
@@ -754,7 +755,7 @@ if(__name__ == '__main__'):
     
     
     try:
-        rangingOrbits = ranging(0, coords, mjds, mags, obscodes, filters,
+        rangingOrbits = ranging_fast(0, coords, mjds, mags, obscodes, filters,
                                 'keplerian', 5000)
         for i in range(10):
             print(rangingOrbits[i])
