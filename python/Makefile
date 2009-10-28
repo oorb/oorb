@@ -23,24 +23,23 @@
 include ../make.config
 include ../Makefile.include
 
-FCOPTIONS = $(FCOPTIONS_DEB_GFORTRAN)
-
-
 all: liboorb.$(LIBEXT)
-
 
 liboorb.o: liboorb.f90
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
-	$(FC_INC)../$(MODULEPATH) \
-	$(FC_INC)../main \
-	liboorb.f90
-
+	$(FC_INC)../$(MODULEPATH) $(FC_INC)../main liboorb.f90
 
 wrapper.o: wrapper.f90 liboorb.o
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
 	$(FC_INC)../$(MODULEPATH) \
 	$(FC_INC)../main \
 	wrapper.f90
+
+wrapper4mops.o: wrapper4mops.f90 liboorb.o
+	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
+	$(FC_INC)../$(MODULEPATH) \
+	$(FC_INC)../main \
+	wrapper4mops.f90
 
 
 liboorb.$(LIBEXT): modules classes main wrapper.o liboorb.o
@@ -50,6 +49,16 @@ liboorb.$(LIBEXT): modules classes main wrapper.o liboorb.o
 	../main/io.o \
 	../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
+
+liboorb4mops.$(LIBEXT): modules classes main wrapper4mops.o liboorb.o
+	$(FC) $(FCOPTIONS) -shared -o liboorb.$(LIBEXT) \
+	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
+	liboorb.o wrapper4mops.o \
+	../main/io.o \
+	../$(CLASSPATH)/*.o \
+	../$(MODULEPATH)/*.o
+
+mops: liboorb4mops.$(LIBEXT)
 
 main:
 	cd ../main/ ; make io.o
