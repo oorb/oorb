@@ -24,7 +24,7 @@ from constants import *
 
 
 
-initModel = "2-body"
+initModel = "n-body"
 fullModel = "n-body"
 method = "continued fraction"
 method_sw = "continued fraction"
@@ -72,4 +72,4 @@ sor_ntrial_sw = 200000
 correctionFactor = 0.2
 niterMajorMax = 20
 niterMajorMin = 2
-niterMinor = 10
+niterMinor = 100
