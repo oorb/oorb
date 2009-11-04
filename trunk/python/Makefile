@@ -58,6 +58,16 @@ liboorb4mops.$(LIBEXT): modules classes main wrapper4mops.o liboorb.o
 	../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
 
+pyoorb: modules classes main
+	f2py2.5 -m pyoorb pyoorb.f90 --build-dir ./build -c --noarch --f90exec=$(FC) \
+	--f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
+	../main/io.o ../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o"
+
+propagation1: modules classes main
+	f2py2.6 -m propagation1 propagation1.f90 --build-dir ./build -c --noarch --f90exec=$(FC) \
+	--f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
+	../main/io.o ../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o"
+
 mops: liboorb4mops.$(LIBEXT)
 
 main:
@@ -72,5 +82,5 @@ modules:
 
 # Remove library and modules:
 clean:
-	rm -f *~ *.mod *.o *.$(LIBEXT) *.pyc *.pyc.$(OS)
+	rm -fr build *.so *~ *.mod *.o *.$(LIBEXT) *.pyc *.pyc.$(OS)
 
