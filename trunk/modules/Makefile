@@ -24,22 +24,17 @@
 # Makefile for helper modules.
 #
 # Author: MG
-# Date:   2009-11-05
+# Date:   2009-11-09
 
 include ../make.config
 include ../Makefile.include
 MODFILES := $(notdir $(patsubst %.f90,%.o,$(F90_MODULE_SOURCES)))
-SOFILES := $(notdir $(patsubst %.f90,%.$(LIBEXT),$(F90_MODULE_SOURCES)))
 
 # Make everything:
-all: $(MODFILES) $(SOFILES)
+all: $(MODFILES)
 
 %.o : %.f90
 	$(FC) -c $(FCOPTIONS) $<
 
-%.$(LIBEXT): %.o 
-	gfortran -shared -fPIC `ls *.$(LIBEXT)` -o lib`basename $< .o`.$(LIBEXT) $<
-
 clean:
-	rm -f *~ *.o *.$(LIBEXT) *.mod
-
+	rm -f *~ *.o *.mod
