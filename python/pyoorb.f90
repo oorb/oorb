@@ -36,7 +36,7 @@ MODULE pyoorb
   USE Orbit_cl
   USE StochasticOrbit_cl
   IMPLICIT NONE
-  CHARACTER(len=11), DIMENSION(6), PUBLIC :: ORBITAL_ELEMENTS = (/             &
+  CHARACTER(len=11), DIMENSION(6), PUBLIC :: element_types = (/             &
        "cartesian  ",&
        "cometary   ",&
        "keplerian  ",&
@@ -125,154 +125,111 @@ CONTAINS
 
 
 
-  SUBROUTINE oorb_ephemeris(in_orbit,                                         &
-       in_covariance,                                    &
-       in_obscode,                                       &
-       in_num_ephems,                                    &
-       in_step,                                          &
-       out_ephems,                                       &
+  SUBROUTINE oorb_ephemeris(in_orbits, &
+       in_covariances,                 &
+       in_obscode,                     &
+       in_date_ephems,                 &
+       out_ephems,                     &
        error_code)
 
     ! Input/Output variables.
     ! Input flattened orbit:
     !  (track_id, elements(1:6), epoch, H, G, element_type_index)
-    REAL(8),DIMENSION(11), INTENT(in)                   :: in_orbit
+    REAL(8),DIMENSION(:,:), INTENT(in)                  :: in_orbits ! (1:norb,1:11)
     ! Uncertainty matrices:
-    REAL(8), DIMENSION(6,6), INTENT(in)                 :: in_covariance
+    REAL(8), DIMENSION(:,:,:), INTENT(in)               :: in_covariances ! (1:norb,1:6,1:6)
+    ! Observatory code as defined by the Minor Planet Center
     CHARACTER(len=4), INTENT(in)                        :: in_obscode
-    ! Compute epehemeris from the orbit epoch to epoch+in_step*in_num_ephems
-    ! Number of ephemeris to compute.
-    INTEGER, INTENT(in)                                 :: in_num_ephems
-    ! Ephemeris step in fractional days.
-    REAL(8), INTENT(in)                                 :: in_step
+    ! Ephemeris dates.
+    REAL(8), DIMENSION(:), INTENT(in)                   :: in_date_ephems ! (1:ndate)
     ! Output ephemeris
     ! out_ephems = ((dist, ra, dec, mag, mjd, raErr, decErr, smaa, smia, pa), )
-    REAL(8), DIMENSION(in_num_ephems,10), INTENT(out)   :: out_ephems
+    !REAL(8), DIMENSION(SIZE(in_orbits,dim=1), &
+    !     SIZE(in_date_ephems,dim=1),10), INTENT(out)    :: out_ephems ! (1:norb,1:ndate,1:10)
+    REAL(8), DIMENSION(:,:,:), INTENT(out)              :: out_ephems ! (1:norb,1:ndate,1:10)
     ! Output error code
     INTEGER, INTENT(out)                                :: error_code
 
-    ! Internal variables.
-    TYPE (StochasticOrbit)                              :: storb
-    TYPE (Orbit), DIMENSION(:), POINTER         :: orb_arr_in
+    ! Internal variables.  
+    TYPE (StochasticOrbit) :: storb
+    TYPE (Orbit) :: orb
     TYPE (Observatories) :: obsies
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER  :: observers
-    TYPE (SphericalCoordinates), DIMENSION(:,:),POINTER :: ephemerides
-    TYPE (Time)                                         :: t
-    CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: id_arr_in
-    CHARACTER(len=ELEMENT_TYPE_LEN), DIMENSION(:), ALLOCATABLE :: element_type_pdf_arr_in
-    CHARACTER(len=DESIGNATION_LEN)              :: id
-    CHARACTER(len=INTEGRATOR_LEN)              :: integrator
-    CHARACTER(len=6)                                    :: dyn_model
-    CHARACTER(len=11)                           :: element_type
-    REAL(8), DIMENSION(:,:,:), POINTER         :: cov_arr_in
-    REAL(8), DIMENSION(:,:,:), POINTER                  :: cov_arr
-    REAL(8), DIMENSION(:,:), POINTER                    :: pdfs_arr
-    REAL(8), DIMENSION(:,:), POINTER           :: HG_arr_in
-    REAL(8), DIMENSION(:,:), ALLOCATABLE       :: jac_arr_in
-    REAL(8), DIMENSION(:), ALLOCATABLE         :: rchi2_arr_in, &
-         pdf_arr_in, &
-         reg_apr_arr_in
-    REAL(8), DIMENSION(6,6)                            :: corr
-    REAL(8), DIMENSION(6)                      :: elements, coordinates, stdev
-    REAL(8)                                            :: integration_step, mjd, step, timespan 
-    INTEGER                                             :: element_type_index, j, k, l, norb, nstep
-    LOGICAL, DIMENSION(:), POINTER                      :: perturbers
-
-
-    CALL NEW(obsies)
-
+    TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: observers
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides
+    TYPE (Time) :: t
+    CHARACTER(len=INTEGRATOR_LEN) :: integrator
+    CHARACTER(len=6) :: dyn_model
+    REAL(8), DIMENSION(:,:,:), POINTER :: cov_arr
+    REAL(8), DIMENSION(6,6) :: corr
+    REAL(8), DIMENSION(6) :: coordinates, &
+         elements, &
+         stdev
+    REAL(8) :: integration_step, &
+         mjd
+    INTEGER :: i, &
+         j, &
+         k, &
+         l
+    LOGICAL, DIMENSION(10) :: perturbers
 
     ! Init
     error_code = 0
     dyn_model = "n-body"
     integration_step = 5.0_8
-    ALLOCATE(perturbers(10), stat=error_code)
-    IF(error_code /= 0) THEN
-       ! Error in allocating memory!
-       error_code = 57
-       RETURN
-    END IF
     perturbers = .TRUE.
+    CALL NEW(obsies)
+    ALLOCATE(observers(SIZE(in_date_ephems)))
+    DO i=1,SIZE(in_date_ephems)
+       CALL NEW(t, in_date_ephems(i), internal_timescale)
+       IF (error) THEN
+          ! Error in creating a new Time object.
+          error_code = 35
+          RETURN
+       END IF
+       ! Compute heliocentric observatory coordinates
+       observers(i) = getObservatoryCCoord(obsies, in_obscode, t)
+       IF (error) THEN
+          ! Error in getObservatoryCCoord()
+          error_code = 36
+          RETURN
+       END IF
+       CALL rotateToEquatorial(observers(i))
+       CALL NULLIFY(t)
+    END DO
 
+    ! Loop over orbits:
+    DO i=1,SIZE(in_orbits,dim=1)
 
-    ! ORBITS:
-    ! Get the element type from the input flattened orbit.
-    element_type_index = in_orbit(11)
-    IF(element_type_index .LE. 0 .OR.                                       &
-         element_type_index .GT. SIZE(ORBITAL_ELEMENTS)) THEN
-       ! Error: unsupported orbital elements.
-       error_code = 58
-       RETURN
-    END IF
-    element_type = ORBITAL_ELEMENTS(element_type_index)
+       ! Get the element type from the input flattened orbit.
+       IF(NINT(in_orbits(i,11)) < 0 .OR.                                       &
+            NINT(in_orbits(i,11)) > SIZE(element_types)) THEN
+          ! Error: unsupported orbital elements.
+          error_code = 58
+          RETURN
+       END IF
 
-    ! Compute timespan given step and num_ephems.
-    timespan = in_step * in_num_ephems
-    step = in_step          ! Might be modified by the code below.
-
-    ! Init vars.
-    error = .FALSE.
-    error_code = 0
-    ! We try to keep these two subroutines similar so that we can merge in 
-    ! the future, hence the norb = 1 thing here.
-    norb = 1
-
-    ! Get the element type from the input flattened in_orbit.
-    element_type_index = in_orbit(11)
-    IF(element_type_index .LE. 0 .OR.                               &
-         element_type_index .GT. SIZE(ORBITAL_ELEMENTS)) THEN
-       ! Error: unsupported orbital elements.
-       error_code = 58
-       RETURN
-    END IF
-    element_type = ORBITAL_ELEMENTS(element_type_index)
-
-    ! Allocate memory for the orbit arrays.
-    ALLOCATE(id_arr_in(norb), orb_arr_in(norb), &
-         element_type_pdf_arr_in(norb), cov_arr_in(norb,6,6), &
-         HG_arr_in(norb,2), pdf_arr_in(norb), &
-         rchi2_arr_in(norb), jac_arr_in(norb,3), &
-         reg_apr_arr_in(norb), stat=error_code)
-    IF (error_code /= 0) THEN
-       ! Error in memory allocation
-       error_code = 33
-       RETURN
-    END IF
-    jac_arr_in = -1.0_8
-    pdf_arr_in = -1.0_8
-    cov_arr_in = 0.0_8
-    id_arr_in = " "
-    ! There are no H/G in the input in_orbit.
-    FORALL (j=1:norb)
-       HG_arr_in(j,1:2) = (/ 99.0_8, 9.9_8 /)
-    END FORALL
-    element_type_pdf_arr_in = element_type
-
-    ! Get each flattened orbit and create an Orbit instance.
-    DO j=1,norb
+       ! Get each flattened orbit and create an Orbit instance.
        ! Just to beat on a dead horse:
-       ! in_orbit(1):      id
-       ! in_orbit(2:7):    elements(1:6)
-       ! in_orbit(8):      epoch_mjd
-       ! in_orbit(9):      H
-       ! in_orbit(10):     G
-       ! in_orbit(j,11):   element_type_index
+       ! in_orbits(1):      id
+       ! in_orbits(2:7):    elements(1:6)
+       ! in_orbits(8):      epoch_mjd
+       ! in_orbits(9):      H
+       ! in_orbits(10):     G
+       ! in_orbits(j,11):   element_type_index
        ! Convert angles to radians, if needed.
-       WRITE(id_arr_in(j), fmt="(A,I10.10)") "TRK", IDINT(in_orbit(1))
-
-       elements(1:6) = in_orbit(2:7)
-       IF (element_type == "keplerian") THEN
+       elements(1:6) = in_orbits(i,2:7)
+       IF (element_types(NINT(in_orbits(i,11))) == "keplerian") THEN
           elements(3:6) = elements(3:6) * rad_deg
-       ELSE IF (element_type == "delaunay") THEN
+       ELSE IF (element_types(NINT(in_orbits(i,11))) == "delaunay") THEN
           elements(1:3) = elements(1:3) * rad_deg
-       ELSE IF (element_type == "poincare") THEN
+       ELSE IF (element_types(NINT(in_orbits(i,11))) == "poincare") THEN
           elements(4) = elements(4) * rad_deg
-       ELSE IF (element_type == "equinoctial") THEN
+       ELSE IF (element_types(NINT(in_orbits(i,11))) == "equinoctial") THEN
           elements(6) = elements(6) * rad_deg
        END IF
 
        ! Create a Time instance.
-       CALL NEW(t, in_orbit(8), internal_timescale)
+       CALL NEW(t, in_orbits(i,8), internal_timescale)
        IF(error) THEN
           ! Error in creating a Time instance.
           error_code = 57
@@ -280,159 +237,105 @@ CONTAINS
        END IF
 
        ! Now create an Orbit instance.
-       CALL NEW(orb_arr_in(j),                                 &
-            elements(1:6),                                 &
-            element_type,                                  &
-            "ecliptic",                                    &
+       CALL NEW(orb, &
+            elements(1:6), &
+            element_types(NINT(in_orbits(i,11))), &
+            "ecliptic", &
             copy(t))
        CALL NULLIFY(t)
-
-       ! Covariance. We do not need to re-compute it since we already have 
-       ! it.
-       cov_arr_in(j,:,:) = in_covariance(:,:)
-    END DO
-
-    ! Initialize stochasticorbits if uncertainty information available:
-    IF (norb > 1 .AND. &
-         ALL(pdf_arr_in > 0.0_8) .AND. &
-         ALL(jac_arr_in > 0.0_8)) THEN
-       CALL NULLIFY(storb)
-       CALL NEW(storb, orb_arr_in, pdf_arr_in, &
-            element_type_pdf_arr_in(1), jac_arr=jac_arr_in, &
-            reg_apr_arr=reg_apr_arr_in, &
-            rchi2_arr=rchi2_arr_in)
-       id = id_arr_in(1)
-       DEALLOCATE(id_arr_in)
-       ALLOCATE(id_arr_in(1))
-       id_arr_in(1) = id
-    ELSE IF (norb == 1 .AND. ALL(cov_arr_in(:,1,1) > 0.0_8)) THEN
-       CALL NEW(storb, orb_arr_in(1), cov_arr_in(1,:,:), &
-            cov_type=element_type, element_type=element_type)
-    ELSE
-       ! Error in StochasticOrbit instantiation
-       error_code = 34
-       RETURN
-    END IF
-
-    ! Cleanup.
-    DO j=1,norb
-       CALL NULLIFY(orb_arr_in(j))
-    END DO
-    DEALLOCATE(orb_arr_in, pdf_arr_in, rchi2_arr_in, jac_arr_in, &
-         reg_apr_arr_in, element_type_pdf_arr_in)
-
-    ! EPHEMS:
-    ! Init vars
-    error = .FALSE.
-    error_code = 0
-    IF (step <= 0.0_8) THEN
-       nstep = 1        
-    ELSE
-       step = SIGN(ABS(step),timespan)
-       IF (ABS(timespan) > 10.0_8*EPSILON(timespan) .AND. &
-            ABS(timespan) < ABS(step)) THEN
-          step = timespan
-       END IF
-       nstep = NINT(timespan/step) + 1
-    END IF
-    integration_step = MIN(ABS(step),integration_step)
-
-    ! Use equatorial coordinates:
-    CALL toCartesian(storb, "equatorial")
-
-    t = getTime(storb)
-    mjd = getMJD(t, internal_timescale)
-    CALL NULLIFY(t)
-    ALLOCATE(observers(nstep))
-    DO j=1,nstep
-       CALL NEW(t, mjd+(j-1)*step, internal_timescale)
+       CALL setParameters(orb, &
+            dyn_model=dyn_model, &
+            perturbers=perturbers, &
+            integrator=integrator, &
+            integration_step=integration_step)
        IF (error) THEN
-          ! Error in creating a new Time object.
-          error_code = 35
+          ! Error in setParameters()
+          error_code = 37
           RETURN
        END IF
-       ! Compute heliocentric observatory coordinates
-       observers(j) = getObservatoryCCoord(obsies, in_obscode, t)
+
+       ! Initialize stochasticorbit:
+       CALL NEW(storb, orb, in_covariances(i,:,:), &
+            cov_type=element_types(NINT(in_orbits(i,11))), &
+            element_type=element_types(NINT(in_orbits(i,11))))
        IF (error) THEN
-          ! Error in getObservatoryCCoord()
-          error_code = 36
+          ! Error in StochasticOrbit instantiation
+          error_code = 34
           RETURN
        END IF
-       CALL rotateToEquatorial(observers(j))
-       CALL NULLIFY(t)
-    END DO
+       CALL NULLIFY(orb)
 
-    ! Set integration parameters
-    IF (dyn_model == "n-body") THEN
+       ! EPHEMS:
+       ! Use equatorial coordinates:
+       CALL toCartesian(storb, "equatorial")
+
+       ! Set integration parameters
        CALL setParameters(storb, &
             dyn_model=dyn_model, &
             perturbers=perturbers, &
             integrator=integrator, &
             integration_step=integration_step)
-    ELSE
-       CALL setParameters(storb, &
-            dyn_model=dyn_model)
-    END IF
-    IF (error) THEN
-       ! Error in setParameters()
-       error_code = 37
-       RETURN
-    END IF
-
-    ! Compute topocentric ephemerides
-    CALL getEphemerides(storb, &
-         observers, &
-         ephemerides, &
-         cov_arr=cov_arr, &
-         pdfs_arr=pdfs_arr)
-    IF (error) THEN
-       ! Error in getEphemerides()
-       error_code = 38
-       RETURN
-    END IF
-
-    ! Now Export the ephem_arr to a flar array.
-    DO j=1,SIZE(observers)
-       t = getTime(observers(j))
-       mjd = getMJD(t, internal_timescale)
-       CALL NULLIFY(t)
-       IF (containsSampledPDF(storb)) THEN
-          ! We do not support exporting ephems from ranging orbits yet.
-          ! FIXME: support ephems from ranging orbits?
-          error_code = 59
+       IF (error) THEN
+          ! Error in setParameters()
+          error_code = 37
           RETURN
        END IF
 
-       ! Input orbits correspond to one or more single-point estimates of the pdf.
-       ! Make sure that the ephemeris is equatorial:
-       CALL rotateToEquatorial(ephemerides(1,j))
-       coordinates = getCoordinates(ephemerides(1,j))
-       DO k=1,6
-          stdev(k) = SQRT(cov_arr(k,k,j)) 
-       END DO
-       DO k=1,6
-          DO l=1,6
-             corr(k,l) = cov_arr(k,l,j) / &
-                  (stdev(k)*stdev(l))
+       ! Compute topocentric ephemerides
+       CALL getEphemerides(storb, &
+            observers, &
+            ephemerides, &
+            cov_arr=cov_arr)
+       IF (error) THEN
+          ! Error in getEphemerides()
+          error_code = 38
+          RETURN
+       END IF
+
+       ! Now Export the ephem_arr to a flar array.
+       DO j=1,SIZE(observers)
+          t = getTime(observers(j))
+          mjd = getMJD(t, internal_timescale)
+          CALL NULLIFY(t)
+
+          ! Input orbits correspond to one or more single-point estimates of the pdf.
+          ! Make sure that the ephemeris is equatorial:
+          CALL rotateToEquatorial(ephemerides(1,j))
+          coordinates = getCoordinates(ephemerides(1,j))
+          DO k=1,6
+             stdev(k) = SQRT(cov_arr(k,k,j)) 
           END DO
+          DO k=1,6
+             DO l=1,6
+                corr(k,l) = cov_arr(k,l,j) / &
+                     (stdev(k)*stdev(l))
+             END DO
+          END DO
+
+          ! Write the output ephem array.
+          out_ephems(i,j,1) = coordinates(1)                ! distance
+          out_ephems(i,j,2:3) = coordinates(2:3)/rad_deg    ! ra/dec
+          ! FIXME: compute predicted magnitude!
+          out_ephems(i,j,4) = 99.0_8                       ! mag
+          out_ephems(i,j,5) = mjd                           ! ephem mjd
+          ! FIXME: compute positional uncertainties.
+          out_ephems(i,j,6) = 99.0_8                       ! raErr
+          out_ephems(i,j,7) = 99.0_8                       ! decErr
+          out_ephems(i,j,8) = 99.0_8                       ! semi-major axis
+          out_ephems(i,j,9) = 99.0_8                       ! semi-minor axis
+          out_ephems(i,j,10) = 99.0_8                      ! position angle
+
+          CALL NULLIFY(ephemerides(1,j))
        END DO
 
-       ! Write the output ephem array.
-       out_ephems(j, 1) = coordinates(1)                ! distance
-       out_ephems(j, 2:3) = coordinates(2:3)/rad_deg    ! ra/dec
-       ! FIXME: compute predicted magnitude!
-       out_ephems(j, 4) = 99.0_8                       ! mag
-       out_ephems(j, 5) = mjd                           ! ephem mjd
-       ! FIXME: compute positional uncertainties.
-       out_ephems(j, 6) = 99.0_8                       ! raErr
-       out_ephems(j, 7) = 99.0_8                       ! decErr
-       out_ephems(j, 8) = 99.0_8                       ! semi-major axis
-       out_ephems(j, 9) = 99.0_8                       ! semi-minor axis
-       out_ephems(j, 10) = 99.0_8                      ! position angle
+       CALL NULLIFY(storb)
+       DEALLOCATE(ephemerides, cov_arr)
+
     END DO
-    IF(error_code /= 0) THEN
-       RETURN
-    END IF
+    DO i=1,SIZE(observers)
+       CALL NULLIFY(observers(i))
+    END DO
+    DEALLOCATE(observers)
 
   END SUBROUTINE oorb_ephemeris
 
