@@ -20,6 +20,8 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 # F. Pierfederici <fpierfed@gmail.com>
+# M. Granvik
+
 include ../make.config
 include ../Makefile.include
 
@@ -35,13 +37,6 @@ wrapper.o: wrapper.f90 liboorb.o
 	$(FC_INC)../main \
 	wrapper.f90
 
-wrapper4mops.o: wrapper4mops.f90 liboorb.o
-	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
-	$(FC_INC)../$(MODULEPATH) \
-	$(FC_INC)../main \
-	wrapper4mops.f90
-
-
 liboorb.$(LIBEXT): modules classes main wrapper.o liboorb.o
 	$(FC) $(FCOPTIONS) -shared -o liboorb.$(LIBEXT) \
 	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
@@ -50,25 +45,13 @@ liboorb.$(LIBEXT): modules classes main wrapper.o liboorb.o
 	../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
 
-liboorb4mops.$(LIBEXT): modules classes main wrapper4mops.o liboorb.o
-	$(FC) $(FCOPTIONS) -shared -o liboorb.$(LIBEXT) \
-	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
-	liboorb.o wrapper4mops.o \
-	../main/io.o \
-	../$(CLASSPATH)/*.o \
-	../$(MODULEPATH)/*.o
+pyoorb: liboorb
+	f2py2.6 -m pyoorb pyoorb.f90 --build-dir ./build -c --noarch -loorb -L../lib \
+	--f90exec=$(FC) --f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH)" 
 
-pyoorb: modules classes main
-	f2py2.5 -m pyoorb pyoorb.f90 --build-dir ./build -c --noarch --f90exec=$(FC) \
-	--f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
-	../main/io.o ../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o"
 
-propagation1: modules classes main
-	f2py2.6 -m propagation1 propagation1.f90 --build-dir ./build -c --noarch --f90exec=$(FC) \
-	--f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
-	../main/io.o ../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o"
-
-mops: liboorb4mops.$(LIBEXT)
+liboorb:
+	cd ../$(LIBPATH) ; make
 
 main:
 	cd ../main/ ; make io.o
@@ -82,5 +65,5 @@ modules:
 
 # Remove library and modules:
 clean:
-	rm -fr build *.so *~ *.mod *.o *.$(LIBEXT) *.pyc *.pyc.$(OS)
+	rm -fr build *~ *.mod *.o *.so *.dylib *.$(LIBEXT) *.pyc *.pyc.$(OS)
 
