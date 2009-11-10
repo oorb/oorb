@@ -49,12 +49,14 @@ MODULE pyoorb
 
 CONTAINS
 
-  SUBROUTINE oorb_init(ephemeris_fname, error_verbosity, info_verbosity)
+  SUBROUTINE oorb_init(ephemeris_fname, error_verbosity, &
+       info_verbosity, error_code)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(in), OPTIONAL :: ephemeris_fname
     INTEGER, INTENT(in), OPTIONAL :: error_verbosity
     INTEGER, INTENT(in), OPTIONAL :: info_verbosity
+    INTEGER, INTENT(out) :: error_code
 
     TYPE (Observatories) :: obsies
     TYPE (Time) :: t
@@ -79,6 +81,10 @@ CONTAINS
        CALL JPL_ephemeris_init(error, ephemeris_fname)
     ELSE
        CALL JPL_ephemeris_init(error, ephemeris_fname)
+    END IF
+    IF (error) THEN
+       error_code = 1
+       RETURN
     END IF
     ! Set verbosity of error messages (0=nothing,5=everything,1=default)
     IF (PRESENT(error_verbosity)) THEN
