@@ -49,6 +49,9 @@ pyoorb: liboorb
 	f2py2.6 -m pyoorb pyoorb.f90 --build-dir ./build -c --noarch -loorb -L../lib \
 	--f90exec=$(FC) --f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH)" 
 
+pyoorb.o: liboorb
+	$(FC) -c $(FCOPTIONS) pyoorb.f90 $(FC_INC)../$(MAINPATH) \
+	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH)
 
 liboorb:
 	cd ../$(LIBPATH) ; make
