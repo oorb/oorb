@@ -24,7 +24,7 @@
 !! Module for which f2py builds Python wrappers.
 !!
 !! @author  MG, FP
-!! @version 2009-11-09
+!! @version 2009-11-10
 !!
 MODULE pyoorb
 
@@ -61,7 +61,6 @@ CONTAINS
     TYPE (Observatories) :: obsies
     TYPE (Time) :: t
 
-
     ! Set path to data files:
     CALL setAccessToDataFiles()
     CALL JPL_ephemeris_init(error, &
@@ -74,8 +73,18 @@ CONTAINS
     END IF
     ! Read OBSCODE.dat
     CALL NEW(obsies)
+    IF (error) THEN
+       error_code = 1
+       error = .FALSE.
+       RETURN       
+    END IF
     ! Read TAI-UTC.dat and ET-UT.dat
     CALL NEW(t)
+    IF (error) THEN
+       error_code = 2
+       error = .FALSE.
+       RETURN       
+    END IF
     ! Read de405.dat
     IF (PRESENT(ephemeris_fname)) THEN
        CALL JPL_ephemeris_init(error, ephemeris_fname)
@@ -83,7 +92,7 @@ CONTAINS
        CALL JPL_ephemeris_init(error, ephemeris_fname)
     END IF
     IF (error) THEN
-       error_code = 1
+       error_code = 3
        RETURN
     END IF
     ! Set verbosity of error messages (0=nothing,5=everything,1=default)
@@ -313,19 +322,18 @@ CONTAINS
           END DO
 
           ! Write the output ephem array.
-          out_ephems(i,j,1) = coordinates(1)                ! distance
-          out_ephems(i,j,2:3) = coordinates(2:3)/rad_deg    ! ra/dec
-          ! FIXME: compute predicted magnitude!
-          out_ephems(i,j,4) = 99.0_8                       ! mag
-          out_ephems(i,j,5) = mjd                           ! ephem mjd
-          ! FIXME: compute positional uncertainties.
-          out_ephems(i,j,6) = 99.0_8                       ! raErr
-          out_ephems(i,j,7) = 99.0_8                       ! decErr
-          out_ephems(i,j,8) = 99.0_8                       ! semi-major axis
+          out_ephems(i,j,1) = coordinates(1)                    ! distance
+          out_ephems(i,j,2:3) = coordinates(2:3)/rad_deg        ! ra/dec
+          out_ephems(i,j,4) = 99.0_8                            ! mag
+          out_ephems(i,j,5) = mjd                               ! ephem mjd
+          out_ephems(i,j,6) = stdev(2)/rad_asec                 ! raErr
+          out_ephems(i,j,7) = stdev(3)/rad_asec                 ! decErr
+          out_ephems(i,j,8) = SQRT(SUM(stdev(2:3)**2))/rad_asec ! semi-major axis
           out_ephems(i,j,9) = 99.0_8                       ! semi-minor axis
           out_ephems(i,j,10) = 99.0_8                      ! position angle
 
           CALL NULLIFY(ephemerides(1,j))
+
        END DO
 
        CALL NULLIFY(storb)
