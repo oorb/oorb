@@ -24,29 +24,25 @@
 # This is a makefile for Fortran 90/95 classes.
 #
 # Author: MG
-# Date:   2009-11-05
+# Date:   2009-11-09
 
 include ../make.config
 include ../Makefile.include
 OBJECTFILES := $(notdir $(patsubst %.f90,%.o,$(F90_CLASS_SOURCES)))
-SOFILES := $(notdir $(patsubst %.f90,%.$(LIBEXT),$(F90_CLASS_SOURCES)))
 
 # Make everything:
-all: modules $(OBJECTFILES) $(SOFILES)
+all: modules $(OBJECTFILES)
 
 # Compile object files:
 %.o : %.f90
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../modules $<
-
-%.$(LIBEXT): %.o 
-	gfortran -shared -fPIC `ls *.$(LIBEXT) ../$(MODULEPATH)/*.$(LIBEXT)` -o lib`basename $< .o`.$(LIBEXT) $<
 
 modules:
 	cd ../$(MODULEPATH) ; $(MAKE) all
 
 # Remove compiled classes and modules:
 clean:
-	rm -f *.o *.$(LIBEXT) *.mod *~
+	rm -f *.o *.mod *~
 
 
 
