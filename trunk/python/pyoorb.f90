@@ -49,7 +49,7 @@ MODULE pyoorb
 
 CONTAINS
 
-  SUBROUTINE init(ephemeris_fname, error_verbosity, info_verbosity)
+  SUBROUTINE oorb_init(ephemeris_fname, error_verbosity, info_verbosity)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(in), OPTIONAL :: ephemeris_fname
@@ -93,7 +93,7 @@ CONTAINS
        info_verb = 1
     END IF
 
-  END SUBROUTINE init
+  END SUBROUTINE oorb_init
 
 
 
@@ -166,11 +166,10 @@ CONTAINS
     REAL(8), DIMENSION(:), ALLOCATABLE         :: rchi2_arr_in, &
          pdf_arr_in, &
          reg_apr_arr_in
-    REAL(8), DIMENSION(1,6,6)                            :: cov
     REAL(8), DIMENSION(6,6)                            :: corr
     REAL(8), DIMENSION(6)                      :: elements, coordinates, stdev
     REAL(8)                                            :: integration_step, mjd, step, timespan 
-    INTEGER                                             :: element_type_index, i, j, k, l, norb, nstep
+    INTEGER                                             :: element_type_index, j, k, l, norb, nstep
     LOGICAL, DIMENSION(:), POINTER                      :: perturbers
 
 
