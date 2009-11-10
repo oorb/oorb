@@ -24,7 +24,7 @@
 # Makefile for main programs.
 #
 # Author: MG
-# Date:   2009-09-02
+# Date:   2009-11-09
 
 include ../make.config
 include ../Makefile.include
@@ -63,7 +63,7 @@ oorb4research: classes $(IOMOD).o
 	$(IOMOD).o ../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
 
-$(IOMOD).o: $(IOMOD).f90
+$(IOMOD).o: classes $(IOMOD).f90
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
 	$(FC_INC)../$(MODULEPATH) $(IOMOD).f90
 
