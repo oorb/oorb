@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2009-09-10
+!! @version 2009-11-10
 !!
 MODULE planetary_data
 
@@ -245,6 +245,11 @@ CONTAINS
     INTEGER                                :: err, i, lu, count
     LOGICAL                                :: done, used
 
+    ! Make sure this is the first call to this routine
+    IF (.NOT.first) THEN
+       RETURN
+    END IF
+
     IF (PRESENT(filename) .AND. LEN_TRIM(filename) <= 256) THEN
        fname = TRIM(filename)
     ELSE
@@ -315,7 +320,7 @@ CONTAINS
     ALLOCATE(tmp(RECORD_SIZE/2,NRECORD_MAX), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory."
+       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory (5)."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
@@ -343,7 +348,7 @@ CONTAINS
     ALLOCATE(buf(SIZE(tmp,dim=1),i), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory."
+       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory (10)."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
