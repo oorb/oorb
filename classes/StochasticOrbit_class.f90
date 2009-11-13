@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-10-22
+!! @version 2009-11-12
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1669,7 +1669,7 @@ CONTAINS
 
     IF (PRESENT(frame)) THEN
        frame_ = frame
-    ELSE IF (cov_type_ == "keplerian") THEN
+    ELSE IF (cov_type_ == "keplerian" .OR. cov_type_ == "cometary") THEN
        frame_ = "ecliptic"
     ELSE IF (.NOT.PRESENT(frame) .AND. .NOT.PRESENT(cov_type)) THEN
        frame_ = getFrame(this%orb_ml_cmp)
@@ -1683,8 +1683,35 @@ CONTAINS
     IF (cov_type_ == this%cov_type_prm) THEN
        getCovarianceMatrix_SO = this%cov_ml_cmp
     ELSE IF (this%cov_type_prm == "cartesian" .AND. &
+         cov_type_ == "cometary") THEN
+       CALL partialsCometaryWrtCartesian(this%orb_ml_cmp, partials)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / getCovarianceMatrix", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
+    ELSE IF (this%cov_type_prm == "cartesian" .AND. &
          cov_type_ == "keplerian") THEN
        CALL partialsKeplerianWrtCartesian(this%orb_ml_cmp, partials)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / getCovarianceMatrix", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
+    ELSE IF (this%cov_type_prm == "cometary" .AND. &
+         cov_type_ == "cartesian") THEN
+       CALL partialsCartesianWrtCometary(this%orb_ml_cmp, partials, frame_)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / getCovarianceMatrix", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
+    ELSE IF (this%cov_type_prm == "cometary" .AND. &
+         cov_type_ == "keplerian") THEN
+       CALL partialsKeplerianWrtCometary(this%orb_ml_cmp, partials)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / getCovarianceMatrix", &
                "TRACE BACK (5)", 1)
@@ -1694,6 +1721,10 @@ CONTAINS
     ELSE IF (this%cov_type_prm == "keplerian" .AND. &
          cov_type_ == "cartesian") THEN
        CALL partialsCartesianWrtKeplerian(this%orb_ml_cmp, partials, frame_)
+       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
+    ELSE IF (this%cov_type_prm == "keplerian" .AND. &
+         cov_type_ == "cometary") THEN
+       CALL partialsCometaryWrtKeplerian(this%orb_ml_cmp, partials)
        getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
     ELSE
        error = .TRUE.
@@ -3138,6 +3169,12 @@ CONTAINS
           ! Changed 2008-12-14
           !jac = 1.0_bp/this%jac_arr_cmp(:,2)
           jac = this%jac_arr_cmp(:,2)
+       ELSE IF (this%element_type_prm == "cometary" .OR. &
+            element_type == "cometary") THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getPDFValues", &
+               "Not yet implemented for cometary elements.", 1)
+          RETURN
        END IF
        getPDFValues = this%pdf_arr_cmp*jac
        DEALLOCATE(jac, stat=err)
@@ -7368,7 +7405,9 @@ CONTAINS
             "Could not allocate memory.", 1)
        RETURN
     END IF
-    intarr = (/ (i,i=1,nobs) /)
+    DO i=1,nobs
+       intarr(i) = i
+    END DO
     iobs1 = MINLOC(intarr, dim=1,mask=(this%obs_masks_prm(:,2) .AND. &
          this%obs_masks_prm(:,3)))
     iobs2 = MAXLOC(intarr, dim=1,mask=(this%obs_masks_prm(:,2) .AND. &
@@ -10090,7 +10129,24 @@ CONTAINS
             "Frame " // TRIM(frame_) // " not recognized.", 1)
     END IF
 
-    IF (this%element_type_prm == "keplerian") THEN
+    IF (this%element_type_prm == "cartesian") THEN
+       IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+          DO i=1,SIZE(this%orb_arr_cmp)
+             CALL toCartesian(this%orb_arr_cmp(i), frame_)
+          END DO
+       END IF
+       IF (ASSOCIATED(this%cov_ml_cmp)) THEN
+          this%cov_ml_cmp = getCovarianceMatrix(this, "cartesian", frame_)
+       END IF
+       IF (exist(this%orb_ml_cmp) .AND. ASSOCIATED(this%pdf_arr_cmp)) THEN
+          i = MAXLOC(this%pdf_arr_cmp,dim=1)
+          CALL NULLIFY(this%orb_ml_cmp)
+          this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
+       ELSE IF (exist(this%orb_ml_cmp) .AND. .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
+          CALL toCartesian(this%orb_ml_cmp, frame_)
+       END IF
+    ELSE IF (this%element_type_prm == "cometary" .OR. &
+         this%element_type_prm == "keplerian") THEN
        IF (ASSOCIATED(this%orb_arr_cmp) .AND. &
             ASSOCIATED(this%pdf_arr_cmp) .AND. &
             ASSOCIATED(this%jac_arr_cmp)) THEN
@@ -10113,24 +10169,7 @@ CONTAINS
           CALL toCartesian(this%orb_ml_cmp, frame_)
        END IF
        this%element_type_prm = "cartesian"
-    ELSE IF (this%element_type_prm == "cartesian") THEN
-       IF (ASSOCIATED(this%orb_arr_cmp)) THEN
-          DO i=1,SIZE(this%orb_arr_cmp)
-             CALL toCartesian(this%orb_arr_cmp(i), frame_)
-          END DO
-       END IF
-       IF (ASSOCIATED(this%cov_ml_cmp)) THEN
-          this%cov_ml_cmp = getCovarianceMatrix(this, "cartesian", frame_)
-       END IF
-       IF (exist(this%orb_ml_cmp) .AND. ASSOCIATED(this%pdf_arr_cmp)) THEN
-          i = MAXLOC(this%pdf_arr_cmp,dim=1)
-          CALL NULLIFY(this%orb_ml_cmp)
-          this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
-       ELSE IF (exist(this%orb_ml_cmp) .AND. .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
-          CALL toCartesian(this%orb_ml_cmp, frame_)
-       END IF
-    ELSE IF (this%element_type_prm /= "cartesian" .AND. &
-         this%element_type_prm /= "keplerian") THEN
+    ELSE
        error =.TRUE.
        CALL errorMessage("StochasticOrbit / toCartesian", &
             "Cannot convert from " // TRIM(this%element_type_prm) // &
@@ -10139,6 +10178,59 @@ CONTAINS
     END IF
 
   END SUBROUTINE toCartesian_SO
+
+
+
+
+
+  SUBROUTINE toCometary_SO(this)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout)  :: this
+
+    REAL(bp), DIMENSION(:), POINTER :: pdf_arr
+    INTEGER :: i
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / toCometary", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (this%element_type_prm == "cartesian" .OR. &
+         this%element_type_prm == "keplerian") THEN
+       IF (ASSOCIATED(this%orb_arr_cmp) .AND. &
+            ASSOCIATED(this%pdf_arr_cmp) .AND. &
+            ASSOCIATED(this%jac_arr_cmp)) THEN
+          DO i=1,SIZE(this%orb_arr_cmp)
+             CALL toCometary(this%orb_arr_cmp(i))
+             !this%pdf_arr_cmp(i) = this%pdf_arr_cmp(i)*this%jac_arr_cmp(i,2)
+          END DO
+          pdf_arr => getPDFValues(this, "cometary")
+          this%pdf_arr_cmp = pdf_arr
+          DEALLOCATE(pdf_arr)
+       END IF
+       IF (ASSOCIATED(this%cov_ml_cmp)) THEN
+          this%cov_ml_cmp = getCovarianceMatrix(this, "cometary")
+       END IF
+       IF (exist(this%orb_ml_cmp) .AND. ASSOCIATED(this%pdf_arr_cmp)) THEN
+          i = MAXLOC(this%pdf_arr_cmp,dim=1)
+          CALL NULLIFY(this%orb_ml_cmp)
+          this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
+       ELSE IF (exist(this%orb_ml_cmp) .AND. .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
+          CALL toCometary(this%orb_ml_cmp)          
+       END IF
+       this%element_type_prm = "cometary"
+    ELSE
+       error =.TRUE.
+       CALL errorMessage("StochasticOrbit / toCometary", &
+            "Cannot convert from " // TRIM(this%element_type_prm) // &
+            " to Cometary elements.", 1)
+       RETURN
+    END IF
+
+  END SUBROUTINE toCometary_SO
 
 
 
@@ -10182,8 +10274,7 @@ CONTAINS
           CALL toKeplerian(this%orb_ml_cmp)          
        END IF
        this%element_type_prm = "keplerian"
-    ELSE IF (this%element_type_prm /= "cartesian" .AND. &
-         this%element_type_prm /= "keplerian") THEN
+    ELSE
        error =.TRUE.
        CALL errorMessage("StochasticOrbit / toKeplerian", &
             "Cannot convert from " // TRIM(this%element_type_prm) // &
