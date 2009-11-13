@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-10-20
+!! @version 2009-11-12
 !!
 MODULE Orbit_cl
 
@@ -4304,6 +4304,39 @@ CONTAINS
                 RETURN
              END IF
 
+          CASE ("cometary")
+
+             ! Topocentric equatorial coordinates wrt cometary orbital elements.
+             CALL partialsSCoordWrtCometary(this_2, observer_, scoord_partials)
+             IF (error) THEN
+                CALL errorMessage("Orbit / getEphemeris (multiple)", &
+                     "TRACE BACK 35", 1)
+                DEALLOCATE(this_arr_, stat=err)
+                DEALLOCATE(ephemeris, stat=err)
+                DEALLOCATE(jacobian_prop_arr_, stat=err)
+                IF (PRESENT(partials_arr)) THEN
+                   DEALLOCATE(partials_arr, stat=err)
+                END IF
+                IF (PRESENT(this_prop_arr)) THEN
+                   DEALLOCATE(this_prop_arr, stat=err)
+                END IF
+                IF (PRESENT(this_lt_corr_arr)) THEN
+                   DEALLOCATE(this_lt_corr_arr, stat=err)
+                END IF
+                IF (PRESENT(jacobian_lt_corr_arr)) THEN
+                   DEALLOCATE(jacobian_lt_corr_arr, stat=err)
+                END IF
+                IF (PRESENT(jacobian_prop_arr)) THEN
+                   DEALLOCATE(jacobian_prop_arr, stat=err)
+                END IF
+                CALL NULLIFY(observer_)
+                CALL NULLIFY(t_observer)
+                CALL NULLIFY(this_1)
+                CALL NULLIFY(t_)
+                CALL NULLIFY(this_2)
+                RETURN
+             END IF
+
           CASE ("keplerian")
 
              ! Topocentric equatorial coordinates wrt Keplerian orbital elements.
@@ -4342,7 +4375,7 @@ CONTAINS
              error = .TRUE.
              CALL errorMessage("Orbit / getEphemeris (multiple)", &
                   "Could not choose between element types" // &
-                  "('cartesian' or 'keplerian'): " // &
+                  "('cartesian', 'cometary', or 'keplerian'): " // &
                   TRIM(this_arr_(i)%element_type), 1)
              RETURN
 
@@ -6237,6 +6270,353 @@ CONTAINS
 
   !! *Description*:
   !!
+  !! Returns the partial derivatives of Cartesian orbital elements
+  !! wrt cometary orbital elements.
+  !!
+  !!       dx/dq      dx/de      dx/di      dx/dOmega      dx/domega      dx/dt
+  !!
+  !!       dy/dq      dy/de      dy/di      dy/dOmega      dy/domega      dy/dt
+  !!
+  !!       dz/dq      dz/de      dz/di      dz/dOmega      dz/domega      dz/dt
+  !!
+  !!      ddx/dq     ddx/de     ddx/di     ddx/dOmega     ddx/domega     ddx/dt
+  !!
+  !!      ddy/dq     ddy/de     ddy/di     ddy/dOmega     ddy/domega     ddy/dt
+  !!
+  !!      ddz/dq     ddz/de     ddz/di     ddz/dOmega     ddz/domega     ddz/dt
+  !!
+  SUBROUTINE partialsCartesianWrtCometary(this, partials, frame)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in)               :: this
+    REAL(bp), DIMENSION(6,6), INTENT(out)  :: partials
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: frame
+
+    CHARACTER(len=1024) :: errstr
+
+    ! Cometary wrt Cartesian:
+    IF (PRESENT(frame)) THEN
+       CALL partialsCometaryWrtCartesian(this, partials, frame)
+    ELSE
+       CALL partialsCometaryWrtCartesian(this, partials)
+    END IF
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsCartesianWrtCometary", &
+            "TRACE BACK 5", 1)
+       RETURN
+    END IF
+    errstr = ""
+    partials = matinv(partials, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsCartesianWrtCometary", &
+            "From matinv in linal: " // TRIM(errstr), 1)
+       RETURN
+    END IF
+
+  END SUBROUTINE partialsCartesianWrtCometary
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the partial derivatives of Cartesian orbital elements
+  !! wrt Keplerian orbital elements.
+  !!
+  !!       dx/da      dx/de      dx/di      dx/dOmega      dx/domega      dx/dM
+  !!
+  !!       dy/da      dy/de      dy/di      dy/dOmega      dy/domega      dy/dM
+  !!
+  !!       dz/da      dz/de      dz/di      dz/dOmega      dz/domega      dz/dM
+  !!
+  !!      ddx/da     ddx/de     ddx/di     ddx/dOmega     ddx/domega     ddx/dM
+  !!
+  !!      ddy/da     ddy/de     ddy/di     ddy/dOmega     ddy/domega     ddy/dM
+  !!
+  !!      ddz/da     ddz/de     ddz/di     ddz/dOmega     ddz/domega     ddz/dM
+  !!
+  SUBROUTINE partialsCartesianWrtKeplerian(this, partials, frame)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in)               :: this
+    REAL(bp), DIMENSION(6,6), INTENT(out)  :: partials
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: frame
+
+    REAL(bp), DIMENSION(6,6) :: pecl
+    REAL(bp), DIMENSION(4,6) :: ppolar
+    REAL(bp), DIMENSION(3,3) :: RM
+    REAL(bp), DIMENSION(6) :: kep_elements
+    REAL(bp), DIMENSION(4) :: polar_coord
+    REAL(bp), DIMENSION(3) :: vector3, sin_angles, cos_angles
+    REAL(bp) :: tmp1, tmp2, tmp3, tmp4, b, mm
+    INTEGER :: i
+    CHARACTER(len=FRAME_LEN) :: frame_
+
+    partials = 0.0_bp
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    kep_elements = getElements(this, "keplerian")
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
+            "TRACE BACK 1", 1)
+       RETURN
+    END IF
+
+    ! Semiminor axis:
+    b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
+
+    ! Mean motion:
+    mm = ggc/SQRT(kep_elements(1)**3.0_bp)
+
+    ! Sines and cosines of the inclination, the longitude of the
+    ! ascending node, and the argument of periapsis:
+    sin_angles(1) = SIN(kep_elements(3))
+    sin_angles(2) = SIN(kep_elements(4))
+    sin_angles(3) = SIN(kep_elements(5))
+    cos_angles(1) = COS(kep_elements(3))
+    cos_angles(2) = COS(kep_elements(4))
+    cos_angles(3) = COS(kep_elements(5))
+
+    CALL partialsPolarCoordWrtKeplerian(this, ppolar, polar_coord)
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
+            "TRACE BACK 10", 1)
+       RETURN
+    END IF
+
+    ! Partials for Cartesian ecliptic: a, e, M
+    DO i=1,3
+       vector3(:) = 0.0_bp
+       RM = getTransformationMatrix(this)
+       IF (error) THEN
+          CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
+               "TRACE BACK 20", 1)
+          RETURN
+       END IF
+       vector3(1:2) = ppolar(1:2,i)
+       pecl(1:3,i) = MATMUL(RM,vector3)
+
+       vector3(:) = 0.0_bp
+       vector3(1:2) = ppolar(3:4,i)
+       pecl(4:6,i) = MATMUL(RM,vector3)
+    END DO
+    pecl(:,6) = pecl(:,3)
+
+    ! Partials for Cartesian ecliptic: i, Om, om
+    tmp1 = -sin_angles(2)*cos_angles(3) - &
+         cos_angles(2)*sin_angles(3)*cos_angles(1)
+
+    tmp2 =  sin_angles(2)*sin_angles(3) - &
+         cos_angles(2)*cos_angles(3)*cos_angles(1)
+
+    tmp3 =  cos_angles(2)*cos_angles(3) - &
+         sin_angles(2)*sin_angles(3)*cos_angles(1)
+
+    tmp4 = -cos_angles(2)*sin_angles(3) - &
+         sin_angles(2)*cos_angles(3)*cos_angles(1)
+
+    ! Inclination:
+    ! coordinates
+    pecl(1,3) = polar_coord(1)*sin_angles(2)*sin_angles(3)*sin_angles(1) + &
+         polar_coord(2)*sin_angles(2)*cos_angles(3)*sin_angles(1)
+    pecl(2,3) =-polar_coord(1)*cos_angles(2)*sin_angles(3)*sin_angles(1) - &
+         polar_coord(2)*cos_angles(2)*cos_angles(3)*sin_angles(1)
+    pecl(3,3) = polar_coord(1)*sin_angles(3)*cos_angles(1) + &
+         polar_coord(2)*cos_angles(3)*cos_angles(1)
+    ! velocities
+    pecl(4,3) = polar_coord(3)*sin_angles(2)*sin_angles(3)*sin_angles(1) + &
+         polar_coord(4)*sin_angles(2)*cos_angles(3)*sin_angles(1)
+    pecl(5,3) =-polar_coord(3)*cos_angles(2)*sin_angles(3)*sin_angles(1) - &
+         polar_coord(4)*cos_angles(2)*cos_angles(3)*sin_angles(1)
+    pecl(6,3) = polar_coord(3)*sin_angles(3)*cos_angles(1) + &
+         polar_coord(4)*cos_angles(3)*cos_angles(1)
+
+    ! Longitude of ascending node
+    pecl(1,4) = polar_coord(1) * tmp1 + polar_coord(2) * tmp2
+    pecl(2,4) = polar_coord(1) * tmp3 + polar_coord(2) * tmp4
+    pecl(3,4) = 0.0_bp
+    pecl(4,4) = polar_coord(3) * tmp1 + polar_coord(4) * tmp2
+    pecl(5,4) = polar_coord(3) * tmp3 + polar_coord(4) * tmp4
+    pecl(6,4) = 0.0_bp
+
+    ! Argument of periapsis
+    pecl(1,5) = polar_coord(1) * tmp4 - polar_coord(2) * tmp3
+    pecl(2,5) =-polar_coord(1) * tmp2 + polar_coord(2) * tmp1
+    pecl(3,5) = polar_coord(1)*cos_angles(3)*sin_angles(1) - &
+         polar_coord(2)*sin_angles(3)*sin_angles(1)
+    pecl(4,5) = polar_coord(3) * tmp4 - polar_coord(4) * tmp3
+    pecl(5,5) =-polar_coord(3) * tmp2 + polar_coord(4) * tmp1
+    pecl(6,5) = polar_coord(3)*cos_angles(3)*sin_angles(1) - &
+         polar_coord(4)*sin_angles(3)*sin_angles(1)
+
+    IF (PRESENT(frame)) THEN
+       frame_ = frame
+       CALL locase(frame_, error)
+       IF (error) THEN
+          CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
+               "The frame string contains forbidden characters.", 1)
+          RETURN
+       END IF
+    ELSE IF (this%element_type == "cartesian") THEN
+       frame_ = this%frame
+    ELSE
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
+            "Coordinate frame undefined.", 1)
+       RETURN
+    END IF
+
+    IF (frame_ == "equatorial") THEN
+       DO i=1,6 ! i is element
+          CALL rotateToEquatorial(pecl(:,i))
+          partials(:,i) = pecl(:,i)
+       END DO
+    ELSE IF (frame_ == "ecliptic") THEN
+       partials = pecl
+    ELSE
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
+            "Unknown frame:" // TRIM(frame_) // ".", 1)
+       RETURN       
+    END IF
+
+  END SUBROUTINE partialsCartesianWrtKeplerian
+
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the partial derivatives of cometary orbital elements
+  !! wrt Keplerian orbital elements.
+  !!
+  !!       dq/da      dq/de      dq/di      dq/dOmega      dq/domega      dq/dM
+  !!
+  !!       de/da      de/de      de/di      de/dOmega      de/domega      de/dM
+  !!
+  !!       di/da      di/de      di/di      di/dOmega      di/domega      di/dM
+  !!
+  !!   dOmega/da  dOmega/de  dOmega/di  dOmega/dOmega  dOmega/domega  dOmega/dM
+  !!
+  !!   domega/da  domega/de  domega/di  domega/dOmega  domega/domega  domega/dM
+  !!
+  !!       dt/da      dt/de      dt/di      dt/dOmega      dt/domega      dt/dM
+  !!
+  SUBROUTINE partialsCometaryWrtKeplerian(this, partials)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in)               :: this
+    REAL(bp), DIMENSION(6,6), INTENT(out)  :: partials
+
+    REAL(bp), DIMENSION(6) :: elements
+
+    ! Keplerian elements:
+    elements = getElements(this, "keplerian")
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsCometaryWrtKeplerian", &
+            "TRACE BACK 5", 1)
+       RETURN
+    END IF
+    partials = identity_matrix(6)
+    ! 1 - e
+    partials(1,1) = 1.0_bp - elements(2)
+    ! a
+    partials(1,2) = elements(1)
+    ! Inverse of mean motion:
+    partials(6,6) = SQRT(elements(1)**3.0_bp)/ggc
+
+  END SUBROUTINE partialsCometaryWrtKeplerian
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the partial derivatives of Keplerian orbital elements
+  !! wrt Cartesian orbital elements.
+  !!
+  !! partials-matrix:
+  !!
+  !!       dq/dx     dq/dy     dq/dz     dq/ddx     dq/ddy     dq/ddz
+  !!       de/dx     de/dy     de/dz     de/ddx     de/ddy     de/ddz
+  !!       di/dx     di/dy     di/dz     di/ddx     di/ddy     di/ddz
+  !!   dOmega/dx dOmega/dy dOmega/dz dOmega/ddx dOmega/ddy dOmega/ddz
+  !!   domega/dx domega/dy domega/dz domega/ddx domega/ddy domega/ddz
+  !!       dt/dx     dt/dy     dt/dz     dt/ddx     dt/ddy     dt/ddz
+  !!
+  SUBROUTINE partialsCometaryWrtCartesian(this, partials, frame)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in)               :: this
+    REAL(bp), DIMENSION(6,6), INTENT(out)  :: partials
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: frame
+
+    CHARACTER(len=FRAME_LEN) :: frame_
+    REAL(bp), DIMENSION(6,6) :: com_kep, kep_car
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsCometaryWrtCartesian", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (PRESENT(frame)) THEN
+       frame_ = frame
+       CALL locase(frame_, error)
+       IF (error) THEN
+          CALL errorMessage("Orbit / partialsCometaryWrtCartesian", &
+               "The frame string contains forbidden characters.", 1)
+          RETURN
+       END IF
+    ELSE IF (this%element_type == "cartesian") THEN
+       frame_ = this%frame
+    ELSE
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsCometaryWrtCartesian", &
+            "Coordinate frame undefined.", 1)
+       RETURN
+    END IF
+    IF (frame_ /= "ecliptic" .AND. frame_ /= "equatorial") THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsCometaryWrtCartesian", &
+            "Unknown frame:" // TRIM(frame_) // ".", 1)
+       RETURN       
+    END IF
+
+    CALL partialsKeplerianWrtCartesian(this, kep_car, frame_)
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsCometaryWrtCartesian", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
+    CALL partialsCometaryWrtKeplerian(this, com_kep)
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsCometaryWrtCartesian", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+    partials = MATMUL(com_kep,kep_car)
+
+  END SUBROUTINE partialsCometaryWrtCartesian
+
+
+
+
+
+  !! *Description*:
+  !!
   !! Returns the partial derivatives of Keplerian orbital elements
   !! wrt Cartesian orbital elements.
   !!
@@ -6415,174 +6795,46 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Returns the partial derivatives of Cartesian orbital elements
-  !! wrt Keplerian orbital elements.
+  !! Returns the partial derivatives of Keplerian orbital elements
+  !! wrt cometary orbital elements.
   !!
-  !!       dx/da      dx/de      dx/di      dx/dOmega      dx/domega      dx/dM
+  !!       da/dq      da/de      da/di      da/dOmega      da/domega      da/dt
   !!
-  !!       dy/da      dy/de      dy/di      dy/dOmega      dy/domega      dy/dM
+  !!       de/dq      de/de      de/di      de/dOmega      de/domega      de/dt
   !!
-  !!       dz/da      dz/de      dz/di      dz/dOmega      dz/domega      dz/dM
+  !!       di/dq      di/de      di/di      di/dOmega      di/domega      di/dt
   !!
-  !!      ddx/da     ddx/de     ddx/di     ddx/dOmega     ddx/domega     ddx/dM
+  !!   dOmega/dq  dOmega/de  dOmega/di  dOmega/dOmega  dOmega/domega  dOmega/dt
   !!
-  !!      ddy/da     ddy/de     ddy/di     ddy/dOmega     ddy/domega     ddy/dM
+  !!   domega/dq  domega/de  domega/di  domega/dOmega  domega/domega  domega/dt
   !!
-  !!      ddz/da     ddz/de     ddz/di     ddz/dOmega     ddz/domega     ddz/dM
+  !!       dM/dq      dM/de      dM/di      dM/dOmega      dM/domega      dM/dt
   !!
-  SUBROUTINE partialsCartesianWrtKeplerian(this, partials, frame)
+  SUBROUTINE partialsKeplerianWrtCometary(this, partials)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(in)               :: this
     REAL(bp), DIMENSION(6,6), INTENT(out)  :: partials
-    CHARACTER(len=*), INTENT(in), OPTIONAL :: frame
 
-    REAL(bp), DIMENSION(6,6) :: pecl
-    REAL(bp), DIMENSION(4,6) :: ppolar
-    REAL(bp), DIMENSION(3,3) :: RM
-    REAL(bp), DIMENSION(6) :: kep_elements
-    REAL(bp), DIMENSION(4) :: polar_coord
-    REAL(bp), DIMENSION(3) :: vector3, sin_angles, cos_angles
-    REAL(bp) :: tmp1, tmp2, tmp3, tmp4, b, mm
-    INTEGER :: i
-    CHARACTER(len=FRAME_LEN) :: frame_
+    CHARACTER(len=1024) :: errstr
 
-    partials = 0.0_bp
-
-    IF (.NOT. this%is_initialized) THEN
-       error = .TRUE.
-       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
-            "Object has not yet been initialized.", 1)
-       RETURN
-    END IF
-
-    kep_elements = getElements(this, "keplerian")
+    ! Cometary wrt Keplerian:
+    CALL partialsCometaryWrtKeplerian(this, partials)
     IF (error) THEN
-       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
-            "TRACE BACK 1", 1)
+       CALL errorMessage("Orbit / partialsKeplerianWrtCometary", &
+            "TRACE BACK 5", 1)
        RETURN
     END IF
-
-    ! Semiminor axis:
-    b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
-
-    ! Mean motion:
-    mm = ggc/SQRT(kep_elements(1)**3.0_bp)
-
-    ! Sines and cosines of the inclination, the longitude of the
-    ! ascending node, and the argument of periapsis:
-    sin_angles(1) = SIN(kep_elements(3))
-    sin_angles(2) = SIN(kep_elements(4))
-    sin_angles(3) = SIN(kep_elements(5))
-    cos_angles(1) = COS(kep_elements(3))
-    cos_angles(2) = COS(kep_elements(4))
-    cos_angles(3) = COS(kep_elements(5))
-
-    CALL partialsPolarCoordWrtKeplerian(this, ppolar, polar_coord)
-    IF (error) THEN
-       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
-            "TRACE BACK 10", 1)
-       RETURN
-    END IF
-
-    ! Partials for Cartesian ecliptic: a, e, M
-    DO i=1,3
-       vector3(:) = 0.0_bp
-       RM = getTransformationMatrix(this)
-       IF (error) THEN
-          CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
-               "TRACE BACK 20", 1)
-          RETURN
-       END IF
-       vector3(1:2) = ppolar(1:2,i)
-       pecl(1:3,i) = MATMUL(RM,vector3)
-
-       vector3(:) = 0.0_bp
-       vector3(1:2) = ppolar(3:4,i)
-       pecl(4:6,i) = MATMUL(RM,vector3)
-    END DO
-    pecl(:,6) = pecl(:,3)
-
-    ! Partials for Cartesian ecliptic: i, Om, om
-    tmp1 = -sin_angles(2)*cos_angles(3) - &
-         cos_angles(2)*sin_angles(3)*cos_angles(1)
-
-    tmp2 =  sin_angles(2)*sin_angles(3) - &
-         cos_angles(2)*cos_angles(3)*cos_angles(1)
-
-    tmp3 =  cos_angles(2)*cos_angles(3) - &
-         sin_angles(2)*sin_angles(3)*cos_angles(1)
-
-    tmp4 = -cos_angles(2)*sin_angles(3) - &
-         sin_angles(2)*cos_angles(3)*cos_angles(1)
-
-    ! Inclination:
-    ! coordinates
-    pecl(1,3) = polar_coord(1)*sin_angles(2)*sin_angles(3)*sin_angles(1) + &
-         polar_coord(2)*sin_angles(2)*cos_angles(3)*sin_angles(1)
-    pecl(2,3) =-polar_coord(1)*cos_angles(2)*sin_angles(3)*sin_angles(1) - &
-         polar_coord(2)*cos_angles(2)*cos_angles(3)*sin_angles(1)
-    pecl(3,3) = polar_coord(1)*sin_angles(3)*cos_angles(1) + &
-         polar_coord(2)*cos_angles(3)*cos_angles(1)
-    ! velocities
-    pecl(4,3) = polar_coord(3)*sin_angles(2)*sin_angles(3)*sin_angles(1) + &
-         polar_coord(4)*sin_angles(2)*cos_angles(3)*sin_angles(1)
-    pecl(5,3) =-polar_coord(3)*cos_angles(2)*sin_angles(3)*sin_angles(1) - &
-         polar_coord(4)*cos_angles(2)*cos_angles(3)*sin_angles(1)
-    pecl(6,3) = polar_coord(3)*sin_angles(3)*cos_angles(1) + &
-         polar_coord(4)*cos_angles(3)*cos_angles(1)
-
-    ! Longitude of ascending node
-    pecl(1,4) = polar_coord(1) * tmp1 + polar_coord(2) * tmp2
-    pecl(2,4) = polar_coord(1) * tmp3 + polar_coord(2) * tmp4
-    pecl(3,4) = 0.0_bp
-    pecl(4,4) = polar_coord(3) * tmp1 + polar_coord(4) * tmp2
-    pecl(5,4) = polar_coord(3) * tmp3 + polar_coord(4) * tmp4
-    pecl(6,4) = 0.0_bp
-
-    ! Argument of periapsis
-    pecl(1,5) = polar_coord(1) * tmp4 - polar_coord(2) * tmp3
-    pecl(2,5) =-polar_coord(1) * tmp2 + polar_coord(2) * tmp1
-    pecl(3,5) = polar_coord(1)*cos_angles(3)*sin_angles(1) - &
-         polar_coord(2)*sin_angles(3)*sin_angles(1)
-    pecl(4,5) = polar_coord(3) * tmp4 - polar_coord(4) * tmp3
-    pecl(5,5) =-polar_coord(3) * tmp2 + polar_coord(4) * tmp1
-    pecl(6,5) = polar_coord(3)*cos_angles(3)*sin_angles(1) - &
-         polar_coord(4)*sin_angles(3)*sin_angles(1)
-
-    IF (PRESENT(frame)) THEN
-       frame_ = frame
-       CALL locase(frame_, error)
-       IF (error) THEN
-          CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
-               "The frame string contains forbidden characters.", 1)
-          RETURN
-       END IF
-    ELSE IF (this%element_type == "cartesian") THEN
-       frame_ = this%frame
-    ELSE
+    errstr = ""
+    partials = matinv(partials, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
-            "Coordinate frame undefined.", 1)
+       CALL errorMessage("Orbit / partialsKeplerianWrtCometary", &
+            "From matinv in linal: " // TRIM(errstr), 1)
        RETURN
     END IF
 
-    IF (frame_ == "equatorial") THEN
-       DO i=1,6 ! i is element
-          CALL rotateToEquatorial(pecl(:,i))
-          partials(:,i) = pecl(:,i)
-       END DO
-    ELSE IF (frame_ == "ecliptic") THEN
-       partials = pecl
-    ELSE
-       error = .TRUE.
-       CALL errorMessage("Orbit / partialsCartesianWrtKeplerian", &
-            "Unknown frame:" // TRIM(frame_) // ".", 1)
-       RETURN       
-    END IF
-
-  END SUBROUTINE partialsCartesianWrtKeplerian
-
+  END SUBROUTINE partialsKeplerianWrtCometary
 
 
 
@@ -6794,6 +7046,70 @@ CONTAINS
     partials(6,6) = inv_x2y2z2 * SQRT(x2y2)
 
   END SUBROUTINE partialsSCoordWrtCartesian
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the partial derivatives of spherical coordinates wrt
+  !! cometary orbital elements.
+  !!
+  !! partials-matrix:
+  !!
+  !!       dr/dq      dr/de      dr/di      dr/dOmega      dr/domega      dr/dt
+  !!
+  !!   dalpha/dq  dalpha/de  dalpha/di  dalpha/dOmega  dalpha/domega  dalpha/dt
+  !!
+  !!   ddelta/dq  ddelta/de  ddelta/di  ddelta/dOmega  ddelta/domega  ddelta/dt
+  !!
+  !!      ddr/dq     ddr/de     ddr/di     ddr/dOmega     ddr/domega     ddr/dt
+  !!
+  !!  ddalpha/dq ddalpha/de ddalpha/di ddalpha/dOmega ddalpha/domega ddalpha/dt
+  !!
+  !!  dddelta/dq dddelta/de dddelta/di dddelta/dOmega dddelta/domega dddelta/dt
+  !!
+  SUBROUTINE partialsSCoordWrtCometary(this, observer, partials)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in)                :: this
+    TYPE (CartesianCoordinates), INTENT(in) :: observer
+    REAL(bp), DIMENSION(6,6), INTENT(out)   :: partials
+
+    REAL(bp), DIMENSION(6,6) :: scoord_kep, kep_com
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsSCoordWrtCometary", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT. exist(observer)) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsSCoordWrtCometary", &
+            "Observer has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    CALL partialsSCoordWrtKeplerian(this, observer, scoord_kep)
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsSCoordWrtCometary", &
+            "TRACE BACK (5).", 1)
+       RETURN
+    END IF
+
+    ! Partials between Keplerian and cometary elements
+    CALL partialsKeplerianWrtCometary(this, kep_com)
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsSCoordWrtCometary", &
+            "TRACE BACK (10).", 1)
+       RETURN
+    END IF
+    partials = MATMUL(scoord_kep,kep_com)
+
+  END SUBROUTINE partialsSCoordWrtCometary
 
 
 
@@ -7478,7 +7794,7 @@ CONTAINS
        DO i=1,nthis
           element_type_arr(i) = "cartesian"
           IF (this_arr(i)%element_type /= "cartesian") THEN
-             ! Non-Cartesian elements (usually means Keplerian elements)
+             ! Non-Cartesian elements
              element_type_arr(i) = this_arr(i)%element_type
              this_ = copy(this_arr(i))
              this_%elements = elm_arr(:,i)
@@ -7528,7 +7844,11 @@ CONTAINS
                       RETURN
                    END IF
                 END IF
-                CALL partialsCartesianWrtKeplerian(this_arr(i), partials0(i,:,:), frame="equatorial")
+                IF (this_arr(i)%element_type == "keplerian") THEN
+                   CALL partialsCartesianWrtKeplerian(this_arr(i), partials0(i,:,:), frame="equatorial")
+                ELSE IF (this_arr(i)%element_type == "cometary") THEN
+                   CALL partialsCartesianWrtCometary(this_arr(i), partials0(i,:,:), frame="equatorial")                   
+                END IF
                 IF (error) THEN
                    CALL errorMessage("Orbit / propagate (multiple)", &
                         "TRACE BACK (40)", 1)
@@ -7877,11 +8197,17 @@ CONTAINS
                         elm_arr(:,nthis+naddit+(i-1)*12+j+6)) / &
                         (2.0_bp*this_arr(i)%finite_diff_prm(j))
                 END DO
-             ELSE IF (element_type_arr(i) == "keplerian" .AND. &
+             ELSE IF ((element_type_arr(i) == "keplerian" .OR. &
+                  element_type_arr(i) == "cometary") .AND. &
                   .NOT.ALL(this_arr(i)%finite_diff_prm > 0.0_bp)) THEN
                 ! If element type is Keplerian and ve approach:
-                CALL partialsKeplerianWrtCartesian(this_arr(i), &
-                     partials1, frame="equatorial")
+                IF (element_type_arr(i) == "keplerian") THEN
+                   CALL partialsKeplerianWrtCartesian(this_arr(i), &
+                        partials1, frame="equatorial")
+                ELSE IF (element_type_arr(i) == "cometary") THEN
+                   CALL partialsCometaryWrtCartesian(this_arr(i), &
+                        partials1, frame="equatorial")                   
+                END IF
                 IF (error) THEN
                    CALL errorMessage("Orbit / propagate (multiple)", &
                         "TRACE BACK (65)", 1)
@@ -7904,6 +8230,7 @@ CONTAINS
                    CALL rotateToEcliptic(jacobian(i,j,:))
                 END DO
              ELSE IF (element_type_arr(i) /= "cartesian" .AND. &
+                  element_type_arr(i) /= "cometary" .AND. &
                   element_type_arr(i) /= "keplerian") THEN 
                 error =.TRUE.
                 CALL errorMessage("Orbit / propagate (multiple)", &
