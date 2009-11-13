@@ -26,7 +26,7 @@
 # Script for selecting the compiler and setting general options.
 #
 # Author:  MG
-# Version: 2009-03-12
+# Version: 2009-11-13
 #
 
 include_file=Makefile.include
@@ -41,6 +41,7 @@ if [[ $1 == absoft ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_ABSOFT)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_ABSOFT)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_ABSOFT)' >> $include_file
 
 elif [[ $1 == compaq ]] ; then
 
@@ -51,6 +52,7 @@ elif [[ $1 == compaq ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_COMPAQ)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_COMPAQ)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_COMPAQ)' >> $include_file
 
 elif [[ $1 == ibm ]] ; then
 
@@ -65,6 +67,7 @@ elif [[ $1 == ibm ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_IBM)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_IBM)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_IBM)' >> $include_file
 
 elif [[ $1 == intel ]] ; then
 
@@ -75,6 +78,7 @@ elif [[ $1 == intel ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_INTEL)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_INTEL)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_INTEL)' >> $include_file
 
 elif [[ $1 == lahey ]] ; then
 
@@ -85,6 +89,7 @@ elif [[ $1 == lahey ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_LAHEY)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_LAHEY)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_LAHEY)' >> $include_file
 
 elif [[ $1 == sun ]] ; then
 
@@ -97,6 +102,7 @@ elif [[ $1 == sun ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_SUN)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_SUN)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_SUN)' >> $include_file
 
 elif [[ $1 == g95 ]] ; then
 
@@ -107,6 +113,7 @@ elif [[ $1 == g95 ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_G95)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_G95)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_G95)' >> $include_file
 
 elif [[ $1 == gfortran ]] ; then
 
@@ -117,6 +124,7 @@ elif [[ $1 == gfortran ]] ; then
 	echo 'FCOPTIONS = $(FCOPTIONS_DEB_GFORTRAN)' >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_GFORTRAN)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_GFORTRAN)' >> $include_file
 
 else
 
