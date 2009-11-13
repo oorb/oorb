@@ -319,6 +319,10 @@ MODULE StochasticOrbit_cl
      MODULE PROCEDURE toCartesian_SO
   END INTERFACE
 
+  INTERFACE toCometary
+     MODULE PROCEDURE toCometary_SO
+  END INTERFACE
+
   INTERFACE toKeplerian
      MODULE PROCEDURE toKeplerian_SO
   END INTERFACE
@@ -1682,6 +1686,7 @@ CONTAINS
 
     IF (cov_type_ == this%cov_type_prm) THEN
        getCovarianceMatrix_SO = this%cov_ml_cmp
+       return
     ELSE IF (this%cov_type_prm == "cartesian" .AND. &
          cov_type_ == "cometary") THEN
        CALL partialsCometaryWrtCartesian(this%orb_ml_cmp, partials)
@@ -1690,7 +1695,6 @@ CONTAINS
                "TRACE BACK (5)", 1)
           RETURN
        END IF
-       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
     ELSE IF (this%cov_type_prm == "cartesian" .AND. &
          cov_type_ == "keplerian") THEN
        CALL partialsKeplerianWrtCartesian(this%orb_ml_cmp, partials)
@@ -1699,7 +1703,6 @@ CONTAINS
                "TRACE BACK (5)", 1)
           RETURN
        END IF
-       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
     ELSE IF (this%cov_type_prm == "cometary" .AND. &
          cov_type_ == "cartesian") THEN
        CALL partialsCartesianWrtCometary(this%orb_ml_cmp, partials, frame_)
@@ -1708,7 +1711,6 @@ CONTAINS
                "TRACE BACK (5)", 1)
           RETURN
        END IF
-       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
     ELSE IF (this%cov_type_prm == "cometary" .AND. &
          cov_type_ == "keplerian") THEN
        CALL partialsKeplerianWrtCometary(this%orb_ml_cmp, partials)
@@ -1717,15 +1719,12 @@ CONTAINS
                "TRACE BACK (5)", 1)
           RETURN
        END IF
-       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
     ELSE IF (this%cov_type_prm == "keplerian" .AND. &
          cov_type_ == "cartesian") THEN
        CALL partialsCartesianWrtKeplerian(this%orb_ml_cmp, partials, frame_)
-       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
     ELSE IF (this%cov_type_prm == "keplerian" .AND. &
          cov_type_ == "cometary") THEN
        CALL partialsCometaryWrtKeplerian(this%orb_ml_cmp, partials)
-       getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
     ELSE
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / getCovarianceMatrix", &
@@ -1733,6 +1732,7 @@ CONTAINS
             " in and " // TRIM(cov_type_) // " out.", 1)
        RETURN
     END IF
+    getCovarianceMatrix_SO = MATMUL(MATMUL(partials, this%cov_ml_cmp), TRANSPOSE(partials))
 
   END FUNCTION getCovarianceMatrix_SO
 
@@ -10160,6 +10160,7 @@ CONTAINS
        END IF
        IF (ASSOCIATED(this%cov_ml_cmp)) THEN
           this%cov_ml_cmp = getCovarianceMatrix(this, "cartesian", frame_)
+          this%cov_type_prm = "cartesian"
        END IF
        IF (exist(this%orb_ml_cmp) .AND. ASSOCIATED(this%pdf_arr_cmp)) THEN
           i = MAXLOC(this%pdf_arr_cmp,dim=1)
@@ -10198,6 +10199,10 @@ CONTAINS
        RETURN
     END IF
 
+    IF (this%element_type_prm == "cometary") then
+       return
+    end IF
+
     IF (this%element_type_prm == "cartesian" .OR. &
          this%element_type_prm == "keplerian") THEN
        IF (ASSOCIATED(this%orb_arr_cmp) .AND. &
@@ -10213,6 +10218,7 @@ CONTAINS
        END IF
        IF (ASSOCIATED(this%cov_ml_cmp)) THEN
           this%cov_ml_cmp = getCovarianceMatrix(this, "cometary")
+          this%cov_type_prm = "cometary"
        END IF
        IF (exist(this%orb_ml_cmp) .AND. ASSOCIATED(this%pdf_arr_cmp)) THEN
           i = MAXLOC(this%pdf_arr_cmp,dim=1)
@@ -10251,7 +10257,12 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%element_type_prm == "cartesian") THEN
+    IF (this%element_type_prm == "keplerian") then
+       return
+    end IF
+
+    IF (this%element_type_prm == "cartesian" .or. &
+         this%element_type_prm == "cometary") THEN
        IF (ASSOCIATED(this%orb_arr_cmp) .AND. &
             ASSOCIATED(this%pdf_arr_cmp) .AND. &
             ASSOCIATED(this%jac_arr_cmp)) THEN
@@ -10265,6 +10276,7 @@ CONTAINS
        END IF
        IF (ASSOCIATED(this%cov_ml_cmp)) THEN
           this%cov_ml_cmp = getCovarianceMatrix(this, "keplerian")
+          this%cov_type_prm = "keplerian"
        END IF
        IF (exist(this%orb_ml_cmp) .AND. ASSOCIATED(this%pdf_arr_cmp)) THEN
           i = MAXLOC(this%pdf_arr_cmp,dim=1)
