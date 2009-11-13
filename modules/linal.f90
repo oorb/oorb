@@ -105,7 +105,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2009-10-22
+!! @version 2009-11-10
 !!
 MODULE linal
 
@@ -357,7 +357,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:), INTENT(out)   :: d
     REAL(rprec8), DIMENSION(:,:), INTENT(out) :: v
     INTEGER, INTENT(out)                      :: nrot
-    CHARACTER(len=*), INTENT(inout)                    :: error
+    CHARACTER(len=*), INTENT(inout)           :: error
 
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: aa
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: b, z
@@ -439,13 +439,25 @@ CONTAINS
                 d(iq) = d(iq) + h
                 aa(ip,iq) = 0.0_rprec8
                 CALL jrotate(aa(1:ip-1, ip), aa(1:ip-1, iq), error)
-                error = " -> linal : eigen_decomposition_jacobi : (1)" // TRIM(error) 
+                IF (LEN_TRIM(error) /= 0) THEN
+                   error = " -> linal : eigen_decomposition_jacobi : (1)" // TRIM(error) 
+                   RETURN
+                END IF
                 CALL jrotate(aa(ip, ip+1:iq-1), aa(ip+1:iq-1, iq), error)
-                error = " -> linal : eigen_decomposition_jacobi : (2)" // TRIM(error) 
+                IF (LEN_TRIM(error) /= 0) THEN
+                   error = " -> linal : eigen_decomposition_jacobi : (2)" // TRIM(error) 
+                   RETURN
+                END IF
                 CALL jrotate(aa(ip, iq+1:n), aa(iq, iq+1:n), error)
-                error = " -> linal : eigen_decomposition_jacobi : (3)" // TRIM(error) 
+                IF (LEN_TRIM(error) /= 0) THEN
+                   error = " -> linal : eigen_decomposition_jacobi : (3)" // TRIM(error) 
+                   RETURN
+                END IF
                 CALL jrotate(v(:,ip), v(:,iq), error)
-                error = " -> linal : eigen_decomposition_jacobi : (4)" // TRIM(error) 
+                IF (LEN_TRIM(error) /= 0) THEN
+                   error = " -> linal : eigen_decomposition_jacobi : (4)" // TRIM(error) 
+                   RETURN
+                END IF
                 IF (LEN_TRIM(error) /= 0) THEN
                    DEALLOCATE(aa, stat=err)
                    DEALLOCATE(b, stat=err)
@@ -480,10 +492,10 @@ CONTAINS
 
       IMPLICIT NONE
       REAL(rprec8), DIMENSION(:), INTENT(inout) :: a1, a2
-      CHARACTER(len=*), INTENT(inout)                    :: error
+      CHARACTER(len=*), INTENT(inout)           :: error
 
       REAL(rprec8), DIMENSION(:), ALLOCATABLE :: wk1
-      INTEGER :: err
+      INTEGER :: err = 0
 
       ALLOCATE(wk1(SIZE(a1)), stat=err)
       IF (err /= 0) THEN
@@ -923,7 +935,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in)             :: A
     REAL(rprec8), DIMENSION(SIZE(A,dim=2),SIZE(A,dim=1)) :: matinv_r8
-    CHARACTER(len=*), INTENT(inout)                               :: error
+    CHARACTER(len=*), INTENT(inout)                      :: error
     CHARACTER(len=*), INTENT(in), OPTIONAL               :: method
 
     CHARACTER(len=16) :: method_
