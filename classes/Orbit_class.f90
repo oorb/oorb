@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-11-12
+!! @version 2009-11-13
 !!
 MODULE Orbit_cl
 
@@ -2245,6 +2245,21 @@ CONTAINS
             "Frame " // TRIM(frame_) // " not recognized.", 1)
     END IF
 
+    IF (info_verb >= 3) THEN
+       WRITE(stdout,"(A)") "Conversion to " // TRIM(frame_) // &
+            " Cartesian elements. Initial " // TRIM(this%frame) // &
+            " " // TRIM(this%element_type) // " elements:"
+       IF (this%element_type == "cartesian") THEN
+          WRITE(stdout,"(6(F20.15))") this%elements
+       ELSE IF (this%element_type == "cometary") THEN
+          WRITE(stdout,"(6(F20.15))") this%elements(1:2), &
+               this%elements(3:5)/rad_deg, this%elements(6)
+       ELSE IF (this%element_type == "keplerian") THEN
+          WRITE(stdout,"(6(F20.15))") this%elements(1:2), &
+               this%elements(3:6)/rad_deg
+       END IF
+    END IF
+
     IF (this%element_type == "cartesian") THEN
        getCartesianElements(1:6) = this%elements(1:6)
        IF (frame_ == "equatorial" .AND. &
@@ -2346,6 +2361,11 @@ CONTAINS
             "TRACE BACK (35)", 1)
        RETURN
 
+    END IF
+    IF (info_verb >= 3) THEN
+       WRITE(stdout,"(A)") "Final " // TRIM(this%frame) // &
+            " Cartesian elements:"
+       WRITE(stdout,"(6(F20.15))") getCartesianElements
     END IF
 
   END FUNCTION getCartesianElements
