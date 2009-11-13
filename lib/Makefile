@@ -24,7 +24,7 @@
 # Makefile for building the OOrb library.
 #
 # Author: MG
-# Date:   2009-11-09
+# Date:   2009-11-13
 
 include ../make.config
 include ../Makefile.include
@@ -34,7 +34,7 @@ include ../Makefile.include
 all: liboorb
 
 liboorb: io
-	$(FC) $(FCOPTIONS) -shared -fPIC -o liboorb.$(LIBEXT) \
+	$(FC) $(FCOPTIONS) $(FC_SHARED) -fPIC -o liboorb.$(LIBEXT) \
 	`ls ../$(MODULEPATH)/*.o ../$(CLASSPATH)/*.o ../$(MAINPATH)/*.o`
 
 io:
