@@ -56,6 +56,11 @@ pyoorb.o: liboorb
 liboorb:
 	cd ../$(LIBPATH) ; make
 
+test: test.f90 pyoorb.o
+	$(FC) $(FCOPTIONS) pyoorb.o -loorb -L../lib test.f90 -o test
+
+
+
 main:
 	cd ../main/ ; make io.o
 
