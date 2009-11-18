@@ -73,5 +73,7 @@ modules:
 
 # Remove library and modules:
 clean:
-	rm -fr build *~ *.mod *.o *.so *.dylib *.$(LIBEXT) *.pyc *.pyc.$(OS)
+	rm -fr build *~ *.mod *.o \
+	*.so *.dylib *.$(LIBEXT) *.pyc *.pyc.$(OS) \
+	test
 
