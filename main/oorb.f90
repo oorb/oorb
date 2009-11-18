@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-10-22
+!! @version 2009-11-18
 !!
 PROGRAM oorb
 
@@ -527,7 +527,7 @@ PROGRAM oorb
            ALLOCATE(id_arr_in(1))
            id_arr_in(1) = id
         ELSE IF (nobj == norb .AND. &
-             ALL(cov_arr_in(:,1,1) > 0.0_bp)) THEN
+             ALL(cov_arr_in(:,1,1) >= 0.0_bp)) THEN
            ALLOCATE(storb_arr_in(norb))
            DO i=1,norb
               CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
