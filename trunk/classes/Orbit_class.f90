@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-11-13
+!! @version 2009-11-18
 !!
 MODULE Orbit_cl
 
@@ -3236,10 +3236,10 @@ CONTAINS
     END DO
     DO i=1, nobsy
        IF (i <= SIZE(indx_smaller)) THEN
-          ! First integrate backwards from the orbit epoch 
+          ! First propagate backwards from the orbit epoch 
           j = indx_smaller(SIZE(indx_smaller)-i+1)
        ELSE IF (i == SIZE(indx_smaller) + 1) THEN
-          ! Then integrate forwards from the orbit epoch
+          ! Then propagate forwards from the orbit epoch
           DO j=1,nthis
              CALL NULLIFY(this_prop_arr_current(j))
              this_prop_arr_current(j) = copy(this_arr(j))
@@ -3458,6 +3458,18 @@ CONTAINS
           RETURN
        END IF
     END DO
+    DO i=1,nthis
+       IF (PRESENT(partials_arr) .AND. &
+            this_prop_arr_current(i)%element_type == "cartesian" &
+            .AND. frames(i) == "ecliptic") THEN
+          DO j=1,SIZE(partials_arr,dim=4)
+             DO k=1,6
+                CALL rotateToEcliptic(partials_arr(i,k,:,j))
+             END DO
+          END DO
+       END IF
+    END DO
+
     DO j=1,SIZE(this_prop_arr_current)
        CALL NULLIFY(this_prop_arr_current(j))
     END DO
@@ -3895,6 +3907,7 @@ CONTAINS
     TYPE (Orbit)                            :: this_1, this_2
     TYPE (CartesianCoordinates)             :: observer_
     TYPE (Time)                             :: t_, t_observer
+    CHARACTER(len=FRAME_LEN)                :: frame
     REAL(bp), DIMENSION(:,:,:), POINTER     :: jacobian_prop_arr_
     REAL(bp), DIMENSION(6,6)                :: jacobian, jacobian_lt_corr
     REAL(bp), DIMENSION(6,6)                :: scoord_partials
@@ -4116,6 +4129,7 @@ CONTAINS
        END IF
        this_1 = copy(this_arr_(i))
        IF (lt_corr_) THEN
+          ! Light-time correction:
           t_ = getLightTimeCorrectedTime(this_1, observer_)
           IF (error) THEN
              CALL errorMessage("Orbit / getEphemeris (multiple)", &
@@ -4151,6 +4165,7 @@ CONTAINS
           END IF
           IF (PRESENT(partials_arr) .OR. PRESENT(jacobian_lt_corr_arr)) THEN
              CALL propagate(this_1, t_, jacobian=jacobian_lt_corr)
+             frame = this_1%frame
           ELSE
              CALL propagate(this_1, t_)
           END IF
@@ -4269,12 +4284,9 @@ CONTAINS
 
           CASE ("cartesian")
 
-             ! Rotate Jacobian matrix to ecliptical frame.
-             DO j=1,6
-                CALL rotateToEcliptic(jacobian(j,:))
-             END DO
-             ! Topocentric equatorial wrt topocentric equatorial Cartesian.
-             CALL partialsSCoordWrtCartesian(this_1, scoord_partials)
+             ! Topocentric, spherical, equatorial coordinates wrt Cartesian elements.
+             !CALL partialsSCoordWrtCartesian_d(this_1, scoord_partials)
+             CALL partialsSCoordWrtCartesian_i(this_2, observer_, scoord_partials)
              IF (error) THEN
                 CALL errorMessage("Orbit / getEphemeris (multiple)", &
                      "TRACE BACK 30", 1)
@@ -6115,7 +6127,7 @@ CONTAINS
              CALL rotateToEcliptic(jacobian(i,:))
           END DO
           ! Topocentric equatorial (ra,dec) wrt topocentric equatorial Cartesian. 
-          CALL partialsSCoordWrtCartesian(this_, scoord_partials)
+          CALL partialsSCoordWrtCartesian_d(this_, scoord_partials)
           IF (error) THEN
              CALL errorMessage("Orbit / getTopocentricSCoord", &
                   "TRACE BACK 8", 1)
@@ -6926,9 +6938,10 @@ CONTAINS
     partials(2,3) = kep_elements(1)*b*cea/r
 
     ! Velocity:
+    !partials(3,1) = 0.5_bp*mm*kep_elements(1) * &
+    !     xpolar(2)/(r*b) + 1.5_bp*(ma-this%ma)*mm*kep_elements(1)**2*xpolar(1)/r**3
     partials(3,1) = 0.5_bp*mm*kep_elements(1) * &
          xpolar(2)/(r*b)
-    !+ 1.5_bp*(ma-this%ma)*mm*kep_elements(1)**2*xpolar(1)/r**3
     partials(3,2) = -mm*kep_elements(1)**2*xpolar(2) * &
          ((kep_elements(1)+r)*xpolar(1) + &
          r*kep_elements(1)*kep_elements(2))/(b*r**3)
@@ -6937,7 +6950,9 @@ CONTAINS
     partials(4,1) = -0.5_bp * mm * b * &
          (xpolar(1)+kep_elements(1)*kep_elements(2)) / &
          (kep_elements(1)*r) 
-    !+ 1.5_bp*(ma-this%ma)*mm*kep_elements(1)**2*xpolar(2)/r**3
+    !    partials(4,1) = -0.5_bp * mm * b * &
+    !         (xpolar(1)+kep_elements(1)*kep_elements(2)) / &
+    !         (kep_elements(1)*r) + 1.5_bp*(ma-this%ma)*mm*kep_elements(1)**2*xpolar(2)/r**3
     partials(4,2) = mm * kep_elements(1)**2 * b * &
          (xpolar(1) * (xpolar(1) + kep_elements(1) * &
          kep_elements(2)) / kep_elements(1)- &
@@ -6946,6 +6961,72 @@ CONTAINS
          r**3
 
   END SUBROUTINE partialsPolarCoordWrtKeplerian
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the partial derivatives of spherical coordinates wrt
+  !! Cartesian orbital elements. The partial derivatives are obtained
+  !! indirectly by utilizing partial derivatives of Keplerian elements
+  !! in the process.
+  !!
+  !! partials-matrix:
+  !!
+  !!       dr/dx      dr/dy      dr/dz      dr/ddx      dr/ddy      dr/ddz
+  !!
+  !!   dalpha/dx  dalpha/dy  dalpha/dz  dalpha/ddx  dalpha/ddy  dalpha/ddz
+  !!
+  !!   ddelta/dx  ddelta/dy  ddelta/dz  ddelta/ddx  ddelta/ddy  ddelta/ddz
+  !!
+  !!      ddr/dx     ddr/dy     ddr/dz     ddr/ddx     ddr/ddy     ddr/ddz
+  !!
+  !!  ddalpha/dx ddalpha/dy ddalpha/dz ddalpha/ddx ddalpha/ddy ddalpha/ddz
+  !!
+  !!  dddelta/dx dddelta/dy dddelta/dz dddelta/ddx dddelta/ddy dddelta/ddz
+  !!
+  SUBROUTINE partialsSCoordWrtCartesian_i(this, observer, partials)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in)                :: this
+    TYPE (CartesianCoordinates), INTENT(in) :: observer
+    REAL(bp), DIMENSION(6,6), INTENT(out)   :: partials
+
+    REAL(bp), DIMENSION(6,6) :: scoord_kep, kep_car
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsSCoordWrtCartesian", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT. exist(observer)) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / partialsSCoordWrtCartesian", &
+            "Observer has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    CALL partialsSCoordWrtKeplerian(this, observer, scoord_kep)
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsSCoordWrtCartesian", &
+            "TRACE BACK (5).", 1)
+       RETURN
+    END IF
+
+    ! Partials between Keplerian and cometary elements
+    CALL partialsKeplerianWrtCartesian(this, kep_car, this%frame)
+    IF (error) THEN
+       CALL errorMessage("Orbit / partialsSCoordWrtCartesian", &
+            "TRACE BACK (10).", 1)
+       RETURN
+    END IF
+    partials = MATMUL(scoord_kep,kep_car)
+
+  END SUBROUTINE partialsSCoordWrtCartesian_i
 
 
 
@@ -6971,7 +7052,7 @@ CONTAINS
   !!
   !!  dddelta/dx dddelta/dy dddelta/dz dddelta/ddx dddelta/ddy dddelta/ddz
   !!
-  SUBROUTINE partialsSCoordWrtCartesian(this, partials)
+  SUBROUTINE partialsSCoordWrtCartesian_d(this, partials)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(in)              :: this
@@ -7045,7 +7126,7 @@ CONTAINS
     partials(6,5) = -pos(2)*pos(3)*inv_x2y2z2*inv_sqrt_x2y2
     partials(6,6) = inv_x2y2z2 * SQRT(x2y2)
 
-  END SUBROUTINE partialsSCoordWrtCartesian
+  END SUBROUTINE partialsSCoordWrtCartesian_d
 
 
 
@@ -8995,7 +9076,7 @@ CONTAINS
 
     IF (info_verb >= 3) THEN
        WRITE(stdout,"(A)") "Final " // TRIM(this%frame) // &
-            " " // trim(this%element_type) // " elements:"
+            " " // TRIM(this%element_type) // " elements:"
        WRITE(stdout,"(6(F22.15))") this%elements
     END IF
 
