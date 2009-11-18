@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-11-12
+!! @version 2009-11-18
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1686,7 +1686,7 @@ CONTAINS
 
     IF (cov_type_ == this%cov_type_prm) THEN
        getCovarianceMatrix_SO = this%cov_ml_cmp
-       return
+       RETURN
     ELSE IF (this%cov_type_prm == "cartesian" .AND. &
          cov_type_ == "cometary") THEN
        CALL partialsCometaryWrtCartesian(this%orb_ml_cmp, partials)
@@ -1854,6 +1854,24 @@ CONTAINS
        END IF
     ELSE IF (exist(this%orb_ml_cmp) .AND. PRESENT(cov_arr)) THEN
        ! Least squares solution + covariance matrix:
+       IF (getElementType(this%orb_ml_cmp) /= &
+            this%element_type_prm) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getEphemerides", &
+               "Element types for ML Orbit and StochasticOrbit are not compatible.", 1)
+          DEALLOCATE(ephemerides_arr_, stat=err)
+          DEALLOCATE(partials_arr3, stat=err)
+          RETURN
+       END IF
+       IF (getElementType(this%orb_ml_cmp) /= &
+            this%cov_type_prm) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getEphemerides", &
+               "Element types for ML orbit and covariance are not compatible.", 1)
+          DEALLOCATE(ephemerides_arr_, stat=err)
+          DEALLOCATE(partials_arr3, stat=err)
+          RETURN
+       END IF
        IF (PRESENT(this_lt_corr_arr)) THEN
           CALL getEphemerides(this%orb_ml_cmp, observers, &
                ephemerides_arr_, lt_corr=lt_corr_, &
@@ -10199,9 +10217,9 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%element_type_prm == "cometary") then
-       return
-    end IF
+    IF (this%element_type_prm == "cometary") THEN
+       RETURN
+    END IF
 
     IF (this%element_type_prm == "cartesian" .OR. &
          this%element_type_prm == "keplerian") THEN
@@ -10257,11 +10275,11 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%element_type_prm == "keplerian") then
-       return
-    end IF
+    IF (this%element_type_prm == "keplerian") THEN
+       RETURN
+    END IF
 
-    IF (this%element_type_prm == "cartesian" .or. &
+    IF (this%element_type_prm == "cartesian" .OR. &
          this%element_type_prm == "cometary") THEN
        IF (ASSOCIATED(this%orb_arr_cmp) .AND. &
             ASSOCIATED(this%pdf_arr_cmp) .AND. &
