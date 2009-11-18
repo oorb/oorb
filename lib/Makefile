@@ -34,7 +34,7 @@ include ../Makefile.include
 all: liboorb
 
 liboorb: io
-	$(FC) $(FCOPTIONS) $(FC_SHARED) -fPIC -o liboorb.$(LIBEXT) \
+	$(FC) $(FCOPTIONS) $(FC_SHARED) -o liboorb.$(LIBEXT) \
 	`ls ../$(MODULEPATH)/*.o ../$(CLASSPATH)/*.o ../$(MAINPATH)/*.o`
 
 io:
