@@ -24,7 +24,7 @@
 !! Module for which f2py builds Python wrappers.
 !!
 !! @author  MG, FP
-!! @version 2009-11-13
+!! @version 2009-11-18
 !!
 MODULE pyoorb
 
@@ -37,6 +37,7 @@ MODULE pyoorb
   USE StochasticOrbit_cl
   USE PhysicalParameters_cl
   IMPLICIT NONE
+  TYPE (Observatories), save, PRIVATE :: obsies
   CHARACTER(len=11), DIMENSION(6), PUBLIC :: element_types = (/             &
        "cartesian  ",&
        "cometary   ",&
@@ -63,7 +64,6 @@ CONTAINS
     INTEGER, INTENT(in), OPTIONAL :: info_verbosity
     INTEGER, INTENT(out) :: error_code
 
-    TYPE (Observatories) :: obsies
     TYPE (Time) :: t
 
     ! Set path to data files by reading env parameter OORB_DATA_DIR:
@@ -121,6 +121,22 @@ CONTAINS
 
 
 
+
+
+  SUBROUTINE oorb_memfree()
+
+    IMPLICIT NONE
+
+    CALL nullifyTime()
+    CALL NULLIFY(obsies)
+    CALL JPL_ephemeris_nullify()
+
+  END SUBROUTINE oorb_memfree
+
+
+
+
+
   SUBROUTINE propagation_2b(elements, mjd_tt0, mjd_tt1)
 
     IMPLICIT NONE
@@ -143,37 +159,38 @@ CONTAINS
 
 
 
-  SUBROUTINE oorb_ephemeris(in_orbits, &
-       in_covariances,                 &
-       in_obscode,                     &
-       in_date_ephems,                 &
-       out_ephems,                     &
+  SUBROUTINE oorb_ephemeris(in_norb, &
+       in_orbits,                    &
+       in_covariances,               &
+       in_obscode,                   &
+       in_ndate,                     &
+       in_date_ephems,               &
+       out_ephems,                   &
        error_code)
 
     ! Input/Output variables.
+    integer, intent(in)                                  :: in_norb
     ! Input flattened orbit:
     !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
-    REAL(8),DIMENSION(:,:), INTENT(in)                  :: in_orbits ! (1:norb,1:12)
+    REAL(8),DIMENSION(in_norb,12), INTENT(in)            :: in_orbits ! (1:norb,1:12)
     ! Uncertainty matrices:
-    REAL(8), DIMENSION(:,:,:), INTENT(in)               :: in_covariances ! (1:norb,1:6,1:6)
+    REAL(8), DIMENSION(in_norb,6,6), INTENT(in)          :: in_covariances ! (1:norb,1:6,1:6)
     ! Observatory code as defined by the Minor Planet Center
-    CHARACTER(len=4), INTENT(in)                        :: in_obscode
+    CHARACTER(len=4), INTENT(in)                         :: in_obscode
+    integer, intent(in)                                  :: in_ndate
     ! Ephemeris dates.
     ! (mjd, timescale)
-    REAL(8), DIMENSION(:,:), INTENT(in)                 :: in_date_ephems ! (1:ndate,1:2)
+    REAL(8), DIMENSION(in_ndate,2), INTENT(in)           :: in_date_ephems ! (1:ndate,1:2)
     ! Output ephemeris
     ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, raErr, decErr, smaa, smia, pa), )
-    !REAL(8), DIMENSION(SIZE(in_orbits,dim=1), &
-    !     SIZE(in_date_ephems,dim=1),10), INTENT(out)    :: out_ephems ! (1:norb,1:ndate,1:10)
-    REAL(8), DIMENSION(:,:,:), INTENT(out)              :: out_ephems ! (1:norb,1:ndate,1:10)
+    REAL(8), DIMENSION(in_norb,in_ndate,11), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:11)
     ! Output error code
-    INTEGER, INTENT(out)                                :: error_code
+    INTEGER, INTENT(out)                                 :: error_code
 
     ! Internal variables.  
     TYPE (StochasticOrbit) :: storb
     TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr
     TYPE (Orbit) :: orb
-    TYPE (Observatories) :: obsies
     TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: observers
     TYPE (CartesianCoordinates) :: ccoord
     TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides
@@ -214,7 +231,6 @@ CONTAINS
     integrator = "bulirsch-stoer"
     integration_step = 5.0_8
     perturbers = .TRUE.
-    CALL NEW(obsies)
     ALLOCATE(observers(SIZE(in_date_ephems,dim=1)))
     DO i=1,SIZE(in_date_ephems,dim=1)
        CALL NEW(t, in_date_ephems(i,1), timescales(NINT(in_date_ephems(i,2))))
@@ -283,6 +299,7 @@ CONTAINS
        ! EPHEMS:
        ! Use cartesian equatorial coordinates:
        CALL toCartesian(storb, "equatorial")
+       !CALL toCometary(storb)
        IF (error) THEN
           ! Error in setParameters()
           error_code = 36
@@ -369,10 +386,9 @@ CONTAINS
           mjd = getMJD(t, timescales(NINT(in_date_ephems(i,2))))
           CALL NULLIFY(t)
 
-          !cov_arr(:,:,j) = sign(sqrt(abs(cov_arr(:,:,j))),cov_arr(:,:,j))
+          cov_arr(:,:,j) = SIGN(SQRT(ABS(cov_arr(:,:,j))),cov_arr(:,:,j))
           DO k=1,6
-             stdev(k) = SQRT(cov_arr(k,k,j))
-             !stdev(k) = cov_arr(k,k,j)
+             stdev(k) = cov_arr(k,k,j)
           END DO
           CALL eigen_decomposition_jacobi(cov_arr(2:3,2:3,j), &
                eigenval(2:3), eigenvec(2:3,2:3), nrot, errstr)
@@ -387,21 +403,15 @@ CONTAINS
           out_ephems(i,j,1) = coordinates(1)                     ! distance
           out_ephems(i,j,2) = coordinates(2)/rad_deg             ! ra
           out_ephems(i,j,3) = coordinates(3)/rad_deg             ! dec
-          out_ephems(i,j,4) = vmag                            ! mag
+          out_ephems(i,j,4) = vmag                               ! mag
           out_ephems(i,j,5) = mjd                                ! ephem mjd
           out_ephems(i,j,6) = NINT(in_date_ephems(j,2))          ! ephem mjd timescale
-          out_ephems(i,j,7) = 3*stdev(2)/rad_asec                  ! raErr
-          out_ephems(i,j,8) = 3*stdev(3)/rad_asec                  ! decErr
-          out_ephems(i,j,9) = 3*SQRT(ABS(eigenval(sma)))/rad_asec  ! semi-major axis
-          out_ephems(i,j,10) = 3*SQRT(ABS(eigenval(smi)))/rad_asec ! semi-minor axis
-          !out_ephems(i,j,9) = abs(eigenval(sma))/rad_asec  ! semi-major axis
-          !out_ephems(i,j,10) = abs(eigenval(smi))/rad_asec ! semi-minor axis
-          out_ephems(i,j,11) = 99.0_8                            ! position angle
+          out_ephems(i,j,7) = stdev(2)/rad_asec                  ! raErr
+          out_ephems(i,j,8) = stdev(3)/rad_asec                  ! decErr
+          out_ephems(i,j,9) = ABS(eigenval(sma))/rad_amin        ! semi-major axis
+          out_ephems(i,j,10) = ABS(eigenval(smi))/rad_amin       ! semi-minor axis
+          out_ephems(i,j,11) = atan2(eigenvec(3,sma),eigenvec(2,sma))/rad_deg ! position angle
 
-          !write(*,*) eigenvec(2:3,sma), eigenval(sma)
-          !write(*,*) atan2(eigenvec(3,sma),eigenvec(2,sma))/rad_deg
-          !stdev(2) = stdev(2)*cos(coordinates(3))
-          !write(*,*) SQRT(SUM(stdev(2:3)**2))/rad_asec, out_ephems(i,j,8)
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
 
