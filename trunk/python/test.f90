@@ -24,22 +24,24 @@
 !! Test program for pyoorb module.
 !!
 !! @author  MG
-!! @version 2009-11-13
+!! @version 2009-11-18
 !!
 PROGRAM test
 
   USE pyoorb
   IMPLICIT NONE
   CHARACTER(len=4) :: in_obscode
-  REAL(8), DIMENSION(1,6,6) :: in_covariances
-  REAL(8), DIMENSION(1,12) :: in_orbits
-  REAL(8), DIMENSION(1,1,11) :: out_ephems
-  REAL(8), DIMENSION(1,2) :: in_date_ephems
+  INTEGER, PARAMETER :: in_norb = 1
+  INTEGER, PARAMETER :: in_ndate = 1
+  REAL(8), DIMENSION(in_norb,6,6) :: in_covariances
+  REAL(8), DIMENSION(in_norb,12) :: in_orbits
+  REAL(8), DIMENSION(in_norb,in_ndate,11) :: out_ephems
+  REAL(8), DIMENSION(in_ndate,2) :: in_date_ephems
   INTEGER :: error_code, i
 
   ! Initialize 
   error_code = 0
-  CALL oorb_init(error_code=error_code, info_verbosity=3)
+  CALL oorb_init(error_code=error_code, info_verbosity=1)
   IF (error_code /= 0) THEN
      WRITE(stderr,*) "Error in oorb_init. Code: ", error_code
      STOP
@@ -85,18 +87,20 @@ PROGRAM test
   in_date_ephems(1,1:2) = (/ 55148.0_8, 1.0_8 /)
 
   ! Compute ephemerides
-  CALL oorb_ephemeris(in_orbits, &
-       in_covariances,           &
-       in_obscode,               &
-       in_date_ephems,           &
-       out_ephems,               &
+  CALL oorb_ephemeris(in_norb, &
+       in_orbits,              &
+       in_covariances,         &
+       in_obscode,             &
+       in_ndate,               & 
+       in_date_ephems,         &
+       out_ephems,             &
        error_code)
   IF (error_code /= 0) THEN
      WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
      STOP
   END IF
   WRITE(stdout,"(11(2X,A12))") "Delta", "RA", "Dec", &
-       "Mag", "MJD", "Timescale", "3-sigma RA", "3-sigma Dec", &
+       "Mag", "MJD", "Timescale", "sigma_RA", "sigma_Dec", &
        "Uncert smaa", "Uncert smia", "Uncert PA"
   WRITE(stdout,"(11(2X,E12.5))") out_ephems(1,1,:)
 
@@ -119,5 +123,7 @@ PROGRAM test
 !!$ From JPL:
 !!$ RA  3sigma unc:        3.097   arcsec
 !!$ Dec 3sigma unc:        3.672   arcsec 
+
+  CALL oorb_memfree()
 
 END PROGRAM test
