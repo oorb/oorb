@@ -37,8 +37,8 @@ MODULE pyoorb
   USE StochasticOrbit_cl
   USE PhysicalParameters_cl
   IMPLICIT NONE
-  TYPE (Observatories), save, PRIVATE :: obsies
-  CHARACTER(len=11), DIMENSION(6), PUBLIC :: element_types = (/             &
+  TYPE (Observatories), SAVE, PRIVATE :: obsies
+  CHARACTER(len=11), DIMENSION(6), PUBLIC :: element_types = (/ &
        "cartesian  ",&
        "cometary   ",&
        "keplerian  ",&
@@ -46,7 +46,7 @@ MODULE pyoorb
        "poincare   ",&
        "equinoctial" &
        /)
-  CHARACTER(len=3), DIMENSION(4), PUBLIC :: timescales = (/             &
+  CHARACTER(len=3), DIMENSION(4), PUBLIC :: timescales = (/     &
        "UTC",&
        "UT1",&
        "TT ",&
@@ -169,7 +169,7 @@ CONTAINS
        error_code)
 
     ! Input/Output variables.
-    integer, intent(in)                                  :: in_norb
+    INTEGER, INTENT(in)                                  :: in_norb
     ! Input flattened orbit:
     !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
     REAL(8),DIMENSION(in_norb,12), INTENT(in)            :: in_orbits ! (1:norb,1:12)
@@ -177,7 +177,7 @@ CONTAINS
     REAL(8), DIMENSION(in_norb,6,6), INTENT(in)          :: in_covariances ! (1:norb,1:6,1:6)
     ! Observatory code as defined by the Minor Planet Center
     CHARACTER(len=4), INTENT(in)                         :: in_obscode
-    integer, intent(in)                                  :: in_ndate
+    INTEGER, INTENT(in)                                  :: in_ndate
     ! Ephemeris dates.
     ! (mjd, timescale)
     REAL(8), DIMENSION(in_ndate,2), INTENT(in)           :: in_date_ephems ! (1:ndate,1:2)
@@ -352,6 +352,7 @@ CONTAINS
                   'TRACE BACK (55)',1)
              STOP
           END IF
+          CALL NULLIFY(ccoord)
           ephemeris_r2 = DOT_PRODUCT(obsy_obj,obsy_obj)
           CALL toCartesian(orb_lt_corr_arr(1,j), frame='equatorial')
           pos = getPosition(orb_lt_corr_arr(1,j))
@@ -410,7 +411,7 @@ CONTAINS
           out_ephems(i,j,8) = stdev(3)/rad_asec                  ! decErr
           out_ephems(i,j,9) = ABS(eigenval(sma))/rad_amin        ! semi-major axis
           out_ephems(i,j,10) = ABS(eigenval(smi))/rad_amin       ! semi-minor axis
-          out_ephems(i,j,11) = atan2(eigenvec(3,sma),eigenvec(2,sma))/rad_deg ! position angle
+          out_ephems(i,j,11) = ATAN2(eigenvec(3,sma),eigenvec(2,sma))/rad_deg ! position angle
 
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
