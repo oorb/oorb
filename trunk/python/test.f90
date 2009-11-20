@@ -23,21 +23,21 @@
 !
 !! Test program for pyoorb module.
 !!
-!! @author  MG
-!! @version 2009-11-18
+!! @author  MG, JM
+!! @version 2009-11-19
 !!
 PROGRAM test
 
   USE pyoorb
   IMPLICIT NONE
   CHARACTER(len=4) :: in_obscode
-  INTEGER, PARAMETER :: in_norb = 1
-  INTEGER, PARAMETER :: in_ndate = 1
+  INTEGER, PARAMETER :: in_norb = 3
+  INTEGER, PARAMETER :: in_ndate = 2
   REAL(8), DIMENSION(in_norb,6,6) :: in_covariances
   REAL(8), DIMENSION(in_norb,12) :: in_orbits
   REAL(8), DIMENSION(in_norb,in_ndate,11) :: out_ephems
   REAL(8), DIMENSION(in_ndate,2) :: in_date_ephems
-  INTEGER :: error_code, i
+  INTEGER :: error_code, i, j
 
   ! Initialize 
   error_code = 0
@@ -61,6 +61,9 @@ PROGRAM test
   in_orbits(1,9) = 55200.0_8
   in_orbits(1,10) = 3.0_8
   in_orbits(1,11:12) = (/ 21.541_8, 0.15_8 /)
+  ! Copy the same orbit for testing purposes
+  in_orbits(2,:) = in_orbits(1,:)
+  in_orbits(3,:) = in_orbits(1,:)
 
   ! From AstDyS
   in_covariances(1,1,1:6) = (/ 1.59357530E-06_8, 4.54646999E-07_8, 5.59222797E-06_8, &
@@ -81,10 +84,17 @@ PROGRAM test
         in_covariances(1,:,i) = in_covariances(1,:,i)*rad_deg
      END IF
   END DO
+  ! Copy the covariance matrix for testing purposes
+  DO i=2,3
+     in_covariances(i,:,:) = in_covariances(1,:,:)
+  END DO
 
+  ! Observatory code
   in_obscode = "500"
 
+  ! Dates for output ephemerides
   in_date_ephems(1,1:2) = (/ 55148.0_8, 1.0_8 /)
+  in_date_ephems(2,1:2) = (/ 55150.0_8, 1.0_8 /)
 
   ! Compute ephemerides
   CALL oorb_ephemeris(in_norb, &
@@ -99,10 +109,14 @@ PROGRAM test
      WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
      STOP
   END IF
-  WRITE(stdout,"(11(2X,A12))") "Delta", "RA", "Dec", &
+  WRITE(stdout,"(12(2X,A12))") "ID", "Delta", "RA", "Dec", &
        "Mag", "MJD", "Timescale", "sigma_RA", "sigma_Dec", &
        "Uncert smaa", "Uncert smia", "Uncert PA"
-  WRITE(stdout,"(11(2X,E12.5))") out_ephems(1,1,:)
+  DO i=1,SIZE(out_ephems,dim=1)
+     DO j=1,SIZE(out_ephems,dim=2)
+        WRITE(stdout,"(12(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,:)
+     END DO
+  END DO
 
 !!$ Ephemeris for 2009 TL4 at epoch 55148 MJD (from AstDyS)
 !!$ Right Ascension:      17.801   deg
