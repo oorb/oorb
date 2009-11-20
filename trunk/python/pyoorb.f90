@@ -24,7 +24,7 @@
 !! Module for which f2py builds Python wrappers.
 !!
 !! @author  MG, FP
-!! @version 2009-11-18
+!! @version 2009-11-19
 !!
 MODULE pyoorb
 
@@ -384,7 +384,7 @@ CONTAINS
 
           ! ephem date
           t = getTime(observers(j))
-          mjd = getMJD(t, timescales(NINT(in_date_ephems(i,2))))
+          mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
           CALL NULLIFY(t)
 
           cov_arr(:,:,j) = SIGN(SQRT(ABS(cov_arr(:,:,j))),cov_arr(:,:,j))
