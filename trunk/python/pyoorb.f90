@@ -24,7 +24,7 @@
 !! Module for which f2py builds Python wrappers.
 !!
 !! @author  MG, FP
-!! @version 2009-11-19
+!! @version 2009-11-20
 !!
 MODULE pyoorb
 
@@ -159,6 +159,8 @@ CONTAINS
 
 
 
+
+
   SUBROUTINE oorb_ephemeris(in_norb, &
        in_orbits,                    &
        in_covariances,               &
@@ -169,28 +171,37 @@ CONTAINS
        error_code)
 
     ! Input/Output variables.
-    INTEGER, INTENT(in)                                  :: in_norb
+    INTEGER, INTENT(in)                                   :: in_norb
     ! Input flattened orbit:
     !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
-    REAL(8),DIMENSION(in_norb,12), INTENT(in)            :: in_orbits ! (1:norb,1:12)
+    REAL(8),DIMENSION(in_norb,12), INTENT(in)             :: in_orbits ! (1:norb,1:12)
     ! Uncertainty matrices:
-    REAL(8), DIMENSION(in_norb,6,6), INTENT(in)          :: in_covariances ! (1:norb,1:6,1:6)
+    REAL(8), DIMENSION(in_norb,6,6), INTENT(in), OPTIONAL :: in_covariances ! (1:norb,1:6,1:6)
     ! Observatory code as defined by the Minor Planet Center
-    CHARACTER(len=4), INTENT(in)                         :: in_obscode
-    INTEGER, INTENT(in)                                  :: in_ndate
+    CHARACTER(len=*), INTENT(in)                          :: in_obscode
+    INTEGER, INTENT(in)                                   :: in_ndate
     ! Ephemeris dates.
     ! (mjd, timescale)
-    REAL(8), DIMENSION(in_ndate,2), INTENT(in)           :: in_date_ephems ! (1:ndate,1:2)
+    REAL(8), DIMENSION(in_ndate,2), INTENT(in)            :: in_date_ephems ! (1:ndate,1:2)
     ! Output ephemeris
     ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, raErr, decErr, smaa, smia, pa), )
-    REAL(8), DIMENSION(in_norb,in_ndate,11), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:11)
+    REAL(8), DIMENSION(in_norb,in_ndate,11), INTENT(out)  :: out_ephems ! (1:norb,1:ndate,1:11)
     ! Output error code
-    INTEGER, INTENT(out)                                 :: error_code
+    INTEGER, INTENT(out)                                  :: error_code
+
+!!$!f2py integer, intent(in) :: in_norb
+!!$!f2py real(8), intent(in), dimension(in_norb,12) :: in_orbits
+!!$!f2py real(8) optional, intent(in), dimension(in_norb,6,6) :: in_covariances
+!!$!f2py character(len=*), intent(in) :: in_obscode
+!!$!f2py integer, intent(in) :: in_ndate
+!!$!f2py real(8), intent(in), dimension(in_ndate,2) :: in_date_ephems
+!!$!f2py real(8), intent(in), dimension(in_norb,in_ndate,11) :: out_ephems
+!!$!f2py integer, intent(out) :: error_code
 
     ! Internal variables.  
     TYPE (StochasticOrbit) :: storb
     TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr
-    TYPE (Orbit) :: orb
+    TYPE (Orbit), DIMENSION(1) :: orb_arr
     TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: observers
     TYPE (CartesianCoordinates) :: ccoord
     TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides
@@ -201,8 +212,7 @@ CONTAINS
     REAL(8), DIMENSION(6,6) :: eigenvec
     REAL(8), DIMENSION(6) :: coordinates, &
          eigenval, &
-         elements, &
-         stdev
+         elements
     REAL(8), DIMENSION(3) :: obsy_obj, &
          obsy_pos, &
          pos
@@ -212,14 +222,18 @@ CONTAINS
          integration_step, &
          mjd, &
          observer_r2, &
+         pa, &
          phase, &
+         sigma_dec, &
+         sigma_ra, &
+         smaa, &
+         smia, &
          vmag
-    INTEGER :: i, &
+    INTEGER :: ismaa, &
+         ismia, &
+         i, &
          j, &
-         k, &
-         nrot, &
-         sma, &
-         smi
+         nrot
     LOGICAL, DIMENSION(10) :: perturbers
 
     ! Init
@@ -272,13 +286,13 @@ CONTAINS
        END IF
 
        ! Now create an instant of StochasticOrbit via an Orbit instance.
-       CALL NEW(orb, &
+       CALL NEW(orb_arr(1), &
             elements(1:6), &
             element_types(NINT(in_orbits(i,8))), &
             "ecliptic", &
             copy(t))
        CALL NULLIFY(t)
-       CALL setParameters(orb, &
+       CALL setParameters(orb_arr(1), &
             dyn_model=dyn_model, &
             perturbers=perturbers, &
             integrator=integrator, &
@@ -287,48 +301,68 @@ CONTAINS
           error_code = 37
           RETURN
        END IF
-       CALL NEW(storb, orb, in_covariances(i,:,:), &
-            cov_type=element_types(NINT(in_orbits(i,8))), &
-            element_type=element_types(NINT(in_orbits(i,8))))
-       IF (error) THEN
-          error_code = 34
-          RETURN
-       END IF
-       CALL NULLIFY(orb)
+       IF (PRESENT(in_covariances)) THEN
+          CALL NEW(storb, orb_arr(1), in_covariances(i,:,:), &
+               cov_type=element_types(NINT(in_orbits(i,8))), &
+               element_type=element_types(NINT(in_orbits(i,8))))
+          IF (error) THEN
+             error_code = 34
+             RETURN
+          END IF
+          ! Use cartesian equatorial coordinates:
+          CALL toCartesian(storb, "equatorial")
+          !CALL toCometary(storb)
+          IF (error) THEN
+             ! Error in setParameters()
+             error_code = 36
+             RETURN
+          END IF
 
-       ! EPHEMS:
-       ! Use cartesian equatorial coordinates:
-       CALL toCartesian(storb, "equatorial")
-       !CALL toCometary(storb)
-       IF (error) THEN
-          ! Error in setParameters()
-          error_code = 36
-          RETURN
-       END IF
+          ! Set integration parameters
+          CALL setParameters(storb, &
+               dyn_model=dyn_model, &
+               perturbers=perturbers, &
+               integrator=integrator, &
+               integration_step=integration_step)
+          IF (error) THEN
+             ! Error in setParameters()
+             error_code = 37
+             RETURN
+          END IF
 
-       ! Set integration parameters
-       CALL setParameters(storb, &
-            dyn_model=dyn_model, &
-            perturbers=perturbers, &
-            integrator=integrator, &
-            integration_step=integration_step)
-       IF (error) THEN
-          ! Error in setParameters()
-          error_code = 37
-          RETURN
+          ! Compute topocentric ephemerides
+          CALL getEphemerides(storb, &
+               observers, &
+               ephemerides, &
+               cov_arr=cov_arr, &
+               this_lt_corr_arr=orb_lt_corr_arr)
+          IF (error) THEN
+             ! Error in getEphemerides()
+             error_code = 38
+             RETURN
+          END IF
+          CALL NULLIFY(storb)
+       ELSE
+          ! Use cartesian equatorial coordinates:
+          CALL toCartesian(orb_arr(1), "equatorial")
+          !CALL toCometary(orb_arr(1))
+          IF (error) THEN
+             ! Error in setParameters()
+             error_code = 39
+             RETURN
+          END IF
+          ! Compute topocentric ephemerides
+          CALL getEphemerides(orb_arr, &
+               observers, &
+               ephemerides, &
+               this_lt_corr_arr=orb_lt_corr_arr)
+          IF (error) THEN
+             ! Error in getEphemerides()
+             error_code = 40
+             RETURN
+          END IF
        END IF
-
-       ! Compute topocentric ephemerides
-       CALL getEphemerides(storb, &
-            observers, &
-            ephemerides, &
-            cov_arr=cov_arr, &
-            this_lt_corr_arr=orb_lt_corr_arr)
-       IF (error) THEN
-          ! Error in getEphemerides()
-          error_code = 38
-          RETURN
-       END IF
+       CALL NULLIFY(orb_arr(1))
 
        ! Now export the ephem_arr to a flat array.
        DO j=1,SIZE(observers)
@@ -387,39 +421,51 @@ CONTAINS
           mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
           CALL NULLIFY(t)
 
-          cov_arr(:,:,j) = SIGN(SQRT(ABS(cov_arr(:,:,j))),cov_arr(:,:,j))
-          DO k=1,6
-             stdev(k) = cov_arr(k,k,j)
-          END DO
-          CALL eigen_decomposition_jacobi(cov_arr(2:3,2:3,j), &
-               eigenval(2:3), eigenvec(2:3,2:3), nrot, errstr)
-          IF (LEN_TRIM(errstr) /= 0) THEN
-             error_code = 7
-             WRITE(*,*) TRIM(errstr)
-             RETURN
+          IF (PRESENT(in_covariances)) THEN
+             cov_arr(:,:,j) = SIGN(SQRT(ABS(cov_arr(:,:,j))),cov_arr(:,:,j))
+             sigma_ra = cov_arr(2,2,j)/rad_asec
+             sigma_dec = cov_arr(3,3,j)/rad_asec
+             CALL eigen_decomposition_jacobi(cov_arr(2:3,2:3,j), &
+                  eigenval(2:3), eigenvec(2:3,2:3), nrot, errstr)
+             IF (LEN_TRIM(errstr) /= 0) THEN
+                error_code = 7
+                WRITE(*,*) TRIM(errstr)
+                RETURN
+             END IF
+             ismaa = 1 + MAXLOC(ABS(eigenval(2:3)),dim=1)
+             ismia = 1 + MINLOC(ABS(eigenval(2:3)),dim=1)
+             smaa = ABS(eigenval(ismaa))/rad_amin
+             smia = ABS(eigenval(ismia))/rad_amin
+             pa = ATAN2(eigenvec(3,ismaa),eigenvec(2,ismaa))/rad_deg
+          ELSE
+             sigma_ra  = -1.0_bp
+             sigma_dec = -1.0_bp
+             smaa      = -1.0_bp
+             smia      = -1.0_bp
+             pa        = -1.0_bp
           END IF
-          sma = 1 + MAXLOC(ABS(eigenval(2:3)),dim=1)
-          smi = 1 + MINLOC(ABS(eigenval(2:3)),dim=1)
           ! Write the output ephem array.
-          out_ephems(i,j,1) = coordinates(1)                     ! distance
-          out_ephems(i,j,2) = coordinates(2)/rad_deg             ! ra
-          out_ephems(i,j,3) = coordinates(3)/rad_deg             ! dec
-          out_ephems(i,j,4) = vmag                               ! mag
-          out_ephems(i,j,5) = mjd                                ! ephem mjd
-          out_ephems(i,j,6) = NINT(in_date_ephems(j,2))          ! ephem mjd timescale
-          out_ephems(i,j,7) = stdev(2)/rad_asec                  ! raErr
-          out_ephems(i,j,8) = stdev(3)/rad_asec                  ! decErr
-          out_ephems(i,j,9) = ABS(eigenval(sma))/rad_amin        ! semi-major axis
-          out_ephems(i,j,10) = ABS(eigenval(smi))/rad_amin       ! semi-minor axis
-          out_ephems(i,j,11) = ATAN2(eigenvec(3,sma),eigenvec(2,sma))/rad_deg ! position angle
+          out_ephems(i,j,1) = coordinates(1)            ! distance
+          out_ephems(i,j,2) = coordinates(2)/rad_deg    ! ra
+          out_ephems(i,j,3) = coordinates(3)/rad_deg    ! dec
+          out_ephems(i,j,4) = vmag                      ! mag
+          out_ephems(i,j,5) = mjd                       ! ephem mjd
+          out_ephems(i,j,6) = NINT(in_date_ephems(j,2)) ! ephem mjd timescale
+          out_ephems(i,j,7) = sigma_ra                  ! raErr
+          out_ephems(i,j,8) = sigma_dec                 ! decErr
+          out_ephems(i,j,9) = smaa                      ! semi-major axis
+          out_ephems(i,j,10) = smia                     ! semi-minor axis
+          out_ephems(i,j,11) = pa                       ! position angle
 
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
 
        END DO
 
-       CALL NULLIFY(storb)
-       DEALLOCATE(ephemerides, cov_arr, orb_lt_corr_arr)
+       DEALLOCATE(ephemerides, orb_lt_corr_arr)
+       IF (PRESENT(in_covariances)) THEN
+          DEALLOCATE(cov_arr)
+       END IF
 
     END DO
     DO i=1,SIZE(observers)
