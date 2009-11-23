@@ -24,7 +24,7 @@
 !! Test program for pyoorb module.
 !!
 !! @author  MG, JM
-!! @version 2009-11-19
+!! @version 2009-11-20
 !!
 PROGRAM test
 
@@ -96,7 +96,7 @@ PROGRAM test
   in_date_ephems(1,1:2) = (/ 55148.0_8, 1.0_8 /)
   in_date_ephems(2,1:2) = (/ 55150.0_8, 1.0_8 /)
 
-  ! Compute ephemerides
+  ! Compute ephemerides with covariance
   CALL oorb_ephemeris(in_norb, &
        in_orbits,              &
        in_covariances,         &
@@ -105,6 +105,27 @@ PROGRAM test
        in_date_ephems,         &
        out_ephems,             &
        error_code)
+  IF (error_code /= 0) THEN
+     WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
+     STOP
+  END IF
+  WRITE(stdout,"(12(2X,A12))") "ID", "Delta", "RA", "Dec", &
+       "Mag", "MJD", "Timescale", "sigma_RA", "sigma_Dec", &
+       "Uncert smaa", "Uncert smia", "Uncert PA"
+  DO i=1,SIZE(out_ephems,dim=1)
+     DO j=1,SIZE(out_ephems,dim=2)
+        WRITE(stdout,"(12(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,:)
+     END DO
+  END DO
+
+  ! Compute ephemerides without covariance
+  CALL oorb_ephemeris(in_norb,        &
+       in_orbits,                     &
+       in_obscode=in_obscode,         &
+       in_ndate=in_ndate,             & 
+       in_date_ephems=in_date_ephems, &
+       out_ephems=out_ephems,         &
+       error_code=error_code)
   IF (error_code /= 0) THEN
      WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
      STOP
