@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-10-22
+!! @version 2009-10-27
 !!
 MODULE io
 
@@ -1648,6 +1648,9 @@ CONTAINS
        ELSE IF (frmt == "COT") THEN
           elements(3:6) = elements(3:6)*rad_deg
           CALL NEW(orb_arr(norb+1), elements, "cometary_ta", "ecliptic", epoch)
+       ELSE IF (frmt == "KEP") THEN
+          elements(3:6) = elements(3:6)*rad_deg
+          CALL NEW(orb_arr(norb+1), elements, "keplerian", "ecliptic", epoch)
        ELSE
           error = .TRUE.
           CALL errorMessage("io / readDESOrbitFile", &
@@ -1683,18 +1686,25 @@ CONTAINS
     CHARACTER(len=256) :: line
     REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: day, n
-    INTEGER :: err, y1, y2, year, month
+    INTEGER :: err, y1, y2, year, month, nlines
 
     ! Jump over header:
     line = ""
+    nlines = 0
     DO WHILE (line(1:5) /= "-----")
        READ(lu, "(A)", iostat=err) line
-       IF (err /= 0) THEN
+       IF (err > 0) THEN
           error = .TRUE.
           CALL errorMessage("io / readMPCOrbitFile", &
                "Could not jump over header line of MPC orbit file.", 1)
           RETURN
+       ELSE IF (err < 0 .AND. nlines > 0) THEN
+          ! Probably no header present, let's try rewinding to
+          ! beginning of file and read orbits:
+          REWIND(lu)
+          EXIT
        END IF
+       nlines = nlines + 1
     END DO
 
     norb = 0
