@@ -24,7 +24,7 @@
 !! Test program for pyoorb module.
 !!
 !! @author  MG, JM
-!! @version 2009-11-20
+!! @version 2009-12-01
 !!
 PROGRAM test
 
@@ -63,7 +63,9 @@ PROGRAM test
   in_orbits(1,11:12) = (/ 21.541_8, 0.15_8 /)
   ! Copy the same orbit for testing purposes
   in_orbits(2,:) = in_orbits(1,:)
+  in_orbits(2,1) = 2.0_8
   in_orbits(3,:) = in_orbits(1,:)
+  in_orbits(3,1) = 3.0_8
 
   ! From AstDyS
   in_covariances(1,1,1:6) = (/ 1.59357530E-06_8, 4.54646999E-07_8, 5.59222797E-06_8, &
@@ -97,13 +99,13 @@ PROGRAM test
   in_date_ephems(2,1:2) = (/ 55150.0_8, 1.0_8 /)
 
   ! Compute ephemerides with covariance
-  CALL oorb_ephemeris(in_norb, &
-       in_orbits,              &
-       in_covariances,         &
-       in_obscode,             &
-       in_ndate,               & 
-       in_date_ephems,         &
-       out_ephems,             &
+  CALL oorb_ephemeris_covariance(in_norb, &
+       in_orbits,                         &
+       in_covariances,                    &
+       in_obscode,                        &
+       in_ndate,                          & 
+       in_date_ephems,                    &
+       out_ephems,                        &
        error_code)
   IF (error_code /= 0) THEN
      WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
@@ -119,23 +121,23 @@ PROGRAM test
   END DO
 
   ! Compute ephemerides without covariance
-  CALL oorb_ephemeris(in_norb,        &
-       in_orbits,                     &
-       in_obscode=in_obscode,         &
-       in_ndate=in_ndate,             & 
-       in_date_ephems=in_date_ephems, &
-       out_ephems=out_ephems,         &
-       error_code=error_code)
+  out_ephems = -1.0_8
+  CALL oorb_ephemeris(in_norb, &
+       in_orbits,              &
+       in_obscode,             &
+       in_ndate,               & 
+       in_date_ephems,         &
+       out_ephems(:,:,1:6),    &
+       error_code)
   IF (error_code /= 0) THEN
      WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
      STOP
   END IF
-  WRITE(stdout,"(12(2X,A12))") "ID", "Delta", "RA", "Dec", &
-       "Mag", "MJD", "Timescale", "sigma_RA", "sigma_Dec", &
-       "Uncert smaa", "Uncert smia", "Uncert PA"
+  WRITE(stdout,"(7(2X,A12))") "ID", "Delta", "RA", "Dec", &
+       "Mag", "MJD", "Timescale"
   DO i=1,SIZE(out_ephems,dim=1)
      DO j=1,SIZE(out_ephems,dim=2)
-        WRITE(stdout,"(12(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,:)
+        WRITE(stdout,"(7(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,1:6)
      END DO
   END DO
 
