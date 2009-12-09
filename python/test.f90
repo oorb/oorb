@@ -24,7 +24,7 @@
 !! Test program for pyoorb module.
 !!
 !! @author  MG, JM
-!! @version 2009-12-01
+!! @version 2009-12-08
 !!
 PROGRAM test
 
@@ -35,7 +35,7 @@ PROGRAM test
   INTEGER, PARAMETER :: in_ndate = 2
   REAL(8), DIMENSION(in_norb,6,6) :: in_covariances
   REAL(8), DIMENSION(in_norb,12) :: in_orbits
-  REAL(8), DIMENSION(in_norb,in_ndate,11) :: out_ephems
+  REAL(8), DIMENSION(in_norb,in_ndate,13) :: out_ephems
   REAL(8), DIMENSION(in_ndate,2) :: in_date_ephems
   INTEGER :: error_code, i, j
 
@@ -111,12 +111,13 @@ PROGRAM test
      WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
      STOP
   END IF
-  WRITE(stdout,"(12(2X,A12))") "ID", "Delta", "RA", "Dec", &
-       "Mag", "MJD", "Timescale", "sigma_RA", "sigma_Dec", &
-       "Uncert smaa", "Uncert smia", "Uncert PA"
+  WRITE(stdout,"(14(2X,A12))") "ID", "Delta", "RA", "Dec", &
+       "Mag", "MJD", "Timescale", "dRA/dt", "dDec/dt", &
+       "sigma_RA", "sigma_Dec", "Uncert smaa", "Uncert smia", &
+       "Uncert PA"
   DO i=1,SIZE(out_ephems,dim=1)
      DO j=1,SIZE(out_ephems,dim=2)
-        WRITE(stdout,"(12(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,:)
+        WRITE(stdout,"(14(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,:)
      END DO
   END DO
 
@@ -127,17 +128,17 @@ PROGRAM test
        in_obscode,             &
        in_ndate,               & 
        in_date_ephems,         &
-       out_ephems(:,:,1:6),    &
+       out_ephems(:,:,1:8),    &
        error_code)
   IF (error_code /= 0) THEN
      WRITE(stderr,*) "Error in oorb_ephemeris. Code: ", error_code
      STOP
   END IF
-  WRITE(stdout,"(7(2X,A12))") "ID", "Delta", "RA", "Dec", &
-       "Mag", "MJD", "Timescale"
+  WRITE(stdout,"(9(2X,A12))") "ID", "Delta", "RA", "Dec", &
+       "Mag", "MJD", "Timescale", "dRA/dt", "dDec/dt"
   DO i=1,SIZE(out_ephems,dim=1)
      DO j=1,SIZE(out_ephems,dim=2)
-        WRITE(stdout,"(7(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,1:6)
+        WRITE(stdout,"(9(2X,E12.5))") in_orbits(i,1), out_ephems(i,j,1:8)
      END DO
   END DO
 
