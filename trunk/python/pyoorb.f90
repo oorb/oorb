@@ -24,7 +24,7 @@
 !! Module for which f2py builds Python wrappers.
 !!
 !! @author  MG, FP
-!! @version 2009-12-01
+!! @version 2009-12-08
 !!
 MODULE pyoorb
 
@@ -181,8 +181,8 @@ CONTAINS
     ! (mjd, timescale)
     REAL(8), DIMENSION(in_ndate,2), INTENT(in)          :: in_date_ephems ! (1:ndate,1:2)
     ! Output ephemeris
-    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale), )
-    REAL(8), DIMENSION(in_norb,in_ndate,6), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:6)
+    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, dra/dt, ddec/dt), )
+    REAL(8), DIMENSION(in_norb,in_ndate,8), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:8)
     ! Output error code
     INTEGER, INTENT(out)                                :: error_code
 
@@ -353,12 +353,14 @@ CONTAINS
           CALL NULLIFY(t)
 
           ! Write the output ephem array.
-          out_ephems(i,j,1) = coordinates(1)            ! distance
-          out_ephems(i,j,2) = coordinates(2)/rad_deg    ! ra
-          out_ephems(i,j,3) = coordinates(3)/rad_deg    ! dec
-          out_ephems(i,j,4) = vmag                      ! mag
-          out_ephems(i,j,5) = mjd                       ! ephem mjd
-          out_ephems(i,j,6) = NINT(in_date_ephems(j,2)) ! ephem mjd timescale
+          out_ephems(i,j,1) = coordinates(1)                             ! distance
+          out_ephems(i,j,2) = coordinates(2)/rad_deg                     ! ra
+          out_ephems(i,j,3) = coordinates(3)/rad_deg                     ! dec
+          out_ephems(i,j,4) = vmag                                       ! mag
+          out_ephems(i,j,5) = mjd                                        ! ephem mjd
+          out_ephems(i,j,6) = NINT(in_date_ephems(j,2))                  ! ephem mjd timescale
+          out_ephems(i,j,7) = coordinates(5)*COS(coordinates(3))/rad_deg ! dra/dt  sky-motion
+          out_ephems(i,j,8) = coordinates(6)/rad_deg                     ! ddec/dt sky-motion
 
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
@@ -401,8 +403,8 @@ CONTAINS
     ! (mjd, timescale)
     REAL(8), DIMENSION(in_ndate,2), INTENT(in)            :: in_date_ephems ! (1:ndate,1:2)
     ! Output ephemeris
-    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, raErr, decErr, smaa, smia, pa), )
-    REAL(8), DIMENSION(in_norb,in_ndate,11), INTENT(out)  :: out_ephems ! (1:norb,1:ndate,1:11)
+    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, dra/dt, ddec/dt, raErr, decErr, smaa, smia, pa), )
+    REAL(8), DIMENSION(in_norb,in_ndate,13), INTENT(out)  :: out_ephems ! (1:norb,1:ndate,1:13)
     ! Output error code
     INTEGER, INTENT(out)                                  :: error_code
 
@@ -624,17 +626,19 @@ CONTAINS
           smia = ABS(eigenval(ismia))/rad_amin
           pa = ATAN2(eigenvec(3,ismaa),eigenvec(2,ismaa))/rad_deg
           ! Write the output ephem array.
-          out_ephems(i,j,1) = coordinates(1)            ! distance
-          out_ephems(i,j,2) = coordinates(2)/rad_deg    ! ra
-          out_ephems(i,j,3) = coordinates(3)/rad_deg    ! dec
-          out_ephems(i,j,4) = vmag                      ! mag
-          out_ephems(i,j,5) = mjd                       ! ephem mjd
-          out_ephems(i,j,6) = NINT(in_date_ephems(j,2)) ! ephem mjd timescale
-          out_ephems(i,j,7) = sigma_ra                  ! raErr
-          out_ephems(i,j,8) = sigma_dec                 ! decErr
-          out_ephems(i,j,9) = smaa                      ! semi-major axis
-          out_ephems(i,j,10) = smia                     ! semi-minor axis
-          out_ephems(i,j,11) = pa                       ! position angle
+          out_ephems(i,j,1) = coordinates(1)                             ! distance
+          out_ephems(i,j,2) = coordinates(2)/rad_deg                     ! ra
+          out_ephems(i,j,3) = coordinates(3)/rad_deg                     ! dec
+          out_ephems(i,j,4) = vmag                                       ! mag
+          out_ephems(i,j,5) = mjd                                        ! ephem mjd
+          out_ephems(i,j,6) = NINT(in_date_ephems(j,2))                  ! ephem mjd timescale
+          out_ephems(i,j,7) = coordinates(5)*COS(coordinates(3))/rad_deg ! dra/dt  sky-motion
+          out_ephems(i,j,8) = coordinates(6)/rad_deg                     ! ddec/dt sky-motion
+          out_ephems(i,j,9) = sigma_ra                                   ! raErr
+          out_ephems(i,j,10) = sigma_dec                                 ! decErr
+          out_ephems(i,j,11) = smaa                                      ! semi-major axis
+          out_ephems(i,j,12) = smia                                      ! semi-minor axis
+          out_ephems(i,j,13) = pa                                        ! position angle
 
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
