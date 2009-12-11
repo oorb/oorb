@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-10-27
+!! @version 2009-12-10
 !!
 MODULE io
 
@@ -1651,6 +1651,8 @@ CONTAINS
        ELSE IF (frmt == "KEP") THEN
           elements(3:6) = elements(3:6)*rad_deg
           CALL NEW(orb_arr(norb+1), elements, "keplerian", "ecliptic", epoch)
+       ELSE IF (frmt == "CAR") THEN
+          CALL NEW(orb_arr(norb+1), elements, "cartesian", "ecliptic", epoch)
        ELSE
           error = .TRUE.
           CALL errorMessage("io / readDESOrbitFile", &
@@ -1880,7 +1882,7 @@ CONTAINS
        END IF
        CALL NEW(t, year, month, day, "TT")
     ELSE IF (INDEX(header(4),"-0074-") /= 0) THEN
-       READ(lu,"(2X,F15.7)", advance="no", iostat=err) mjd
+       READ(lu,"(1X,F16.10)", advance="no", iostat=err) mjd
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("io / readOpenOrbOrbitFile", &
@@ -2323,6 +2325,11 @@ CONTAINS
     IF (element_type_out == "cometary") THEN
        frmt = "COM"
        elements(3:5) = elements(3:5)/rad_deg
+    ELSE IF (element_type_out == "keplerian") THEN
+       frmt = "KEP"
+       elements(3:6) = elements(3:6)/rad_deg
+    ELSE IF (element_type_out == "cartesian") THEN
+       frmt = "CAR"
     ELSE
        error = .TRUE.
        CALL errorMessage("io / writeDESOrbitFile", &
@@ -2357,6 +2364,10 @@ CONTAINS
        SELECT CASE (element_type_out)
        CASE ("cometary")
           WRITE(lu,"(A)") "!!OID FORMAT q e i node argperi t_p H t_0 INDEX N_PAR MOID COMPCODE"
+       CASE ("keplerian")
+          WRITE(lu,"(A)") "!!OID FORMAT a e i node argperi M H t_0 INDEX N_PAR MOID COMPCODE"
+       CASE ("cartesian")
+          WRITE(lu,"(A)") "!!OID FORMAT x y z dx/dt dy/dt dz/dt H t_0 INDEX N_PAR MOID COMPCODE"
        CASE default
           error = .TRUE.
           CALL errorMessage("io / writeDESOrbitFile", &
@@ -3072,7 +3083,7 @@ CONTAINS
     IF (PRESENT(mjd)) THEN
        IF (mjd) THEN
           mjd_tt = getMJD(t, "TT")
-          WRITE(lu, "(A16,6(1X,E21.14),2X,F15.7)", &
+          WRITE(lu, "(A16,6(1X,E21.14),1X,F16.10)", &
                advance="no", iostat=err) id, elements(1:6), mjd_tt
           IF (err /= 0) THEN
              error = .TRUE.
