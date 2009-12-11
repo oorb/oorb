@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-11-18
+!! @version 2009-12-10
 !!
 MODULE Orbit_cl
 
@@ -2508,10 +2508,21 @@ CONTAINS
        ! Distance of periapsis:
        getCometaryElements(1) = &
             this_%elements(1) * (1.0_bp - this_%elements(2))
-       ! Time of periapsis:
-       getCometaryElements(6) = getMJD(this_%t,"TT") - &
-            this_%elements(6) * SQRT(this_%elements(1)**3.0_bp / &
+       ! period p:
+       mjd_tt = getMJD(this_%t,"TT")
+       dt = this_%elements(6) * SQRT(this_%elements(1)**3.0_bp / &
             planetary_mu(this_%central_body))
+       p = two_pi*SQRT(this_%elements(1)**3.0_bp/planetary_mu(this_%central_body))
+       ! Remove full periods from dt:
+       IF (dt > p) THEN
+          dt = MODULO(dt,p)
+       END IF
+       ! Select the closest time of perihelion:
+       IF (this_%elements(6) <= pi) THEN
+          getCometaryElements(6) = mjd_tt - dt
+       ELSE
+          getCometaryElements(6) = mjd_tt + dt
+       END IF
        CALL NULLIFY(this_)
 
     CASE ("cartesian")
@@ -4507,6 +4518,7 @@ CONTAINS
     REAL(bp), DIMENSION(6)   :: getKeplerianElements
 
     TYPE (Orbit)             :: this_
+    TYPE (Time)              :: t
     REAL(bp), DIMENSION(3)   :: pos, vel, k, sin_angles, cos_angles
     REAL(bp)                 :: r, ru, ea, e_cos_ea, e_sin_ea, cos_ea, &
          sin_ea, alpha, alpha_dot, beta, beta_dot, gamma, mjd_tt, a, e, i, &
@@ -4537,19 +4549,19 @@ CONTAINS
           RETURN
        END IF
 
-       this_ = copy(this)
        ! Semimajor axis:
        getKeplerianElements(1) = &
-            this_%elements(1) / (1.0_bp - this_%elements(2))
+            this%elements(1) / (1.0_bp - this%elements(2))
        ! Mean anomaly:
-       mjd_tt = getMJD(this_%t, "TT")
+       t = copy(this%t)
+       mjd_tt = getMJD(t, "TT")
+       CALL NULLIFY(t)
        getKeplerianElements(6) = &
-            SQRT(planetary_mu(this_%central_body) / &
+            SQRT(planetary_mu(this%central_body) / &
             getKeplerianElements(1)**3.0_bp) * &
-            (mjd_tt - this_%elements(6))
+            (mjd_tt - this%elements(6))
        getKeplerianElements(6) = &
             MODULO(getKeplerianElements(6), two_pi)
-       CALL NULLIFY(this_)
 
     CASE ("cartesian")
 
