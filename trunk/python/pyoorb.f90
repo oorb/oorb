@@ -24,7 +24,7 @@
 !! Module for which f2py builds Python wrappers.
 !!
 !! @author  MG, FP
-!! @version 2009-12-08
+!! @version 2009-12-11
 !!
 MODULE pyoorb
 
@@ -54,6 +54,8 @@ MODULE pyoorb
        /)
 
 CONTAINS
+
+
 
   SUBROUTINE oorb_init(ephemeris_fname, error_verbosity, &
        info_verbosity, error_code)
@@ -137,25 +139,280 @@ CONTAINS
 
 
 
-  SUBROUTINE propagation_2b(elements, mjd_tt0, mjd_tt1)
+  SUBROUTINE oorb_element_transformation(in_norb, &
+       in_orbits,       &
+       in_element_type, &
+       out_orbits,      &
+       error_code)
 
-    IMPLICIT NONE
-    REAL(8), DIMENSION(:,:), INTENT(inout) :: elements
-    REAL(8), INTENT(in) :: mjd_tt0, mjd_tt1
+    ! Input/Output variables.
+    INTEGER, INTENT(in)                                 :: in_norb
+    ! Input flattened orbit:
+    !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
+    REAL(8),DIMENSION(in_norb,12), INTENT(in)           :: in_orbits ! (1:norb,1:12)
+    ! Type of output elements
+    INTEGER, INTENT(in)                                 :: in_element_type
+    ! Output flattened orbit:
+    !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
+    REAL(8),DIMENSION(in_norb,12), INTENT(out)          :: out_orbits ! (1:norb,1:12)
+    ! Output error code
+    INTEGER, INTENT(out)                                :: error_code
+
+    TYPE (Time) :: t
+    TYPE (Orbit) :: orb
+    INTEGER :: i
+
+    ! Loop over orbits:
+    DO i=1,SIZE(in_orbits,dim=1)
+
+       ! Get the element type from the input flattened orbit.
+       IF(NINT(in_orbits(i,8)) < 0 .OR.                                       &
+            NINT(in_orbits(i,8)) > SIZE(element_types)) THEN
+          ! Error: unsupported orbital elements.
+          error_code = 58
+          RETURN
+       END IF
+
+       ! Get each flattened orbit and create an Orbit instance. First
+       ! create a Time instance:
+       CALL NEW(t, in_orbits(i,9), timescales(NINT(in_orbits(i,10))))
+       IF (error) THEN
+          ! Error in creating a Time instance.
+          error_code = 57
+          RETURN
+       END IF
+
+       ! Now create an Orbit instance:
+       CALL NEW(orb, &
+            in_orbits(i,2:7), &
+            element_types(NINT(in_orbits(i,8))), &
+            "ecliptic", &
+            copy(t))
+       CALL NULLIFY(t)
+
+       out_orbits(i,1) = in_orbits(i,1)
+       out_orbits(i,2:7) = getElements(orb, element_types(in_element_type), &
+            "ecliptic")
+       IF (error) THEN
+          ! Error in transformation
+          error_code = 58
+          RETURN
+       END IF
+       out_orbits(i,8) = REAL(in_element_type,8)
+       out_orbits(i,9:) = in_orbits(i,9:)
+       CALL NULLIFY(orb)
+
+    END DO
+
+  END SUBROUTINE oorb_element_transformation
+
+
+
+
+
+  SUBROUTINE oorb_propagation_2b(in_norb, &
+       in_orbits,       &
+       in_epoch,        &
+       out_orbits,      &
+       error_code)
+
+    ! Input/Output variables.
+    INTEGER, INTENT(in)                                 :: in_norb
+    ! Input flattened orbit:
+    !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
+    REAL(8),DIMENSION(in_norb,12), INTENT(in)           :: in_orbits ! (1:norb,1:12)
+    ! Epoch and timescale of output orbits
+    REAL(8), DIMENSION(2), INTENT(in)                   :: in_epoch
+    ! Output flattened orbit:
+    !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
+    REAL(8),DIMENSION(in_norb,12), INTENT(out)          :: out_orbits ! (1:norb,1:12)
+    ! Output error code
+    INTEGER, INTENT(out)                                :: error_code
 
     TYPE (Orbit) :: orb
     TYPE (Time) :: t0, t1
+    CHARACTER(len=INTEGRATOR_LEN) :: integrator
+    CHARACTER(len=6) :: dyn_model
+    REAL(8) :: integration_step
+    INTEGER :: i
+    LOGICAL, DIMENSION(10) :: perturbers
 
-    CALL NEW(t0, mjd_tt0, "TT")
-    CALL NEW(t1, mjd_tt1, "TT")
-    CALL NEW(orb, elements(1,:), "cartesian", "ecliptic", t0)
-    CALL propagate(orb, t1)
-    elements(1,:) = getElements(orb, "cartesian", "ecliptic")
-    CALL NULLIFY(t0)
-    CALL NULLIFY(t1)
-    CALL NULLIFY(orb)
+    ! Init
+    errstr = ""
+    error_code = 0
+    dyn_model = "2-body"
+    integrator = "bulirsch-stoer"
+    integration_step = 5.0_8
+    perturbers = .TRUE.
 
-  END SUBROUTINE propagation_2b
+    ! Loop over orbits:
+    DO i=1,SIZE(in_orbits,dim=1)
+
+       ! Get the element type from the input flattened orbit.
+       IF(NINT(in_orbits(i,8)) < 0 .OR. &
+            NINT(in_orbits(i,8)) > SIZE(element_types)) THEN
+          ! Error: unsupported orbital elements.
+          error_code = 58
+          RETURN
+       END IF
+
+       ! Get each flattened orbit and create an Orbit instance.
+       ! First create a Time instance corresponding to the orbit epoch.
+       CALL NEW(t0, in_orbits(i,9), timescales(NINT(in_orbits(i,10))))
+       IF(error) THEN
+          ! Error in creating a Time instance.
+          error_code = 57
+          RETURN
+       END IF
+
+       ! Now create an Orbit instance.
+       CALL NEW(orb, &
+            in_orbits(i,2:7), &
+            element_types(NINT(in_orbits(i,8))), &
+            "ecliptic", &
+            copy(t0))
+       CALL NULLIFY(t0)
+       CALL setParameters(orb, &
+            dyn_model=dyn_model, &
+            perturbers=perturbers, &
+            integrator=integrator, &
+            integration_step=integration_step)
+       IF (error) THEN
+          error_code = 37
+          RETURN
+       END IF
+       ! Create a Time instance based on the requested output epoch
+       CALL NEW(t1, in_epoch(1), timescales(NINT(in_epoch(2))))
+       IF (error) THEN
+          ! Error in transformation
+          error_code = 58
+          RETURN
+       END IF
+       ! Compute topocentric ephemerides
+       CALL propagation(orb, &
+            t1)
+       IF (error) THEN
+          ! Error in getEphemerides()
+          error_code = 40
+          RETURN
+       END IF
+       out_orbits(i,1) = in_orbits(i,1)
+       out_orbits(i,2:7) = getElements(orb, element_types(NINT(in_orbits(i,8))), &
+            "ecliptic")
+       IF (error) THEN
+          ! Error in transformation
+          error_code = 58
+          RETURN
+       END IF
+       out_orbits(i,8:) = in_orbits(i,8:)
+       CALL NULLIFY(orb)
+    END DO
+
+  END SUBROUTINE oorb_propagation_2b
+
+
+
+
+
+  SUBROUTINE oorb_propagation_nb(in_norb, &
+       in_orbits,       &
+       in_epoch,        &
+       out_orbits,      &
+       error_code)
+
+    ! Input/Output variables.
+    INTEGER, INTENT(in)                                 :: in_norb
+    ! Input flattened orbit:
+    !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
+    REAL(8),DIMENSION(in_norb,12), INTENT(in)           :: in_orbits ! (1:norb,1:12)
+    ! Epoch and timescale of output orbits
+    REAL(8), DIMENSION(2), INTENT(in)                   :: in_epoch
+    ! Output flattened orbit:
+    !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
+    REAL(8),DIMENSION(in_norb,12), INTENT(out)          :: out_orbits ! (1:norb,1:12)
+    ! Output error code
+    INTEGER, INTENT(out)                                :: error_code
+
+    TYPE (Orbit) :: orb
+    TYPE (Time) :: t0, t1
+    CHARACTER(len=INTEGRATOR_LEN) :: integrator
+    CHARACTER(len=6) :: dyn_model
+    REAL(8) :: integration_step
+    INTEGER :: i
+    LOGICAL, DIMENSION(10) :: perturbers
+
+    ! Init
+    errstr = ""
+    error_code = 0
+    dyn_model = "n-body"
+    integrator = "bulirsch-stoer"
+    integration_step = 5.0_8
+    perturbers = .TRUE.
+
+    ! Loop over orbits:
+    DO i=1,SIZE(in_orbits,dim=1)
+
+       ! Get the element type from the input flattened orbit.
+       IF(NINT(in_orbits(i,8)) < 0 .OR. &
+            NINT(in_orbits(i,8)) > SIZE(element_types)) THEN
+          ! Error: unsupported orbital elements.
+          error_code = 58
+          RETURN
+       END IF
+
+       ! Get each flattened orbit and create an Orbit instance.
+       ! First create a Time instance corresponding to the orbit epoch.
+       CALL NEW(t0, in_orbits(i,9), timescales(NINT(in_orbits(i,10))))
+       IF(error) THEN
+          ! Error in creating a Time instance.
+          error_code = 57
+          RETURN
+       END IF
+
+       ! Now create an Orbit instance.
+       CALL NEW(orb, &
+            in_orbits(i,2:7), &
+            element_types(NINT(in_orbits(i,8))), &
+            "ecliptic", &
+            copy(t0))
+       CALL NULLIFY(t0)
+       CALL setParameters(orb, &
+            dyn_model=dyn_model, &
+            perturbers=perturbers, &
+            integrator=integrator, &
+            integration_step=integration_step)
+       IF (error) THEN
+          error_code = 37
+          RETURN
+       END IF
+       ! Create a Time instance based on the requested output epoch
+       CALL NEW(t1, in_epoch(1), timescales(NINT(in_epoch(2))))
+       IF (error) THEN
+          ! Error in transformation
+          error_code = 58
+          RETURN
+       END IF
+       ! Compute topocentric ephemerides
+       CALL propagation(orb, &
+            t1)
+       IF (error) THEN
+          ! Error in getEphemerides()
+          error_code = 40
+          RETURN
+       END IF
+       out_orbits(i,1) = in_orbits(i,1)
+       out_orbits(i,2:7) = getElements(orb, element_types(NINT(in_orbits(i,8))), &
+            "ecliptic")
+       IF (error) THEN
+          ! Error in transformation
+          error_code = 58
+          RETURN
+       END IF
+       out_orbits(i,8:) = in_orbits(i,8:)
+       CALL NULLIFY(orb)
+    END DO
+
+  END SUBROUTINE oorb_propagation_nb
 
 
 
@@ -376,6 +633,7 @@ CONTAINS
     DEALLOCATE(observers)
 
   END SUBROUTINE oorb_ephemeris
+
 
 
 
