@@ -289,7 +289,7 @@ CONTAINS
           RETURN
        END IF
        ! Compute topocentric ephemerides
-       CALL propagation(orb, &
+       CALL propagate(orb, &
             t1)
        IF (error) THEN
           ! Error in getEphemerides()
@@ -393,7 +393,7 @@ CONTAINS
           RETURN
        END IF
        ! Compute topocentric ephemerides
-       CALL propagation(orb, &
+       CALL propagate(orb, &
             t1)
        IF (error) THEN
           ! Error in getEphemerides()
