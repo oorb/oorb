@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-12-10
+!! @version 2009-12-16
 !!
 MODULE Orbit_cl
 
@@ -2257,41 +2257,9 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%element_type == "keplerian") THEN
+    SELECT CASE (this%element_type)
 
-       ! Compute needed quantities:
-       CALL solveKeplerEquation(this, this%t, ea)
-       IF (error) THEN
-          CALL errorMessage("Orbit / getCartesianElements", &
-               "TRACE BACK (5)", 1)
-          RETURN
-       END IF
-       cea = COS(ea)
-       sea = SIN(ea)
-       b = this%elements(1) * SQRT(1.0_bp - this%elements(2)**2.0_bp)
-       dot_ea = SQRT(planetary_mu(this%central_body)/this%elements(1)**3.0_bp)/(1.0_bp - this%elements(2)*cea)
-
-       ! Keplerian elements to polar Cartesian elements:
-       ! -positions:
-       celements(1) = this%elements(1)*(cea - this%elements(2))
-       celements(2) = b*sea
-       celements(3) = 0.0_bp
-       ! -velocities:
-       celements(4) = -this%elements(1)*dot_ea*sea
-       celements(5) = b*dot_ea*cea
-       celements(6) = 0.0_bp
-
-       ! Polar Cartesian elements to ecliptical Cartesian elements:
-       R = getTransformationMatrix(this)
-       celements(1:3) = MATMUL(R,celements(1:3))
-       celements(4:6) = MATMUL(R,celements(4:6))
-
-       IF (frame_ == "equatorial") THEN
-          CALL rotateToEquatorial(celements)
-       END IF
-       getCartesianElements(1:6) = celements(1:6)
-
-    ELSE IF (this%element_type == "cometary") THEN
+    CASE ("cometary")
 
        ! Make transformation cometary -> cartesian at periapsis:
        celements(1:3) = (/ this%elements(1), 0.0_bp, 0.0_bp /)
@@ -2339,14 +2307,73 @@ CONTAINS
        CALL NULLIFY(this_)
        CALL NULLIFY(t)
 
-    ELSE
+    CASE ("cometary_ta")
+
+       this_ = copy(this)
+       IF (error) THEN
+          CALL errorMessage("Orbit / getCartesianElements", &
+               "TRACE BACK (35)", 1)
+          RETURN
+       END IF
+       CALL toCometary(this_)
+       IF (error) THEN
+          CALL errorMessage("Orbit / getCartesianElements", &
+               "TRACE BACK (40)", 1)
+          RETURN
+       END IF
+       WRITE(*,*) "here0"
+       getCartesianElements = getElements(this_, "cartesian", frame_)
+       IF (error) THEN
+          CALL errorMessage("Orbit / getCartesianElements", &
+               "TRACE BACK (45)", 1)
+          RETURN
+       END IF
+       WRITE(*,*) "here1"
+       CALL NULLIFY(this_)
+
+    CASE ("keplerian")
+
+       ! Compute needed quantities:
+       CALL solveKeplerEquation(this, this%t, ea)
+       IF (error) THEN
+          CALL errorMessage("Orbit / getCartesianElements", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       cea = COS(ea)
+       sea = SIN(ea)
+       b = this%elements(1) * SQRT(1.0_bp - this%elements(2)**2.0_bp)
+       dot_ea = SQRT(planetary_mu(this%central_body)/this%elements(1)**3.0_bp)/(1.0_bp - this%elements(2)*cea)
+
+       ! Keplerian elements to polar Cartesian elements:
+       ! -positions:
+       celements(1) = this%elements(1)*(cea - this%elements(2))
+       celements(2) = b*sea
+       celements(3) = 0.0_bp
+       ! -velocities:
+       celements(4) = -this%elements(1)*dot_ea*sea
+       celements(5) = b*dot_ea*cea
+       celements(6) = 0.0_bp
+
+       ! Polar Cartesian elements to ecliptical Cartesian elements:
+       R = getTransformationMatrix(this)
+       celements(1:3) = MATMUL(R,celements(1:3))
+       celements(4:6) = MATMUL(R,celements(4:6))
+
+       IF (frame_ == "equatorial") THEN
+          CALL rotateToEquatorial(celements)
+       END IF
+       getCartesianElements(1:6) = celements(1:6)
+
+    CASE default
 
        error = .TRUE.
        CALL errorMessage("Orbit / getCartesianElements", &
-            "TRACE BACK (35)", 1)
+            "Conversion from " // TRIM(this%element_type) // &
+            " elements to cartesian elements has not yet been implemented.", 1)
        RETURN
 
-    END IF
+    END SELECT
 
   END FUNCTION getCartesianElements
 
@@ -3923,7 +3950,7 @@ CONTAINS
     REAL(bp), DIMENSION(6,6)                :: jacobian, jacobian_lt_corr
     REAL(bp), DIMENSION(6,6)                :: scoord_partials
     REAL(bp), DIMENSION(6)                  :: observer_coordinates
-    INTEGER                                 :: i, j, nthis, err
+    INTEGER                                 :: i, nthis, err
     LOGICAL                                 :: lt_corr_
 
     nthis = SIZE(this_arr,dim=1)
@@ -4540,29 +4567,6 @@ CONTAINS
 
        RETURN
 
-    CASE ("cometary")
-
-       IF (this%elements(2) >= 1.0_bp) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getKeplerianElements", &
-               "Hyperbolic orbit; cannot return Keplerian elements.", 1)
-          RETURN
-       END IF
-
-       ! Semimajor axis:
-       getKeplerianElements(1) = &
-            this%elements(1) / (1.0_bp - this%elements(2))
-       ! Mean anomaly:
-       t = copy(this%t)
-       mjd_tt = getMJD(t, "TT")
-       CALL NULLIFY(t)
-       getKeplerianElements(6) = &
-            SQRT(planetary_mu(this%central_body) / &
-            getKeplerianElements(1)**3.0_bp) * &
-            (mjd_tt - this%elements(6))
-       getKeplerianElements(6) = &
-            MODULO(getKeplerianElements(6), two_pi)
-
     CASE ("cartesian")
 
        this_ = copy(this)
@@ -4702,6 +4706,59 @@ CONTAINS
        END IF
        getKeplerianElements = (/ a, e, i, an, ap, ma /)
        CALL NULLIFY(this_)
+
+    CASE ("cometary")
+
+       IF (this%elements(2) >= 1.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getKeplerianElements", &
+               "Hyperbolic orbit; cannot return Keplerian elements.", 1)
+          RETURN
+       END IF
+
+       ! Semimajor axis:
+       getKeplerianElements(1) = &
+            this%elements(1) / (1.0_bp - this%elements(2))
+       ! Mean anomaly:
+       t = copy(this%t)
+       mjd_tt = getMJD(t, "TT")
+       CALL NULLIFY(t)
+       getKeplerianElements(6) = &
+            SQRT(planetary_mu(this%central_body) / &
+            getKeplerianElements(1)**3.0_bp) * &
+            (mjd_tt - this%elements(6))
+       getKeplerianElements(6) = &
+            MODULO(getKeplerianElements(6), two_pi)
+
+    CASE ("cometary_ta")
+
+       this_ = copy(this)
+       IF (error) THEN
+          CALL errorMessage("Orbit / getKeplerianElements", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       CALL toCometary(this_)
+       IF (error) THEN
+          CALL errorMessage("Orbit / getKeplerianElements", &
+               "TRACE BACK (10)", 1)
+          RETURN
+       END IF
+       getKeplerianElements = getElements(this_, "keplerian")
+       IF (error) THEN
+          CALL errorMessage("Orbit / getKeplerianElements", &
+               "TRACE BACK (15)", 1)
+          RETURN
+       END IF
+       CALL NULLIFY(this_)
+
+    CASE default
+
+       error = .TRUE.
+       CALL errorMessage("Orbit / getKeplerianElements", &
+            "Conversion from " // TRIM(this%element_type) // &
+            " elements to keplerian elements has not yet been implemented.", 1)
+       RETURN
 
     END SELECT
 
@@ -9036,6 +9093,7 @@ CONTAINS
     TYPE (Orbit), INTENT(inout)  :: this
     CHARACTER(len=*), INTENT(in) :: frame
     CHARACTER(len=FRAME_LEN)     :: frame_
+    REAL(bp), DIMENSION(6)       :: elements
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -9073,9 +9131,14 @@ CONTAINS
        END IF
     END IF
 
-    IF (this%element_type == "keplerian" .OR. &
-         this%element_type == "cometary") THEN
-       this%elements(1:6) = getElements(this, "cartesian", frame_)
+    IF (this%element_type /= "cartesian") THEN
+       elements = getElements(this, "cartesian", frame_)
+       IF (error) THEN
+          CALL errorMessage("Orbit / toCartesian", &
+               "TRACE BACK (5).", 1)
+          RETURN
+       END IF
+       this%elements = elements
        this%element_type = "cartesian"
        this%frame = frame_
     ELSE
@@ -9102,6 +9165,7 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)  :: this
+    REAL(bp), DIMENSION(6)       :: elements
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -9110,12 +9174,15 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%element_type == "cartesian" .OR. &
-         this%element_type == "keplerian") THEN
-       this%elements(1:6) = getElements(this, "cometary")
-       this%element_type = "cometary"
-       this%frame = "ecliptic"
+    elements = getElements(this, "cometary")
+    IF (error) THEN
+       CALL errorMessage("Orbit / toCometary", &
+            "TRACE BACK (5).", 1)
+       RETURN
     END IF
+    this%elements = elements
+    this%element_type = "cometary"
+    this%frame = "ecliptic"
 
   END SUBROUTINE toCometary_Orb
 
@@ -9127,6 +9194,7 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)  :: this
+    REAL(bp), DIMENSION(6)       :: elements
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -9135,12 +9203,15 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%element_type == "cartesian" .OR. &
-         this%element_type == "cometary") THEN
-       this%elements(1:6) = getElements(this, "keplerian")
-       this%element_type = "keplerian"
-       this%frame = "ecliptic"
+    elements = getElements(this, "keplerian")
+    IF (error) THEN
+       CALL errorMessage("Orbit / toKeplerian", &
+            "TRACE BACK (5).", 1)
+       RETURN
     END IF
+    this%elements = elements
+    this%element_type = "keplerian"
+    this%frame = "ecliptic"
 
   END SUBROUTINE toKeplerian_Orb
 
