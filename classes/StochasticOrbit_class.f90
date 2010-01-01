@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-11-18
+!! @version 2009-12-31
 !!  
 MODULE StochasticOrbit_cl
 
@@ -73,6 +73,7 @@ MODULE StochasticOrbit_cl
   PRIVATE :: getPeriapsisDistance_SO
   PRIVATE :: getPhaseAngle_SO_pdf
   PRIVATE :: getPhaseAngle_SO_point
+  PRIVATE :: getPhaseAngles_SO
   PRIVATE :: getObservationMasks_SO
   PRIVATE :: getRangeBounds_SO
   PRIVATE :: getResults_SO
@@ -245,6 +246,10 @@ MODULE StochasticOrbit_cl
   INTERFACE getPhaseAngle
      MODULE PROCEDURE getPhaseAngle_SO_pdf
      MODULE PROCEDURE getPhaseAngle_SO_point
+  END INTERFACE
+
+  INTERFACE getPhaseAngles
+     MODULE PROCEDURE getPhaseAngles_SO
   END INTERFACE
 
   INTERFACE getObservationMasks
@@ -3295,12 +3300,99 @@ CONTAINS
     DEALLOCATE(pdf_arr, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+       CALL errorMessage("StochasticOrbit / getPhaseAngle", &
             "Could not deallocate memory (10).", 1)
        RETURN
     END IF
 
   END SUBROUTINE getPhaseAngle_SO_pdf
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns a phase angles corresponding to one or more orbits as
+  !! seen by one or more observers.
+  !!
+  !! Returns error.
+  !! 
+  SUBROUTINE getPhaseAngles_SO(this, observers, phase_angles)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout)                 :: this
+    TYPE (CartesianCoordinates), DIMENSION(:), INTENT(in) :: observers
+    REAL(bp), DIMENSION(:,:), POINTER                     :: phase_angles
+
+    REAL(bp), DIMENSION(:), POINTER :: phase_angles_
+    INTEGER :: i, err
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    DO i=1,SIZE(observers)
+       IF (.NOT.exist(observers(i))) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+               "All observer objects have not been initialized.", 1)
+          RETURN
+       END IF
+    END DO
+
+    IF (containsSampledPDF(this)) THEN
+       ALLOCATE(phase_angles(SIZE(this%orb_arr_cmp),SIZE(observers)), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+               "Could not allocate memory (5).", 1)
+          RETURN
+       END IF
+       DO i=1,SIZE(this%orb_arr_cmp)
+          CALL getPhaseAngles(this%orb_arr_cmp(i), observers, phase_angles_)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+                  "TRACE BACK (5).", 1)
+             RETURN
+          END IF
+          phase_angles(i,:) = phase_angles_
+          DEALLOCATE(phase_angles_, stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+                  "Could not deallocate memory (5).", 1)
+             RETURN
+          END IF
+       END DO
+    ELSE
+       CALL getPhaseAngles(this%orb_ml_cmp, observers, phase_angles_)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+               "TRACE BACK (10).", 1)
+          RETURN
+       END IF
+       ALLOCATE(phase_angles(1,SIZE(phase_angles_)), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+               "Could not allocate memory (10).", 1)
+          RETURN
+       END IF
+       phase_angles(1,:) = phase_angles_
+       DEALLOCATE(phase_angles_, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getPhaseAngles", &
+               "Could not deallocate memory (10).", 1)
+          RETURN
+       END IF
+    END IF
+
+  END SUBROUTINE getPhaseAngles_SO
 
 
 
