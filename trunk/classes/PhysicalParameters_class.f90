@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2009-07-30
+!! @version 2009-12-31
 !!
 MODULE PhysicalParameters_cl
 
@@ -216,6 +216,186 @@ CONTAINS
 
   !! *Description*:
   !!
+  !! Compute crude estimate for H by calculating the exact value for
+  !! each orbit and observation, and averaging over observations. That
+  !! is, for single point estimates (e.g., from LSL) we calculate nobs
+  !! H values and assume their average represents the overall H. For a
+  !! sampled solution each orbit gets an H value which has been
+  !! averaged over observations.
+  !!
+  !! NB: different bands (AKA filters) are not yet properly treated!
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE crudeHEstimate(this, obss, input_G)
+
+    IMPLICIT NONE
+    TYPE (PhysicalParameters), INTENT(inout) :: this    
+    TYPE (Observations), INTENT(in) :: obss
+    REAL(bp), INTENT(in) :: input_G
+
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoord_arr 
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides_arr  
+    TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr 
+    CHARACTER(len=2), DIMENSION(:), POINTER :: filter_arr
+    CHARACTER(len=2), DIMENSION(:), ALLOCATABLE :: filter_arr_
+    REAL(bp), DIMENSION(:,:,:), POINTER :: cov_arr
+    REAL(bp), DIMENSION(:,:), POINTER :: pdfs_arr, phase_angle_arr
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: helio_dist_arr, topo_dist_arr
+    REAL(bp), DIMENSION(:), POINTER :: obs_mag_arr
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: H_arr, &
+         obs_mag_arr_
+    REAL(bp), DIMENSION(6) :: coordinates
+    INTEGER :: err, i, j, nobs, norb, nmag
+
+    IF (.NOT.this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT.exist(this%storb)) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+            "Orbital information not available.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT.exist(obss)) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+            "Photometric information not available.", 1)
+       RETURN
+    END IF
+
+    ! Extract observational information
+    obsy_ccoord_arr => getObservatoryCCoords(obss)
+    nobs = SIZE(obsy_ccoord_arr)
+    obs_mag_arr => getMagnitudes(obss)
+    filter_arr => getFilters(obss)
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,*) "Photometry extracted..."
+    END IF
+
+    ! Extract information of observations reporting brightness
+    DO i=1,nobs
+       IF (obs_mag_arr(i) > 90.0_bp) THEN
+          CALL NULLIFY(obsy_ccoord_arr(i))
+       END IF
+    END DO
+    obsy_ccoord_arr => reallocate(obsy_ccoord_arr)
+    nmag = SIZE(obsy_ccoord_arr)
+    ALLOCATE(obs_mag_arr_(nmag), filter_arr_(nmag))
+    j = 0
+    DO i=1,nobs
+       IF (obs_mag_arr(i) < 90.0_bp) THEN
+          j = j + 1
+          obs_mag_arr_(j) = obs_mag_arr(i)
+          filter_arr_(j) = filter_arr(i)
+       END IF
+    END DO
+    DEALLOCATE(obs_mag_arr, filter_arr)
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2(I0,A))") nmag, " observations out of ", nobs, &
+            " contain brightness information."
+    END IF
+
+    ! Compute heliocentric and topocentric distances, and phase angles
+    IF (containsSampledPDF(this%storb)) THEN
+       CALL getEphemerides(this%storb, obsy_ccoord_arr, &
+            ephemerides_arr, pdfs_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr)
+    ELSE
+       CALL getEphemerides(this%storb, obsy_ccoord_arr, &
+            ephemerides_arr, cov_arr=cov_arr, this_lt_corr_arr=orb_lt_corr_arr)       
+    END IF
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+            "TRACE BACK (10).", 1)
+       RETURN
+    END IF
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,*) "Ephemerides computed..."
+    END IF
+    norb = SIZE(ephemerides_arr,dim=1)
+    ALLOCATE(helio_dist_arr(norb,nmag), topo_dist_arr(norb,nmag), &
+         H_arr(nmag))
+    DO i=1,nmag
+       DO j=1,norb
+          coordinates = getElements(orb_lt_corr_arr(j,i), "cartesian", "ecliptic")
+          helio_dist_arr(j,i) = SQRT(SUM(coordinates(1:3)**2.0_bp))
+          coordinates = getCoordinates(ephemerides_arr(j,i))
+          topo_dist_arr(j,i) = coordinates(1)
+       END DO
+       IF (info_verb >= 3) THEN
+          WRITE(stdout,*) coordinates(2:3)/rad_deg
+       END IF
+    END DO
+    CALL getPhaseAngles(this%storb, obsy_ccoord_arr, &
+         phase_angle_arr)
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,*) "Phase angles and distances computed..."
+    END IF
+
+    ! Estimate H
+    IF (containsSampledPDF(this%storb)) THEN
+       ALLOCATE(this%H0_arr(norb,2), this%G_arr(norb,2))
+       this%G_arr(:,1) = input_G
+       this%G_arr(:,2) = 0.0_bp
+       DO i=1,norb
+          DO j=1,nmag
+             H_arr(j) = getExactH(obs_mag_arr_(j), helio_dist_arr(i,j), &
+                  topo_dist_arr(i,j), phase_angle_arr(i,j), &
+                  this%G_arr(i,1))
+          END DO
+          this%H0_arr(i,1) = SUM(H_arr)/nmag
+          this%H0_arr(i,2) = 0.0_bp
+       END DO
+       IF (info_verb >= 2) THEN
+          WRITE(*,*) "H0_min: ", MINVAL(this%H0_arr(:,1)-this%H0_arr(:,2)), &
+               "  H0_max: ", MAXVAL(this%H0_arr(:,1)+this%H0_arr(:,2))
+       END IF
+    ELSE
+       this%G_nominal = input_G
+       this%G_unc = 0.0_bp
+       DO j=1,nmag
+          H_arr(j) = getExactH(obs_mag_arr_(j), helio_dist_arr(1,j), &
+               topo_dist_arr(1,j), phase_angle_arr(1,j), &
+               this%G_nominal)
+          WRITE(*,*) j, H_arr(j)
+       END DO
+       this%H0_nominal = SUM(H_arr)/nmag
+       this%H0_unc = 0.0_bp
+       IF (info_verb >= 2) THEN
+          WRITE(*,*) "H0: ", this%H0_nominal, "  dH0: ", this%H0_unc
+       END IF
+    END IF
+
+    ! Deallocate memory
+    DEALLOCATE(H_arr, stat=err)
+    DEALLOCATE(obsy_ccoord_arr, stat=err)
+    DEALLOCATE(obs_mag_arr_, stat=err)
+    DEALLOCATE(filter_arr_, stat=err)
+    DEALLOCATE(ephemerides_arr, stat=err)
+    DEALLOCATE(orb_lt_corr_arr, stat=err)
+    IF (ASSOCIATED(cov_arr)) THEN
+       DEALLOCATE(cov_arr, stat=err)
+    END IF
+    IF (ASSOCIATED(pdfs_arr)) THEN
+       DEALLOCATE(pdfs_arr, stat=err)
+    END IF
+    DEALLOCATE(phase_angle_arr, stat=err)
+    DEALLOCATE(helio_dist_arr, stat=err)
+    DEALLOCATE(topo_dist_arr, stat=err)
+
+  END SUBROUTINE crudeHEstimate
+
+
+
+
+
+  !! *Description*:
+  !!
   !! Compute estimates for H and G as specified in Bowell et al. 1989.
   !!
   SUBROUTINE estimateHAndG(this, obss, input_G, input_delta_G)
@@ -229,40 +409,40 @@ CONTAINS
     TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides_arr  
     TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr 
     CHARACTER(len=2), DIMENSION(:), POINTER :: filter_arr
+    CHARACTER(len=2), DIMENSION(:), ALLOCATABLE :: filter_arr_
     REAL(bp), DIMENSION(:,:,:), POINTER :: cov_arr
-    REAL(bp), DIMENSION(:,:), POINTER :: pdfs_arr, phase_angle_arr_
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: phase_angle_arr, &
-         hel_dist_arr, topo_dist_arr
+    REAL(bp), DIMENSION(:,:), POINTER :: pdfs_arr, phase_angle_arr
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: helio_dist_arr, topo_dist_arr
     REAL(bp), DIMENSION(:), POINTER :: obs_mag_arr, obs_mag_unc_arr
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: obs_mag_arr_, &
+         obs_mag_unc_arr_
     REAL(bp), DIMENSION(6) :: coordinates
-    INTEGER :: err, i, j, norb, nobs
-    LOGICAL, DIMENSION(:), ALLOCATABLE :: mask_arr
+    INTEGER :: err, i, j, nmag, norb, nobs
 
     IF (.NOT.this%is_initialized) THEN
        error = .TRUE.
-       CALL errorMessage("PhysicalParameters / computeHAndG", &
+       CALL errorMessage("PhysicalParameters / estimateHAndG", &
             "Object has not yet been initialized.", 1)
        RETURN
     END IF
 
     IF (.NOT.exist(this%storb)) THEN
        error = .TRUE.
-       CALL errorMessage("PhysicalParameters / computeHAndG", &
+       CALL errorMessage("PhysicalParameters / estimateHAndG", &
             "Orbital information not available.", 1)
        RETURN
     END IF
 
     IF (.NOT.exist(obss)) THEN
        error = .TRUE.
-       CALL errorMessage("PhysicalParameters / computeHAndG", &
+       CALL errorMessage("PhysicalParameters / estimateHAndG", &
             "Photometric information not available.", 1)
        RETURN
     END IF
 
     ! Extract observational information
     obsy_ccoord_arr => getObservatoryCCoords(obss)
-    ALLOCATE(mask_arr(SIZE(obsy_ccoord_arr)))
-    mask_arr = .FALSE.
+    nobs = SIZE(obsy_ccoord_arr)
     obs_mag_arr => getMagnitudes(obss)
     obs_mag_unc_arr => getMagnitudeUncertainties(obss)
     filter_arr => getFilters(obss)
@@ -271,6 +451,30 @@ CONTAINS
     END IF
     IF (info_verb >= 3) THEN
        WRITE(stdout,*) obs_mag_unc_arr(:)
+    END IF
+
+    ! Extract information of observations reporting brightness
+    DO i=1,nobs
+       IF (obs_mag_arr(i) > 90.0_bp) THEN
+          CALL NULLIFY(obsy_ccoord_arr(i))
+       END IF
+    END DO
+    obsy_ccoord_arr => reallocate(obsy_ccoord_arr)
+    nmag = SIZE(obsy_ccoord_arr)
+    ALLOCATE(obs_mag_arr_(nmag), filter_arr_(nmag), obs_mag_unc_arr_(nmag))
+    j = 0
+    DO i=1,nobs
+       IF (obs_mag_arr(i) < 90.0_bp) THEN
+          j = j + 1
+          obs_mag_arr_(j) = obs_mag_arr(i)
+          obs_mag_unc_arr_(j) = obs_mag_unc_arr(i)
+          filter_arr_(j) = filter_arr(i)
+       END IF
+    END DO
+    DEALLOCATE(obs_mag_arr, obs_mag_unc_arr, filter_arr)
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2(I0,A))") nmag, " observations out of ", nobs, &
+            " contain brightness information."
     END IF
 
     ! Compute heliocentric and topocentric distances, and phase angles
@@ -282,7 +486,7 @@ CONTAINS
             ephemerides_arr, cov_arr=cov_arr, this_lt_corr_arr=orb_lt_corr_arr)       
     END IF
     IF (error) THEN
-       CALL errorMessage("PhysicalParameters / computeHAndG", &
+       CALL errorMessage("PhysicalParameters / estimateHAndG", &
             "TRACE BACK (10).", 1)
        RETURN
     END IF
@@ -290,13 +494,11 @@ CONTAINS
        WRITE(stdout,*) "Ephemerides computed..."
     END IF
     norb = SIZE(ephemerides_arr,dim=1)
-    nobs = SIZE(ephemerides_arr,dim=2)
-    ALLOCATE(hel_dist_arr(norb,nobs), topo_dist_arr(norb,nobs), &
-         phase_angle_arr(norb,nobs))
-    DO i=1,nobs
+    ALLOCATE(helio_dist_arr(norb,nmag), topo_dist_arr(norb,nmag))
+    DO i=1,nmag
        DO j=1,norb
           coordinates = getElements(orb_lt_corr_arr(j,i), "cartesian", "ecliptic")
-          hel_dist_arr(j,i) = SQRT(SUM(coordinates(1:3)**2.0_bp))
+          helio_dist_arr(j,i) = SQRT(SUM(coordinates(1:3)**2.0_bp))
           coordinates = getCoordinates(ephemerides_arr(j,i))
           topo_dist_arr(j,i) = coordinates(1)
        END DO
@@ -304,19 +506,8 @@ CONTAINS
           WRITE(stdout,*) coordinates(2:3)/rad_deg
        END IF
     END DO
-    IF (containsSampledPDF(this%storb)) THEN
-       DO i=1,nobs
-          CALL getPhaseAngle(this%storb, obsy_ccoord_arr(i), &
-               phase_angle_arr_)
-          phase_angle_arr(:,i) = phase_angle_arr_(:,1)
-          DEALLOCATE(phase_angle_arr_)
-       END DO
-    ELSE
-       DO i=1,nobs
-          CALL getPhaseAngle(this%storb, obsy_ccoord_arr(i), &
-               phase_angle_arr(1,i))
-       END DO
-    END IF
+    CALL getPhaseAngles(this%storb, obsy_ccoord_arr, &
+         phase_angle_arr)
     IF (info_verb >= 2) THEN
        WRITE(stdout,*) "Phase angles and distances computed..."
     END IF
@@ -326,12 +517,12 @@ CONTAINS
        ALLOCATE(this%H0_arr(norb,2), this%G_arr(norb,2))
        DO i=1,norb
           IF (PRESENT(input_G)) THEN
-             CALL HG(obs_mag_arr, obs_mag_unc_arr, hel_dist_arr(i,:), &
+             CALL HG(obs_mag_arr_, obs_mag_unc_arr_, helio_dist_arr(i,:), &
                   topo_dist_arr(i,:), phase_angle_arr(i,:), &
                   this%H0_arr(i,1), this%H0_arr(i,2), this%G_arr(i,1), &
                   this%G_arr(i,2), input_G, input_delta_G)
           ELSE
-             CALL HG(obs_mag_arr, obs_mag_unc_arr, hel_dist_arr(i,:), &
+             CALL HG(obs_mag_arr_, obs_mag_unc_arr_, helio_dist_arr(i,:), &
                   topo_dist_arr(i,:), phase_angle_arr(i,:), &
                   this%H0_arr(i,1), this%H0_arr(i,2), this%G_arr(i,1), &
                   this%G_arr(i,2))
@@ -345,12 +536,12 @@ CONTAINS
        END IF
     ELSE
        IF (PRESENT(input_G)) THEN
-          CALL HG(obs_mag_arr, obs_mag_unc_arr, hel_dist_arr(1,:), &
+          CALL HG(obs_mag_arr_, obs_mag_unc_arr_, helio_dist_arr(1,:), &
                topo_dist_arr(1,:), phase_angle_arr(1,:), &
                this%H0_nominal, this%H0_unc, this%G_nominal, &
                this%G_unc, input_G, input_delta_G)
        ELSE
-          CALL HG(obs_mag_arr, obs_mag_unc_arr, hel_dist_arr(1,:), &
+          CALL HG(obs_mag_arr_, obs_mag_unc_arr_, helio_dist_arr(1,:), &
                topo_dist_arr(1,:), phase_angle_arr(1,:), &
                this%H0_nominal, this%H0_unc, this%G_nominal, &
                this%G_unc)
@@ -363,10 +554,9 @@ CONTAINS
 
     ! Deallocate memory
     DEALLOCATE(obsy_ccoord_arr, stat=err)
-    DEALLOCATE(mask_arr, stat=err)
-    DEALLOCATE(obs_mag_arr, stat=err)
-    DEALLOCATE(obs_mag_unc_arr, stat=err)
-    DEALLOCATE(filter_arr, stat=err)
+    DEALLOCATE(obs_mag_arr_, stat=err)
+    DEALLOCATE(obs_mag_unc_arr_, stat=err)
+    DEALLOCATE(filter_arr_, stat=err)
     DEALLOCATE(ephemerides_arr, stat=err)
     DEALLOCATE(orb_lt_corr_arr, stat=err)
     IF (ASSOCIATED(cov_arr)) THEN
@@ -375,18 +565,9 @@ CONTAINS
     IF (ASSOCIATED(pdfs_arr)) THEN
        DEALLOCATE(pdfs_arr, stat=err)
     END IF
-    IF (ASSOCIATED(phase_angle_arr_)) THEN
-       DEALLOCATE(phase_angle_arr_, stat=err)
-    END IF
-    IF (ALLOCATED(phase_angle_arr)) THEN
-       DEALLOCATE(phase_angle_arr, stat=err)
-    END IF
-    IF (ALLOCATED(hel_dist_arr)) THEN
-       DEALLOCATE(hel_dist_arr, stat=err)
-    END IF
-    IF (ALLOCATED(topo_dist_arr)) THEN
-       DEALLOCATE(topo_dist_arr, stat=err)
-    END IF
+    DEALLOCATE(phase_angle_arr, stat=err)
+    DEALLOCATE(helio_dist_arr, stat=err)
+    DEALLOCATE(topo_dist_arr, stat=err)
 
   END SUBROUTINE estimateHAndG
 
@@ -524,14 +705,14 @@ CONTAINS
   !! Compute estimates for H and G and their uncertainties as
   !! specified in Bowell et al. 1989.
   !!
-  SUBROUTINE HG(obs_mag_arr, obs_mag_unc_arr, hel_dist_arr, &
+  SUBROUTINE HG(obs_mag_arr, obs_mag_unc_arr, helio_dist_arr, &
        topo_dist_arr, phase_angle_arr, H0, delta_H0, G, delta_G, input_G, &
        input_delta_G)
 
     IMPLICIT NONE
 
     REAL(bp), DIMENSION(:), INTENT(in) :: obs_mag_arr, &
-         obs_mag_unc_arr, hel_dist_arr, topo_dist_arr, phase_angle_arr
+         obs_mag_unc_arr, helio_dist_arr, topo_dist_arr, phase_angle_arr
     REAL(bp), INTENT(out) :: H0, G, delta_H0, delta_G
     REAL(bp), INTENT(in), OPTIONAL :: input_G, input_delta_G
 
@@ -545,7 +726,7 @@ CONTAINS
     INTEGER :: i
 
     ! Note that geo_dist has been changed to topo_dist:
-    reduced_mag_arr = obs_mag_arr - 5.0_bp*LOG10(hel_dist_arr*topo_dist_arr)
+    reduced_mag_arr = obs_mag_arr - 5.0_bp*LOG10(helio_dist_arr*topo_dist_arr)
 
     DO i=1,SIZE(reduced_mag_arr)
        phi_arr(i,1:2) = HGPhaseFunctions(phase_angle_arr(i))
@@ -626,6 +807,39 @@ CONTAINS
     END IF
 
   END SUBROUTINE HG
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Compute the exact value for H corresponding to an observed magnitude,
+  !! a heliocentric distance, a topocentric distance, a phase angle, and
+  !! a slope parameter.
+  !!
+  REAL(bp) FUNCTION getExactH(obs_mag, helio_dist, &
+       topo_dist, phase_angle, G)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: obs_mag, &
+         helio_dist, &
+         topo_dist, &
+         phase_angle, &
+         G
+
+    REAL(bp), DIMENSION(2) :: phi
+    REAL(bp) :: reduced_mag, delta_malpha
+
+    ! Note that geo_dist has been changed to topo_dist:
+    reduced_mag = obs_mag - 5.0_bp*LOG10(helio_dist*topo_dist)
+    phi(1:2) = HGPhaseFunctions(phase_angle)
+
+    ! Compute nominal value for H(alpha=0) assuming fixed G
+    delta_malpha = -2.5_bp * LOG10((1.0_bp - G)*phi(1) + G*phi(2))
+    getExactH = reduced_mag - delta_malpha
+
+  END FUNCTION getExactH
 
 
 
