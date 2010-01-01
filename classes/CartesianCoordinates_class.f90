@@ -28,7 +28,7 @@
 !! @see Orbit_class 
 !!  
 !! @author  MG, JV, KM, TL
-!! @version 2008-09-25
+!! @version 2009-12-31
 !!
 MODULE CartesianCoordinates_cl
 
@@ -113,6 +113,7 @@ MODULE CartesianCoordinates_cl
   END INTERFACE
 
   INTERFACE reallocate
+     MODULE PROCEDURE reallocate_CC
      MODULE PROCEDURE reallocate_CC_1
      MODULE PROCEDURE reallocate_CC_2
   END INTERFACE
@@ -816,6 +817,69 @@ CONTAINS
     opposite_CC%velocity = -1.0_bp * this%velocity
 
   END FUNCTION opposite_CC
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Reallocates a pointer array of CartesianCoordinates-objects by
+  !! copying only the initialized objects to the new array.
+  !!
+  !! *Usage*:
+  !!
+  !! myccoords => reallocate(myccoords)
+  !!
+  !! Returns error.
+  !!
+  FUNCTION reallocate_CC(array)
+
+    IMPLICIT NONE
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: reallocate_CC, array
+    INTEGER :: i, j, n, err
+
+    n = 0
+    DO i=1,SIZE(array)
+       IF (exist(array(i))) THEN
+          n = n + 1
+       END IF
+    END DO
+    IF (n == 0) THEN
+       reallocate_CC => NULL()
+    ELSE
+       ALLOCATE(reallocate_CC(n), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("CartesianCoordinates / reallocate", &
+               "Could not allocate memory.", 1)
+          DEALLOCATE(array)
+          reallocate_CC => NULL()
+          RETURN
+       END IF
+       j = 0
+       DO i=1,SIZE(array)
+          IF (exist(array(i))) THEN
+             j = j + 1
+             reallocate_CC(j) = copy(array(i))
+             IF (error) THEN
+                DEALLOCATE(array)
+                CALL errorMessage("CartesianCoordinates / reallocate", &
+                     "TRACE BACK", 1)
+                RETURN          
+             END IF
+          END IF
+       END DO
+    END IF
+    DEALLOCATE(array, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("CartesianCoordinates / reallocate", &
+            "Could not deallocate memory.", 1)
+       RETURN
+    END IF
+
+  END FUNCTION reallocate_CC
 
 
 
