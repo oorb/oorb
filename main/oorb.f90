@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-12-10
+!! @version 2009-12-31
 !!
 PROGRAM oorb
 
@@ -1024,16 +1024,22 @@ PROGRAM oorb
         ELSE
            id = TRIM(ADJUSTL(str_arr(2)))
         END IF
-        IF (orbit_format_out == "des") THEN
+        SELECT CASE (TRIM(orbit_format_out))
+        CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id, orb, H_value, 1, 6, &
                 -1.0_bp, "OPENORB")
-        ELSE IF (orbit_format_out == "orb") THEN
+        CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
                 id=TRIM(id), orb=orb, H=H_value, G=G_value, &
                 mjd=mjd_epoch)
-        END IF
+        CASE default
+           CALL errorMessage("oorb / astorbtoorb", &
+                "Orbit format " // TRIM(orbit_format_out) // &
+                " not supported.",1)
+           STOP           
+        END SELECT
         CALL NULLIFY(orb)
      END DO
      CALL NULLIFY(orb_in_file)
@@ -1077,17 +1083,23 @@ PROGRAM oorb
 !!$        END IF
 !!$        ! End requirement
 !!$        ! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        IF (orbit_format_out == "des") THEN
+        SELECT CASE (TRIM(orbit_format_out))
+        CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
                 -1.0_bp, "OPENORB")
-        ELSE IF (orbit_format_out == "orb") THEN
+        CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
                 id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
                 H=HG_arr_in(i,1), G=HG_arr_in(i,2), &
                 mjd=mjd_epoch)
-        END IF
+        CASE default
+           CALL errorMessage("oorb / astorbtoorb", &
+                "Orbit format " // TRIM(orbit_format_out) // &
+                " not supported.",1)
+           STOP           
+        END SELECT
         IF (error) THEN
            CALL errorMessage("oorb / mpcorbtoorb", &
                 "TRACE BACK (15)", 1)
@@ -2015,7 +2027,12 @@ PROGRAM oorb
               END IF
               lu_orb_out = getUnit(out_file)
            END IF
-           IF (orbit_format_out == "orb") THEN
+           SELECT CASE (TRIM(orbit_format_out))
+           CASE ("des")
+              CALL errorMessage("oorb / lsl", &
+                   "DES format not yet supported for LSL output.", 1)
+              STOP                 
+           CASE ("orb")
               CALL writeOpenOrbOrbitFile(lu_orb_out, &
                    print_header=first, &
                    element_type_out=element_type_out_prm, &
@@ -2025,11 +2042,12 @@ PROGRAM oorb
                    H=HG_arr_in(i,1), &
                    G=HG_arr_in(i,3), &
                    mjd=mjd_epoch)
-           ELSE IF (orbit_format_out == "des") THEN
+           CASE default
               CALL errorMessage("oorb / lsl", &
-                   "DES format not yet supported for LSL output.", 1)
-              STOP                 
-           END IF
+                   "Orbit format " // TRIM(orbit_format_out) // &
+                   " not supported.",1)
+              STOP           
+           END SELECT
            IF (error) THEN
               CALL errorMessage("oorb / lsl", &
                    "TRACE BACK (195)", 1)
@@ -3568,7 +3586,7 @@ PROGRAM oorb
 
      ! Input observatory code
      obsy_code = get_cl_option("--code=", obsy_code)
-
+     !write(*,*) obsy_code
      ! Input evolutionary timespan [days]
      timespan = get_cl_option("--timespan=", 0.0_bp)
 
@@ -3596,7 +3614,7 @@ PROGRAM oorb
      obj_alt_min = obj_alt_min*rad_deg
 
      ! Input maximum apparent magnitude (minimum brightness) for object
-     obj_vmag_max = get_cl_option("--object-magnitude-max=", 23.5_bp)
+     obj_vmag_max = get_cl_option("--object-magnitude-max=", HUGE(obj_vmag_max))
 
      ! Input maximum altitude for Sun
      solar_alt_max = get_cl_option("--solar-altitude-max=", -18.0_bp)
@@ -3619,10 +3637,10 @@ PROGRAM oorb
      lunar_elongation_min = lunar_elongation_min*rad_deg
 
      ! Input minimum phase of Moon
-     lunar_phase_min = get_cl_option("--lunar-phase-min=", 0.25_bp)
+     lunar_phase_min = get_cl_option("--lunar-phase-min=", 0.0_bp)
 
      ! Input maximum phase of Moon
-     lunar_phase_max = get_cl_option("--lunar-phase-max=", 0.75_bp)
+     lunar_phase_max = get_cl_option("--lunar-phase-max=", 1.0_bp)
 
      CALL NEW(obsies)
      IF (error) THEN
@@ -3849,6 +3867,7 @@ PROGRAM oorb
                       'TRACE BACK (70)',1)
                  STOP
               END IF
+              !write(*,*) "obj_vmag: ", obj_vmag
               IF (obj_vmag > obj_vmag_max) THEN
                  istep = 0
                  CYCLE
@@ -3870,6 +3889,7 @@ PROGRAM oorb
               END IF
               vec3 = cross_product(geoc_obsy,obsy_obj)
               obj_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_obj))
+              !write(*,*) "obj_alt: ", obj_alt/rad_deg
               IF (obj_alt < obj_alt_min) THEN
                  istep = 0
                  CYCLE
@@ -3888,6 +3908,7 @@ PROGRAM oorb
               DEALLOCATE(planeph)
               vec3 = cross_product(geoc_obsy,obsy_sun)
               solar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_sun))
+              !write(*,*) "solar_alt: ", solar_alt/rad_deg
               IF (solar_alt > solar_alt_max) THEN
                  istep = 0
                  CYCLE
@@ -3895,6 +3916,7 @@ PROGRAM oorb
               ! Compute the solar elongation:
               vec3 = cross_product(obsy_obj,obsy_sun)
               solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
+              !write(*,*) "solar_elongation: ", solar_elongation/rad_deg
               IF (solar_elongation < solar_elon_min) THEN
                  istep = 0
                  CYCLE
@@ -3929,6 +3951,7 @@ PROGRAM oorb
                    observer_r2) / (SQRT(sun_moon_r2) * &
                    SQRT(obsy_moon_r2))
               lunar_phase = (pi-ACOS(cos_obj_phase))/pi
+              !write(*,*) "lunar_phase: ", lunar_phase
               IF (lunar_phase < lunar_phase_min) THEN
                  istep = 0
                  CYCLE
@@ -3939,6 +3962,7 @@ PROGRAM oorb
               ! Compute (approximate) distance between the target and the Moon:
               vec3 = cross_product(obsy_obj,obsy_moon)
               lunar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_moon))
+              !write(*,*) "lunar_elongation: ", lunar_elongation/rad_deg
               IF (lunar_elongation < lunar_elongation_min) THEN
                  istep = 0
                  CYCLE
@@ -3946,6 +3970,7 @@ PROGRAM oorb
               ! Compute (approximate) altitude of the Moon:
               vec3 = cross_product(geoc_obsy,obsy_moon)
               lunar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_moon))
+              !write(*,*) "lunar_alt: ", lunar_alt/rad_deg
               IF (lunar_alt > lunar_alt_max) THEN
                  istep = 0
                  CYCLE
