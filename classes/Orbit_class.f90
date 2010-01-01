@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-12-16
+!! @version 2009-12-31
 !!
 MODULE Orbit_cl
 
@@ -64,6 +64,7 @@ MODULE Orbit_cl
   PRIVATE :: getFrame_Orb
   PRIVATE :: getKeplerianElements
   PRIVATE :: getParameters_Orb
+  PRIVATE :: getPhaseAngles_Orb
   PRIVATE :: getPoincareElements
   PRIVATE :: getPosition_Orb
   PRIVATE :: getPhaseAngle_Orb
@@ -150,6 +151,10 @@ MODULE Orbit_cl
 
   INTERFACE getPhaseAngle
      MODULE PROCEDURE getPhaseAngle_Orb
+  END INTERFACE
+
+  INTERFACE getPhaseAngles
+     MODULE PROCEDURE getPhaseAngles_Orb
   END INTERFACE
 
   INTERFACE getPosition
@@ -5715,6 +5720,153 @@ CONTAINS
     END IF
 
   END SUBROUTINE getPhaseAngle_Orb
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the phase angles for an object on this orbit at a given
+  !! epoch as seen from given observers.
+  !!
+  !! Returns error.
+  !! 
+  SUBROUTINE getPhaseAngles_Orb(this, observers, phase_angles)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(inout)                           :: this
+    TYPE (CartesianCoordinates), DIMENSION(:), INTENT(in) :: observers
+    REAL(bp), DIMENSION(:), POINTER                       :: phase_angles
+
+    TYPE (Orbit), DIMENSION(:), POINTER :: this_lt_corr_arr
+    TYPE (CartesianCoordinates) :: ephemeris_ccoord, observer_
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemerides
+!!$    REAL(bp), DIMENSION(:,:,:), POINTER :: jacobian_lt_corr_arr, jacobian_prop_arr
+!!$    REAL(bp), DIMENSION(6,6) :: jacobian
+!!$    REAL(bp), DIMENSION(1,6) :: partials_
+    REAL(bp), DIMENSION(3) :: observer_pos, ephemeris_pos, heliocentric_pos
+    REAL(bp) :: cos_alpha, sqrt_
+    INTEGER :: i
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / getPhaseAngles", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    DO i=1,SIZE(observers)
+       IF (.NOT.exist(observers(i))) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getPhaseAngles", &
+               "Observer object has not been initialized.", 1)
+          RETURN
+       END IF
+    END DO
+
+    ALLOCATE(phase_angles(SIZE(observers)))
+    ! Topocentric light-time-corrected ephemeris:
+!!$    IF (PRESENT(partials)) THEN
+!!$       ALLOCATE(partials(SIZE(observers),6))
+!!$       CALL getEphemerides(this, observers, ephemerides, &
+!!$            this_lt_corr_arr=this_lt_corr_arr, &
+!!$            jacobian_lt_corr_arr=jacobian_lt_corr_arr, &
+!!$            jacobian_prop_arr=jacobian_prop_arr)
+!!$    ELSE
+    CALL getEphemerides(this, observers, ephemerides, &
+         this_lt_corr_arr=this_lt_corr_arr)
+!!$    END IF
+    IF (error) THEN
+       CALL errorMessage("Orbit / getPhaseAngles", &
+            "TRACE BACK 5", 1)
+       RETURN
+    END IF
+
+    DO i=1,SIZE(observers)
+
+       CALL NEW(ephemeris_ccoord, ephemerides(i))
+       IF (error) THEN
+          CALL errorMessage("Orbit / getPhaseAngles", &
+               "TRACE BACK 10", 1)
+          RETURN
+       END IF
+
+       IF (getFrame(this) == "equatorial") THEN
+          CALL rotateToEquatorial(ephemeris_ccoord)
+          CALL rotateToEquatorial(this_lt_corr_arr(i))
+       ELSE IF (getFrame(this) == "ecliptic") THEN
+          CALL rotateToEcliptic(ephemeris_ccoord)
+          CALL rotateToEcliptic(this_lt_corr_arr(i))
+       ELSE
+          error = .TRUE.
+          CALL errorMessage("Orbit / getPhaseAngles", &
+               "Unknown frame.", 1)
+          RETURN       
+       END IF
+       ephemeris_pos = getPosition(ephemeris_ccoord)
+       heliocentric_pos = getPosition(this_lt_corr_arr(i))
+       CALL NULLIFY(ephemeris_ccoord)
+
+       ! Cosine of phase angle:
+       cos_alpha = DOT_PRODUCT(heliocentric_pos,ephemeris_pos)/ &
+            (SQRT(DOT_PRODUCT(heliocentric_pos,heliocentric_pos))* &
+            SQRT(DOT_PRODUCT(ephemeris_pos,ephemeris_pos)))
+       IF (ABS(cos_alpha) > 1.0_bp) THEN
+          cos_alpha = SIGN(1.0_bp,cos_alpha)
+       END IF
+
+       ! Phase angle:
+       IF (cos_alpha == -1.0_bp) THEN
+          phase_angles(i) = pi
+       ELSE IF (cos_alpha == 1.0_bp) THEN
+          phase_angles(i) = 0.0_bp
+       ELSE
+          phase_angles(i) = ACOS(cos_alpha)
+       END IF
+
+!!$       ! Partials of phase angle wrt Cartesian position:
+!!$       IF (PRESENT(partials)) THEN
+!!$          observer_ = copy(observers(i))
+!!$          IF (getFrame(this) == "equatorial") THEN
+!!$             CALL rotateToEquatorial(observer_)
+!!$          ELSE IF (getFrame(this) == "ecliptic") THEN
+!!$             CALL rotateToEcliptic(observer_)
+!!$          END IF
+!!$          observer_pos = getPosition(observer_)
+!!$          CALL NULLIFY(observer_)
+!!$          partials_ = 0.0_bp
+!!$          sqrt_ = DOT_PRODUCT(heliocentric_pos,heliocentric_pos) * &
+!!$               DOT_PRODUCT(ephemeris_pos,ephemeris_pos) * (1.0_bp - &
+!!$               DOT_PRODUCT(heliocentric_pos,ephemeris_pos)**2.0_bp / &
+!!$               (DOT_PRODUCT(heliocentric_pos,heliocentric_pos) * &
+!!$               DOT_PRODUCT(ephemeris_pos,ephemeris_pos)))
+!!$          IF (sqrt_ < 10.0_bp*EPSILON(sqrt_)) THEN
+!!$             partials_(1,1:3) = 1.0E-07_bp
+!!$          ELSE
+!!$             sqrt_ = SQRT(sqrt_)
+!!$          END IF
+!!$          partials_(1,1:3) = (observer_pos - heliocentric_pos * (2.0_bp - &
+!!$               DOT_PRODUCT(heliocentric_pos,ephemeris_pos) * &
+!!$               (1.0_bp / DOT_PRODUCT(ephemeris_pos,ephemeris_pos) + &
+!!$               1.0_bp / DOT_PRODUCT(heliocentric_pos,heliocentric_pos)))) / &
+!!$               sqrt_
+!!$          jacobian = MATMUL(jacobian_lt_corr_arr(i,:,:), jacobian_prop_arr(i,:,:))
+!!$          partials_ = MATMUL(partials_,jacobian)
+!!$          partials(i,1:3) = partials_(1,1:3)
+!!$          partials(i,4:6) = 0.0_bp
+!!$          CALL NULLIFY(observer_)
+!!$       END IF
+
+    END DO
+
+!!$    IF (PRESENT(partials)) THEN
+!!$       DEALLOCATE(this_lt_corr_arr)
+!!$       DEALLOCATE(jacobian_lt_corr_arr)
+!!$       DEALLOCATE(jacobian_prop_arr)
+!!$    END IF
+
+  END SUBROUTINE getPhaseAngles_Orb
 
 
 
