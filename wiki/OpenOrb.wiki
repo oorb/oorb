@@ -6,6 +6,7 @@ OpenOrb (or OOrb) is an open-source orbit-computation package.
 
 == Requirements ==
 
+  * svn
   * make
   * a Fortran 90/95 compiler
   * ncftpget
@@ -14,7 +15,95 @@ OpenOrb (or OOrb) is an open-source orbit-computation package.
   * dvips
   * ...
 
-= Running oorb =
+== Obtaining source ==
+
+See http://code.google.com/p/oorb/source/checkout.
+
+== Compiling ==
+
+In the root directory of your OOrb installation (=`OORBROOT`) do
+
+ `make all_clean`
+
+ `./configure COMPILER TYPE`
+
+where `COMPILER` is `gfortran`, `g95`, `intel`, `absoft`, `compaq`, `ibm`, `lahey`, or `sun`, and `TYPE` is either `opt` for optimized code or `deb` for code including debugging information. Then do
+
+ `cd main/`
+
+ `make oorb`
+
+Now you have a working executable called `oorb` in the `OORBROOT/main/` directory. To do something useful, you need to provide the software additional data files which will be prepared in the next section.
+
+
+== Generating and updating additional data files ==
+
+=== Planetary ephemerides ===
+
+The [http://ssd.jpl.nasa.gov/?planet_eph_export DE405] planetary ephemerides provided by the [http://ssd.jpl.nasa.gov/ Solar System Dynamics Group] at the Jet Propulsion Laboratory need to be converted to binary format (`de405.dat`) only once by doing
+
+ `cd OORBROOT/data/JPL_ephemeris/`
+
+ `make de405`
+
+ `make test`
+
+=== IAU/MPC Observatory codes and positions ===
+
+The [http://www.cfa.harvard.edu/iau/mpc.html Minor Planet Center] is updating the [http://www.cfa.harvard.edu/iau/lists/ObsCodes.html observatory codes] on a daily basis, but an update is not necessarily required until you stumble upon observations from an observatory which isn't listed in your version of the file.
+
+ `cd OORBROOT/data/`
+
+ `./updateOBSCODE`
+
+updates a file called `OBSCODE.dat`.
+
+=== ET minus UT ===
+
+Updated via the OOrb Subversion repository by
+
+ `svn update ET-UT.dat`
+
+=== TAI minus UTC ===
+
+Updated via the OOrb Subversion repository by
+
+ `svn update TAI-UTC.dat`
+
+
+= Using oorb =
+
+The full path to the OOrb configuration file is specified by
+
+  # the `--conf=CONFIGURATIONFILE` command-line parameter
+  # the `$OORB_CONF` environment variable
+  # the current directory assuming the default name (`oorb.conf`)
+
+in this order. That is, option #1 overrides #2 which overrides #3. The path to the default configuration file is `OORBROOT/main/oorb.conf`.
+
+== --task=ranging ==
+
+To compute an orbital solution given astrometric observations, do
+
+ `oorb --task=ranging --obs-in=OBSERVATIONFILE --orb-out=ORBITFILE`
+
+where `OBSERVATIONFILE` (use of suffix, such as *.mpc or *.des, is mandatory!) contains the input astrometry and `ORBITFILE` contains the resulting sampled orbital-element probability-density function (PDF) in OOrb format. The orbits will be written to standard out if `--orb-out=` is omitted.
+
+If astrometry of several different objects is included in OBSERVATIONFILE, then a command like 
+
+ `oorb --task=ranging --obs-in=OBSERVATIONFILE --separately`
+
+will process each object separately and write the output to a separate set of files. The separation into different objects is done using the numbers and/or designations. If both are specified for a line of astrometry, then the number overrides the designation.
+
+== --task=lsl ==
+
+ `oorb --task=lsl --obs-in=OBSERVATIONFILE --orb-in=ORBITFILEIN --orb-out=ORBITFILEOUT`
+
+
+== --task=propagation ==
+
+ `oorb --task=propagation --orb-in=ORBITFILEIN --epoch-mjd-tt=MJD --orb-out=ORBITFILEOUT`
+
 
 == --task=ephemeris ==
 
@@ -22,7 +111,7 @@ Topocentric ephemerides _without_ uncertainty information for, e.g., Mauna Kea (
 
  `oorb --task=ephemeris --code=568 --G=GVALUE --orb-in=ORBITFILE`
 
-where `ORBITFILE` (note that use of suffix, either .orb or .des, is mandatory!) contains the orbits in either the OpenOrb format or DES format and `GVALUE` refers to the slope parameter in the H,G system (default=0.15). The default for `--code` is 500, which corresponds to the geocenter. It is also possible to compute ephemerides simultaenously for a range of dates:
+where `ORBITFILE` (use of suffix, either .orb or .des, is mandatory!) contains the orbits in either the OpenOrb format or DES format and `GVALUE` refers to the slope parameter in the H,G system (default=0.15). The default for `--code` is 500, which corresponds to the geocenter. It is also possible to compute ephemerides simultaenously for a range of dates:
 
  `oorb --task=ephemeris --code=568 --timespan=TIMESPAN --step=STEP --orb-in=ORBITFILE`
 
@@ -69,7 +158,7 @@ The output is divided into the following columns (as marked by a single-line hea
   * Mac OS X 10.5.7 + gfortran versions 4.2.3 and 4.3.1
   * Fedora Core 9 + gfortran 4.3.0
 
-== Running ==
+== Usage ==
 
 === Can I specify a date for which I want an ephemeris to be computed? ===
 
@@ -88,4 +177,14 @@ Note that there is no algorithmic reason why you couldn't specify an option like
 This is normal and has to do with the numerical instability of the matrix       
 inversion. The information matrix, for which the inversion fails, typically has a large condition number, that is, the inversion results are not accurate, and in this particular case a solution cannot even be found. For a sampling method the impact of the failure on the overall results is expected to be negligible because a successful solution can probably be obtained in the immediate vicinity of the failed one.
 
-== Miscellaneous == 
+
+=== Is there an OOrb Users mailing list? ===
+
+Yes there is. Go to http://groups.google.com/group/oorb.
+
+
+== Miscellaneous ==
+
+=== Why are the Python wrappers not working anymore? ===
+
+The Python wrappers are under heavy development and change fairly frequently. Use the command-line executable if you need a more stable platform.
