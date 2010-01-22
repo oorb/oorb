@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2009-12-10
+!! @version 2010-01-22
 !!
 MODULE io
 
@@ -514,7 +514,7 @@ CONTAINS
 
 
   SUBROUTINE readConfigurationFile(config_file, &
-       info_verb, err_verb, &
+       info_verb, err_verb, planetary_ephemeris_fname, &
        task, &
        t0, &
        multiple_ids, &
@@ -556,25 +556,21 @@ CONTAINS
          eph_date
     TYPE (Time), INTENT(inout), OPTIONAL :: &
          t0
-    CHARACTER(len=*), INTENT(inout), OPTIONAL :: &
-         sor_rhofname
     CHARACTER(len=*), DIMENSION(:), POINTER, OPTIONAL :: &
          eph_obsy_code
     CHARACTER(len=*), INTENT(inout), OPTIONAL :: &
+         sor_rhofname, &
          element_type_comp, &
-         element_type_out
-    CHARACTER(len=*), INTENT(inout), OPTIONAL :: &    
+         element_type_out, &
          dyn_model, &
-         dyn_model_init
-    CHARACTER(len=*), INTENT(inout), OPTIONAL :: &
+         dyn_model_init, &
          integrator, &
-         integrator_init
-    CHARACTER(len=*), INTENT(inout), OPTIONAL :: &    
+         integrator_init, &
          sor_2point_method, &
-         sor_2point_method_sw
-    CHARACTER(len=*), INTENT(inout), OPTIONAL :: &
+         sor_2point_method_sw, &
          observation_format_out, &
-         orbit_format_out
+         orbit_format_out, &
+         planetary_ephemeris_fname
     REAL(bp), DIMENSION(6,2), INTENT(inout), OPTIONAL :: &
          vov_scaling
     REAL(bp), DIMENSION(:), POINTER, OPTIONAL :: &
@@ -685,6 +681,10 @@ CONTAINS
        CASE ("verbose.error")
           IF (PRESENT(err_verb)) THEN
              CALL toInt(TRIM(par_val), err_verb, error)
+          END IF
+       CASE ("planetary_ephemeris_fname")
+          IF (PRESENT(planetary_ephemeris_fname)) THEN
+             planetary_ephemeris_fname = TRIM(par_val)
           END IF
        CASE ("task")
           IF (PRESENT(task)) THEN

@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2009-12-31
+!! @version 2010-01-22
 !!
 PROGRAM oorb
 
@@ -109,6 +109,7 @@ PROGRAM oorb
        header                                                       !! Generic header.
   CHARACTER(len=FNAME_LEN) :: &
        conf_fname, &                                                !! Path to configuration file (incl. fname). 
+       planetary_ephemeris_fname, &
        gnuplot_scripts_dir, &                                       !! Path to Gnuplot scripts directory. 
        obs_fname, &                                                 !! Path to observation file (incl. fname).
        orb_in_fname, &                                              !! Path to input orbit file (incl. fname).
@@ -196,8 +197,8 @@ PROGRAM oorb
        Delta, &
        H_max, H_value, &
        G_value, &
-       accwin_multiplier, apriori_a_max, apriori_a_min, &
-       apriori_apoapsis_max, apriori_apoapsis_min, &
+       accwin_multiplier, apoapsis_distance, apriori_a_max, &
+       apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, &
        cos_obj_phase, &
@@ -211,7 +212,7 @@ PROGRAM oorb
        mjd, mjd_tai, mjd_tt, mjd_utc, moid, &
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
-       pdf_ml_init, pp_G, pp_G_unc, &
+       pdf_ml_init, periapsis_distance, pp_G, pp_G_unc, &
        ra, &
        sec, solar_elongation, solar_elon_min, solar_elon_max, &
        solar_alt, solar_alt_max, sor_genwin_multiplier, stdev, &
@@ -279,6 +280,7 @@ PROGRAM oorb
   orbit_format_out = "des"
   element_type_comp_prm = "keplerian"
   element_type_out_prm = "keplerian"
+  planetary_ephemeris_fname = "de405.dat"
   err_verb = 1
   info_verb = 1
   gnuplot_scripts_dir = "."
@@ -299,8 +301,8 @@ PROGRAM oorb
 
   IF (get_cl_option("--version",.FALSE.)) THEN
      WRITE(stdout,"(A)") ""
-     WRITE(stdout,"(A)") "OpenOrb v0.9.3"
-     WRITE(stdout,"(A)") "Copyright 2009 Mikael Granvik, Jenni Virtanen, Karri Muinonen,"
+     WRITE(stdout,"(A)") "OpenOrb v1.0.0"
+     WRITE(stdout,"(A)") "Copyright 2010 Mikael Granvik, Jenni Virtanen, Karri Muinonen,"
      WRITE(stdout,"(A)") "               Teemu Laakso, Dagmara Oszkiewicz"
      WRITE(stdout,"(A)") ""
      WRITE(stdout,"(A)") "OpenOrb comes with NO WARRANTY, to the extent permitted by law."
@@ -322,20 +324,6 @@ PROGRAM oorb
      STOP
   END IF
 
-  ! Set path to data files:
-  CALL setAccessToDataFiles()
-  CALL JPL_ephemeris_init(error, &
-       filename=TRIM(OORB_DATA_DIR) // "/" // TRIM(EPH_FNAME)) 
-  IF (error) THEN
-     CALL errorMessage("oorb", &
-          "Could not initialize planetary ephemerides using the " // &
-          TRIM(OORB_DATA_DIR) // "/" // TRIM(EPH_FNAME) // " file.", 1)
-     STOP
-  END IF
-
-  ! Set path to Gnuplot scripts using environment variable:
-  CALL getenv("OORB_GNUPLOT_SCRIPTS_DIR", gnuplot_scripts_dir)
-
   ! Set path to configuration file:
   ! First, try the environment variable:
   CALL getenv("OORB_CONF", conf_fname)
@@ -355,17 +343,18 @@ PROGRAM oorb
      STOP
   END IF
   CALL readConfigurationFile(conf_file, &
-       info_verb=info_verb, &
+       planetary_ephemeris_fname=planetary_ephemeris_fname, &
        err_verb=err_verb, &
-       plot_results=plot_results, &
-       plot_open=plot_open, &
-       obs_stdev_arr=obs_stdev_arr_prm, &
-       outlier_rejection=outlier_rejection_prm, &
-       outlier_multiplier=outlier_multiplier_prm, &
+       info_verb=info_verb, &
        element_type_comp=element_type_comp_prm, &
        element_type_out=element_type_out_prm, &
+       obs_stdev_arr=obs_stdev_arr_prm, &
        observation_format_out=observation_format_out, &
        orbit_format_out=orbit_format_out, &
+       outlier_rejection=outlier_rejection_prm, &
+       outlier_multiplier=outlier_multiplier_prm, &
+       plot_open=plot_open, &
+       plot_results=plot_results, &
        pp_H_estimation=pp_H_estimation, &
        pp_G=pp_G, &
        pp_G_unc=pp_G_unc)
@@ -379,6 +368,23 @@ PROGRAM oorb
         obs_stdev_arr_prm = 0.0_bp
      END WHERE
   END IF
+
+  ! Set path to data files:
+  CALL setAccessToDataFiles()
+  IF (LEN_TRIM(planetary_ephemeris_fname) == 0) THEN
+     planetary_ephemeris_fname = TRIM(EPH_FNAME)
+  END IF
+  CALL JPL_ephemeris_init(error, &
+       filename=TRIM(OORB_DATA_DIR) // "/" // TRIM(planetary_ephemeris_fname)) 
+  IF (error) THEN
+     CALL errorMessage("oorb", &
+          "Could not initialize planetary ephemerides using the " // &
+          TRIM(OORB_DATA_DIR) // "/" // TRIM(planetary_ephemeris_fname) // " file.", 1)
+     STOP
+  END IF
+
+  ! Set path to Gnuplot scripts using environment variable:
+  CALL getenv("OORB_GNUPLOT_SCRIPTS_DIR", gnuplot_scripts_dir)
 
   ! Read observation file if given:
   obs_fname = get_cl_option("--obs-in="," ")
@@ -3488,10 +3494,10 @@ PROGRAM oorb
            END IF
         END DO
      ELSE
-        CALL errorMessage("oorb / apoapsis_distance", &
-             "Input orbits do not contain sampled " // &
-             "uncertainty information currently required for this task.", 1)        
-        STOP
+        DO i=1,SIZE(orb_arr_in)
+           CALL getApoapsisDistance(orb_arr_in(i), apoapsis_distance)
+           WRITE(stdout,*) apoapsis_distance 
+        END DO
      END IF
 
 
@@ -3520,10 +3526,10 @@ PROGRAM oorb
            END IF
         END DO
      ELSE
-        CALL errorMessage("oorb / periapsis_distance", &
-             "Input orbits do not contain sampled " // &
-             "uncertainty information currently required for this task.", 1)        
-        STOP
+        DO i=1,SIZE(orb_arr_in)
+           CALL getPeriapsisDistance(orb_arr_in(i), periapsis_distance)
+           WRITE(stdout,*) periapsis_distance 
+        END DO
      END IF
 
 
