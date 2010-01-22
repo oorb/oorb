@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -39,13 +39,14 @@
 !!
 !!   header.405  asc+1920.405 asc+1940.405 asc+1960.405 asc+1980.405  
 !!
-!! (The data files for DE200 and DE405 contain 20 years each; for DE406, 50 years)
+!! (The data files for DE200 and DE405 contain 20 years each; for DE406, 100 years)
 !!
 !! @author  MG
-!! @version 2008-08-12
+!! @version 2010-01-21
 !!
 PROGRAM asc2eph
 
+  USE cl_options
   IMPLICIT NONE
 
   !                               *** NOTE ***
@@ -74,6 +75,7 @@ PROGRAM asc2eph
   CHARACTER(len=6), DIMENSION(400) :: cnam
   CHARACTER(len=6), DIMENSION(14,3) :: ttl
   CHARACTER(len=12) :: header
+  CHARACTER(len=3) :: eph_type
 
   REAL(kind=bp) :: au, emrat, t1, t2
   REAL(kind=bp), DIMENSION(400) :: cval
@@ -98,91 +100,97 @@ PROGRAM asc2eph
   t1 = 0.0_bp
   t2 = 9999999.0_bp
 
-  ! Write a fingerprint to the screen.
-  WRITE(*,*) ' JPL ASCII-TO-DIRECT-I/O program. Last modified 27-July-2008.'
+  eph_type = get_cl_option("--eph-type=", "406")
 
-  IF (nrecl .EQ. 0) STOP '*** ERROR: User did not set NRECL ***'
+  ! Write a fingerprint to the screen.
+  WRITE(*,*) " JPL ASCII-TO-DIRECT-I/O program. Last modified 21-January-2010."
+  WRITE(*,*) 
+  WRITE(*,*) " ASSUMING TYPE OF INPUT ASCII EPHEMERIS FILE IS DE" // TRIM(eph_type)
+
+  IF (nrecl == 0) THEN
+     STOP "*** ERROR: User did not set NRECL ***"
+  END IF
 
   ! Read the size and number of main ephemeris records.
-  READ(*,'(6X,I6)') ksize
-  WRITE(*,'("ksize = ",I0)') ksize
+  READ(*,"(6X,I6)") ksize
+  WRITE(*,'("  KSIZE = ",I0)') ksize
 
   irecsz = nrecl * ksize
 
-
   ! Now for the alphameric heading records (GROUP 1010)
   CALL nxtgrp(header)
-  IF (header .NE. 'GROUP   1010') CALL errprt(1010, 'not header')
-  READ(*,'(14A6)') ttl
-  WRITE(*,'(/(14A6))') ttl
+  IF (header /= "GROUP   1010") CALL errprt(1010, "not header")
+  READ(*,"(14A6)") ttl
+  WRITE(*,"(/(2X,14A6))") ttl
 
 
   ! Read start, end and record span  (GROUP 1030)
   CALL nxtgrp(header)
-  IF (header .NE. 'GROUP   1030') CALL errprt(1030, ' not header')
-  READ(*,'(3D12.0)') ss_dp
+  IF (header /= "GROUP   1030") CALL errprt(1030, " not header")
+  READ(*,"(3D12.0)") ss_dp
   ss = REAL(ss_dp,bp)
 
 
   ! Read number of constants and names of constants (GROUP 1040/4).
   CALL nxtgrp(header)
-  IF (header .NE. 'GROUP   1040 ') CALL errprt(1040, ' not header')
-  READ(*,'(i6)') n
-  READ(*,'(10A8)') cnam(1:n)
+  IF (header /= "GROUP   1040 ") CALL errprt(1040, " not header")
+  READ(*,"(I6)") n
+  READ(*,"(10A8)") cnam(1:n)
   ncon = n
 
 
   ! Read number of values and values (GROUP 1041/4)
   CALL nxtgrp(header)
-  IF (header .NE. 'GROUP   1041') CALL errprt(1041, ' not header')
-  READ(*,'(i6)') n
-  READ(*,'(3D26.18)') cval_dp(1:n)
+  IF (header /= "GROUP   1041") CALL errprt(1041, " not header")
+  READ(*,"(I6)") n
+  READ(*,"(3D26.18)") cval_dp(1:n)
   cval = REAL(cval_dp,bp)
   DO  i = 1, n
-     IF (cnam(i) .EQ. 'AU    ')  au    = cval(i)
-     IF (cnam(i) .EQ. 'EMRAT ')  emrat = cval(i)
-     IF (cnam(i) .EQ. 'DENUM ')  numde = cval(i)
+     IF (cnam(i) .EQ. "AU    ")  au    = cval(i)
+     IF (cnam(i) .EQ. "EMRAT ")  emrat = cval(i)
+     IF (cnam(i) .EQ. "DENUM ")  numde = cval(i)
   END DO
-  WRITE(*,'(500(/2(A8,D24.16)))') (cnam(i),cval(i),i=1,n)
+  WRITE(*,"(500(/2(A8,D24.16)))") (cnam(i),cval(i),i=1,n)
 
 
-  ! Read pointers needed by iNTERP (GROUP 1050)
-  CALL  nxtgrp(header)
-  IF (header .NE. 'GROUP   1050') CALL errprt(1050, ' not header')
-  READ(*,'(13i6)') ((ipt(i,j),j=1,12),lpt(i),i=1,3)
-  WRITE(*,'(/(3i5))') ipt, lpt
+  ! Read pointers needed by interp (GROUP 1050)
+  CALL nxtgrp(header)
+  IF (header /= "GROUP   1050") CALL errprt(1050, " not header")
+  READ(*,"(13I6)") ((ipt(i,j),j=1,12),lpt(i),i=1,3)
+  WRITE(*,"(/(3I5))") ipt, lpt
 
 
-  ! Open direct-access output file ('de405.dat')
-  OPEN(unit=12, file='de405.dat', access='direct', &
-       form='unformatted', recl=irecsz, status='new')
+  ! Open direct-access output file ('deXXX.dat')
 
+  OPEN(unit=12, file="de" // TRIM(eph_type) // ".dat", &
+       access="DIRECT", form="UNFORMATTED", recl=irecsz, status="NEW")
 
   !Read and write the ephemeris data records (GROUP 1070).
-  CALL  nxtgrp(header)
-  IF (header .NE. 'GROUP   1070') CALL errprt(1070,' not header')
+  CALL nxtgrp(header)
+  IF (header /= "GROUP   1070") CALL errprt(1070," not header")
   nrout = 0
   in = 0
   out = 0
 
   nrw = 0
-  DO WHILE (nrw .EQ. 0)
-     READ(*,'(2i6)') nrw, ncoeff
+  DO WHILE (nrw == 0)
+     READ(*,"(2I6)") nrw, ncoeff
   END DO
 
-  READ(*,'(3D26.18)', iostat=in) db_dp(1:ncoeff)
+  !READ(*,"(3D26.18)", iostat=in) db_dp(1:ncoeff)
+  READ(*,*,iostat=in) db_dp(1:ncoeff)
   db = REAL(db_dp,bp)
 
-  DO WHILE((in .EQ. 0) .AND. (db(2) .LT. t2))
+  DO WHILE(in == 0 .AND. db(2) < t2)
 
-     IF (2*ncoeff .NE. ksize) THEN
-        CALL errprt(ncoeff, ' 2*ncoeff not equal to ksize')
-     ENDIF
+     IF (2*ncoeff /= ksize) THEN
+        CALL errprt(ncoeff, " 2*ncoeff not equal to ksize")
+     END IF
 
      ! Skip this data block if the end of the interval is less
      ! than the specified start time or if the it does not begin
      ! where the previous block ended.
-     IF ((db(2) .GE. t1) .AND. (db(1) .GE. db2z)) THEN
+     IF ((db(2) >= t1) .AND. (db(1) >= db2z)) THEN
 
         IF (first) THEN
            ! Don't worry about the intervals overlapping
@@ -190,58 +198,62 @@ PROGRAM asc2eph
            ! interval.
            db2z  = db(1)
            first = .FALSE.
-        ENDIF
+        END IF
 
-        IF (db(1) .NE. db2z) THEN
+        IF (db(1) /= db2z) THEN
            ! Beginning of current interval is past the end
            ! of the previous one.
-           CALL errprt (nrw, ' Records do not overlap or abut')
-        ENDIF
+           CALL errprt (nrw, " Records do not overlap or abut")
+        END IF
 
         db2z = db(2)
         nrout = nrout + 1
 
         WRITE(12, rec=nrout+2, iostat=out) db(1:ncoeff)
-        IF (out .NE. 0) CALL errprt (nrout, 'th record not written because of error')
+        IF (out /= 0) CALL errprt (nrout, "th record not written because of error")
 
         ! Save this block's starting date, its interval span, and its end 
         ! date.
-        IF (nrout .EQ. 1) THEN
+        IF (nrout == 1) THEN
            ss(1) = db(1)
            ss(3) = db(2) - db(1)
-        ENDIF
+        END IF
         ss(2) = db(2)
 
         ! Update the user as to our progress every 10th block.
-        IF (MOD(nrout,10) .EQ. 1) THEN
-           IF (db(1) .GE. t1) THEN
-              WRITE(*,'(i6," ephemeris records written. Last jed = ", f12.2)') nrout, db(2)
+        IF (MOD(nrout,10) == 1) THEN
+           IF (db(1) >= t1) THEN
+              WRITE(*,'(I6," ephemeris records written. Last jed = ", F12.2)') nrout, db(2)
            ELSE
-              WRITE(*,*) ' Searching for first requested record...'
-           ENDIF
-        ENDIF
-     ENDIF
+              WRITE(*,*) " Searching for first requested record..."
+           END IF
+        END IF
+     END IF
 
-     READ(*,'(2i6,3000(/3D26.18))',iostat=in) nrw, ncoeff, db_dp(1:ncoeff)
-     db = REAL(db_dp,bp)
+     !READ(*,"(2I6,3000(/3D26.18))",iostat=in) nrw, ncoeff, db_dp(1:ncoeff)
+     READ(*,"(2I6)",iostat=in) nrw, ncoeff
+     IF (in == 0) THEN
+        READ(*,*,iostat=in) db_dp(1:ncoeff)
+        db = REAL(db_dp,bp)
+     END IF
 
   END DO
 
-  WRITE(*,'(/i6," ephemeris records written. Last jed = ", f12.2)') nrout, db(2)
+  WRITE(*,'(/I6," ephemeris records written. Last jed = ", F12.2)') nrout, db(2)
 
 
   ! Write header records onto output file.
   nrout = 1
   WRITE(12, rec=1, iostat=out) ttl, cnam, ss, ncon, au, emrat, ipt, numde, lpt
-  IF (out .NE. 0) CALL errprt(nrout, 'th record not written because of error')
+  IF (out /= 0) CALL errprt(nrout, "th record not written because of error")
 
   nrout = 2
   WRITE(12, rec=2, iostat=out) cval
-  IF (out .NE. 0) CALL errprt(nrout, 'th record not written because of error')
+  IF (out /= 0) CALL errprt(nrout, "th record not written because of error")
 
   ! We're through.  Wrap it up.
   CLOSE (12)
-  STOP 'ASCII to binary conversion successful.'
+  STOP "ASCII to binary conversion successful."
 
 
 
@@ -249,37 +261,38 @@ CONTAINS
 
 
 
-  SUBROUTINE  errprt(i, msg)
+  SUBROUTINE errprt(i, msg)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(in) :: msg
     INTEGER, INTENT(in) :: i
 
-    WRITE(*,'("ERROR #",i8,2X,A50)') i, msg
-    STOP ' ERROR '
+    WRITE(*,'("ERROR #",I8,2X,A50)') i, msg
+    STOP " ERROR "
 
   END SUBROUTINE errprt
 
 
 
-  SUBROUTINE  nxtgrp(header)
+  SUBROUTINE nxtgrp(header)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(out) :: header
     CHARACTER(len=12) :: blank
 
     !Start with nothing.
-    header = ' '
+    header = " "
 
     !The next non-blank line we encounter is a header record.
     !The group header and data are seperated by a blank line.
-    DO WHILE (header .EQ. ' ')
-       READ(*,'(a)') header
+    DO WHILE (header == " ")
+       READ(*,"(A)") header
     END DO
 
-    !Found the header.  Read the blank line so we can get at the data.
-    IF (header .NE. 'GROUP   1070') READ(*,'(a)') blank
-    RETURN
+    !Found the header. Read the blank line so we can get at the data.
+    IF (header /= "GROUP   1070") THEN
+       READ(*,"(A)") blank
+    END IF
 
   END SUBROUTINE nxtgrp
 
