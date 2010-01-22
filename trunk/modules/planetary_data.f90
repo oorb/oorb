@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2009-11-10
+!! @version 2010-01-21
 !!
 MODULE planetary_data
 
@@ -59,8 +59,11 @@ MODULE planetary_data
   PRIVATE
   CHARACTER(len=256), PARAMETER :: EPH_FNAME = 'de405.dat' 
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4
-  INTEGER, PARAMETER            :: RECORD_SIZE =  2036
-  INTEGER, PARAMETER            :: NRECORD_MAX = 6864
+  INTEGER, PARAMETER            :: RECORD_SIZE_405 =  2036
+  INTEGER, PARAMETER            :: RECORD_SIZE_406 =  1456
+  INTEGER, PARAMETER            :: NCOEFF_405 = 1018
+  INTEGER, PARAMETER            :: NCOEFF_406 = 728
+  INTEGER, PARAMETER            :: NRECORD_MAX = 35000 ! Fits all of de405 and de406
   REAL(rprec8), PARAMETER       :: ggc = 0.01720209895_rprec8
   REAL(rprec8), PARAMETER       :: kgm3_smau3 = (1.4959787066e8_rprec8)**3/1.989100e30
 
@@ -293,9 +296,14 @@ CONTAINS
        END IF
     END DO
 
-    ! Read de405.dat (or whatever you call the JPL Planetary Ephemeris file):
-    OPEN(unit=lu, file=TRIM(fname), status='old', access='direct', &
-         recl=RECORD_LENGTH*RECORD_SIZE, action='read', iostat=err)
+    ! Read deXXX.dat (or whatever you call the JPL Planetary Ephemeris file):
+    IF (INDEX(fname,"405") /= 0) THEN
+       OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
+            recl=RECORD_LENGTH*RECORD_SIZE_405, action='READ', iostat=err)
+    ELSE IF (INDEX(fname,"406") /= 0) THEN
+       OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
+            recl=RECORD_LENGTH*RECORD_SIZE_406, action='READ', iostat=err)
+    END IF
     IF (err /= 0) THEN
        error = .TRUE.
        WRITE(0,*) "JPL_ephemeris_init(): Could not open file '" // TRIM(fname) // "'."
@@ -317,7 +325,12 @@ CONTAINS
        RETURN
     END IF
 
-    ALLOCATE(tmp(RECORD_SIZE/2,NRECORD_MAX), stat=err)
+    !ALLOCATE(tmp(RECORD_SIZE/2,NRECORD_MAX), stat=err)
+    IF (INDEX(fname,"405") /= 0) THEN
+       ALLOCATE(tmp(NCOEFF_405,NRECORD_MAX), stat=err)
+    ELSE IF (INDEX(fname,"406") /= 0) THEN
+       ALLOCATE(tmp(NCOEFF_406,NRECORD_MAX), stat=err)
+    END IF
     IF (err /= 0) THEN
        error = .TRUE.
        WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory (5)."
@@ -327,21 +340,16 @@ CONTAINS
     i = 1
     DO
        READ(lu, rec=i+2, iostat=err) tmp(:,i)
-       IF (err > 0) THEN
-          error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_init(): Could not read ephemeris record."
-          DEALLOCATE(tmp, stat=err)
-          RETURN
-       ELSE IF (err < 0) THEN
+       IF (err /= 0) THEN
           i = i - 1
           EXIT
        ELSE
           i = i + 1
           IF (i+2 > NRECORD_MAX) THEN
-             i = i - 1
-             EXIT
-             !                error = .TRUE.
-             !                RETURN
+             error = .TRUE.
+             WRITE(0,*) "JPL_ephemeris_init(): NRECORD_MAX too small."
+             DEALLOCATE(tmp, stat=err)
+             RETURN
           END IF
        END IF
     END DO
@@ -1129,7 +1137,7 @@ CONTAINS
          pjd(1) + pjd(4) > ss(2)) THEN
        error = .TRUE.
        WRITE(0,*) 'states(): Requested Julian ET not within limits:'
-       WRITE(0,*) tt2
+       WRITE(0,*) tt2, ss
        RETURN
     END IF
 
