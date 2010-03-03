@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2009-04-14
+!! @version 2010-03-03
 !!  
 MODULE Observation_cl
 
@@ -1542,20 +1542,20 @@ CONTAINS
           filter_ = "X"
        END IF
        IF (this%number /= 0) THEN
-          WRITE(records(1),"(I0,1X,F16.10,1X,A,2(1X,F14.10),1X," // &
-               "F8.4,2(1X,A),2(1X,F14.10),1X,F8.4,1X,E10.3,1X,A)", iostat=err) & 
+          WRITE(records(1),"(I0,1X,F16.10,1X,A,3(1X,F14.10)," // &
+               "2(1X,A),2(1X,F14.10),1X,F14.10,1X,E14.7,1X,A)", iostat=err) & 
                this%number, getMJD(t, "UTC"), "O", &
                ra/rad_deg, dec/rad_deg, this%mag, filter_, &
-               TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_deg, &
-               SQRT(this%covariance(3,3))/rad_deg, this%mag_unc, &
+               TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_asec, &
+               SQRT(this%covariance(3,3))/rad_asec, this%mag_unc, &
                this%s2n, TRIM(this%secret_name) 
        ELSE IF (LEN_TRIM(this%designation) /= 0) THEN
-          WRITE(records(1),"(A,1X,F16.10,1X,A,2(1X,F14.10),1X," // &
-               "F8.4,2(1X,A),2(1X,F14.10),1X,F8.4,1X,E10.3,1X,A)", iostat=err) & 
+          WRITE(records(1),"(A,1X,F16.10,1X,A,3(1X,F14.10)," // &
+               "2(1X,A),2(1X,F14.10),1X,F14.10,1X,E14.7,1X,A)", iostat=err) & 
                TRIM(this%designation), getMJD(t, "UTC"), "O", &
                ra/rad_deg, dec/rad_deg, this%mag, filter_, &
-               TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_deg, &
-               SQRT(this%covariance(3,3))/rad_deg, this%mag_unc, &
+               TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_asec, &
+               SQRT(this%covariance(3,3))/rad_asec, this%mag_unc, &
                this%s2n, TRIM(this%secret_name) 
        ELSE
           error = .TRUE.
