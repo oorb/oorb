@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2009-12-31
+!! @version 2010-03-03
 !!
 MODULE PhysicalParameters_cl
 
@@ -237,6 +237,7 @@ CONTAINS
     TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoord_arr 
     TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides_arr  
     TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr 
+    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr 
     CHARACTER(len=2), DIMENSION(:), POINTER :: filter_arr
     CHARACTER(len=2), DIMENSION(:), ALLOCATABLE :: filter_arr_
     REAL(bp), DIMENSION(:,:,:), POINTER :: cov_arr
@@ -286,7 +287,12 @@ CONTAINS
     END DO
     obsy_ccoord_arr => reallocate(obsy_ccoord_arr)
     nmag = SIZE(obsy_ccoord_arr)
-    ALLOCATE(obs_mag_arr_(nmag), filter_arr_(nmag))
+    ALLOCATE(obs_mag_arr_(nmag), filter_arr_(nmag), stat=err)
+    IF (err /= 0) THEN
+       CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+            "Could not allocate memory (5).", 1)
+       RETURN
+    END IF
     j = 0
     DO i=1,nobs
        IF (obs_mag_arr(i) < 90.0_bp) THEN
@@ -303,15 +309,26 @@ CONTAINS
 
     ! Compute heliocentric and topocentric distances, and phase angles
     IF (containsSampledPDF(this%storb)) THEN
-       CALL getEphemerides(this%storb, obsy_ccoord_arr, &
-            ephemerides_arr, pdfs_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr)
+       orb_arr => getSampleOrbits(this%storb)
     ELSE
-       CALL getEphemerides(this%storb, obsy_ccoord_arr, &
-            ephemerides_arr, cov_arr=cov_arr, this_lt_corr_arr=orb_lt_corr_arr)       
+       ALLOCATE(orb_arr(1), stat=err)
+       IF (err /= 0) THEN
+          CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+               "Could not allocate memory (10).", 1)
+          RETURN
+       END IF
+       orb_arr(1) = getNominalOrbit(this%storb)
     END IF
     IF (error) THEN
        CALL errorMessage("PhysicalParameters / crudeHEstimate", &
             "TRACE BACK (10).", 1)
+       RETURN
+    END IF
+    CALL getEphemerides(orb_arr, obsy_ccoord_arr, &
+         ephemerides_arr, this_lt_corr_arr=orb_lt_corr_arr)
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+            "TRACE BACK (15).", 1)
        RETURN
     END IF
     IF (info_verb >= 2) THEN
@@ -319,7 +336,12 @@ CONTAINS
     END IF
     norb = SIZE(ephemerides_arr,dim=1)
     ALLOCATE(helio_dist_arr(norb,nmag), topo_dist_arr(norb,nmag), &
-         H_arr(nmag))
+         H_arr(nmag), stat=err)
+    IF (err /= 0) THEN
+       CALL errorMessage("PhysicalParameters / crudeHEstimate", &
+            "Could not allocate memory (15).", 1)
+       RETURN
+    END IF
     DO i=1,nmag
        DO j=1,norb
           coordinates = getElements(orb_lt_corr_arr(j,i), "cartesian", "ecliptic")
@@ -362,7 +384,7 @@ CONTAINS
           H_arr(j) = getExactH(obs_mag_arr_(j), helio_dist_arr(1,j), &
                topo_dist_arr(1,j), phase_angle_arr(1,j), &
                this%G_nominal)
-          WRITE(*,*) j, H_arr(j)
+          !WRITE(*,*) j, H_arr(j)
        END DO
        this%H0_nominal = SUM(H_arr)/nmag
        this%H0_unc = 0.0_bp
@@ -378,6 +400,7 @@ CONTAINS
     DEALLOCATE(filter_arr_, stat=err)
     DEALLOCATE(ephemerides_arr, stat=err)
     DEALLOCATE(orb_lt_corr_arr, stat=err)
+    DEALLOCATE(orb_arr, stat=err)
     IF (ASSOCIATED(cov_arr)) THEN
        DEALLOCATE(cov_arr, stat=err)
     END IF
@@ -688,6 +711,13 @@ CONTAINS
        error = .TRUE.
        CALL errorMessage("PhysicalParameters / getH0Distribution", &
             "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT.ASSOCIATED(this%H0_arr)) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / getH0Distribution", &
+            "Object does not contain H0 distribution.", 1)
        RETURN
     END IF
 
