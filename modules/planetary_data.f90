@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2010-01-21
+!! @version 2010-03-02
 !!
 MODULE planetary_data
 
@@ -118,9 +118,9 @@ MODULE planetary_data
        0.0_rprec8, &                             !! (12) solar system barycenter,
        1.0_rprec8/328900.56, &                   !! (13) Earth-Moon barycenter,
        0.0_rprec8, &                             !! (14) Asteroid,
-       0.0_rprec8, &                             !! (15) Ceres,
-       0.0_rprec8, &                             !! (16) Pallas,
-       0.0_rprec8  /)                            !! (17) Vesta
+       1.0_rprec8/2099880378.8, &                !! (15) Ceres,   GM=63.2
+       1.0_rprec8/9280590205.59, &               !! (16) Pallas,  GM=14.3
+       1.0_rprec8/7455755052.81  /)              !! (17) Vesta    GM=17.8
 
   ! Data from http://nssdc.gsfc.nasa.gov/planetary/planetfact.html
   REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_densities = (/ &
@@ -297,6 +297,7 @@ CONTAINS
     END DO
 
     ! Read deXXX.dat (or whatever you call the JPL Planetary Ephemeris file):
+    !WRITE(0,"(A,1X,A)") "Using ephemeris file ", TRIM(fname)
     IF (INDEX(fname,"405") /= 0) THEN
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_405, action='READ', iostat=err)
@@ -325,7 +326,6 @@ CONTAINS
        RETURN
     END IF
 
-    !ALLOCATE(tmp(RECORD_SIZE/2,NRECORD_MAX), stat=err)
     IF (INDEX(fname,"405") /= 0) THEN
        ALLOCATE(tmp(NCOEFF_405,NRECORD_MAX), stat=err)
     ELSE IF (INDEX(fname,"406") /= 0) THEN
@@ -1119,7 +1119,7 @@ CONTAINS
 
     states = 0.0_rprec8
 
-    IF (ABS(tt2(1) - 0.0_rprec8) < EPSILON(tt2(1))) THEN
+    IF (ABS(tt2(1)) < EPSILON(tt2(1))) THEN
        error = .TRUE.
        WRITE(0,*) 'states(): Input Julian date is zero.'
        RETURN
