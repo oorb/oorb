@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Type and routines for observatories.
 !! 
 !! @author  MG, JV
-!! @version 2009-02-19
+!! @version 2010-03-03
 !!
 MODULE Observatories_cl
 
@@ -628,35 +628,35 @@ CONTAINS
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
-       CALL errorMessage("Observatories / getGeocentricObservatoryCCoord", &
+       CALL errorMessage("Observatories / getObservatoryCCoord", &
             "Object has not yet been initialized.", 1)
        RETURN
     END IF
 
     IF (.NOT. exist(obsy)) THEN
        error = .TRUE.
-       CALL errorMessage("Observatories / getGeocentricObservatoryCCoord", &
+       CALL errorMessage("Observatories / getObservatoryCCoord", &
             "obsy has not yet been initialized.", 1)
        RETURN
     END IF
 
     IF (.NOT. exist(t)) THEN
        error = .TRUE.
-       CALL errorMessage("Observatories / getGeocentricObservatoryCCoord", &
+       CALL errorMessage("Observatories / getObservatoryCCoord", &
             "t has not yet been initialized.", 1)
        RETURN
     END IF
 
     code = getCode(obsy)
     IF (error) THEN
-       CALL errorMessage("Observatories / getGeocentricObservatoryCCoord", &
+       CALL errorMessage("Observatories / getObservatoryCCoord", &
             "TRACE BACK (5)", 1)
        RETURN
     END IF
 
     getObservatoryCCoord_obsy = getObservatoryCCoord(this, code, t)
     IF (error) THEN
-       CALL errorMessage("Observatories / getGeocentricObservatoryCCoord", &
+       CALL errorMessage("Observatories / getObservatoryCCoord", &
             "TRACE BACK (10)", 1)
        RETURN
     END IF
