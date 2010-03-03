@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2009-12-31
+!! @version 2010-03-03
 !!
 MODULE Orbit_cl
 
@@ -1749,6 +1749,85 @@ CONTAINS
 
 
 
+  REAL(bp) FUNCTION aeidist(ptry,param,errstr)
+
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(:), INTENT(in) :: ptry
+    REAL(bp), DIMENSION(:), INTENT(in) :: param
+    CHARACTER(len=*), INTENT(inout) :: errstr
+
+    TYPE (Orbit) :: orb
+    TYPE (Time) :: t
+    REAL(bp), DIMENSION(6) :: elements
+    REAL(bp), DIMENSION(3) :: vel
+
+    vel = ptry 
+    elements = (/ param(1:3), vel /)
+    CALL NEW(t, param(7), "TT")
+    IF (error) THEN
+       errstr = "error12"
+       RETURN
+    END IF
+    CALL NEW(orb, elements, "cartesian", "ecliptic", t)
+    IF (error) THEN
+       errstr = "error13"
+       RETURN
+    END IF
+    elements = getCometaryElements(orb, qei_only=.TRUE.)
+    IF (error) THEN
+       errstr = "error14"
+       RETURN
+    END IF
+    CALL NULLIFY(orb)
+    CALL NULLIFY(t)
+    elements(1) = elements(1)/(1.0_bp-elements(2))
+    aeidist = SQRT(SUM((ABS(elements(1:3)-param(4:6))/param(4:6))**2))
+
+  END FUNCTION aeidist
+
+
+
+
+
+  REAL(bp) FUNCTION xyzdist(ptry,param,errstr)
+
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(:), INTENT(in) :: ptry
+    REAL(bp), DIMENSION(:), INTENT(in) :: param
+    CHARACTER(len=*), INTENT(inout) :: errstr
+
+    TYPE (Orbit) :: orb
+    TYPE (Time) :: t
+    REAL(bp), DIMENSION(6) :: elements
+    REAL(bp), DIMENSION(3) :: nam
+
+    nam = ptry 
+    elements = (/ param(1:3), nam /)
+    CALL NEW(t, param(7), "TT")
+    IF (error) THEN
+       errstr = "error12"
+       RETURN
+    END IF
+    CALL NEW(orb, elements, "keplerian", "ecliptic", t)
+    IF (error) THEN
+       errstr = "error13"
+       RETURN
+    END IF
+    elements = getCartesianElements(orb, "ecliptic")
+    IF (error) THEN
+       errstr = "error14"
+       RETURN
+    END IF
+    CALL NULLIFY(orb)
+    CALL NULLIFY(t)
+    xyzdist = SQRT(SUM((elements(1:3)-param(4:6))**2))
+
+  END FUNCTION xyzdist
+
+
+
+
+
   !! *Description*:
   !!
   !! Checks the orbit, bound/unbound.
@@ -2456,10 +2535,12 @@ CONTAINS
   !!
   !! Returns error.
   !! 
-  FUNCTION getCometaryElements(this)
+  FUNCTION getCometaryElements(this, qei_only)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(in) :: this
+    LOGICAL, INTENT(in), OPTIONAL :: qei_only
+
     REAL(bp), DIMENSION(6)   :: getCometaryElements
     TYPE (Orbit) :: this_
     !! The following four tolerance parameters have been tuned using
@@ -2603,6 +2684,14 @@ CONTAINS
           cos_angles(1) = SIGN(1.0_bp, cos_angles(1))
        END IF
        i = ACOS(cos_angles(1))
+       IF (PRESENT(qei_only)) THEN
+          IF (qei_only) THEN
+             ! Return (q,e,i) only
+             CALL NULLIFY(this_)
+             getCometaryElements = (/ q, e, i, -1.0_bp, -1.0_bp, -1.0_bp /)
+             RETURN
+          END IF
+       END IF
        IF (ABS(cos_angles(2)) > 1.0_bp) THEN
           cos_angles(2) = SIGN(1.0_bp, cos_angles(2))
        END IF
@@ -8057,10 +8146,10 @@ CONTAINS
           RETURN
        END IF
        DO i=1,nthis
-          elm_arr(:,i) = this_arr(i)%elements
+          elm_arr(1:6,i) = this_arr(i)%elements
        END DO
        DO i=1,naddit
-          elm_arr(:,nthis+i) = this_arr(1)%additional_perturbers(i,:)
+          elm_arr(1:6,nthis+i) = this_arr(1)%additional_perturbers(i,1:6)
        END DO
        IF (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
           elm_arr => reallocate(elm_arr, 6, 13*(nthis+naddit))
@@ -8182,9 +8271,9 @@ CONTAINS
 
        CASE ("bulirsch-stoer")
 
-          ! Make sure the additional perturbers share the same epoch
+          ! Check whether the additional perturbers share the same epoch
           ! with the orbits to be integrated and integrate them to the
-          ! correct epoch if possible:
+          ! correct epoch if required:
           IF (naddit /= 0) THEN
              IF (info_verb >= 3) THEN
                 WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
@@ -8272,8 +8361,10 @@ CONTAINS
              DO i=1,nthis+naddit
                 jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
              END DO
-          ELSE IF (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
-             ! Finite difference technique:
+          ELSE IF (.NOT.PRESENT(jacobian) .OR. &
+               (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp))) THEN
+             ! No Jacobian requested or Jacobian requested through
+             ! finite differences technique:
              IF (PRESENT(encounters)) THEN
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, error, &
@@ -8284,25 +8375,144 @@ CONTAINS
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, addit_masses=addit_masses)
-             END IF
-          ELSE IF (.NOT.PRESENT(jacobian)) THEN
-             IF (PRESENT(encounters)) THEN
-                CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
-                     this_arr(1)%perturbers_prm, &
-                     error, step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, &
-                     encounters=encounters, addit_masses=addit_masses)
-             ELSE
-                CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
-                     this_arr(1)%perturbers_prm, &
-                     error, step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, addit_masses=addit_masses)
              END IF
           END IF
           IF (error) THEN
              CALL errorMessage("Orbit / propagate (multiple)", &
                   "Bulirsch-Stoer integration was unsuccessful.", 1)
+             IF (PRESENT(jacobian)) THEN
+                DEALLOCATE(jacobian, stat=err)
+             END IF
+             DEALLOCATE(element_type_arr, stat=err)
+             DEALLOCATE(frame_arr, stat=err)
+             DEALLOCATE(elm_arr, stat=err)
+             DEALLOCATE(jacobian_, stat=err)
+             DEALLOCATE(partials0, stat=err)
+             RETURN
+          END IF
+
+       CASE ("gauss-radau")
+
+          ! Check whether the additional perturbers share the same epoch
+          ! with the orbits to be integrated and integrate them to the
+          ! correct epoch if required:
+          IF (naddit /= 0) THEN
+             IF (info_verb >= 3) THEN
+                WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
+             END IF
+             ALLOCATE(addit_masses(naddit), stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Orbit / propagate (multiple)",&
+                     "Could not allocate memory (35).", 1)          
+                RETURN
+             END IF
+             addit_masses = this_arr(1)%additional_perturbers(:,8)
+             IF (naddit >= 2) THEN
+                DO i=2,naddit
+                   IF (ABS(this_arr(1)%additional_perturbers(i-1,7) - &
+                        this_arr(1)%additional_perturbers(i,7)) > &
+                        10.0*EPSILON(this_arr(1)%additional_perturbers(1,7))) THEN
+                      error = .TRUE.
+                      CALL errorMessage("Orbit / propagate (multiple)",&
+                           "Additional perturbers do not have a common epoch.", 1)          
+                      RETURN
+                   END IF
+                END DO
+             END IF
+             IF (ABS(mjd_tt0 - this_arr(1)%additional_perturbers(1,7)) > &
+                  10.0*EPSILON(this_arr(1)%additional_perturbers(1,7))) THEN
+                IF (info_verb >= 3) THEN
+                   WRITE(stdout,"(2X,2(A,1X,F15.7,1X),A)") &
+                        "Integrating additional perturbers from epoch", &
+                        this_arr(1)%additional_perturbers(1,7), &
+                        "to starting epoch", mjd_tt0, "."
+                   WRITE(stdout,"(2X,A)") &
+                        "Initial elements (cartesian equatorial), epoch, and mass:"
+                   DO i=1,naddit
+                      WRITE(stdout,"(2X,I0,7(1X,F17.9),1X,E10.4)") &
+                           i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
+                           this_arr(1)%additional_perturbers(i,7:8)
+                   END DO
+                END IF
+                CALL gauss_radau_15_full_jpl( &
+                     this_arr(1)%additional_perturbers(1,7), &
+                     mjd_tt0, &
+                     elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), 12, &
+                     2, this_arr(1)%perturbers_prm, error, &
+                     step=this_arr(1)%integration_step_prm, &
+                     ncenter=central_body, &
+                     addit_masses=addit_masses)
+             END IF
+             IF (info_verb >= 3) THEN
+                WRITE(stdout,"(2X,A)") &
+                     "Orbital elements for additional perturbers (cartesian equatorial), " // &
+                     "their epoch, and mass at starting epoch:"
+                DO i=1,naddit
+                   WRITE(stdout,"(2X,I0,7(1X,F17.9),1X,E10.4)") &
+                        i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
+                        mjd_tt0, addit_masses
+                END DO
+             END IF
+          ELSE
+             ALLOCATE(addit_masses(0), stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Orbit / propagate (multiple)",&
+                     "Could not allocate memory (40).", 1)          
+                RETURN
+             END IF
+          END IF
+
+          IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
+             ! Jacobians through variational equations technique:
+             error = .TRUE.
+             CALL errorMessage("Orbit / propagate (multiple)",&
+                  "Variational equations technique not available for Gauss-Radau.", 1)          
+             RETURN             
+             DO i=1,nthis+naddit
+                jacobian_(:,:,i) = identity_matrix(6)
+             END DO
+             IF (PRESENT(encounters)) THEN
+                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
+                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
+                     error, jacobian=jacobian_, &
+                     step=this_arr(1)%integration_step_prm, &
+                     ncenter=central_body, encounters=encounters, &
+                     addit_masses=addit_masses)
+             ELSE
+                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
+                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
+                     error, jacobian=jacobian_, &
+                     step=this_arr(1)%integration_step_prm, &
+                     ncenter=central_body, &
+                     addit_masses=addit_masses)
+             END IF
+             DO i=1,nthis+naddit
+                jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
+             END DO
+          ELSE IF (.NOT.PRESENT(jacobian) .OR. &
+               (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp))) THEN
+             ! No Jacobian requested or Jacobian requested through
+             ! finite differences technique:
+             IF (PRESENT(encounters)) THEN
+                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
+                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
+                     error, step=this_arr(1)%integration_step_prm, &
+                     ncenter=central_body, encounters=encounters, &
+                     addit_masses=addit_masses)
+             ELSE
+                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
+                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
+                     error, step=this_arr(1)%integration_step_prm, &
+                     ncenter=central_body, &
+                     addit_masses=addit_masses)
+             END IF
+          END IF
+          IF (error) THEN
+             CALL errorMessage("Orbit / propagate (multiple)", &
+                  "Gauss-Radau integration was unsuccessful.", 1)
              IF (PRESENT(jacobian)) THEN
                 DEALLOCATE(jacobian, stat=err)
              END IF
@@ -9268,7 +9478,7 @@ CONTAINS
             "Frame " // TRIM(frame_) // " not recognized.", 1)
     END IF
 
-    IF (info_verb >= 3) THEN
+    IF (info_verb >= 4) THEN
        WRITE(stdout,"(A)") "Conversion to " // TRIM(frame_) // &
             " Cartesian elements. Initial " // TRIM(this%frame) // &
             " " // TRIM(this%element_type) // " elements:"
@@ -9301,7 +9511,7 @@ CONTAINS
        END IF
     END IF
 
-    IF (info_verb >= 3) THEN
+    IF (info_verb >= 4) THEN
        WRITE(stdout,"(A)") "Final " // TRIM(this%frame) // &
             " " // TRIM(this%element_type) // " elements:"
        WRITE(stdout,"(6(F22.15))") this%elements
