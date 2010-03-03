@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2009-09-16
+!! @version 2010-02-03
 !!
 MODULE integrators
 
@@ -68,6 +68,7 @@ MODULE integrators
   ! the public routines, since from thereon it is currently
   ! passed on as an global module parameter.
   PUBLIC :: bulirsch_full_jpl
+  PUBLIC :: gauss_radau_15_full_jpl
 
   INTERFACE ratf_extrapolation
      MODULE PROCEDURE ratf_extrapolation_vec, ratf_extrapolation_mat, &
@@ -1333,6 +1334,549 @@ CONTAINS
 
 
 
+  !! Gauss-Radau integrator by Edgar Everhart
+  !! (Physics Department, University of Denver) 
+  !!
+  !! This 15th-order version is written out for faster execution.
+  !! y'=f(y,t) is class=1, y"=f(y,t) is class= -2, and y"=f(y',y,t)
+  !! is class=2. mjd_tdt1 is t(final), and mjd_tdt0 is t(initial).
+  !! ll controls sequence size. Thus ss=10**(-ll) controls the size
+  !! of a term. A typical ll-value is in the range 6 to 12. However,
+  !! if ll<0 then step is the constant sequence size used. celements
+  !! enter as the starting position-velocity vector, at time
+  !! mjd_tdt0, and are output as the final position-velocity vector
+  !! at time mjd_tdt1. Integration is in real(8) precision, also
+  !! known as 'double precision'.
+  !!
+  !! References:
+  !! E. Everhart (1985), 'An efficient integrator that uses
+  !! Gauss-Radau spacings', A. Carusi and G. B. Valsecchi (eds.),
+  !! Dynamics of Comets: Their Origin and Evolution (proceedings),
+  !! Astrophysics and Space Science Library, vol. 115, D. Reidel
+  !! Publishing Company
+  !!
+  !! E. Everhart (1974), 'Implicit single-sequence methods for
+  !! integrating orbits', Celestial Mechanics, vol. 10, no. 1,
+  !! pp. 35-55
+  !!
+  !! 
+  !! Input/output parameters:
+  !! mjd_tdt0         integration start (MJD TT)
+  !! mjd_tdt1         integration stop (MJD TT)
+  !! celements        initial coordinates for massless particles and additional perturbers (1:6,1:nparticles)
+  !! ll
+  !! class
+  !! perturbers
+  !! error            returns true, if something fails 
+  !! jacobian         jacobian matrix (new coordinates wrt initial coordinates)
+  !! step             step size
+  !! ncenter          number of solar-system object to use as center (default=Sun)
+  !! encounters       table containing the closest distances to, or earliest
+  !!                  time of impact with solar-system objects
+  !! addit_masses     masses for additional perturbing bodies
+  !!
+  !!
+  !! @author MG (in f95)
+  !! @version   01.03.2010
+  !!
+  !!
+  !! WARNING: jacobians do not yet work properly! 
+  !!
+  SUBROUTINE gauss_radau_15_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
+       ll, CLASS, perturbers, error, jacobian, step, ncenter, &
+       encounters, addit_masses)
+
+    IMPLICIT NONE
+    REAL(prec), INTENT(in)                                :: mjd_tdt0, mjd_tdt1
+    REAL(prec), DIMENSION(:,:), INTENT(inout)             :: celements    
+    INTEGER, INTENT(in)                                   :: ll, CLASS
+    LOGICAL, DIMENSION(:), INTENT(in)                     :: perturbers
+    LOGICAL, INTENT(inout)                                :: error
+    REAL(prec), DIMENSION(:,:,:), INTENT(inout), OPTIONAL :: jacobian
+    REAL(prec), INTENT(in), OPTIONAL                      :: step
+    INTEGER, INTENT(in), OPTIONAL                         :: ncenter
+    REAL(prec), DIMENSION(:,:,:), INTENT(out), OPTIONAL   :: encounters
+    REAL(prec), DIMENSION(:), INTENT(in), OPTIONAL        :: addit_masses
+
+    ! Gauss-Radau spacings h, scaled to the range [0,1] for
+    ! integrating to the 15th order. The sum of these values 
+    ! should be 3.73333333...
+    REAL(prec), DIMENSION(8), PARAMETER :: h = (/ 0.0_prec, &
+         0.05626256053692215_prec, 0.18024069173689236_prec, &
+         0.35262471711316964_prec, 0.54715362633055538_prec, &
+         0.73421017721541053_prec, 0.88532094683909577_prec, &
+         0.97752061356128750_prec /)
+    INTEGER, DIMENSION(8), PARAMETER :: nw = (/ 0, 0, 1, 3, 6, 10, 15, 21 /)
+    REAL(prec), DIMENSION(:,:,:), ALLOCATABLE ::b, g, e, encounters_, bd, pwd_massless
+    REAL(prec), DIMENSION(:,:), ALLOCATABLE :: w_massless1, &
+         w_massless2, wd_massless1, wd_massless2
+    REAL(prec), DIMENSION(21) :: c, d, r
+    REAL(prec), DIMENSION(7) :: w, u
+    REAL(prec), DIMENSION(3) :: tmp, gk
+    REAL(prec) :: direction, dt, pw, t, tp, w1, ss, tm, t2, tval, s, &
+         q, hv, xl
+    INTEGER :: i, j, jd, k, l, m, n, ww, la, lb, lc, ld, le, ncount, &
+         ns, nf, ni, err, naddit, norb, iorb
+    LOGICAL :: starting_seq, last_seq
+
+    IF (PRESENT(step)) THEN
+       xl = step
+    ELSE
+       xl = step_def ! default step
+    END IF
+    norb = SIZE(celements,dim=2)
+    IF (norb == 0) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    ! Reset the global module parameter
+    IF (PRESENT(ncenter)) THEN
+       central_body = ncenter
+    ELSE 
+       central_body = central_body_prm
+    END IF
+
+    IF (PRESENT(addit_masses)) THEN
+       naddit = SIZE(addit_masses)
+    ELSE
+       naddit = 0
+    END IF
+
+    IF (PRESENT(jacobian)) THEN
+       error = .TRUE.
+       WRITE(0,*) "gauss_radau_15_full_jpl: computation of jacobians not yet available."
+       RETURN
+       ALLOCATE(w_massless1(6,norb*7), w_massless2(6,norb*7), &
+            wd_massless1(6,norb*7), wd_massless2(6,norb*7), &
+            pwd_massless(6,6,norb), b(7*norb,7,3), g(7*norb,7,3), &
+            e(7*norb,7,3), bd(7*norb,7,3), stat=err)
+       w_massless1(1:6,1:norb) = celements(1:6,1:norb)
+       DO i=1,norb
+          w_massless1(1:6,norb+(i-1)*6+1) = jacobian(1,1:6,i)
+          w_massless1(1:6,norb+(i-1)*6+2) = jacobian(2,1:6,i)
+          w_massless1(1:6,norb+(i-1)*6+3) = jacobian(3,1:6,i)
+          w_massless1(1:6,norb+(i-1)*6+4) = jacobian(4,1:6,i)
+          w_massless1(1:6,norb+(i-1)*6+5) = jacobian(5,1:6,i)
+          w_massless1(1:6,norb+(i-1)*6+6) = jacobian(6,1:6,i)
+!!$          w_massless1(1:6,norb+(i-1)*6+1) = jacobian(1:6,1,i)
+!!$          w_massless1(1:6,norb+(i-1)*6+1) = jacobian(1:6,2,i)
+!!$          w_massless1(1:6,norb+(i-1)*6+1) = jacobian(1:6,3,i)
+!!$          w_massless1(1:6,norb+(i-1)*6+1) = jacobian(1:6,4,i)
+!!$          w_massless1(1:6,norb+(i-1)*6+1) = jacobian(1:6,5,i)
+!!$          w_massless1(1:6,norb+(i-1)*6+1) = jacobian(1:6,6,i)
+       END DO
+       w_massless2 = 0.0_prec
+    ELSE
+       ALLOCATE(w_massless1(6,norb), w_massless2(6,norb), &
+            wd_massless1(6,norb), wd_massless2(6,norb), &
+            b(norb,7,3), g(norb,7,3), e(norb,7,3), &
+            bd(norb,7,3), stat=err)
+       w_massless1(1:6,1:norb) = celements(1:6,1:norb)
+       w_massless2 = 0.0_prec
+    END IF
+
+    ! Initialize the encounter table
+    IF (PRESENT(encounters)) THEN
+       IF (SIZE(encounters,dim=1) < norb) THEN
+          error = .TRUE.
+          WRITE(0,"(A)") "bulirsch_full_jpl: 'encounters' array too small (1)."
+          RETURN
+       END IF
+       IF (SIZE(encounters,dim=2) < 11) THEN
+          error = .TRUE.
+          WRITE(0,"(A)") "bulirsch_full_jpl: 'encounters' array too small (2)."
+          RETURN
+       END IF
+       IF (SIZE(encounters,dim=3) < 4) THEN
+          error = .TRUE.
+          WRITE(0,"(A)") "bulirsch_full_jpl: 'encounters' array too small (3)."
+          RETURN
+       END IF
+       encounters = HUGE(encounters)
+       encounters(:,:,2) = 3
+       ALLOCATE(encounters_(SIZE(encounters,dim=1),SIZE(encounters,dim=2),SIZE(encounters,dim=3)))
+    END IF
+
+    starting_seq = .TRUE.
+    last_seq = .FALSE.
+    dt = mjd_tdt1 - mjd_tdt0
+    IF (dt > 0.0_prec) THEN
+       direction = 1.0_prec
+    ELSE
+       direction = -1.0_prec
+    END IF
+    xl = direction*ABS(xl)
+    pw = 1.0_prec/9.0_prec
+    ! Evaluate the constants in the w-, u-, c-, d-, and r-vectors
+    DO n=2,8
+       ww = n + n**2
+       IF (CLASS == 1) THEN
+          ww = n
+       END IF
+       w(n-1) = 1.0_prec/ww
+       ww = n
+       u(n-1) = 1.0_prec/ww
+    END DO
+    IF (CLASS == 1) THEN
+       w_massless1(4:6,:) = 0.0_prec
+    END IF
+    bd = 0.0_prec ; b = 0.0_prec ; w1 = 0.5_prec
+    IF (CLASS == 1) THEN
+       w1 = 1.0_prec
+    END IF
+    c(1) = -h(2)
+    d(1) = h(2)
+    r(1) = 1.0_prec/(h(3)-h(2))
+    la = 1 ; lc = 1
+    DO k=3,7
+       lb = la
+       la = lc + 1
+       lc = nw(k+1)
+       c(la) = -h(k)*c(lb)
+       c(lc) = c(la-1) - h(k)
+       d(la) = h(2)*d(lb)
+       d(lc) = -c(lc)
+       r(la) = 1.0_prec/(h(k+1)-h(2))
+       r(lc) = 1.0_prec/(h(k+1)-h(k))
+       DO l=4,k
+          ld = la + l - 3
+          le = lb + l - 4
+          c(ld) = c(le) - h(k)*c(le+1)
+          d(ld) = d(le) + h(l-1)*d(le+1)
+          r(ld) = 1.0_prec/(h(k+1)-h(l-1))
+       END DO
+    END DO
+    ! For some reason, the value 10 was declared 10. instead of 10.d0 in 
+    ! the original version by Everhart (1985). This lead to a difference
+    ! in the 12-13 decimal. Here it is declared similar to 10.d0:
+    ss = 10.0_prec**(-ll)
+    ! The statements above are used only once in an integration to set up the
+    ! constants. They use less than a second of execution time. Next set in
+    ! a reasonable estimate to tp based on experience. Same sign as direction.
+    ! An initial first sequence size can be set with xl even with ll positive.
+    tp = 0.1_prec*direction
+    IF (ABS(xl) > TINY(xl) .OR. ll < 0.0_prec) THEN
+       tp = xl
+    END IF
+    IF (tp/dt > 0.5_prec) THEN
+       tp = 0.5_prec*dt
+    END IF
+    ncount = 0
+    ! The starting place of the first sequence.
+    one:DO
+       ns = 0 ; nf = 0 ; ni = 6 ; tm = 0.0_prec
+       IF (PRESENT(jacobian)) THEN
+          CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+               perturbers, naddit, wd_massless1, error, pwd_massless)
+!!$          CALL interact_full_jpl_center(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+!!$               wd_massless1, error, pwd_massless)
+          DO i=1,norb
+             w_massless1(1:6,norb+(i-1)*6+1) = pwd_massless(1,1:6,i)
+             w_massless1(1:6,norb+(i-1)*6+2) = pwd_massless(2,1:6,i)
+             w_massless1(1:6,norb+(i-1)*6+3) = pwd_massless(3,1:6,i)
+             w_massless1(1:6,norb+(i-1)*6+4) = pwd_massless(4,1:6,i)
+             w_massless1(1:6,norb+(i-1)*6+5) = pwd_massless(5,1:6,i)
+             w_massless1(1:6,norb+(i-1)*6+6) = pwd_massless(6,1:6,i)
+!!$             w_massless1(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,1,i)
+!!$             w_massless1(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,2,i)
+!!$             w_massless1(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,3,i)
+!!$             w_massless1(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,4,i)
+!!$             w_massless1(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,5,i)
+!!$             w_massless1(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,6,i)
+          END DO
+       ELSE
+          CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
+               perturbers, naddit, wd_massless1, error)
+!!$          CALL interact_full_jpl_center(w_massless1, mjd_tdt0+tm, &
+!!$               wd_massless1, error)
+       END IF
+       IF (error) THEN
+          DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
+               wd_massless2, pwd_massless, b, g, e, bd, stat=err)
+          RETURN
+       END IF
+       nf = nf + 1
+       ! Second loop. First find new beta-
+       ! values from the predicted b-values, following eq. (2.7) in text.
+       DO
+          DO iorb=1,SIZE(w_massless1,dim=2)
+             g(iorb,1,:) = b(iorb,1,:) + d(1)*b(iorb,2,:) + d(2)*b(iorb,3,:) + d(4)*b(iorb,4,:) + &
+                  d( 7)*b(iorb,5,:) + d(11)*b(iorb,6,:) + d(16)*b(iorb,7,:)
+             g(iorb,2,:) = b(iorb,2,:) + d(3)*b(iorb,3,:) + d(5)*b(iorb,4,:) + d(8)*b(iorb,5,:) + &
+                  d(12)*b(iorb,6,:) + d(17)*b(iorb,7,:)
+             g(iorb,3,:) = b(iorb,3,:) + d(6)*b(iorb,4,:) + d(9)*b(iorb,5,:) + d(13)*b(iorb,6,:) + &
+                  d(18)*b(iorb,7,:)
+             g(iorb,4,:) = b(iorb,4,:) + d(10)*b(iorb,5,:) + d(14)*b(iorb,6,:) + d(19)*b(iorb,7,:)
+             g(iorb,5,:) = b(iorb,5,:) + d(15)*b(iorb,6,:) + d(20)*b(iorb,7,:)
+             g(iorb,6,:) = b(iorb,6,:) + d(21)*b(iorb,7,:)
+             g(iorb,7,:) = b(iorb,7,:)
+          END DO
+          t = tp
+          t2 = t**2.0_prec
+          IF (CLASS == 1) THEN
+             t2 = t
+          END IF
+          tval = ABS(t)
+          ! This loop is 6 iterations on first sequence and two iterations therafter.
+          DO m=1,ni
+             ! This loop is for each substep within a sequence.
+             DO j=2,8
+                jd = j - 1
+                s = h(j)
+                q = s
+                IF (CLASS == 1) THEN
+                   q = 1.0_prec
+                END IF
+                DO iorb=1,SIZE(w_massless2,dim=2)
+                   ! Use eqs. (2.9) and (2.10) of text to predict
+                   ! positions at each substep:
+                   w_massless2(1:3,iorb) = w_massless1(1:3,iorb) + &
+                        q*(t*w_massless1(4:6,iorb) + &
+                        t2*s*(wd_massless1(4:6,iorb)*w1 + &
+                        s*(w(1)*b(iorb,1,:) + s*(w(2)*b(iorb,2,:) + &
+                        s*(w(3)*b(iorb,3,:) + s*(w(4)*b(iorb,4,:) + &
+                        s*(w(5)*b(iorb,5,:) + s*(w(6)*b(iorb,6,:) + &
+                        s*w(7)*b(iorb,7,:)))))))))
+
+                   IF (CLASS == 2) THEN
+                      ! Calculate the velocity predictors needed
+                      ! for general class ii.
+                      w_massless2(4:6,iorb) = w_massless1(4:6,iorb) + &
+                           s*t*(wd_massless1(4:6,iorb) + &
+                           s*(u(1)*b(iorb,1,:) + &
+                           s*(u(2)*b(iorb,2,:) + s*(u(3)*b(iorb,3,:) + &
+                           s*(u(4)*b(iorb,4,:) + s*(u(5)*b(iorb,5,:) + &
+                           s*(u(6)*b(iorb,6,:) + s*u(7)*b(iorb,7,:))))))))
+                   END IF
+                END DO
+                ! Find forces at each substep.
+                IF (PRESENT(jacobian)) THEN
+                   CALL interact_full_jpl(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
+                        perturbers, naddit, wd_massless2, error, pwd_massless)
+!!$                   CALL interact_full_jpl_center(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
+!!$                        wd_massless2, error, pwd_massless)
+                   DO i=1,norb
+                      w_massless2(1:6,norb+(i-1)*6+1) = pwd_massless(1,1:6,i)
+                      w_massless2(1:6,norb+(i-1)*6+2) = pwd_massless(2,1:6,i)
+                      w_massless2(1:6,norb+(i-1)*6+3) = pwd_massless(3,1:6,i)
+                      w_massless2(1:6,norb+(i-1)*6+4) = pwd_massless(4,1:6,i)
+                      w_massless2(1:6,norb+(i-1)*6+5) = pwd_massless(5,1:6,i)
+                      w_massless2(1:6,norb+(i-1)*6+6) = pwd_massless(6,1:6,i)
+!!$                      w_massless2(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,1,i)
+!!$                      w_massless2(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,2,i)
+!!$                      w_massless2(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,3,i)
+!!$                      w_massless2(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,4,i)
+!!$                      w_massless2(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,5,i)
+!!$                      w_massless2(1:6,norb+(i-1)*6+1) = pwd_massless(1:6,6,i)
+                   END DO
+                ELSE
+                   CALL interact_full_jpl(w_massless2, &
+                        mjd_tdt0+tm+s*t, perturbers, &
+                        naddit, wd_massless2, &
+                        error)
+!!$                   CALL interact_full_jpl_center(w_massless2, mjd_tdt0+tm+s*t, wd_massless2, error)
+                END IF
+                IF (error) THEN
+                   DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
+                        wd_massless2, pwd_massless, b, g, e, bd, stat=err)
+                   RETURN
+                END IF
+                nf = nf + 1
+                DO iorb=1,SIZE(w_massless1,dim=2)
+                   ! Find g-value for the force wd_massless2 found at the current substep. This
+                   ! section, including the case statement, uses eq. (2.4) of text.
+                   tmp = g(iorb,jd,:)
+                   gk = (wd_massless2(4:6,iorb)-wd_massless1(4:6,iorb))/s
+                   SELECT CASE (j)
+                   CASE (2)
+                      g(iorb,1,:) = gk
+                   CASE (3)
+                      g(iorb,2,:) = (gk-g(iorb,1,:))*r(1)
+                   CASE (4)
+                      g(iorb,3,:) = ((gk-g(iorb,1,:))*r(2) - g(iorb,2,:))*r(3)
+                   CASE (5)
+                      g(iorb,4,:) = (((gk-g(iorb,1,:))*r(4) - g(iorb,2,:))*r(5) - g(iorb,3,:))*r(6)
+                   CASE (6)
+                      g(iorb,5,:) = ((((gk-g(iorb,1,:))*r(7) - g(iorb,2,:))*r(8) - g(iorb,3,:))*r(9) - &
+                           g(iorb,4,:))*r(10)
+                   CASE (7) 
+                      g(iorb,6,:) = (((((gk-g(iorb,1,:))*r(11) - g(iorb,2,:))*r(12) - &
+                           g(iorb,3,:))*r(13) - g(iorb,4,:))*r(14)-g(iorb,5,:))*r(15)
+                   CASE (8) 
+                      g(iorb,7,:) = ((((((gk-g(iorb,1,:))*r(16) - g(iorb,2,:))*r(17) - g(iorb,3,:))*r(18) - &
+                           g(iorb,4,:))*r(19) - g(iorb,5,:))*r(20) - g(iorb,6,:))*r(21)
+                   END SELECT
+                   ! Update all b-values.
+                   tmp = g(iorb,jd,:) - tmp
+                   b(iorb,jd,:) = b(iorb,jd,:) + tmp
+                   ! tmp is now the improvement on g(iorb,jd,:) over its former value.
+                   ! Now we upgrade the b-value using this difference in the one term.
+                   ! This section is based on eq. (2.5).
+                   SELECT CASE (j)
+                   CASE (3)
+                      b(iorb,1,:) = b(iorb,1,:) + c(1)*tmp
+                   CASE (4)
+                      b(iorb,1,:) = b(iorb,1,:) + c(2)*tmp
+                      b(iorb,2,:) = b(iorb,2,:) + c(3)*tmp
+                   CASE (5)
+                      b(iorb,1,:) = b(iorb,1,:) + c(4)*tmp
+                      b(iorb,2,:) = b(iorb,2,:) + c(5)*tmp
+                      b(iorb,3,:) = b(iorb,3,:) + c(6)*tmp
+                   CASE (6)
+                      b(iorb,1,:) = b(iorb,1,:) + c(7)*tmp
+                      b(iorb,2,:) = b(iorb,2,:) + c(8)*tmp
+                      b(iorb,3,:) = b(iorb,3,:) + c(9)*tmp
+                      b(iorb,4,:) = b(iorb,4,:) + c(10)*tmp
+                   CASE (7)
+                      b(iorb,1,:) = b(iorb,1,:) + c(11)*tmp
+                      b(iorb,2,:) = b(iorb,2,:) + c(12)*tmp
+                      b(iorb,3,:) = b(iorb,3,:) + c(13)*tmp
+                      b(iorb,4,:) = b(iorb,4,:) + c(14)*tmp
+                      b(iorb,5,:) = b(iorb,5,:) + c(15)*tmp
+                   CASE (8)
+                      b(iorb,1,:) = b(iorb,1,:) + c(16)*tmp
+                      b(iorb,2,:) = b(iorb,2,:) + c(17)*tmp
+                      b(iorb,3,:) = b(iorb,3,:) + c(18)*tmp
+                      b(iorb,4,:) = b(iorb,4,:) + c(19)*tmp
+                      b(iorb,5,:) = b(iorb,5,:) + c(20)*tmp
+                      b(iorb,6,:) = b(iorb,6,:) + c(21)*tmp
+                   END SELECT
+                END DO
+             END DO
+             IF (ll >= 0.0_prec .AND. m >= ni) THEN
+                ! Integration of sequence is over. Next is sequence size control.
+                hv = MAXVAL(ABS(b(1,7,:)))
+                DO iorb=2,SIZE(b,dim=1)
+                   IF (hv < MAXVAL(ABS(b(iorb,7,:)))) THEN
+                      hv = MAXVAL(ABS(b(iorb,7,:)))
+                   END IF
+                END DO
+                hv = hv*w(7)/tval**7.0_prec
+             END IF
+          END DO
+          !return
+          IF (starting_seq) THEN
+             IF (ll >= 0.0_prec) THEN
+                tp = (ss/hv)**pw*direction
+                IF (tp/t <= 1.0_prec) THEN
+                   tp = 0.8_prec*tp
+                   ncount = ncount + 1
+                   IF (ncount > 10) THEN
+                      error = .TRUE.
+                      DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
+                           wd_massless2, pwd_massless, b, g, e, bd, stat=err)
+                      RETURN
+                   END IF
+                   ! restart with 0.8x sequence size if new size called for is smaller than
+                   ! originally chosen starting sequence size on first sequence.
+                   CYCLE one
+                END IF
+             ELSE
+                tp = xl
+             END IF
+             starting_seq = .FALSE.
+             ! Loop 35 finds new x and v values at end of sequence using eqs. (2.11),(2.12)
+          END IF
+          DO iorb=1,SIZE(w_massless1,dim=2)
+             w_massless1(1:3,iorb) = w_massless1(1:3,iorb) + w_massless1(4:6,iorb)*t + &
+                  t2*(wd_massless1(4:6,iorb)*w1 + b(iorb,1,:)*w(1) + &
+                  b(iorb,2,:)*w(2) + b(iorb,3,:)*w(3) + b(iorb,4,:)*w(4) + &
+                  b(iorb,5,:)*w(5) + b(iorb,6,:)*w(6)+b(iorb,7,:)*w(7))
+             IF (CLASS /= 1) THEN
+                w_massless1(4:6,iorb) = w_massless1(4:6,iorb) + t*(wd_massless1(4:6,iorb) &
+                     + b(iorb,1,:)*u(1) + b(iorb,2,:)*u(2) + b(iorb,3,:)*u(3) + &
+                     b(iorb,4,:)*u(4) + b(iorb,5,:)*u(5) + b(iorb,6,:)*u(6) + &
+                     b(iorb,7,:)*u(7))
+             END IF
+          END DO
+          tm = tm + t
+          ns = ns + 1
+          ! Return if done.
+          IF (last_seq) THEN
+             IF (PRESENT(jacobian)) THEN
+                celements(1:6,1:norb) = w_massless1(1:6,1:norb)
+                DEALLOCATE(pwd_massless, stat=err)
+                IF (err /= 0) THEN
+                   error = .TRUE.
+                   DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
+                        wd_massless2, b, g, e, bd, stat=err)
+                   RETURN
+                END IF
+             ELSE
+                celements = w_massless1
+             END IF
+             DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
+                  wd_massless2, b, g, e, bd, stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                RETURN
+             END IF
+             RETURN
+          END IF
+          ! Control on size of next sequence and adjust last sequence to exactly
+          ! cover the integration span. last_seq=.true. Set on last sequence.
+          IF (PRESENT(jacobian)) THEN
+             CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+                  perturbers, naddit, wd_massless1, error, pwd_massless)
+          ELSE
+             CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
+                  perturbers, naddit, wd_massless1, error)
+          END IF
+          IF (error) THEN
+             DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
+                  wd_massless2, pwd_massless, b, g, e, bd, stat=err)
+             RETURN
+          END IF
+          nf = nf + 1
+          IF (ll >= 0.0_prec) THEN
+             tp = direction*(ss/hv)**pw
+             IF (tp/t > 1.4_prec) THEN
+                tp = t*1.4_prec
+             END IF
+          END IF
+          IF (ll < 0.0_prec) THEN
+             tp = xl
+          END IF
+          IF (direction*(tm+tp) >= direction*dt - 1.e-8_prec) THEN
+             tp = dt - tm
+             last_seq = .TRUE.
+          END IF
+          ! Now predict b-values for next step. The predicted values from the preceding
+          ! sequence were saved in the e-matrix. The correction bd between the actual
+          ! b-values found and these predicted values is applied in advance to the
+          ! next sequence. The gain in accuracy is significant. Using eqs. (2.13):
+          q = tp/t
+          DO iorb=1,SIZE(w_massless1,dim=2)
+             IF (ns /= 1) THEN
+                bd(iorb,1:7,:) = b(iorb,1:7,:) - e(iorb,1:7,:)
+             END IF
+             e(iorb,1,:) = q*(b(iorb,1,:) + 2.0_prec*b(iorb,2,:) + &
+                  3.0_prec*b(iorb,3,:) + 4._prec*b(iorb,4,:) + 5._prec*b(iorb,5,:) + &
+                  6._prec*b(iorb,6,:) + 7._prec*b(iorb,7,:))
+             e(iorb,2,:) = q**2*(b(iorb,2,:) + 3.0_prec*b(iorb,3,:) + 6.0_prec*b(iorb,4,:) + &
+                  10.0_prec*b(iorb,5,:) + 15.0_prec*b(iorb,6,:)+ 21.0_prec*b(iorb,7,:))
+             e(iorb,3,:) = q**3*(b(iorb,3,:) + 4.0_prec*b(iorb,4,:) + 10.0_prec*b(iorb,5,:)+ &
+                  20.0_prec*b(iorb,6,:)+ 35.0_prec*b(iorb,7,:))
+             e(iorb,4,:) = q**4*(b(iorb,4,:) + 5.0_prec*b(iorb,5,:) + 15.0_prec*b(iorb,6,:) + &
+                  35.0_prec*b(iorb,7,:))
+             e(iorb,5,:) = q**5*(b(iorb,5,:) + 6.0_prec*b(iorb,6,:) + 21.0_prec*b(iorb,7,:))
+             e(iorb,6,:) = q**6*(b(iorb,6,:) + 7.0_prec*b(iorb,7,:))
+             e(iorb,7,:) = q**7*b(iorb,7,:)
+             b(iorb,1:7,:) = e(iorb,1:7,:) + bd(iorb,1:7,:)
+          END DO
+          ! Two iterations for every sequence after the first.
+          ni = 2
+       END DO
+       EXIT
+    END DO one
+
+  END SUBROUTINE gauss_radau_15_full_jpl
+
+
+
+
+
   !! Description: 
   !!   Evaluation of the full Newtonian force function for several 
   !!   massless bodies. Positions of the massive bodies are read 
@@ -1357,9 +1901,9 @@ CONTAINS
   !!  error       true, if reading from ephemerides fails
   !!  pwds        evaluated partial derivatives of the force function
   !!  encounters  encounters(i,j) where i=massless particle,
-  !!              j=perturber, encounters(i,j)=1 or 2, where 1=inside
-  !!              Roche limit and 2=within planetary radius
-  !!              (~collision)
+  !!              j=perturber, encounters(i,j)=1 or 2, where 1=within
+  !!              planetary radius (~collision) and 2=outside
+  !!              planetary radius
   !!
   SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers, naddit, wds, error, pwds, encounters, addit_masses)
 
