@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2009-09-22
+!! @version 2010-03-02
 !!
 MODULE statistics
 
@@ -405,7 +405,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)       :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)               :: peak
     REAL(rprec8), DIMENSION(2), OPTIONAL, INTENT(out) :: bounds
-    CHARACTER(len=*), INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                   :: error
 
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: pdf_
     REAL(rprec8) :: probability_mass_
@@ -490,7 +490,7 @@ CONTAINS
              ELSE IF (indata(indx_arr(i)) > bounds(2)) THEN
                 bounds(2) = indata(indx_arr(i))               
              END IF
-             IF (probability_mass_ > probability_mass) THEN
+             IF (probability_mass_ >= probability_mass) THEN
                 EXIT
              END IF
           END IF
