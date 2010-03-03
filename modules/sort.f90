@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains sorting and searching routines.
 !!
 !! @author  MG
-!! @version 2009-10-22
+!! @version 2010-03-02
 !!
 MODULE sort
 
@@ -58,6 +58,7 @@ MODULE sort
      MODULE PROCEDURE binarySearch_i8
      MODULE PROCEDURE binarySearch_r8
      MODULE PROCEDURE binarySearch_r16
+     MODULE PROCEDURE binarySearch_ch
      MODULE PROCEDURE binarySearch_ch_index
   END INTERFACE
 
@@ -1111,6 +1112,77 @@ CONTAINS
   !! procedure is continued until the value is found, or the interval
   !! is empty.
   !!
+  INTEGER FUNCTION binarySearch_ch(key, array, error)
+
+    ! The input array needs to be sorted in ascending order.
+
+    IMPLICIT NONE
+    CHARACTER(len=*), INTENT(in)               :: key
+    CHARACTER(len=*), DIMENSION(:), INTENT(in) :: array
+    CHARACTER(len=*), INTENT(inout)            :: error
+
+    INTEGER :: n, left, right, center, i
+
+    n = SIZE(array, dim=1)
+    ! Return immediately
+    ! - if the length of the array is zero:
+    IF (n == 0) THEN
+       binarySearch_ch = -1
+       RETURN
+    END IF
+    ! - if the key (value to be searched for) is smaller or 
+    !   larger than the minimum or maximum values of
+    !   the array:
+    IF (key < array(1) .OR. key > array(n)) THEN
+       binarySearch_ch = -1
+       RETURN
+    END IF
+
+    i = 1
+    left = 1
+    right = n
+    DO WHILE (left <= right .AND. i<=n+2)
+       i = i + 1
+       center = CEILING((left+right)/2.0)
+       IF (key == array(center)) THEN
+          binarySearch_ch = center
+          RETURN
+       ELSE IF (key < array(center)) THEN
+          right = center - 1 
+       ELSE IF (key > array(center)) THEN
+          left = center + 1
+       END IF
+    END DO
+
+    IF (i == n+2) THEN
+       error = " -> sort : binarySearch : Search stuck in a loop." // TRIM(error)
+    END IF
+
+    ! The key could not be found in the array. 
+    ! Return a negative index:
+    binarySearch_ch = -1
+
+  END FUNCTION binarySearch_ch
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Binary search routine. Returns the position of the search key in
+  !! the one-dimensional input array. If the search key is not found,
+  !! it returns -1.
+  !!
+  !! As a prerequisite, the array which is to be scanned has to be sorted
+  !! in ascending order. The algorithm searches for the search
+  !! key by repeatedly dividing the search interval in half. Initially
+  !! the interval covers the whole array. If the item in the middle of
+  !! the interval is larger than the key, the interval is narrowed to
+  !! the lower half. Otherwise it is narrowed to the upper half. The
+  !! procedure is continued until the value is found, or the interval
+  !! is empty.
+  !!
   INTEGER FUNCTION binarySearch_ch_index(key, array, indx, error)
 
     ! The input array needs to be sorted in ascending order.
@@ -1181,22 +1253,22 @@ CONTAINS
   !! the lower half. Otherwise it is narrowed to the upper half. The
   !! procedure is continued until the interval is empty.
   !!
-  INTEGER FUNCTION findLocation_r8(value, array)
+  INTEGER FUNCTION findLocation_r8(VALUE, array)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
-    REAL(rprec8), INTENT(in)               :: value
+    REAL(rprec8), INTENT(in)               :: VALUE
     REAL(rprec8), DIMENSION(:), INTENT(in) :: array
     INTEGER                              :: n, left, right, center
 
     n = SIZE(array)
     ! Return immediately, if the value is smaller or larger than the
     ! minimum or maximum values of the array:
-    IF (value < array(1)) THEN
+    IF (VALUE < array(1)) THEN
        findLocation_r8 = 1
        RETURN
-    ELSE IF (value >= array(n)) THEN
+    ELSE IF (VALUE >= array(n)) THEN
        findLocation_r8 = n+1
        RETURN
     END IF
@@ -1206,13 +1278,13 @@ CONTAINS
     center = CEILING((left+right)/2.0)
     DO WHILE (right-left > 1)
        center = CEILING((left+right)/2.0)
-       IF (value < array(center)) THEN
+       IF (VALUE < array(center)) THEN
           right = center
-       ELSE IF (value >= array(center)) THEN
+       ELSE IF (VALUE >= array(center)) THEN
           left = center
        END IF
     END DO
-    IF (value < array(center)) THEN
+    IF (VALUE < array(center)) THEN
        findLocation_r8 = center
     ELSE
        findLocation_r8 = center + 1
@@ -1239,13 +1311,13 @@ CONTAINS
   !! the lower half. Otherwise it is narrowed to the upper half. The
   !! procedure is continued until the interval is empty.
   !!
-  INTEGER FUNCTION findLocation_r8_indx(value, array, indx_array)
+  INTEGER FUNCTION findLocation_r8_indx(VALUE, array, indx_array)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
     INTEGER, PARAMETER                   :: prec = 8
-    REAL(rprec8), INTENT(in)               :: value
+    REAL(rprec8), INTENT(in)               :: VALUE
     REAL(rprec8), DIMENSION(:), INTENT(in) :: array
     INTEGER, DIMENSION(:), INTENT(in)    :: indx_array
     INTEGER                              :: n, left, right, center
@@ -1253,10 +1325,10 @@ CONTAINS
     n = SIZE(array)
     ! Return immediately, if the value is smaller or larger than the
     ! minimum or maximum values of the array:
-    IF (value < array(indx_array(1))) THEN
+    IF (VALUE < array(indx_array(1))) THEN
        findLocation_r8_indx = 1
        RETURN
-    ELSE IF (value >= array(indx_array(n))) THEN
+    ELSE IF (VALUE >= array(indx_array(n))) THEN
        findLocation_r8_indx = n+1
        RETURN
     END IF
@@ -1266,13 +1338,13 @@ CONTAINS
     center = CEILING((left+right)/2.0)
     DO WHILE (right-left > 1)
        center = CEILING((left+right)/2.0)
-       IF (value < array(indx_array(center))) THEN
+       IF (VALUE < array(indx_array(center))) THEN
           right = center
-       ELSE IF (value >= array(indx_array(center))) THEN
+       ELSE IF (VALUE >= array(indx_array(center))) THEN
           left = center
        END IF
     END DO
-    IF (value < array(indx_array(center))) THEN
+    IF (VALUE < array(indx_array(center))) THEN
        findLocation_r8_indx = center
     ELSE
        findLocation_r8_indx = center + 1
@@ -1298,22 +1370,22 @@ CONTAINS
   !! the lower half. Otherwise it is narrowed to the upper half. The
   !! procedure is continued until the interval is empty.
   !!
-  INTEGER FUNCTION findLocation_r16(value, array)
+  INTEGER FUNCTION findLocation_r16(VALUE, array)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
-    REAL(rprec16), INTENT(in)               :: value
+    REAL(rprec16), INTENT(in)               :: VALUE
     REAL(rprec16), DIMENSION(:), INTENT(in) :: array
     INTEGER                              :: n, left, right, center
 
     n = SIZE(array)
     ! Return immediately, if the value is smaller or larger than the
     ! minimum or maximum values of the array:
-    IF (value < array(1)) THEN
+    IF (VALUE < array(1)) THEN
        findLocation_r16 = 1
        RETURN
-    ELSE IF (value >= array(n)) THEN
+    ELSE IF (VALUE >= array(n)) THEN
        findLocation_r16 = n+1
        RETURN
     END IF
@@ -1323,13 +1395,13 @@ CONTAINS
     center = CEILING((left+right)/2.0)
     DO WHILE (right-left > 1)
        center = CEILING((left+right)/2.0)
-       IF (value < array(center)) THEN
+       IF (VALUE < array(center)) THEN
           right = center
-       ELSE IF (value >= array(center)) THEN
+       ELSE IF (VALUE >= array(center)) THEN
           left = center
        END IF
     END DO
-    IF (value < array(center)) THEN
+    IF (VALUE < array(center)) THEN
        findLocation_r16 = center
     ELSE
        findLocation_r16 = center + 1
