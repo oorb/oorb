@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains generic routines for parameter estimation.
 !!
 !! @author  MG
-!! @version 2009-10-22
+!! @version 2010-03-02
 !!
 MODULE estimators
 
@@ -554,137 +554,184 @@ CONTAINS
   !! Parameters: The maximum allowed number of function evaluations,
   !! and a small number.
   !!
-  SUBROUTINE amoeba(p, y, ftol, func, iter, error)
+  SUBROUTINE simplex(func, param, thresh, iter, p_matrix, y_vector, verb, errstr)
 
     IMPLICIT NONE
     INTERFACE
-       REAL(rprec8) FUNCTION func(x, error)
-         USE parameters
+       REAL(8) FUNCTION func(x, param, errstr)
          IMPLICIT NONE
-         REAL(rprec8), DIMENSION(:), INTENT(in) :: x
-         CHARACTER(len=*), INTENT(inout) :: error
+         REAL(8), DIMENSION(:), INTENT(in) :: x
+         REAL(8), DIMENSION(:), INTENT(in) :: param
+         CHARACTER(len=*), INTENT(inout) :: errstr
        END FUNCTION func
     END INTERFACE
-    REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: p
-    REAL(rprec8), DIMENSION(:), INTENT(inout) :: y
-    REAL(rprec8), INTENT(in) :: ftol
-    !real(rprec8), external :: func
-    INTEGER(iprec4), INTENT(out) :: iter
-    CHARACTER(len=*), INTENT(inout) :: error
+    REAL(rprec8), DIMENSION(:), INTENT(in) :: param
+    REAL(rprec8), INTENT(in) :: thresh
+    INTEGER, INTENT(inout) :: iter
+    REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: p_matrix
+    REAL(rprec8), DIMENSION(:), INTENT(inout) :: y_vector
+    INTEGER(iprec4), INTENT(in) :: verb
+    CHARACTER(len=*), INTENT(inout) :: errstr
+
+    CHARACTER(len=8) :: str
+    REAL(rprec8), DIMENSION(SIZE(p_matrix,dim=2)) :: psum
+    REAL(rprec8) :: ysave, ytry, ytmp
+    INTEGER(iprec4) :: i, ilo, ihi, inhi, ndim, iter_max
+    LOGICAL :: error
+
+    ndim = SIZE(p_matrix,dim=2)
+    error = .FALSE.
+    CALL toString(ndim-1, str, error)
+    IF (error) THEN
+       errstr = " -> estimators : simplex : Could not convert integer to character string." // &
+            TRIM(errstr)
+       RETURN       
+    END IF
+    IF (ndim /= SIZE(p_matrix,dim=1) - 1 .OR. ndim /= SIZE(y_vector) - 1) THEN
+       errstr = " -> estimators : simplex : Input vectors are not compatible." // &
+            TRIM(errstr)
+       RETURN
+    END IF
+    iter_max = iter
+    iter = 0
+    psum(:) = SUM(p_matrix(:,:),dim=1) 
+    DO !Iteration loop.  
+       ! Determine which point is the highest (worst),
+       ! next-highest, and lowest (best)
+       ilo = iminloc(y_vector(:))
+       ihi = imaxloc(y_vector(:))
+       ytmp = y_vector(ihi) 
+       y_vector(ihi) = y_vector(ilo)
+       inhi = imaxloc(y_vector(:))
+       y_vector(ihi) = ytmp
+       IF (verb >= 2) THEN
+          DO i=1,SIZE(y_vector,dim=1)
+             IF (i == ilo) THEN
+                WRITE(*,"('ILO:',1X,"//TRIM(str)//"(F20.15,1X))") p_matrix(i,:), y_vector(i) 
+             ELSE IF (i == ihi) THEN
+                WRITE(*,"('IHI:',1X,"//TRIM(str)//"(F20.15,1X))") p_matrix(i,:), y_vector(i) 
+             ELSE
+                WRITE(*,"(5X,"//TRIM(str)//"(F20.15,1X))") p_matrix(i,:), y_vector(i) 
+             END IF
+          END DO
+          WRITE(*,"(1X)")
+       END IF
+       ! Compute the fractional range from highest to lowest and
+       ! return if satisfactory.
+       IF (y_vector(ilo) < thresh) THEN 
+          ! If returning, put best point and value in slot 1. 
+          CALL swap(y_vector(1),y_vector(ilo))
+          CALL swap(p_matrix(1,:),p_matrix(ilo,:)) 
+          RETURN 
+       END IF
+       IF (iter > iter_max) THEN
+          errstr = " -> estimators : simplex_try : Maximum number of iterations exceeded." // &
+               TRIM(errstr)
+          RETURN
+       END IF
+       ! Begin a new iteration. First extrapolate by a factor -1
+       ! through the face of the simplex across from the high
+       ! point, i.e., reflect the simplex from the high point.
+       ytry = simplex_try(func, param, -1.0_rprec8, ihi, psum, p_matrix, y_vector, errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          errstr = " -> estimators : simplex : ." // &
+               TRIM(errstr)
+          RETURN
+       END IF
+       iter = iter + 1 
+       IF (ytry <= y_vector(ilo)) THEN
+          ! Gives a result better than the best point, so try an
+          ! additional extrapolation by a factor of 2.  
+          ytry = simplex_try(func, param, 2.0_rprec8, ihi, psum, p_matrix, y_vector, errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             errstr = " -> estimators : simplex : ." // &
+                  TRIM(errstr)
+             RETURN
+          END IF
+          iter = iter + 1 
+       ELSE IF (ytry >= y_vector(inhi)) THEN 
+          ! The reflected point is worse than the second highest,
+          ! so look for an intermediate lower point, i.e., do a
+          ! one-dimensional contraction.
+          ysave = y_vector(ihi) 
+          ytry = simplex_try(func, param, 0.5_rprec8, ihi, psum, p_matrix, y_vector, errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             errstr = " -> estimators : simplex : ." // &
+                  TRIM(errstr)
+             RETURN
+          END IF
+          iter = iter + 1
+          IF (ytry >= ysave) THEN
+             ! Can't seem to get rid of that high point. Better
+             ! contract around the lowest (best) point.
+             p_matrix(:,:) = 0.5_rprec8*(p_matrix(:,:)+SPREAD(p_matrix(ilo,:),1,SIZE(p_matrix,1)))
+             DO i=1,ndim+1
+                IF (i /= ilo) THEN
+                   y_vector(i) = func(p_matrix(i,:),param,errstr)
+                   IF (LEN_TRIM(errstr) /= 0) THEN
+                      errstr = " -> estimators : simplex : ." // &
+                           TRIM(errstr)
+                      RETURN
+                   END IF
+                END IF
+             END DO
+             iter = iter + ndim ! Keep track of function evaluations.
+             psum(:) = SUM(p_matrix(:,:),dim=1)
+          END IF
+       END IF
+    END DO ! Go back for the test of doneness and the next iteration.
+
+  END SUBROUTINE simplex
 
 
-    INTEGER(iprec4), PARAMETER :: ITMAX = 5000
-    REAL(rprec8), PARAMETER :: TINY = 1.0e-10_rprec8
+  !! *Description*:
+  !!
+  !! Extrapolates by a factor fac through the face of the
+  !! simplex across from the high point, tries it, and replaces
+  !! the high point if the new point is better.
+  !!
+  REAL(rprec8) FUNCTION simplex_try(func, param, fac, ihi, psum, p_matrix, y_vector, errstr)
 
-    INTEGER(iprec4) :: ihi, ndim ! Global variables.  
-    REAL(rprec8), DIMENSION(SIZE(p,2)) :: psum 
+    IMPLICIT NONE
+    INTERFACE
+       REAL(8) FUNCTION func(x, param, errstr)
+         IMPLICIT NONE
+         REAL(8), DIMENSION(:), INTENT(in) :: x
+         REAL(8), DIMENSION(:), INTENT(in) :: param
+         CHARACTER(len=*), INTENT(inout) :: errstr
+       END FUNCTION func
+    END INTERFACE
+    REAL(rprec8), DIMENSION(:), INTENT(in) :: param
+    REAL(rprec8), INTENT(IN) :: fac
+    INTEGER, INTENT(in) :: ihi
+    REAL(rprec8), DIMENSION(:), INTENT(inout) :: psum
+    REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: p_matrix
+    REAL(rprec8), DIMENSION(:), INTENT(inout) :: y_vector
+    CHARACTER(len=*), INTENT(inout) :: errstr
 
-    CALL amoeba_private 
+    REAL(rprec8), DIMENSION(SIZE(p_matrix,2)) :: ptry 
+    REAL(rprec8) :: fac1, fac2, ytry
 
-  CONTAINS 
+    fac1 = (1.0_rprec8-fac)/SIZE(p_matrix,dim=2)
+    fac2 = fac1 - fac 
+    ptry(:) = psum(:)*fac1-p_matrix(ihi,:)*fac2 
+    ! Evaluate the function at the trial point.
+    ytry = func(ptry,param,errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       errstr = " -> estimators : simplex_try : ." // &
+            TRIM(errstr)
+       RETURN
+    END IF
+    IF (ytry < y_vector(ihi)) THEN 
+       ! If it's better than the highest, then replace
+       ! the highest.
+       y_vector(ihi) = ytry
+       psum(:) = psum(:) - p_matrix(ihi,:) + ptry(:)
+       p_matrix(ihi,:) = ptry(:)
+    END IF
+    simplex_try = ytry 
 
-    SUBROUTINE amoeba_private 
-
-      IMPLICIT NONE
-      INTEGER(iprec4) :: i, ilo, inhi 
-      REAL(rprec8) :: rtol, ysave, ytry, ytmp
-
-      ndim = SIZE(p,dim=2)
-      IF (ndim /= SIZE(p,dim=1) - 1 .OR. ndim /= SIZE(y) - 1) THEN
-         error = " -> estimators : amoeba : amoeba_private : Vectors are not compatible." // &
-              TRIM(error)
-         RETURN
-      END IF
-      iter = 0 
-      psum(:) = SUM(p(:,:),dim=1) 
-      DO !Iteration loop.  
-         ! Determine which point is the highest (worst),
-         ! next-highest, and lowest (best)
-         ilo = iminloc(y(:))
-         ihi = imaxloc(y(:))
-         ytmp = y(ihi) 
-         y(ihi) = y(ilo)
-         inhi = imaxloc(y(:))
-         y(ihi) = ytmp
-         rtol = 2.0_rprec8*ABS(y(ihi)-y(ilo))/(ABS(y(ihi))+ABS(y(ilo))+TINY)
-         ! Compute the fractional range from highest to lowest and
-         ! return if satisfactory.  
-         IF (rtol < ftol) THEN 
-            ! If returning, put best point and value in slot 1. 
-            CALL swap(y(1),y(ilo))
-            CALL swap(p(1,:),p(ilo,:)) 
-            RETURN 
-         END IF
-         IF (iter >= ITMAX) THEN
-            ! TMAX exceeded in amoeba
-            error = " -> estimators : amoeba : amoeba_private : Maximum number of iterations exceeded." // &
-                 TRIM(error)
-            RETURN
-         END IF
-         ! Begin a new iteration. First extrapolate by a factor -1
-         ! through the face of the simplex across from the high
-         ! point, i.e., reflect the simplex from the high point.
-         ytry = amotry(-1.0_rprec8) 
-         iter = iter + 1 
-         IF (ytry <= y(ilo)) THEN
-            ! Gives a result better than the best point, so try an
-            ! additional extrapolation by a factor of 2.  
-            ytry=amotry(2.0_rprec8)
-            iter = iter + 1 
-         ELSE IF (ytry >= y(inhi)) THEN 
-            ! The reflected point is worse than the second highest,
-            ! so look for an intermediate lower point, i.e., do a
-            ! one-dimensional contraction.
-            ysave = y(ihi) 
-            ytry = amotry(0.5_rprec8)
-            iter = iter + 1
-            IF (ytry >= ysave) THEN
-               ! Can't seem to get rid of that high point. Better
-               ! contract around the lowest (best) point.
-               p(:,:) = 0.5_rprec8*(p(:,:)+SPREAD(p(ilo,:),1,SIZE(p,1)))
-               DO i=1,ndim+1
-                  IF (i /= ilo) y(i) = func(p(i,:), error) 
-               END DO
-               iter=iter+ndim ! Keep track of function evaluations.
-               psum(:) = SUM(p(:,:),dim=1)
-            END IF
-         END IF
-      END DO ! Go back for the test of doneness and the next iteration.
-
-    END SUBROUTINE amoeba_private
-
-
-
-    FUNCTION amotry(fac)
-
-      IMPLICIT NONE
-      REAL(rprec8), INTENT(IN) :: fac
-      REAL(rprec8) :: amotry
-      ! Extrapolates by a factor fac through the face of the
-      ! simplex across from the high point, tries it, and replaces
-      ! the high point if the new point is better.
-      REAL(rprec8) :: fac1, fac2, ytry
-      REAL(rprec8), DIMENSION(SIZE(p,2)) :: ptry 
-
-      fac1 = (1.0_rprec8-fac)/ndim
-      fac2 = fac1 - fac 
-      ptry(:) = psum(:)*fac1-p(ihi,:)*fac2 
-      ! Evaluate the function at the trial point.
-      ytry = func(ptry, error)
-      IF (ytry < y(ihi)) THEN 
-         ! If it's better than the highest, then replace
-         ! the highest.
-         y(ihi) = ytry
-         psum(:) = psum(:) - p(ihi,:) + ptry(:)
-         p(ihi,:) = ptry(:)
-      END IF
-      amotry = ytry 
-
-    END FUNCTION amotry
-
-  END SUBROUTINE amoeba
-
-
+  END FUNCTION simplex_try
 
 
 END MODULE estimators
