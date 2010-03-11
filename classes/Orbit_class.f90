@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-03-03
+!! @version 2010-03-11
 !!
 MODULE Orbit_cl
 
@@ -91,21 +91,21 @@ MODULE Orbit_cl
   TYPE Orbit
 
      PRIVATE
-     TYPE (Time)                       :: t
-     CHARACTER(len=FRAME_LEN)          :: frame                = "equatorial"
-     CHARACTER(len=ELEMENT_TYPE_LEN)   :: element_type         = "cartesian"
-     REAL(bp), DIMENSION(6)            :: elements
-     LOGICAL                           :: is_initialized       = .FALSE.
+     TYPE (Time)                         :: t
+     CHARACTER(len=FRAME_LEN)            :: frame                = "equatorial"
+     CHARACTER(len=ELEMENT_TYPE_LEN)     :: element_type         = "cartesian"
+     REAL(bp), DIMENSION(6)              :: elements
+     LOGICAL                             :: is_initialized       = .FALSE.
      ! Central body, default is Sun (for body id's, see module planetary_data)
-     INTEGER                           :: central_body         = 11
+     INTEGER                             :: central_body         = 11
      ! Parameters for propagation:
-     CHARACTER(len=DYN_MODEL_LEN)      :: dyn_model_prm        = "2-body"
-     CHARACTER(len=INTEGRATOR_LEN)     :: integrator_prm       = "bulirsch-stoer"
-     REAL(bp), DIMENSION(:,:), POINTER :: additional_perturbers => NULL() ! (car equ + mjdtt + mass)
+     CHARACTER(len=DYN_MODEL_LEN)        :: dyn_model_prm        = "2-body"
+     CHARACTER(len=INTEGRATOR_LEN)       :: integrator_prm       = "bulirsch-stoer"
+     REAL(bp), DIMENSION(:,:), POINTER   :: additional_perturbers => NULL() ! (car equ + mjdtt + mass)
      TYPE (Orbit), DIMENSION(:), POINTER :: additional_perturbers2 => NULL() ! (car equ + mjdtt + mass)
-     REAL(bp), DIMENSION(6)            :: finite_diff_prm      = -1.0_bp
-     REAL(bp)                          :: integration_step_prm = 5.0_bp 
-     LOGICAL, DIMENSION(10)            :: perturbers_prm       = .FALSE.
+     REAL(bp), DIMENSION(6)              :: finite_diff_prm      = -1.0_bp
+     REAL(bp)                            :: integration_step_prm = 5.0_bp 
+     LOGICAL, DIMENSION(10)              :: perturbers_prm       = .FALSE.
 
   END TYPE Orbit
 
@@ -2347,6 +2347,7 @@ CONTAINS
 
        ! Make transformation cometary -> cartesian at periapsis:
        celements(1:3) = (/ this%elements(1), 0.0_bp, 0.0_bp /)
+       ! v^2 = mu * (2/r - 1/a) = mu * (1+e)/q
        celements(4:6) = (/ 0.0_bp, &
             SQRT(planetary_mu(this%central_body) * &
             (1.0_bp+this%elements(2))/this%elements(1)), 0.0_bp /)
@@ -2558,10 +2559,10 @@ CONTAINS
     !! REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
     !! The tolerances have subsequently been updated using the S1b population
     REAL(bp), PARAMETER :: tol1 = 1.0e-6_bp
-    REAL(bp), PARAMETER :: tol2 = 1.0e-8_bp
+    REAL(bp), PARAMETER :: tol2 = 1.0e-7_bp
     REAL(bp), PARAMETER :: tol3 = 1.0e-11_bp
     REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
-    INTEGER, PARAMETER :: max_iter = 60
+    INTEGER, PARAMETER :: max_iter = 100
     REAL(bp), DIMENSION(0:3) :: stumpff_c, stumpff_cs
     REAL(bp), DIMENSION(3) :: pos, vel, k, sin_angles, cos_angles, &
          evec, fb, gb
@@ -2634,7 +2635,7 @@ CONTAINS
        IF (this_%elements(6) <= pi) THEN
           getCometaryElements(6) = mjd_tt - dt
        ELSE
-          getCometaryElements(6) = mjd_tt + dt
+          getCometaryElements(6) = mjd_tt + (p - dt)
        END IF
        CALL NULLIFY(this_)
 
@@ -2769,9 +2770,14 @@ CONTAINS
           CALL errorMessage("Orbit / getCometaryElements", &
                "Computation of time of perihelion did not converge.", 1)
           IF (err_verb >= 1) THEN
-             WRITE(stderr,*) ds, tol2, rp, tol3, r-q, tol4, " or ", &
-                  r-q/(1.0_bp-e)*(1.0_bp+e), tol4, &
-                  q, r, q/(1.0_bp-e)*(1.0_bp+e), e 
+             WRITE(stderr,*) "abs(ds) > tol2: ", ABS(ds) > tol2, &
+                  "(", ABS(ds), " > ", tol2, ") or"
+             WRITE(stderr,*) "abs(rp) > tol3: ", ABS(rp) > tol3, &
+                  "(", ABS(rp), " > ", tol3, ") or"
+             WRITE(stderr,*) "abs(r-q) > tol4 and abs(r-Q) > tol4: ", &
+                  ABS(r-q) > tol4 .AND. ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4, &
+                  "(", ABS(r-q), " > ", tol4, " and ", &
+                  ABS(r-q/(1.0_bp-e)*(1.0_bp+e)), " > ", tol4, ")"
           END IF
           RETURN          
        END IF
@@ -2788,8 +2794,10 @@ CONTAINS
              dt = MODULO(dt,p)
           END IF
           ! If dt refers to the time of aphelion, subtract (if dt>0,
-          ! otherwise add) half a period to get to perihelion:
-          IF (ABS(r-q/(1-e)*(1+e)) < tol4) THEN
+          ! otherwise add) half a period to get to perihelion (scale
+          ! tolerance with e to make sure ~circular orbits are
+          ! processed correctly):
+          IF (ABS(r-q/(1-e)*(1+e)) < tol4*e) THEN
              dt = dt - SIGN(1.0_bp,dt) * 0.5_bp * p
           END IF
           ! Select the closest time of perihelion:
@@ -7830,7 +7838,7 @@ CONTAINS
     REAL(bp), DIMENSION(0:3) :: stumpff_cs, ffs
     REAL(bp), DIMENSION(3) :: pos, vel
     REAL(bp) :: mjd_tt, mjd_tt0, dt, r0, u, alpha, s, f, g, df, &
-         dg, mean_motion, step, mu_
+         dg, mean_motion, step, mu_, p
     INTEGER :: i, j, err, nthis, central_body, naddit
     LOGICAL :: multiple_t0
 
@@ -8011,6 +8019,24 @@ CONTAINS
              this_arr(i)%elements(1:3) = pos(1:3)
              this_arr(i)%elements(4:6) = vel(1:3)
 
+          CASE ("cometary")
+
+             IF (PRESENT(jacobian)) THEN
+                error = .TRUE.
+                CALL errorMessage("Orbit / propagate (multiple)",&
+                     "Jacobians not available for cometary elements.", 1)
+                RETURN
+             END IF
+             p = two_pi * SQRT((this_arr(i)%elements(1) / &
+                  (1.0_bp-this_arr(i)%elements(2)))**3.0_bp / &
+                  planetary_mu(this_arr(i)%central_body))
+             ! Select time of perihelion closest to epoch:
+             IF (ABS(MOD(dt,p)) <= 0.5*p) THEN
+                this_arr(i)%elements(6) = this_arr(i)%elements(6) + INT(dt/p)*p
+             ELSE
+                this_arr(i)%elements(6) = this_arr(i)%elements(6) + INT(dt/p)*p + SIGN(p,dt)
+             END IF
+
           CASE ("keplerian")
 
              IF (PRESENT(jacobian) .AND. &
@@ -8040,7 +8066,7 @@ CONTAINS
 
              error = .TRUE.
              CALL errorMessage("Orbit / propagate (multiple)", &
-                  "Could not choose between 'cartesian' and 'keplerian': " // &
+                  "Element type cannot be propagated: " // &
                   TRIM(this_arr(i)%element_type), 1)
              IF (PRESENT(jacobian)) THEN
                 DEALLOCATE(jacobian, stat=err)
