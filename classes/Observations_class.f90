@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -24,13 +24,14 @@
 !! *Class*description*: 
 !!
 !! This class provides a datatype and routines for handling
-!! observations. Only optical astrometric observations given 
-!! in the old and new <a
+!! observations. Only optical astrometric observations given in the
+!! old and new <a
 !! href="http://cfa-www.harvard.edu/iau/info/OpticalObs.html">MPC</a>
-!! formats, the Lowell format, and the preliminary GAIA formats 
-!! are supported for the time being. Besides the observations file,
-!! indirectly this class also needs a file containing codes and
-!! coordinates for observatories (usually OBSCODE.dat).
+!! formats, the Data Exchange Standard (DES) format, the Lowell
+!! format, and the preliminary GAIA formats are supported for the time
+!! being. Besides the observations file, indirectly this class also
+!! needs a file containing codes and coordinates for observatories
+!! (usually OBSCODE.dat).
 !!  
 !! *Example*: 
 !!  
@@ -53,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2009-10-20
+!! @version 2010-03-11
 !!  
 MODULE Observations_cl
 
@@ -3407,7 +3408,7 @@ CONTAINS
                      "Error while reading satellite coordinates from file.", 1)
                 RETURN
              END IF
-             CALL toReal(line2(36:45), position(1), error)
+             CALL toReal(line2(36:46), position(1), error)
              IF (error) THEN
                 CALL errorMessage("Observations / readObservationFile", &
                      "Could not convert string to number (55).", 1)
@@ -3416,7 +3417,7 @@ CONTAINS
              IF (line2(35:35) == "-") THEN
                 position(1) = -1.0_bp*position(1)
              END IF
-             CALL toReal(line2(48:57), position(2), error)
+             CALL toReal(line2(48:58), position(2), error)
              IF (error) THEN
                 CALL errorMessage("Observations / readObservationFile", &
                      "Could not convert string to number (60).", 1)
@@ -3425,7 +3426,7 @@ CONTAINS
              IF (line2(47:47) == "-") THEN
                 position(2) = -1.0_bp*position(2)
              END IF
-             CALL toReal(line2(60:69), position(3), error)
+             CALL toReal(line2(60:70), position(3), error)
              IF (error) THEN
                 CALL errorMessage("Observations / readObservationFile", &
                      "Could not convert string to number (50).", 1)
