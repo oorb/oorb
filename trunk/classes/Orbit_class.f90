@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-03-11
+!! @version 2010-03-12
 !!
 MODULE Orbit_cl
 
@@ -2406,14 +2406,12 @@ CONTAINS
                "TRACE BACK (40)", 1)
           RETURN
        END IF
-       WRITE(*,*) "here0"
        getCartesianElements = getElements(this_, "cartesian", frame_)
        IF (error) THEN
           CALL errorMessage("Orbit / getCartesianElements", &
                "TRACE BACK (45)", 1)
           RETURN
        END IF
-       WRITE(*,*) "here1"
        CALL NULLIFY(this_)
 
     CASE ("keplerian")
@@ -2528,8 +2526,9 @@ CONTAINS
   !! *Description*:
   !!
   !! Calculates the cometary orbital elements from the heliocentric
-  !! (ecliptical or equatorial) Cartesian orbital elements or
-  !! Keplerian elements for the current epoch.
+  !! (ecliptical or equatorial) Cartesian orbital elements, Keplerian
+  !! elements, or modified cometary elements (true anomaly instead of
+  !! time of perihelion) for the current epoch.
   !!
   !! Note that the time of perihelion of elliptic orbits is the
   !! closest one in time.
@@ -2566,11 +2565,9 @@ CONTAINS
     REAL(bp), DIMENSION(0:3) :: stumpff_c, stumpff_cs
     REAL(bp), DIMENSION(3) :: pos, vel, k, sin_angles, cos_angles, &
          evec, fb, gb
-
     REAL(bp) :: r0, ru, alpha, a, e, i, an, ap, varpi, tmp1, tmp2, &
          div, q, tp, r, rp, rpp, xv, s, ds, x, dt, cosu, u0, mjd_tt, &
-         p, ea, sin_ea, cos_ea
-
+         p, ea, sin_ea, cos_ea, ma, mm
     INTEGER :: iiter
 
     IF (.NOT.this%is_initialized) THEN
@@ -2594,20 +2591,27 @@ CONTAINS
 
        this_ = copy(this)
        IF (this%elements(2) < 1.0_bp) THEN
+          ! cos(ea) = (cos(f)+e)/(1+e*cos(f))
           cos_ea = (COS(this%elements(6)) + this%elements(2)) / &
                (1.0_bp + this%elements(2)*COS(this%elements(6)))
-          sin_ea = SIN(this%elements(6)) / &
-               SQRT(1.0_bp - this%elements(2)**2.0_bp) * &
-               (1.0_bp + this%elements(2) * & 
-               (COS(this%elements(6)) + this%elements(2)) / &
-               (1.0_bp + this%elements(2)*COS(this%elements(6))))
+          ! sin(ea) = sqrt(1-e^2)*sin(f)/(1+e*cos(f))
+          sin_ea = SQRT(1.0_bp - this%elements(2)**2.0_bp)*SIN(this%elements(6)) / &
+               (1.0_bp + this%elements(2)*COS(this%elements(6)))
           ea = ATAN2(sin_ea,cos_ea)
-          this_%elements(6) = ea - this%elements(2)*SIN(ea)
+          ma = ea - this%elements(2)*SIN(ea)
           ! Time of periapsis:
-          getCometaryElements(6) = getMJD(this_%t,"TT") - &
-               this_%elements(6) * SQRT((this_%elements(1) / &
+          mm = SQRT((this_%elements(1) / &
                (1.0_bp-this_%elements(2)))**3.0_bp / &
                planetary_mu(this_%central_body))
+          mjd_tt = getMJD(this_%t,"TT")
+          dt = ma * mm
+          p = two_pi * mm
+          ! Select the closest time of perihelion:
+          IF (ma <= pi) THEN
+             getCometaryElements(6) = mjd_tt - dt
+          ELSE
+             getCometaryElements(6) = mjd_tt + (p - dt)
+          END IF
        ELSE
           error = .TRUE.
           CALL errorMessage("Orbit / getCometaryElements", &
@@ -2624,9 +2628,9 @@ CONTAINS
             this_%elements(1) * (1.0_bp - this_%elements(2))
        ! period p:
        mjd_tt = getMJD(this_%t,"TT")
-       dt = this_%elements(6) * SQRT(this_%elements(1)**3.0_bp / &
-            planetary_mu(this_%central_body))
-       p = two_pi*SQRT(this_%elements(1)**3.0_bp/planetary_mu(this_%central_body))
+       mm = SQRT(this_%elements(1)**3.0_bp / planetary_mu(this_%central_body))
+       dt = this_%elements(6) * mm
+       p = two_pi * mm
        ! Remove full periods from dt:
        IF (dt > p) THEN
           dt = MODULO(dt,p)
