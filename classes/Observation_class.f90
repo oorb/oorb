@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2010-03-03
+!! @version 2010-03-26
 !!  
 MODULE Observation_cl
 
@@ -913,7 +913,7 @@ CONTAINS
 
     TYPE (Time)                       :: t
     TYPE (CartesianCoordinates)       :: ccoord
-    CHARACTER(len=DESIGNATION_LEN)    :: designation
+    CHARACTER(len=DESIGNATION_LEN)    :: designation, secret_name
     CHARACTER(len=12)                 :: day_str
     CHARACTER(len=9)                  :: ra_unc, dec_unc
     CHARACTER(len=7)                  :: number_str
@@ -1541,6 +1541,11 @@ CONTAINS
        IF (LEN_TRIM(filter_) == 0) THEN
           filter_ = "X"
        END IF
+       IF (LEN_TRIM(this%secret_name) == 0) THEN
+          secret_name = "X"
+       ELSE
+          secret_name = this%secret_name
+       END IF
        IF (this%number /= 0) THEN
           WRITE(records(1),"(I0,1X,F16.10,1X,A,3(1X,F14.10)," // &
                "2(1X,A),2(1X,F14.10),1X,F14.10,1X,E14.7,1X,A)", iostat=err) & 
@@ -1548,7 +1553,7 @@ CONTAINS
                ra/rad_deg, dec/rad_deg, this%mag, filter_, &
                TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_asec, &
                SQRT(this%covariance(3,3))/rad_asec, this%mag_unc, &
-               this%s2n, TRIM(this%secret_name) 
+               this%s2n, TRIM(secret_name) 
        ELSE IF (LEN_TRIM(this%designation) /= 0) THEN
           WRITE(records(1),"(A,1X,F16.10,1X,A,3(1X,F14.10)," // &
                "2(1X,A),2(1X,F14.10),1X,F14.10,1X,E14.7,1X,A)", iostat=err) & 
@@ -1556,7 +1561,7 @@ CONTAINS
                ra/rad_deg, dec/rad_deg, this%mag, filter_, &
                TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_asec, &
                SQRT(this%covariance(3,3))/rad_asec, this%mag_unc, &
-               this%s2n, TRIM(this%secret_name) 
+               this%s2n, TRIM(secret_name) 
        ELSE
           error = .TRUE.
           CALL errorMessage("Observation / getObservationRecords / des", &
