@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-03-12
+!! @version 2010-04-05
 !!
 MODULE Orbit_cl
 
@@ -2668,23 +2668,14 @@ CONTAINS
 
        ! Inclination and ascending node:
        ru = SQRT(DOT_PRODUCT(k,k))
-       IF (ru < 10*EPSILON(ru)) THEN
+       IF (ru < EPSILON(ru)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getCometaryElements", &   
                "Position and velocity almost parallel.", 1)
           RETURN
        END IF
        k = k/ru
-       ! Notice computational abs!!
-       ru = SQRT(ABS(1.0_bp - k(3)**2.0_bp))
-       IF (ru < 10*EPSILON(ru)) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getCometaryElements", &
-               "Position and velocity close to ecliptic.", 1)
-          RETURN
-       END IF
        cos_angles(1) = k(3)
-       cos_angles(2) = -k(2)/ru
        IF (ABS(cos_angles(1)) > 1.0_bp) THEN
           cos_angles(1) = SIGN(1.0_bp, cos_angles(1))
        END IF
@@ -2697,18 +2688,25 @@ CONTAINS
              RETURN
           END IF
        END IF
-       IF (ABS(cos_angles(2)) > 1.0_bp) THEN
-          cos_angles(2) = SIGN(1.0_bp, cos_angles(2))
+       ! Notice computational abs!!
+       ru = SQRT(ABS(1.0_bp - k(3)**2.0_bp))
+       IF (ru < EPSILON(ru)) THEN
+          CALL errorMessage("Orbit / getCometaryElements", &
+               "Warning: Inclination (almost) zero, setting Longitude of Node to 0 deg.", 1)
+          an = 0.0_bp          
+       ELSE
+          cos_angles(2) = -k(2)/ru
+          IF (ABS(cos_angles(2)) > 1.0_bp) THEN
+             cos_angles(2) = SIGN(1.0_bp, cos_angles(2))
+          END IF
+          an = ACOS(cos_angles(2))
+          IF (k(1) < 0.0_bp) THEN
+             an = two_pi - an
+          END IF
+          IF (an == two_pi) THEN
+             an = 0.0_bp
+          END IF
        END IF
-       an = ACOS(cos_angles(2))
-       IF (k(1) < 0.0_bp) THEN
-          an = two_pi - an
-       END IF
-       IF (an == two_pi) THEN
-          an = 0.0_bp
-       END IF
-       sin_angles(1) = SIN(i)
-       sin_angles(2) = SIN(an)
 
        ! Argument of periapsis:
        div = 1.0_bp + k(3)
@@ -4055,7 +4053,7 @@ CONTAINS
     REAL(bp), DIMENSION(:,:,:), POINTER     :: jacobian_prop_arr_
     REAL(bp), DIMENSION(6,6)                :: jacobian, jacobian_lt_corr
     REAL(bp), DIMENSION(6,6)                :: scoord_partials
-    REAL(bp), DIMENSION(6)                  :: observer_coordinates
+    REAL(bp), DIMENSION(6)                  :: observer_coordinates, elements
     INTEGER                                 :: i, nthis, err
     LOGICAL                                 :: lt_corr_
 
@@ -4272,6 +4270,22 @@ CONTAINS
           this_prop_arr(i) = copy(this_arr_(i))
        END IF
        this_1 = copy(this_arr_(i))
+       IF (info_verb >= 4) THEN
+          WRITE(stdout,"5A") "Orbital elements (" // &
+               TRIM(this_1%element_type) // ", " // &
+               TRIM(this_1%frame) // &
+               ") at observation date without light-time correction:"
+          elements = getElements(this_1, this_1%element_type, this_1%frame)
+          IF (this_1%element_type == "keplerian") THEN
+             WRITE(stdout,"(6(F14.10,1X))") elements(1:2), &
+                  elements(3:6)/rad_deg
+          ELSE IF (this_1%element_type == "cometary") THEN
+             WRITE(stdout,"(6(F14.10,1X))") elements(1:2), &
+                  elements(3:5)/rad_deg, elements(6)
+          ELSE
+             WRITE(stdout,"(6(F14.10,1X))") elements
+          END IF
+       END IF
        IF (lt_corr_) THEN
           ! Light-time correction:
           t_ = getLightTimeCorrectedTime(this_1, observer_)
@@ -4382,6 +4396,23 @@ CONTAINS
              RETURN
           END IF
        END IF
+       IF (info_verb >= 4) THEN
+          WRITE(stdout,"5A") "Orbital elements (" // &
+               TRIM(this_1%element_type) // ", " // &
+               TRIM(this_1%frame) // &
+               ") at observation date with light-time correction:"
+          elements = getElements(this_1, this_1%element_type, this_1%frame)
+          IF (this_1%element_type == "keplerian") THEN
+             WRITE(stdout,"(6(F14.10,1X))") elements(1:2), &
+                  elements(3:6)/rad_deg
+          ELSE IF (this_1%element_type == "cometary") THEN
+             WRITE(stdout,"(6(F14.10,1X))") elements(1:2), &
+                  elements(3:5)/rad_deg, elements(6)
+          ELSE
+             WRITE(stdout,"(6(F14.10,1X))") elements
+          END IF
+       END IF
+
        ! Transform to equatorial topocentric coordinates:
        CALL toCartesian(this_1, frame="equatorial")
        CALL rotateToEquatorial(observer_)
@@ -4652,10 +4683,10 @@ CONTAINS
 
     TYPE (Orbit)             :: this_
     TYPE (Time)              :: t
-    REAL(bp), DIMENSION(3)   :: pos, vel, k, sin_angles, cos_angles
+    REAL(bp), DIMENSION(3)   :: pos, vel, k, sin_angles, cos_angles, fb, gb, evec
     REAL(bp)                 :: r, ru, ea, e_cos_ea, e_sin_ea, cos_ea, &
          sin_ea, alpha, alpha_dot, beta, beta_dot, gamma, mjd_tt, a, e, i, &
-         an, ap, ma, sqrt1me2
+         an, ap, ma, sqrt1me2, div, tmp1, tmp2, varpi
 
     IF (.NOT.this%is_initialized) THEN
        error = .TRUE.
@@ -4682,6 +4713,11 @@ CONTAINS
        pos = this_%elements(1:3)
        r   = SQRT(DOT_PRODUCT(pos,pos))
        vel = this_%elements(4:6)
+       ! Angular momentum:
+       k = cross_product(pos,vel)
+       ! Eccentricity vector:
+       evec = cross_product(vel,k)/planetary_mu(this_%central_body) - pos/r
+
        ! alpha = rv^2/mu
        alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this%central_body)
        ! h = v^2/2 - mu/r and for elliptical orbits a = -mu/2h
@@ -4724,10 +4760,10 @@ CONTAINS
           CALL errorMessage("Orbit / getKeplerianElements", &
                "Orbit is parabolic.", 1)
           RETURN
-       ELSE IF (e < 10.0_bp*EPSILON(e)) THEN
+       ELSE IF (e < EPSILON(e)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getKeplerianElements", &
-               "Orbit is almost circular (1).", 1)
+               "Orbit is (almost) circular.", 1)
           WRITE(stderr,*) e
           RETURN
        END IF
@@ -4737,79 +4773,59 @@ CONTAINS
        ea = ACOS(cos_ea)
        IF (sin_ea < 0.0_bp) ea = two_pi - ea
        ma = ea - e_sin_ea
+       IF (ma == two_pi) THEN
+          ma = 0.0_bp
+       END IF
 
        ! Inclination and ascending node:
-       k(:) = cross_product(pos(:),vel(:))
-       ru = SQRT(DOT_PRODUCT(k(:),k(:)))
-       IF (ru < 10*EPSILON(ru)) THEN
+       ru = SQRT(DOT_PRODUCT(k,k))
+       IF (ru < EPSILON(ru)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getKeplerianElements", &   
                "Position and velocity almost parallel.", 1)
           RETURN
        END IF
-       k(:) = k(:)/ru
+       k = k/ru
        cos_angles(1) = k(3) ! = cos(i)
-       ! Notice computational abs!!
-       ru = SQRT(ABS(1.0_bp - k(3)**2.0_bp)) ! = sin(i)
-       IF (ru < 10*EPSILON(ru)) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getKeplerianElements", &
-               "Position and velocity close to ecliptic.", 1)
-          RETURN
-       END IF
-       cos_angles(2) = -k(2)/ru
        IF (ABS(cos_angles(1)) > 1.0_bp) THEN
           cos_angles(1) = SIGN(1.0_bp, cos_angles(1))
        END IF
        i = ACOS(cos_angles(1))
-       IF (ABS(cos_angles(2)) > 1.0_bp) THEN
-          cos_angles(2) = SIGN(1.0_bp, cos_angles(2))
-       END IF
-       an = ACOS(cos_angles(2))
-       IF (k(1) < 0.0_bp) THEN
-          an = two_pi - an
-       END IF
-       sin_angles(1) = SIN(i)
-       sin_angles(2) = SIN(an)
-
-       ! Argument of perihelion:
-       ! alpha = a*(cos(E)-e)*sin(i)
-       alpha = a*(cos_ea-e)*SIN(i)
-       ! alpha_dot = -a*sin(E)*sin(i) = -sqrt(mu*a)*sin(E)*sin(i)/r
-       alpha_dot = -gamma*sin_ea*SIN(i)/r
-       sqrt1me2 = SQRT(ABS(1.0_bp - e**2.0_bp))
-       beta = a*sqrt1me2*sin_ea*SIN(i)
-       beta_dot = gamma * sqrt1me2 * cos_ea * SIN(i) / r
-       !    IF (ABS(alpha*beta_dot - alpha_dot*beta) < tol) then
-       IF (ABS(alpha*beta_dot - alpha_dot*beta) < 10*EPSILON(alpha)) THEN
-          error = .TRUE.
+       ! Notice computational abs!!
+       ru = SQRT(ABS(1.0_bp - k(3)**2.0_bp)) ! = sin(i)
+       IF (ru < EPSILON(ru)) THEN
           CALL errorMessage("Orbit / getKeplerianElements", &
-               "Orbit is almost circular (2).", 1)
-          WRITE(stderr,*) e
-          RETURN
+               "Warning: Inclination (almost) zero, setting Longitude of Node to 0 deg.", 1)
+          an = 0.0_bp
+       ELSE
+          cos_angles(2) = -k(2)/ru
+          IF (ABS(cos_angles(2)) > 1.0_bp) THEN
+             cos_angles(2) = SIGN(1.0_bp, cos_angles(2))
+          END IF
+          an = ACOS(cos_angles(2))
+          IF (k(1) < 0.0_bp) THEN
+             an = two_pi - an
+          END IF
        END IF
-       cos_angles(3) = -(alpha_dot*pos(3) - alpha*vel(3)) / &
-            (alpha*beta_dot - alpha_dot*beta)
-       sin_angles(3) = (beta_dot*pos(3) - beta*vel(3)) / &
-            (alpha*beta_dot - alpha_dot*beta)
-       IF (ABS(cos_angles(3)) > 1.0_bp) THEN
-          cos_angles(3) = SIGN(1.0_bp, cos_angles(3))
-       END IF
-       ap = ACOS(cos_angles(3))
-       IF (sin_angles(3) < 0.0_bp) THEN
-          ap = two_pi - ap
-       END IF
-       ! Make sure that there is no degeneracy in the 2pi angular
-       ! elements:
        IF (an == two_pi) THEN
           an = 0.0_bp
        END IF
+
+       ! Argument of periapsis:
+       div = 1.0_bp + k(3)
+       fb(1) = 1.0_bp - k(1)**2.0_bp/div
+       fb(2) = -k(1)*k(2)/div
+       fb(3) = -k(1)
+       gb = cross_product(k, fb)
+       tmp1 = DOT_PRODUCT(evec, gb)
+       tmp2 = DOT_PRODUCT(evec, fb)
+       varpi = ATAN2(tmp1, tmp2)
+       ap = varpi - an
+       ap = MODULO(ap,two_pi)
        IF (ap == two_pi) THEN
           ap = 0.0_bp
        END IF
-       IF (ma == two_pi) THEN
-          ma = 0.0_bp
-       END IF
+
        getKeplerianElements = (/ a, e, i, an, ap, ma /)
        CALL NULLIFY(this_)
 
