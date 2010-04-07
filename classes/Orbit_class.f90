@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-04-05
+!! @version 2010-04-06
 !!
 MODULE Orbit_cl
 
@@ -2563,8 +2563,7 @@ CONTAINS
     REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
     INTEGER, PARAMETER :: max_iter = 100
     REAL(bp), DIMENSION(0:3) :: stumpff_c, stumpff_cs
-    REAL(bp), DIMENSION(3) :: pos, vel, k, sin_angles, cos_angles, &
-         evec, fb, gb
+    REAL(bp), DIMENSION(3) :: pos, vel, k, cos_angles, evec, fb, gb
     REAL(bp) :: r0, ru, alpha, a, e, i, an, ap, varpi, tmp1, tmp2, &
          div, q, tp, r, rp, rpp, xv, s, ds, x, dt, cosu, u0, mjd_tt, &
          p, ea, sin_ea, cos_ea, ma, mm
@@ -4271,7 +4270,7 @@ CONTAINS
        END IF
        this_1 = copy(this_arr_(i))
        IF (info_verb >= 4) THEN
-          WRITE(stdout,"5A") "Orbital elements (" // &
+          WRITE(stdout,"(5A)") "Orbital elements (" // &
                TRIM(this_1%element_type) // ", " // &
                TRIM(this_1%frame) // &
                ") at observation date without light-time correction:"
@@ -4397,7 +4396,7 @@ CONTAINS
           END IF
        END IF
        IF (info_verb >= 4) THEN
-          WRITE(stdout,"5A") "Orbital elements (" // &
+          WRITE(stdout,"(5A)") "Orbital elements (" // &
                TRIM(this_1%element_type) // ", " // &
                TRIM(this_1%frame) // &
                ") at observation date with light-time correction:"
@@ -4681,12 +4680,12 @@ CONTAINS
     TYPE (Orbit), INTENT(in) :: this
     REAL(bp), DIMENSION(6)   :: getKeplerianElements
 
-    TYPE (Orbit)             :: this_
-    TYPE (Time)              :: t
-    REAL(bp), DIMENSION(3)   :: pos, vel, k, sin_angles, cos_angles, fb, gb, evec
-    REAL(bp)                 :: r, ru, ea, e_cos_ea, e_sin_ea, cos_ea, &
-         sin_ea, alpha, alpha_dot, beta, beta_dot, gamma, mjd_tt, a, e, i, &
-         an, ap, ma, sqrt1me2, div, tmp1, tmp2, varpi
+    TYPE (Orbit):: this_
+    TYPE (Time) :: t
+    REAL(bp), DIMENSION(3) :: pos, vel, k, fb, gb, evec, cos_angles
+    REAL(bp) :: r, ru, ea, e_cos_ea, e_sin_ea, cos_ea, sin_ea, &
+         alpha, gamma, mjd_tt, a, e, i, an, ap, ma, div, tmp1, tmp2, &
+         varpi
 
     IF (.NOT.this%is_initialized) THEN
        error = .TRUE.
