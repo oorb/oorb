@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2010-01-22
+!! @version 2010-04-06
 !!
 MODULE io
 
@@ -73,13 +73,13 @@ CONTAINS
     ELSE IF (encoded_date(1:1) == "K") THEN
        year = year + 2000
     END IF
-    DO i=1,SIZE(mpc_conv_table)
+    DO i=0,SIZE(mpc_conv_table)-1
        IF (mpc_conv_table(i) == encoded_date(4:4)) THEN
           EXIT
        END IF
     END DO
     month = i
-    DO i=1,SIZE(mpc_conv_table)
+    DO i=0,SIZE(mpc_conv_table)-1
        IF (mpc_conv_table(i) == encoded_date(5:5)) THEN
           EXIT
        END IF
@@ -527,8 +527,7 @@ CONTAINS
        dyn_model, perturbers, integrator, integration_step, &
        dyn_model_init, integrator_init, integration_step_init, &
        accwin_multiplier, &
-       uniform_pdf, &
-       regularized_pdf, &
+       uniform_pdf, regularized_pdf, &
        pdf_ml, & 
        outlier_rejection, outlier_multiplier, &
        apriori_a_min, apriori_a_max, apriori_periapsis_min, &
@@ -543,6 +542,8 @@ CONTAINS
        vov_ntrial_iter, vov_nmap, vov_mapping_mask, vov_scaling, &
        ls_type, ls_element_mask, ls_correction_factor, &
        ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
+       cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
+       smplx_tol, smplx_niter, &
        pp_H_estimation, pp_G, pp_G_unc, &
        eph_lt_correction, eph_dt_since_last_obs, eph_obsy_code, &
        eph_date, &
@@ -586,6 +587,8 @@ CONTAINS
          outlier_multiplier, &
          sor_genwin_multiplier, &
          ls_correction_factor, &
+         cos_nsigma, &
+         smplx_tol, &
          integration_step, &
          integration_step_init, &
          pdf_ml, &
@@ -618,7 +621,10 @@ CONTAINS
          ls_type, &
          ls_niter_major_max, &
          ls_niter_major_min, &
-         ls_niter_minor
+         ls_niter_minor, &
+         cos_norb, &
+         cos_ntrial, &
+         smplx_niter
     LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: &
          eph_lt_correction, &
          perturbers
@@ -637,6 +643,7 @@ CONTAINS
          outlier_rejection, &
          sor_random_obs, &
          sor_rho_gauss, sor_rho_gauss2, &
+         cos_gaussian, &
          write_residuals, &
          pp_H_estimation
 
@@ -1370,6 +1377,41 @@ CONTAINS
        CASE ("ls.niter_minor")
           IF (PRESENT(ls_niter_minor)) THEN
              CALL toInt(TRIM(par_val), ls_niter_minor, error)
+          END IF
+
+
+          ! COVARIANCE SAMPLING PARAMETERS:
+       CASE ("cos.nsigma")
+          IF (PRESENT(cos_nsigma)) THEN
+             CALL toReal(TRIM(par_val), cos_nsigma, error)
+          END IF
+       CASE ("cos.norb")
+          IF (PRESENT(cos_norb)) THEN
+             CALL toInt(TRIM(par_val), cos_norb, error)
+          END IF
+       CASE ("cos.ntrial")
+          IF (PRESENT(cos_ntrial)) THEN
+             CALL toInt(TRIM(par_val), cos_ntrial, error)
+          END IF
+       CASE ("cos.gaussian")
+          IF (PRESENT(cos_gaussian)) THEN
+             READ(par_val, *, iostat=err) cos_gaussian
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (21).", 1)
+             END IF
+          END IF
+
+
+          ! SIMPLEX OPTIMIZATION PARAMETERS:
+       CASE ("smplx.tol")
+          IF (PRESENT(smplx_tol)) THEN
+             CALL toReal(TRIM(par_val), smplx_tol, error)
+          END IF
+       CASE ("smplx.niter")
+          IF (PRESENT(smplx_niter)) THEN
+             CALL toInt(TRIM(par_val), smplx_niter, error)
           END IF
 
 
@@ -3846,7 +3888,7 @@ CONTAINS
          res_arr, elements_arr
     REAL(bp), DIMENSION(:), ALLOCATABLE :: &
          ellipse_fac
-    REAL(bp), DIMENSION(6,2) :: &
+    REAL(bp), DIMENSION(2,6,2) :: &
          conf_limits 
     REAL(bp), DIMENSION(2,2) :: &
          sor_rho_prm, &
@@ -4049,10 +4091,13 @@ CONTAINS
        ELSE
           elements_arr(:,3:6) = elements_arr(:,3:6)/rad_deg
        END IF
-       ! Compute 3-sigma-equivalent bounds for elements 
+       ! Compute 1-sigma-equivalent and 3-sigma-equivalent bounds for elements 
        DO i=1,6
           CALL confidence_limits(elements_arr(:,i), pdf_arr_cmp, &
-               probability_mass=0.9973002_bp, peak=elements(i), bounds=conf_limits(i,:), &
+               probability_mass=0.6827_bp, peak=elements(i), bounds=conf_limits(1,i,:), &
+               error=errstr)
+          CALL confidence_limits(elements_arr(:,i), pdf_arr_cmp, &
+               probability_mass=0.9973_bp, peak=elements(i), bounds=conf_limits(2,i,:), &
                error=errstr)
           IF (LEN_TRIM(errstr) /= 0) THEN
              error = .TRUE.
@@ -4072,6 +4117,10 @@ CONTAINS
             "'#',3X,' Epoch            = ',A,' = ',F13.5,' TDT'/" // &
             "'#',3X,' Maximum likelihood (ML) orbit' /" // &
             "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,' 68.27% credible intervals' /" // &
+            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,' 99.73% credible intervals' /" // &
             "'#',3X,'  ',A19,6(F15.10,1X)/" // &
             "'#',3X,'  ',A19,6(F15.10,1X)/" // &
             "'#',3X,'  ML value        =',E16.6/" // &
@@ -4085,8 +4134,9 @@ CONTAINS
             "'#',3X,'              max =',E16.6,3X,'arcsec'/" // &
             "'#')"
        WRITE(lu,TRIM(frmt)) getCalendarDateString(t,"tdt"), getJD(t,"tdt"), &
-            str1(1:19), elements, str2(1:19), conf_limits(:,1), str3(1:19), &
-            conf_limits(:,2), pdf_arr_cmp(indx_ml),rchi2_arr_cmp(indx_ml)+nra+ndec,&
+            str1(1:19), elements, str2(1:19), conf_limits(1,:,1), str3(1:19), &
+            conf_limits(1,:,2), str2(1:19), conf_limits(2,:,1), str3(1:19), &
+            conf_limits(2,:,2), pdf_arr_cmp(indx_ml),rchi2_arr_cmp(indx_ml)+nra+ndec,&
             SQRT(0.5*(rms_arr_cmp(indx_ml,2)**2+rms_arr_cmp(indx_ml,3)**2))/rad_asec,&
             MINVAL(reg_apr_arr_cmp),MAXVAL(reg_apr_arr_cmp),&
             MINVAL(jac_arr_cmp(:,1)),MAXVAL(jac_arr_cmp(:,1)),&
