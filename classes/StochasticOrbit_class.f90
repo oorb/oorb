@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2009-12-31
+!! @version 2010-04-06
 !!  
 MODULE StochasticOrbit_cl
 
@@ -49,15 +49,15 @@ MODULE StochasticOrbit_cl
   !! Note: case-dependent, you should try different values
   !!       by changing SO%pdf_ml_init_prm.
   REAL(bp), PARAMETER, PRIVATE :: pdf_ml_init  = 50.0_bp
-  !! Bound for equivalent chi2-difference.
-  !! E.g., 50.0 corresponds to probability mass (1 - 4.7e-9).
-  REAL(bp), PARAMETER, PRIVATE :: chi2c       = 50.0_bp !30.0_bp    
+  !! Default bound for equivalent chi2-difference. Change it through
+  !! setParameters!
+  !! E.g., 50.0 corresponds to probability mass (1 - 4.7e-9).  
+  !! E.g., 30.0 corresponds to probability mass (1 - ?).
+  REAL(bp), PARAMETER, PRIVATE :: dchi2       = 30.0_bp    
   !! Maximum end value for histogram.
   REAL(bp), PARAMETER, PRIVATE :: histo_end   = 0.3_bp     
   !! Maximum number of orbits to be processed simultaneously.
   INTEGER, PARAMETER, PRIVATE  :: norb_simult_max = 5000
-  !! Size of random number array.
-  INTEGER, PARAMETER, PRIVATE  :: random_size = 10000
 
   PRIVATE :: new_SO
   PRIVATE :: new_SO_observations
@@ -65,7 +65,7 @@ MODULE StochasticOrbit_cl
   PRIVATE :: nullify_SO
   PRIVATE :: copy_SO
   PRIVATE :: exist_SO
-  PRIVATE :: getApoapsisDistance_SO_pdf
+  PRIVATE :: getApoapsisDistance_SO
   PRIVATE :: getEphemerides_SO
   PRIVATE :: getEphemeris_SO
   PRIVATE :: getCovarianceMatrix_SO
@@ -106,6 +106,7 @@ MODULE StochasticOrbit_cl
      REAL(bp), DIMENSION(:), POINTER     :: pdf_arr_cmp            => NULL()
      REAL(bp), DIMENSION(:), POINTER     :: reg_apr_arr_cmp        => NULL()
      REAL(bp)                            :: pdf_ml_init_prm        = -1.0_bp
+     REAL(bp)                            :: dchi2_prm              = dchi2
      REAL(bp)                            :: pdf_ml_prm             = -1.0_bp
      REAL(bp)                            :: pdf_ml_cmp             = -1.0_bp
      REAL(bp)                            :: accept_multiplier_prm  = -1.0_bp
@@ -184,13 +185,24 @@ MODULE StochasticOrbit_cl
      LOGICAL, DIMENSION(6,2)             :: vov_scaling_ready_cmp = &
           .FALSE.
 
-     ! Parameters for the least-squares fit:
-     REAL(bp)                            :: ls_corr_fac_prm        = 1.0_bp
-     REAL(bp)                            :: ls_rchi2_frac_prm      = 0.01_bp
-     INTEGER                             :: ls_niter_major_max_prm = 10
-     INTEGER                             :: ls_niter_major_min_prm = 2
-     INTEGER                             :: ls_niter_minor_prm     = 20
-     LOGICAL, DIMENSION(6)               :: ls_elem_mask_prm       = .TRUE.
+     ! Parameters for the least-squares fitting:
+     REAL(bp)                            :: ls_corr_fac_prm         = 1.0_bp
+     REAL(bp)                            :: ls_rchi2_diff_tresh_prm = 0.00001_bp
+     INTEGER                             :: ls_niter_major_max_prm  = 10
+     INTEGER                             :: ls_niter_major_min_prm  = 2
+     INTEGER                             :: ls_niter_minor_prm      = 20
+     LOGICAL, DIMENSION(6)               :: ls_elem_mask_prm        = .TRUE.
+
+     ! Parameters for the covariance sampling:
+     REAL(bp)                            :: cos_nsigma_prm   = 7.5_bp
+     INTEGER                             :: cos_norb_prm     = 100
+     INTEGER                             :: cos_ntrial_prm   = 100000
+     LOGICAL                             :: cos_gaussian_prm = .FALSE.
+
+     ! Parameters for simplex optimization:
+     REAL(bp)                            :: smplx_tol_prm  = 1.05_bp
+     INTEGER                             :: smplx_niter_prm = 1000
+     INTEGER                             :: smplx_niter_cmp
 
   END TYPE StochasticOrbit
 
@@ -215,7 +227,7 @@ MODULE StochasticOrbit_cl
   END INTERFACE
 
   INTERFACE getApoapsisDistance
-     MODULE PROCEDURE getApoapsisDistance_SO_pdf
+     MODULE PROCEDURE getApoapsisDistance_SO
   END INTERFACE
 
   INTERFACE getChi2
@@ -1230,6 +1242,752 @@ CONTAINS
 
 
 
+  SUBROUTINE covarianceSampling(this)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout) :: this
+
+    TYPE (Time) :: t0
+    TYPE (Orbit), DIMENSION(:), ALLOCATABLE :: &
+         orb_arr
+    TYPE (Orbit) :: &
+         orb_nominal, &
+         orb
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+         comp_scoords, obs_scoords
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoords
+    CHARACTER(len=FRAME_LEN) :: frame
+    CHARACTER(len=64) :: &
+         frmt = "(F20.15,1X)", &
+         efrmt = "(E10.4,1X)"
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         residuals3, &
+         partials_arr, &
+         information_matrix_obs
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         jacobian_arr, &
+         obs_coords, &
+         residuals2
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: &
+         reg_apriori_arr, &
+         pdf_arr, &
+         rchi2_arr, &
+         cosdec0
+    REAL(bp), DIMENSION(6,6) :: &
+         cov, &
+         A, &
+         information_matrix_elem, &
+         jacobian_matrix
+    REAL(bp), DIMENSION(6) :: &
+         elements_nominal, &
+         ran, &
+         deviates, &
+         mean, &
+         elements, &
+         comp_coord, &
+         stdev
+    REAL(bp) :: &
+         apriori, &
+         pdf_ml_global_ls, &
+         chi2, &
+         pdf_val, &
+         pdf_relative_bound, &
+         obs_, &
+         comp_
+    INTEGER, DIMENSION(:), ALLOCATABLE :: &
+         failed_flag
+    INTEGER, DIMENSION(6) :: &
+         n0
+    INTEGER :: &
+         i, j, &
+         itrial, &
+         iorb, &
+         err, &
+         nobs, &
+         nfailed
+    LOGICAL, DIMENSION(:,:), POINTER :: &
+         mask_arr
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    DO i=1,6
+       n0(i) = COUNT(this%obs_masks_prm(:,i))
+    END DO
+    orb_nominal = getNominalOrbit(this)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
+    frame = getFrame(orb_nominal)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+    elements_nominal = getElements(orb_nominal, this%element_type_prm, frame)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (15)", 1)
+       RETURN
+    END IF
+    cov = getCovarianceMatrix(this, this%element_type_prm, frame)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (20)", 1)
+       RETURN
+    END IF
+    DO i=1,6
+       stdev(i) = SQRT(cov(i,i))
+    END DO
+    t0 = getTime(orb_nominal)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (25)", 1)
+       RETURN
+    END IF
+
+
+    ! Observations
+    information_matrix_obs => getBlockDiagInformationMatrix(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (30)", 1)
+       RETURN
+    END IF
+    obs_scoords => getObservationSCoords(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (35)", 1)
+       RETURN
+    END IF
+    nobs = SIZE(obs_scoords,dim=1)
+    ALLOCATE(orb_arr(this%cos_norb_prm), cosdec0(nobs), &
+         residuals2(nobs,6), residuals3(this%cos_norb_prm,nobs,6), &
+         failed_flag(4), reg_apriori_arr(this%cos_norb_prm), &
+         pdf_arr(this%cos_norb_prm), rchi2_arr(this%cos_norb_prm), &
+         jacobian_arr(this%cos_norb_prm,3), obs_coords(nobs,6), &
+         mask_arr(nobs,6), stat=err)
+    DO i=1,nobs
+       obs_coords(i,:) = getCoordinates(obs_scoords(i))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "TRACE BACK (40)",1)
+          RETURN
+       END IF
+       cosdec0(i) = COS(obs_coords(i,3))
+    END DO
+    obsy_ccoords => getObservatoryCCoords(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (45)",1)
+       RETURN
+    END IF
+
+    ! ML PDF value
+    CALL getEphemerides(orb_nominal, obsy_ccoords, comp_scoords, &
+         partials_arr=partials_arr)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (50)",1)
+       RETURN
+    END IF
+    ! Multiply RA partials with cosine of observed declination:
+    DO i=1,nobs
+       partials_arr(2,:,i) = partials_arr(2,:,i)*cosdec0(i)
+    END DO
+    ! Residuals and chi2 for the global fit:
+    DO i=1,nobs
+       comp_coord = getCoordinates(comp_scoords(i))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "TRACE BACK (55)",1)
+          RETURN
+       END IF
+       residuals2(i,1:6) = obs_coords(i,1:6) - comp_coord(1:6)
+       residuals2(i,2) = residuals2(i,2) * cosdec0(i)
+       IF (ABS(residuals2(i,2)) > pi) THEN
+          obs_ = obs_coords(i,2)
+          comp_ = comp_coord(2)
+          IF (obs_ < comp_) THEN
+             obs_ = obs_ + two_pi
+          ELSE
+             comp_ = comp_ + two_pi
+          END IF
+          residuals2(i,2) = (obs_ - comp_) * cosdec0(i)
+       END IF
+       IF (info_verb >= 4) THEN
+          WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "observed pos.", obs_coords(i,1:3)
+          WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "computed pos.", comp_coord(1:3)
+       END IF
+    END DO
+    ! Compute chi2:
+    chi2 = chi_square(residuals2, information_matrix_obs, this%obs_masks_prm, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (60)" // TRIM(errstr),1)
+       RETURN
+    END IF
+    DEALLOCATE(residuals2)
+    IF (chi2 < 0.0_bp) THEN
+       WRITE(stdout,*) "Negative chi2 (", chi2, ") for ML solution."
+    END IF
+    ! Jeffrey's apriori:
+    IF (this%regularization_prm) THEN
+       ! Sigma_elements^(-1) = A^T Sigma_obs^(-1) A, where A is the
+       ! partial derivatives matrix of ephemerides wrt elements:
+       information_matrix_elem(:,:) = 0.0_bp
+       DO i=1,nobs
+          information_matrix_elem = information_matrix_elem + &
+               MATMUL(MATMUL(TRANSPOSE(partials_arr(1:6,1:6,i)), &
+               information_matrix_obs(i,1:6,1:6)), &
+               partials_arr(1:6,1:6,i))
+       END DO
+       ! Jeffrey's apriori:
+       apriori = SQRT(ABS(determinant(information_matrix_elem, errstr)))
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "TRACE BACK (65)", 1)
+          DO i=1,nobs
+             CALL matrix_print(partials_arr(1:6,1:6,i),stderr,errstr)
+             WRITE(stderr,*)
+             CALL matrix_print(information_matrix_obs(i,1:6,1:6),stderr,errstr)
+             WRITE(stderr,*)
+          END DO
+          CALL matrix_print(information_matrix_elem,stderr,errstr)
+          RETURN
+       END IF
+    ELSE
+       apriori = 1.0_bp
+    END IF
+    pdf_ml_global_ls = apriori*EXP(-0.5_bp*(chi2 - COUNT(this%obs_masks_prm)))
+    ! If initial estimate for maximum likelihood pdf remains
+    ! undetermined (indicated by a negative value), set it equal to
+    ! the pdf computed for the global least squares:
+    IF (this%pdf_ml_prm < 0.0_bp) THEN
+       this%pdf_ml_prm = pdf_ml_global_ls
+    END IF
+
+    ! From Devroye: "Non-Uniform Random Variate Generation", 1986,
+    ! chapter 11
+    A = 0.0_bp
+    DO i=1,6
+       DO j=1,i
+          IF (j == 1) THEN
+             A(i,1) = cov(i,1)/SQRT(cov(1,1))
+          ELSE IF (i == j) THEN
+             A(i,i) = SQRT(cov(i,i) - SUM(A(i,1:i-1)**2))
+          ELSE IF (j < i) THEN
+             A(i,j) = (cov(i,j) - SUM(A(i,1:j-1)*A(j,1:j-1)))/A(j,j)
+          END IF
+       END DO
+    END DO
+
+    ! Relative bound for probability density:
+    pdf_relative_bound = EXP(-0.5_bp*this%dchi2_prm)
+    failed_flag = 0
+    iorb = 0
+    itrial = 0
+    mean = 0.0_bp
+    IF (this%element_type_prm == "keplerian") THEN
+       WRITE(stdout,"(A20,6(1X,F15.10))") "Nominal elements:", elements_nominal(1:2), elements_nominal(3:6)/rad_deg
+    ELSE
+       WRITE(stdout,"(A20,6(1X,F15.10))") "Nominal elements:", elements_nominal(1:6)
+    END IF
+    DO WHILE (iorb < this%cos_norb_prm .AND. itrial < this%cos_ntrial_prm)
+
+       itrial = itrial + 1
+
+       IF (itrial == 1) THEN
+          orb = copy(orb_nominal)
+       ELSE
+
+          WRITE(stdout,"(1X,A,I0)") "Trial orbit #", itrial
+          WRITE(stdout,"(1X,A,I0)") "Accepted orbits so far: ", iorb
+
+          IF (this%cos_gaussian_prm) THEN
+             CALL randomGaussian(ran)
+          ELSE
+             CALL randomNumber(ran)
+             ran = 2.0_bp*ran - 1.0_bp
+          END IF
+          deviates = this%cos_nsigma_prm*MATMUL(A,ran) + mean
+          ! New coordinates = old coordinates + deviates:
+          elements = elements_nominal + deviates
+          !WRITE(50,"(12(F20.15,1X))") elements, ran
+          IF (info_verb >= 2) THEN
+             IF (this%element_type_prm == "keplerian") THEN
+                WRITE(stdout,"(A20,6(1X,F15.10))") "Element uncertainty:", stdev(1:2), stdev(3:6)/rad_deg
+                WRITE(stdout,"(A20,6(1X,F15.10))") "Deviates:", deviates(1:2), deviates(3:6)/rad_deg
+                IF (elements(2) < 0.0_bp .OR. elements(2) > 1.0_bp) THEN
+                   ! Eccentricity out of bounds (or should non-elliptic orbits be accepted?).
+                   failed_flag(1) = failed_flag(1) + 1
+                   CYCLE
+                END IF
+                IF (elements(3) < 0.0_bp .OR. elements(3) > pi) THEN
+                   ! Inclination not defined.
+                   failed_flag(2) = failed_flag(2) + 1
+                   CYCLE
+                END IF
+                ! 0 <= angle < 2pi :
+                elements(4:6) = MODULO(elements(4:6), two_pi)
+             ELSE
+                WRITE(stdout,"(A20,6(1X,F15.10))") "Element uncertainty:", stdev(1:6)
+                WRITE(stdout,"(A20,6(1X,F15.10))") "Deviates:", deviates(1:6)          
+             END IF
+             IF (this%element_type_prm == "keplerian") THEN
+                WRITE(stdout,"(A20,6(1X,F15.10))") "Generated elements:", elements(1:2), elements(3:6)/rad_deg
+             ELSE
+                WRITE(stdout,"(A20,6(1X,F15.10))") "Generated elements:", elements(1:6)          
+             END IF
+          END IF
+          IF (ANY(ABS(deviates) > this%cos_nsigma_prm*stdev)) THEN
+             WRITE(stdout,*) ABS(deviates) > this%cos_nsigma_prm*stdev
+             !stop
+          END IF
+          CALL NEW(orb, elements, this%element_type_prm, frame, t0)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
+                  "TRACE BACK (70)", 1)
+             RETURN
+          END IF
+       END IF
+
+       CALL setParameters(orb, dyn_model=this%dyn_model_prm, &
+            integrator=this%integrator_prm, &
+            integration_step=this%integration_step_prm, &
+            perturbers=this%perturbers_prm)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "TRACE BACK (75)",1)
+          RETURN
+       END IF
+
+       !!
+       !! 5) ACCEPTANCE / REJECTION OF GENERATED ORBIT
+       !!
+       CALL getEphemerides(orb, obsy_ccoords, comp_scoords, &
+            partials_arr=partials_arr)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "TRACE BACK (80)",1)
+          RETURN
+       END IF
+       ! Multiply RA partials with cosine of observed declination:
+       DO i=1,nobs
+          partials_arr(2,:,i) = partials_arr(2,:,i)*cosdec0(i)
+       END DO
+
+       ! Sky-plane residuals and chi-squares:
+       DO i=1,nobs
+          comp_coord = getCoordinates(comp_scoords(i))
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
+                  "TRACE BACK (85)",1)
+             RETURN
+          END IF
+          residuals3(iorb+1,i,1:6) = obs_coords(i,1:6) - comp_coord(1:6)
+          residuals3(iorb+1,i,2) = residuals3(iorb+1,i,2) * cosdec0(i)
+          IF (ABS(residuals3(iorb+1,i,2)) > pi) THEN
+             obs_ = obs_coords(i,2)
+             comp_ = comp_coord(2)
+             IF (obs_ < comp_) THEN
+                obs_ = obs_ + two_pi
+             ELSE
+                comp_ = comp_ + two_pi
+             END IF
+             residuals3(iorb+1,i,2) = (obs_ - comp_) * cosdec0(i)
+          END IF
+          IF (info_verb >= 4) THEN
+             WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "observed pos.", obs_coords(i,1:3)
+             WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "computed pos.", comp_coord(1:3)
+          END IF
+       END DO
+
+!!$       mask_arr = .FALSE.
+!!$       WHERE (this%obs_masks_prm .AND. ABS(residuals3(iorb+1,:,:)) > this%res_accept_prm)
+!!$          mask_arr = .TRUE.
+!!$       END WHERE
+!!$       IF (info_verb >= 4) THEN
+!!$          DO i=1,nobs
+!!$             WRITE(stdout,"(2X,A,2"//TRIM(frmt)//")") "O-C residuals (RA, Dec):", &
+!!$                  residuals3(iorb+1,i,2:3)/rad_asec
+!!$          END DO
+!!$          WRITE(stdout,"(2X,A,I0,A,I0)") &
+!!$               "No of omitted obs/included obs: ", &
+!!$               COUNT(mask_arr),"/",n0(2)
+!!$       END IF
+!!$       IF (COUNT(mask_arr) > 0) THEN
+!!$          ! Residuals are too large for at least one observation.
+!!$          failed_flag(3) = failed_flag(3) + 1
+!!$          IF (info_verb >= 5) THEN
+!!$             WRITE(stdout,"(2X,A)") &
+!!$                  "Failed (residuals are too large)"
+!!$          END IF
+!!$          CALL NULLIFY(orb)
+!!$          DEALLOCATE(comp_scoords, partials_arr, stat=err)
+!!$          IF (err /= 0) THEN
+!!$             error = .TRUE.
+!!$             DEALLOCATE(comp_scoords, stat=err)
+!!$             DEALLOCATE(partials_arr, stat=err)
+!!$             CALL errorMessage("StochasticOrbit / covarianceSampling", &
+!!$                  "Could not deallocate memory (5)", 1)
+!!$             RETURN
+!!$          END IF
+!!$          CYCLE
+!!$       END IF
+
+       ! Compute chi2:
+       chi2 = chi_square(residuals3(iorb+1,:,:), information_matrix_obs, this%obs_masks_prm, errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "TRACE BACK (90)" // TRIM(errstr),1)
+          RETURN
+       END IF
+       IF (chi2 < 0.0_bp) THEN
+          WRITE(stdout,*) "Negative chi2 (", chi2, ") at trial ", itrial
+       END IF
+       ! Jeffrey's apriori:
+       ! Monitor the matrix inversion?
+       IF (this%regularization_prm) THEN
+          ! Sigma_elements^(-1) = A^T Sigma_obs^(-1) A, where A is the
+          ! partial derivatives matrix of ephemerides wrt elements:
+          information_matrix_elem(:,:) = 0.0_bp
+          DO i=1,nobs
+             information_matrix_elem = information_matrix_elem + &
+                  MATMUL(MATMUL(TRANSPOSE(partials_arr(1:6,1:6,i)), &
+                  information_matrix_obs(i,1:6,1:6)), &
+                  partials_arr(1:6,1:6,i))
+          END DO
+          ! Jeffrey's apriori:
+          apriori = SQRT(ABS(determinant(information_matrix_elem, errstr)))
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
+                  "TRACE BACK (95)", 1)
+             DO i=1,nobs
+                CALL matrix_print(partials_arr(1:6,1:6,i),stderr,errstr)
+                WRITE(stderr,*)
+                CALL matrix_print(information_matrix_obs(i,1:6,1:6),stderr,errstr)
+                WRITE(stderr,*)
+             END DO
+             CALL matrix_print(information_matrix_elem,stderr,errstr)
+             RETURN
+          END IF
+       ELSE
+          apriori = 1.0_bp
+       END IF
+
+       ! Probability density function (note that the '- nobs' term
+       ! is there for practical reasons):
+       pdf_val = apriori*EXP(-0.5_bp*(chi2 - COUNT(this%obs_masks_prm)))
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A)") "Sample information matrix:"
+          CALL matrix_print(information_matrix_elem,stdout,errstr)
+          WRITE(stdout,"(2X,A,1X,2"//TRIM(frmt)//")") "Sample chi2, rchi2:", chi2, chi2-SUM(n0(1:6))
+          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample apriori:", apriori
+          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample pdf:", pdf_val
+          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "ML pdf:", this%pdf_ml_prm
+          WRITE(stdout,*) "Uniform sampling: ", this%uniform_pdf_prm 
+          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample PDF / ML PDF:", pdf_val / this%pdf_ml_prm
+          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Relative bound for pdf:", pdf_relative_bound        
+       END IF
+       IF (.NOT.this%uniform_pdf_prm .AND. &
+            pdf_val / this%pdf_ml_prm < pdf_relative_bound) THEN
+          ! The PDF is used and its value is not acceptable.
+          failed_flag(4) = failed_flag(4) + 1
+          IF (info_verb >= 5) THEN
+             WRITE(stdout,"(2X,A,1X,E10.5)") &
+                  "Failed (PDF value not acceptable)", pdf_val
+          END IF
+          CALL NULLIFY(orb)
+          DEALLOCATE(comp_scoords, partials_arr, stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             DEALLOCATE(comp_scoords, stat=err)
+             DEALLOCATE(partials_arr, stat=err)
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
+                  "Could not deallocate memory (5)", 1)
+             RETURN
+          END IF
+          CYCLE
+       END IF
+
+       iorb = iorb + 1
+       WRITE(stdout,"(1X,A,I0,1X,A)") "Orbit #", iorb, "accepted."
+       orb_arr(iorb) = copy(orb)
+       reg_apriori_arr(iorb) = apriori
+       pdf_arr(iorb) = pdf_val
+!!$       if (this%pdf_ml_prm < pdf_val) then
+!!$          this%pdf_ml_prm = pdf_val
+!!$       end if
+       rchi2_arr(iorb) = chi2 - SUM(n0(1:6))
+       ! P.d.f.:
+       ! - exponential part
+       ! - a priori p.d.f. for invariance (optionally)
+       ! ***************************** debiasing_factor_arr ****************************
+
+       IF (this%jacobians_prm) THEN
+          ! Determinant of Jacobian between topocentric spherical
+          ! coordinates of the first and the last observation and
+          ! orbital parameters required for output ("Topocentric Wrt
+          ! Cartesian/Keplerian"):
+          jacobian_matrix(1:3,:) = partials_arr(1:3,:,1) / &
+               cosdec0(1)
+          jacobian_matrix(4:6,:) = partials_arr(1:3,:,nobs) / &
+               cosdec0(nobs)
+          jacobian_arr(iorb,1) = ABS(determinant(jacobian_matrix, errstr))
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             CALL errorMessage("StochasticOrbit / statisticalRanging", &
+                  "Unsuccessful computation of determinant of orbital element " // &
+                  "jacobian matrix " // TRIM(errstr), 1)
+             errstr = ""
+             IF (err_verb >= 1) THEN
+                CALL matrix_print(jacobian_matrix, stderr, errstr)
+             END IF
+             errstr = ""
+             CYCLE
+          END IF
+
+          ! Determinant of Jacobian between Cartesian and Keplerian
+          ! orbital elements ("Cartesian Wrt Keplerian"):
+          CALL partialsCartesianWrtKeplerian(orb, &
+               jacobian_matrix, "equatorial")
+          jacobian_arr(iorb,2) = ABS(determinant(jacobian_matrix, errstr)) 
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             CALL errorMessage("StochasticOrbit / statisticalRanging", &
+                  "Unsuccessful computation of " // &
+                  "jacobian matrix " // TRIM(errstr), 1)
+             errstr = ""
+             IF (err_verb >= 1) THEN
+                CALL matrix_print(jacobian_matrix, stderr, errstr)
+             END IF
+             errstr = ""
+             CALL NULLIFY(orb)
+             RETURN
+          END IF
+
+          ! Determinant of Jacobian between equinoctial and
+          ! Keplerian orbital elements ("Equinoctial Wrt
+          ! Keplerian"):
+          elements = getElements(orb, "keplerian")
+          jacobian_arr(iorb,3) = 0.5_bp*elements(2) * &
+               SIN(0.5_bp*elements(3)) / COS(0.5_bp*elements(3))**3
+          IF (info_verb >= 5) THEN
+             WRITE(stdout,"(2X,A,F15.12)") "Chi2 new: ", chi2
+             WRITE(stdout,"(2X,A,3(1X,F10.5))") "PDF values:", pdf_val, &
+                  pdf_val/this%pdf_ml_prm, pdf_relative_bound
+          END IF
+       ELSE
+          jacobian_arr(iorb,:) = -1.0_bp
+       END IF
+
+       CALL NULLIFY(orb)
+       DEALLOCATE(comp_scoords, partials_arr, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(comp_scoords, stat=err)
+          DEALLOCATE(partials_arr, stat=err)
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "Could not deallocate memory (15).", 1)
+          RETURN
+       END IF
+
+    END DO
+
+    IF (info_verb >= 1) THEN
+       WRITE(stdout,*) "Final number of orbits and the required trials:"
+       WRITE(stdout,"(2(I0,2X))") iorb, itrial
+       WRITE(stdout,*) "Total failure percentage (1), and failure " // &
+            "due to (2) eccentricity, (3) inclination, " // &
+            "(4) residuals, and (5) pdf:"
+       nfailed = SUM(failed_flag)
+       nfailed = MAX(1,nfailed)
+       WRITE(stdout,"(5"//TRIM(frmt)//")") &
+            100.0_bp*REAL(SUM(failed_flag),bp)/itrial, &
+            100.0_bp*REAL(failed_flag(1),bp)/nfailed, &
+            100.0_bp*REAL(failed_flag(2),bp)/nfailed, &
+            100.0_bp*REAL(failed_flag(3),bp)/nfailed, &
+            100.0_bp*REAL(failed_flag(4),bp)/nfailed
+    END IF
+
+    ALLOCATE(this%reg_apr_arr_cmp(iorb), this%res_arr_cmp(iorb,nobs,6))
+
+
+    IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+       DO i=1,SIZE(this%orb_arr_cmp)
+          CALL NULLIFY(this%orb_arr_cmp(i))
+       END DO
+       DEALLOCATE(this%orb_arr_cmp, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "Could not deallocate memory (20).", 1)
+          RETURN
+       END IF
+    END IF
+    ALLOCATE(this%orb_arr_cmp(iorb), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       DO i=1,SIZE(orb_arr)
+          CALL NULLIFY(orb_arr(i))
+       END DO
+       DEALLOCATE(orb_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "Could not allocate memory (5).", 1)
+       RETURN
+    END IF
+    DO i=1,iorb
+       this%orb_arr_cmp(i) = copy(orb_arr(i))
+    END DO
+    IF (ASSOCIATED(this%pdf_arr_cmp)) THEN
+       DEALLOCATE(this%pdf_arr_cmp, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "Could not deallocate memory (25).", 1)
+          RETURN       
+       END IF
+    END IF
+    ALLOCATE(this%pdf_arr_cmp(iorb), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       DO i=1,SIZE(orb_arr)
+          CALL NULLIFY(orb_arr(i))
+       END DO
+       DEALLOCATE(orb_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "Could not allocate memory (10).", 1)
+       RETURN
+    END IF
+    this%pdf_arr_cmp = pdf_arr
+    IF (ASSOCIATED(this%jac_arr_cmp)) THEN
+       DEALLOCATE(this%jac_arr_cmp, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "Could not deallocate memory (25).", 1)
+          RETURN       
+       END IF
+    END IF
+    ALLOCATE(this%jac_arr_cmp(iorb,3), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       DO i=1,SIZE(orb_arr)
+          CALL NULLIFY(orb_arr(i))
+       END DO
+       DEALLOCATE(orb_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "Could not allocate memory (10).", 1)
+       RETURN
+    END IF
+    this%jac_arr_cmp = jacobian_arr
+    IF (ASSOCIATED(this%rchi2_arr_cmp)) THEN
+       DEALLOCATE(this%rchi2_arr_cmp, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL errorMessage("StochasticOrbit / covarianceSampling", &
+               "Could not deallocate memory (25).", 1)
+          RETURN       
+       END IF
+    END IF
+    ALLOCATE(this%rchi2_arr_cmp(iorb), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       DO i=1,SIZE(orb_arr)
+          CALL NULLIFY(orb_arr(i))
+       END DO
+       DEALLOCATE(orb_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "Could not allocate memory (10).", 1)
+       RETURN
+    END IF
+    this%rchi2_arr_cmp = rchi2_arr
+    DO i=1,SIZE(orb_arr)
+       CALL NULLIFY(orb_arr(i))
+    END DO
+    this%reg_apr_arr_cmp = reg_apriori_arr
+    this%res_arr_cmp = residuals3
+
+    CALL NULLIFY(orb_nominal)
+
+    DEALLOCATE(orb_arr, failed_flag, pdf_arr, &
+         information_matrix_obs, jacobian_arr, residuals3, stat=err)
+
+    IF (err /= 0) THEN
+       error = .TRUE.
+       DEALLOCATE(orb_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "Could not deallocate memory (30).", 1)
+       RETURN       
+    END IF
+
+  END SUBROUTINE covarianceSampling
+
+
+
+
+
+
   !! *Description*:
   !!
   !! Returns a discrete sampling of the apoapsis distance
@@ -1237,13 +1995,14 @@ CONTAINS
   !!
   !! Returns error.
   !! 
-  SUBROUTINE getApoapsisDistance_SO_pdf(this, Q)
+  SUBROUTINE getApoapsisDistance_SO(this, Q)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
     REAL(bp), DIMENSION(:,:), POINTER     :: Q
 
-    REAL(bp), DIMENSION(6,6) :: partials
+    TYPE (Orbit) :: orb
+    REAL(bp), DIMENSION(6,6) :: partials, covariance1, covariance2
     REAL(bp), DIMENSION(:), POINTER :: pdf_arr
     REAL(bp) :: jac
     INTEGER :: i, err
@@ -1255,62 +2014,84 @@ CONTAINS
        RETURN
     END IF
 
-    IF (.NOT.ASSOCIATED(this%orb_arr_cmp) .OR. &
-         .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
-       error = .TRUE.
-       CALL errorMessage("Orbit / getApoapsisDistance", &
-            "Orbital-element pdf missing.", 1)
-       RETURN
-    END IF
+    IF (containsSampledPDF(this)) THEN
 
-    pdf_arr => getPDFValues(this, "keplerian")
-    IF (error) THEN
-       CALL errorMessage("Orbit / getApoapsisDistance", &
-            "TRACE BACK (5)", 1)
-       DEALLOCATE(pdf_arr, stat=err)
-       RETURN
-    END IF
-
-    ALLOCATE(Q(SIZE(this%orb_arr_cmp,dim=1),2), stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("Orbit / getApoapsisDistance", &
-            "Could not allocate memory (5).", 1)
-       DEALLOCATE(pdf_arr, stat=err)
-       RETURN
-    END IF
-    partials = identity_matrix(6)
-    DO i=1,SIZE(this%orb_arr_cmp,dim=1)
-       CALL getApoapsisDistance(this%orb_arr_cmp(i), &
-            Q(i,1), partials=partials(1,1:6))
+       pdf_arr => getPDFValues(this, "keplerian")
        IF (error) THEN
           CALL errorMessage("Orbit / getApoapsisDistance", &
                "TRACE BACK (5)", 1)
           DEALLOCATE(pdf_arr, stat=err)
           RETURN
        END IF
-       jac = ABS(determinant(partials, errstr))
-       IF (LEN_TRIM(errstr) /= 0) THEN
+
+       ALLOCATE(Q(SIZE(this%orb_arr_cmp,dim=1),2), stat=err)
+       IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getApoapsisDistance", &
-               "Could not compute determinant for Jacobian " // &
-               TRIM(errstr), 1)
-          errstr = ""
+               "Could not allocate memory (5).", 1)
           DEALLOCATE(pdf_arr, stat=err)
           RETURN
        END IF
-       Q(i,2) = pdf_arr(i)*jac
-    END DO
+       partials = identity_matrix(6)
+       DO i=1,SIZE(this%orb_arr_cmp,dim=1)
+          CALL getApoapsisDistance(this%orb_arr_cmp(i), &
+               Q(i,1), partials=partials(1,1:6))
+          IF (error) THEN
+             CALL errorMessage("Orbit / getApoapsisDistance", &
+                  "TRACE BACK (5)", 1)
+             DEALLOCATE(pdf_arr, stat=err)
+             RETURN
+          END IF
+          jac = ABS(determinant(partials, errstr))
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Orbit / getApoapsisDistance", &
+                  "Could not compute determinant for Jacobian. " // &
+                  TRIM(errstr), 1)
+             errstr = ""
+             DEALLOCATE(pdf_arr, stat=err)
+             RETURN
+          END IF
+          Q(i,2) = pdf_arr(i)*jac
+       END DO
 
-    DEALLOCATE(pdf_arr, stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / getApoapsisDistance", &
-            "Could not deallocate memory (10).", 1)
-       RETURN
+       DEALLOCATE(pdf_arr, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getApoapsisDistance", &
+               "Could not deallocate memory (10).", 1)
+          RETURN
+       END IF
+
+    ELSE
+
+       ALLOCATE(Q(1,2), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getApoapsisDistance", &
+               "Could not allocate memory (5).", 1)
+          RETURN
+       END IF
+       orb = copy(this%orb_ml_cmp)
+       CALL toKeplerian(orb)
+       partials = identity_matrix(6)
+       CALL getApoapsisDistance(orb, &
+            Q(1,1), &
+            partials=partials(1,1:6))
+       IF (error) THEN
+          CALL errorMessage("Orbit / getApoapsisDistance", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       CALL NULLIFY(orb)
+
+       covariance1 = getCovarianceMatrix(this, "keplerian")
+       covariance2 = MATMUL(MATMUL(partials,covariance1),TRANSPOSE(partials))
+       Q(1,2) = SQRT(covariance2(1,1))
+
     END IF
 
-  END SUBROUTINE getApoapsisDistance_SO_pdf
+  END SUBROUTINE getApoapsisDistance_SO
 
 
 
@@ -1470,7 +2251,6 @@ CONTAINS
     REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix
     REAL(bp), DIMENSION(:,:), POINTER :: residuals
     INTEGER :: err
-    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks_
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -1511,31 +2291,12 @@ CONTAINS
           RETURN
        END IF
     ELSE
-       obs_masks_ => getObservationMasks(this%obss)
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / getChi2", &
-               "TRACE BACK (20)", 1)
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(information_matrix, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          RETURN
-       END IF
-       getChi2_this_orb = chi_square(residuals, information_matrix, obs_masks_, errstr)
+       getChi2_this_orb = chi_square(residuals, information_matrix, this%obs_masks_prm, errstr)
        IF (LEN_TRIM(errstr) /= 0) THEN
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / getChi2", &
                "TRACE BACK (25) " // TRIM(errstr), 1)
           errstr = ""
-          DEALLOCATE(residuals, stat=err)
-          DEALLOCATE(information_matrix, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          RETURN
-       END IF
-       DEALLOCATE(obs_masks_, stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / getChi2", &
-               "Could not deallocate memory (5).", 1)
           DEALLOCATE(residuals, stat=err)
           DEALLOCATE(information_matrix, stat=err)
           RETURN
@@ -2244,8 +3005,8 @@ CONTAINS
        END IF
     END IF
 
-    ! Apohele
-    groups(1) = "Apohele"
+    ! Atira (AKA IEO AKA Apohele)
+    groups(1) = "Atira"
     mask_array = .FALSE.
     WHERE (apoapsis <= 0.983_bp)
        mask_array = .TRUE.
@@ -3011,9 +3772,9 @@ CONTAINS
        pdf_ml_prm = this%pdf_ml_prm 
     END IF
     IF (PRESENT(prob_mass)) THEN
-       ! prob_mass = getProbabilityMass(chi2c)
+       ! prob_mass = getProbabilityMass(this%dchi2_prm)
        ! temporarily
-       prob_mass = chi2c
+       prob_mass = this%dchi2_prm
     END IF
     IF (PRESENT(apriori_a_max)) THEN
        apriori_a_max = this%apriori_a_max_prm
@@ -5829,6 +6590,8 @@ CONTAINS
     LOGICAL, DIMENSION(:,:), ALLOCATABLE :: mask_measur
     LOGICAL, DIMENSION(6) :: mask_param
 
+    REAL(bp), PARAMETER :: rchi2_max_prm = 1.5_bp
+
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A)") "LEAST SQUARES"
     END IF
@@ -5985,6 +6748,8 @@ CONTAINS
        CALL toCartesian(orb, frame=frame_)
     CASE ("keplerian")
        CALL toKeplerian(orb)
+    CASE ("cometary")
+       CALL toCometary(orb)
     CASE default
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / levenbergMarquardt", &
@@ -6139,10 +6904,14 @@ CONTAINS
 
     rchi2_old = HUGE(rchi2_old)
     rchi2_previous = HUGE(rchi2_previous)
+    lambda = -1.0_bp
     DO i=1,this%ls_niter_major_max_prm
 
-       lambda = -1.0_bp
        DO j=1,this%ls_niter_minor_prm
+          IF (info_verb >= 2) THEN
+             WRITE(stdout,"(2X,A)") "Call to 'LevenbergMarquardt_private' from " // &
+                  "loop in 'levenbergMarquardt_SO'."
+          END IF
           CALL LevenbergMarquardt_private
           IF (error) THEN
              CALL errorMessage("StochasticOrbit / " // &
@@ -6159,35 +6928,17 @@ CONTAINS
              DEALLOCATE(jacobians, stat=err)
              RETURN
           END IF
-          IF (ABS(rchi2 - rchi2_previous)/rchi2 < this%ls_rchi2_frac_prm .AND. &
+          IF (ABS(rchi2 - rchi2_previous) < this%ls_rchi2_diff_tresh_prm .AND. &
                rchi2 <= rchi2_previous) THEN
-             rchi2_previous = rchi2
+             !             rchi2_previous = rchi2
              EXIT
-          ELSE
-             rchi2_previous = rchi2
+             !          ELSE
+             !             rchi2_previous = rchi2
           END IF
        END DO
-       lambda = 0.0_bp
-       CALL levenbergMarquardt_private
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / " // &
-               "levenbergMarquardt", &
-               "Could not find a least-squares solution (2).", 1)
-          DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(information_matrix_measur, stat=err) 
-          DEALLOCATE(obsy_codes, stat=err)
-          DEALLOCATE(stdev_arr_measur, stat=err)
-          DEALLOCATE(measur, stat=err)
-          DEALLOCATE(residuals, stat=err) 
-          DEALLOCATE(mask_measur, stat=err)
-          DEALLOCATE(alpha, stat=err)
-          DEALLOCATE(jacobians, stat=err)
-          RETURN
-       END IF
-       rchi2_previous = rchi2
 
        ! Outlier rejection
-       IF (this%outlier_rejection_prm .AND. ABS(rchi2 - rchi2_old)/rchi2 > this%ls_rchi2_frac_prm) THEN
+       IF (this%outlier_rejection_prm .AND. ABS(rchi2 - rchi2_old) > this%ls_rchi2_diff_tresh_prm) THEN
           mask_measur = this%obs_masks_prm
           DO k=1,ndata
              IF (ANY(ABS(residuals(k,2:3)) > &
@@ -6196,22 +6947,34 @@ CONTAINS
              END IF
           END DO
           rchi2_old = rchi2
-       ELSE
+       ELSE IF (.NOT.this%outlier_rejection_prm) THEN
           EXIT
        END IF
 
     END DO
 
-    DEALLOCATE(obsy_ccoords, stat=err)
-    DEALLOCATE(information_matrix_measur, stat=err) 
-    DEALLOCATE(obsy_codes, stat=err)
-    DEALLOCATE(stdev_arr_measur, stat=err)
-    DEALLOCATE(measur, stat=err)
-    DEALLOCATE(residuals, stat=err) 
-    DEALLOCATE(alpha, stat=err)
-    DEALLOCATE(jacobians, stat=err)
+    lambda = 0.0_bp
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "Final call to 'LevenbergMarquardt_private' from " // &
+            "'levenbergMarquardt_SO'."
+    END IF
+    CALL levenbergMarquardt_private
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / " // &
+            "levenbergMarquardt", &
+            "Could not find a least-squares solution (2).", 1)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(information_matrix_measur, stat=err) 
+       DEALLOCATE(obsy_codes, stat=err)
+       DEALLOCATE(stdev_arr_measur, stat=err)
+       DEALLOCATE(measur, stat=err)
+       DEALLOCATE(residuals, stat=err) 
+       DEALLOCATE(mask_measur, stat=err)
+       DEALLOCATE(alpha, stat=err)
+       DEALLOCATE(jacobians, stat=err)
+       RETURN
+    END IF
 
-    CALL NULLIFY(this%orb_ml_cmp)
     IF (element_type_ == "keplerian") THEN
        params(4:6) = MODULO(params(4:6), two_pi)
     ELSE IF (element_type_ == "cometary") THEN
@@ -6225,6 +6988,24 @@ CONTAINS
        DEALLOCATE(mask_measur, stat=err)
        RETURN
     END IF
+
+    ! Output final orbital elements and sky-plane residuals and rms if needed:
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "Call to 'ephemeris_lsl' from " // &
+            "'levenbergMarquardt_SO'."
+    END IF
+    CALL ephemeris_lsl(params, residuals, jacobians, rchi2)
+
+    DEALLOCATE(obsy_ccoords, stat=err)
+    DEALLOCATE(information_matrix_measur, stat=err) 
+    DEALLOCATE(obsy_codes, stat=err)
+    DEALLOCATE(stdev_arr_measur, stat=err)
+    DEALLOCATE(measur, stat=err)
+    DEALLOCATE(residuals, stat=err) 
+    DEALLOCATE(alpha, stat=err)
+    DEALLOCATE(jacobians, stat=err)
+
+    CALL NULLIFY(this%orb_ml_cmp)
     CALL NEW(this%orb_ml_cmp, params, TRIM(element_type_), TRIM(frame_), copy(t))
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
@@ -6267,6 +7048,14 @@ CONTAINS
     this%obs_masks_prm = mask_measur
     DEALLOCATE(mask_measur, stat=err)
 
+    ! Check whether acceptable solution based on rchi2
+    IF (rchi2 > rchi2_max_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / " // &
+            "levenbergMarquardt", &
+            "Could not find an acceptable least-squares solution.", 1)
+       RETURN
+    END IF
 
   CONTAINS
 
@@ -6275,22 +7064,31 @@ CONTAINS
 
     SUBROUTINE levenbergMarquardt_private
 
-      REAL(bp), SAVE :: rchi2_
+      !      REAL(bp), SAVE :: rchi2_
       REAL(bp), DIMENSION(:), ALLOCATABLE, SAVE :: params_, beta
       REAL(bp), DIMENSION(:,:), ALLOCATABLE, SAVE :: param_corrections
 
       IF (lambda < 0.0_bp) THEN
          ALLOCATE(params_(nparam),beta(nparam),param_corrections(nparam,1))
-         lambda = 0.001_bp
+         !lambda = 0.001_bp
+         lambda = 0.000001_bp
          params_ = params
+         IF (info_verb >= 2) THEN
+            WRITE(stdout,"(2X,A)") "First call to 'coefficients' from " // &
+                 "'levenbergMarquardt_private' when lambda < 0."
+         END IF
          CALL coefficients(params_, alpha, beta)
          IF (error) THEN
             CALL errorMessage("StochasticOrbit / " // &
                  "levenbergMarquardt / levenbergMarquardt_private", &
                  "TRACE BACK (5)", 1)
+            DEALLOCATE(params_, beta, param_corrections)
             RETURN
          END IF
-         rchi2_ = rchi2
+         !         rchi2_ = rchi2
+         rchi2_previous = rchi2
+      ELSE
+         rchi2_previous = rchi2         
       END IF
       cov_mat_param = alpha
       cov_mat_param = diagonal_multiplication(cov_mat_param, 1.0_bp+lambda, errstr, mask_param)
@@ -6300,6 +7098,7 @@ CONTAINS
               "levenbergMarquardt / levenbergMarquardt_private", &
               TRIM(errstr), 1)
          errstr = ""
+         DEALLOCATE(params_, beta, param_corrections)
          RETURN
       END IF
       param_corrections(:,1) = beta
@@ -6310,29 +7109,40 @@ CONTAINS
               "levenbergMarquardt / levenbergMarquardt_private", &
               TRIM(errstr), 1)
          errstr = ""
+         DEALLOCATE(params_, beta, param_corrections)
          RETURN
       END IF
-      IF (lambda == 0.0_bp) THEN
+      IF (ABS(lambda) < EPSILON(lambda)) THEN
          DEALLOCATE(params_, beta, param_corrections)
          RETURN
       END IF
       params_ = params + param_corrections(:,1)
+      IF (info_verb >= 2) THEN
+         WRITE(stdout,"(2X,A)") "Second call to 'coefficients' from " // &
+              "'levenbergMarquardt_private' when lambda > 0."
+      END IF
       CALL coefficients(params_, cov_mat_param, param_corrections(:,1))
       IF (error) THEN
          CALL errorMessage("StochasticOrbit / " // &
               "levenbergMarquardt / levenbergMarquardt_private", &
               "TRACE BACK (10)", 1)
+         DEALLOCATE(params_, beta, param_corrections)
          RETURN
       END IF
-      IF (rchi2 < rchi2_) THEN
-         lambda = 0.1_bp*lambda
-         rchi2_ = rchi2
+      !      IF (rchi2 < rchi2_) THEN
+      IF (rchi2 < rchi2_previous) THEN
+         lambda = 0.5_bp*lambda
+         !         rchi2_ = rchi2
          alpha = cov_mat_param
          beta = param_corrections(:,1)
          params = params_
       ELSE
+         !lambda = 10.0_bp*lambda
          lambda = 10.0_bp*lambda
-         rchi2 = rchi2_
+         !         rchi2 = rchi2_
+      END IF
+      IF (lambda < EPSILON(lambda)) THEN
+         lambda = EPSILON(lambda)
       END IF
 
     END SUBROUTINE levenbergMarquardt_private
@@ -6348,6 +7158,10 @@ CONTAINS
       REAL(bp), DIMENSION(nparam,nmultidata) :: tmp
       INTEGER :: i
 
+      IF (info_verb >= 2) THEN
+         WRITE(stdout,"(2X,A)") "Call to 'ephemeris_lsl' from " // &
+              "'coefficients'."
+      END IF
       CALL ephemeris_lsl(params, residuals, jacobians, rchi2)
       IF (error) THEN
          CALL errorMessage("StochasticOrbit / " // &
@@ -6507,8 +7321,9 @@ CONTAINS
          WRITE(stdout,"(2X,A,2(1X,F15.7))") "RMS RA & Dec [arcsec]: ", &
               SQRT(SUM(residuals(:,2)**2,mask=mask_measur(:,2))/COUNT(mask_measur(:,2)))/rad_asec, &
               SQRT(SUM(residuals(:,3)**2,mask=mask_measur(:,3))/COUNT(mask_measur(:,3)))/rad_asec
-         WRITE(stdout,"(2X,A,1X,F15.7)") "Reduced chi2: ", &
+         WRITE(stdout,"(2X,A,1X,F20.5)") "Reduced chi2: ", &
               rchi2
+         WRITE(stdout,"(2X,A,1X,F20.15)") "Lambda: ", lambda
          WRITE(stdout,"(2X,A)") ""
       END IF
 
@@ -6915,9 +7730,11 @@ CONTAINS
        sor_generat_offset, sor_2point_method, sor_2point_method_sw, &
        sor_iterate_bounds, &
        vov_norb, vov_ntrial, vov_norb_iter, vov_ntrial_iter, &
-       vov_nmap, vov_niter, vov_scaling_prm, vov_mapping_mask, &
+       vov_nmap, vov_niter, vov_scaling, vov_mapping_mask, &
        ls_correction_factor, ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
-       ls_element_mask)
+       ls_element_mask, &
+       cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
+       smplx_tol, smplx_niter)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
@@ -6929,7 +7746,7 @@ CONTAINS
          sor_2point_method, &
          sor_2point_method_sw
     REAL(bp), DIMENSION(6,2), INTENT(in), OPTIONAL :: &
-         vov_scaling_prm
+         vov_scaling
     REAL(bp), DIMENSION(6), INTENT(in), OPTIONAL :: &
          finite_diff
     REAL(bp), DIMENSION(4), INTENT(in), OPTIONAL :: &
@@ -6952,7 +7769,9 @@ CONTAINS
          sor_rho2_l, &
          sor_rho2_u, &
          sor_generat_multiplier, &
-         ls_correction_factor
+         ls_correction_factor, &
+         cos_nsigma, &
+         smplx_tol
     INTEGER, INTENT(in), OPTIONAL :: &
          sor_norb, &
          sor_norb_sw, &
@@ -6967,10 +7786,12 @@ CONTAINS
          vov_niter, &
          ls_niter_major_max, &
          ls_niter_major_min, &
-         ls_niter_minor
-    LOGICAL, DIMENSION(:), OPTIONAL :: &
-         perturbers
+         ls_niter_minor, &
+         cos_norb, &
+         cos_ntrial, &
+         smplx_niter
     LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: &
+         perturbers, &
          sor_iterate_bounds, &
          vov_mapping_mask, &
          ls_element_mask
@@ -6981,7 +7802,8 @@ CONTAINS
          jacobians_pdf, &
          sor_random_obs_selection, &
          gaussian_pdf, &
-         outlier_rejection
+         outlier_rejection, &
+         cos_gaussian
     CHARACTER(len=256) :: str
     INTEGER :: i, err
 
@@ -7116,7 +7938,8 @@ CONTAINS
           RETURN
        END IF
        IF (this%element_type_prm /= "keplerian" .AND. &
-            this%element_type_prm /= "cartesian") THEN
+            this%element_type_prm /= "cartesian" .AND. &
+            this%element_type_prm /= "cometary") THEN
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / setParameters", &
                "Orbital element type is not recognized: " // &
@@ -7310,8 +8133,8 @@ CONTAINS
     IF (PRESENT(vov_niter)) THEN
        this%vov_niter_prm = vov_niter
     END IF
-    IF (PRESENT(vov_scaling_prm)) THEN
-       this%vov_scaling_prm = vov_scaling_prm
+    IF (PRESENT(vov_scaling)) THEN
+       this%vov_scaling_prm = vov_scaling
     END IF
     IF (PRESENT(vov_mapping_mask)) THEN
        this%vov_mapping_mask_prm = vov_mapping_mask
@@ -7330,6 +8153,24 @@ CONTAINS
     END IF
     IF (PRESENT(ls_element_mask)) THEN
        this%ls_elem_mask_prm = ls_element_mask
+    END IF
+    IF (PRESENT(cos_nsigma)) THEN
+       this%cos_nsigma_prm = cos_nsigma
+    END IF
+    IF (PRESENT(cos_norb)) THEN
+       this%cos_norb_prm = cos_norb
+    END IF
+    IF (PRESENT(cos_ntrial)) THEN
+       this%cos_ntrial_prm = cos_ntrial
+    END IF
+    IF (PRESENT(cos_gaussian)) THEN
+       this%cos_gaussian_prm = cos_gaussian
+    END IF
+    IF (PRESENT(smplx_tol)) THEN
+       this%smplx_tol_prm = smplx_tol
+    END IF
+    IF (PRESENT(smplx_niter)) THEN
+       this%smplx_niter_prm = smplx_niter
     END IF
 
   END SUBROUTINE setParameters_SO
@@ -7900,6 +8741,427 @@ CONTAINS
 
   !! *Description*:
   !!
+  !! Minimization of the function func in N dimensions by the
+  !! downhill simplex method of Nelder and Mead. The (N + 1) × N
+  !! matrix p is input. Its N + 1 rows are N-dimensional vectors that
+  !! are the vertices of the starting simplex. Also input is the
+  !! vector y of length N + 1, whose components must be preinitialized
+  !! to the values of func evaluated at the N + 1 vertices (rows) of
+  !! p and ftol the fractional convergence tolerance to be achieved in
+  !! the function value (n.b.!). The input value of iter is the
+  !! maximum number of function evaluations, while on output the same
+  !! parameter gives the actual number of function evaluations
+  !! perfomed. Also on output, p and y will have been reset to N+1 new
+  !! points all within this%smplx_tol_prm of a minimum function value.
+  !!
+  !! Parameters: The maximum allowed number of function evaluations,
+  !! and a small number.
+  !!
+  SUBROUTINE simplexOrbits(this, orb_arr)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout) :: this
+    TYPE (Orbit), DIMENSION(:), INTENT(inout) :: orb_arr
+
+    REAL(bp), PARAMETER :: TINY = 1.0e-10_bp
+
+    CHARACTER(len=FRAME_LEN) :: frame
+    REAL(bp), DIMENSION(7,6) :: p, p_init
+    REAL(bp), DIMENSION(7) :: y
+    REAL(bp), DIMENSION(6) :: psum, p_best
+    REAL(bp) :: y_best, rchi2_denom
+    INTEGER(ibp) :: ihi, ilo, ndim ! Global variables (within this subroutine).  
+    INTEGER :: err, i
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / simplexOrbits", &
+            "Object has not been initialized.", 1)
+       RETURN
+    END IF
+
+    CALL NULLIFY(this%orb_ml_cmp)
+    IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+       DO i=1,SIZE(this%orb_arr_cmp)
+          CALL NULLIFY(this%orb_arr_cmp(i))
+       END DO
+       DEALLOCATE(this%orb_arr_cmp, stat=err)
+    END IF
+    IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+       DEALLOCATE(this%rchi2_arr_cmp, stat=err)
+    END IF
+
+    ! Denominator for reduced chi2:
+    rchi2_denom = 1.0_bp/REAL(COUNT(this%obs_masks_prm)-6,bp)
+
+    frame = getFrame(orb_arr(1))
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / simplexOrbits", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
+    CALL propagate(orb_arr, this%t_inv_prm)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / simplexOrbits", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+    DO i=1,7
+       p(i,1:6) = getElements(orb_arr(i), this%element_type_prm, &
+            frame=frame)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / simplexOrbits", &
+               "TRACE BACK (15)", 1)
+          RETURN
+       END IF
+       p_init(i,1:6) = p(i,1:6)
+       y(i) = getChi2(this, orb_arr(i))*rchi2_denom
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / simplexOrbits", &
+               "TRACE BACK (20)", 1)
+          RETURN
+       END IF
+    END DO
+    p_best = p(MINLOC(y,dim=1),:)
+    y_best = MINVAL(y)
+    CALL simplex_private
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / simplexOrbits", &
+            "TRACE BACK (25)", 1)
+       RETURN
+    END IF
+    IF (info_verb >= 2) THEN
+       DO i=1,7
+          IF (i == ilo) THEN
+             WRITE(stdout,"('ILO:',1X,6(F20.15,1X),1(F25.5,1X))") &
+                  p(i,:), y(i)
+          ELSE IF (i == ihi) THEN
+             WRITE(stdout,"('IHI:',1X,6(F20.15,1X),1(F25.5,1X))") &
+                  p(i,:), y(i)
+          ELSE
+             WRITE(stdout,"(5X,6(F20.15,1X),1(F25.5,1X))") &
+                  p(i,:), y(i)
+          END IF
+       END DO
+       WRITE(stdout,"(1X)")
+    END IF
+    IF (this%smplx_niter_cmp >= this%smplx_niter_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / simplexOrbits", &
+            "Maximum number of iterations exceeded.", 1)
+       RETURN
+    END IF
+    ALLOCATE(this%orb_arr_cmp(7), this%rchi2_arr_cmp(7), stat=err)
+    DO i=1,7
+       CALL NEW(this%orb_arr_cmp(i), p(i,:), this%element_type_prm, &
+            frame, this%t_inv_prm)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / simplexOrbits", &
+               "TRACE BACK (45)", 1)
+          RETURN
+       END IF
+       CALL setParameters(this%orb_arr_cmp(i), &
+            dyn_model=this%dyn_model_prm, &
+            perturbers=this%perturbers_prm, &
+            integrator=this%integrator_prm, &
+            integration_step=this%integration_step_prm)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / simplexOrbits", &
+               "TRACE BACK (45)", 1)
+          RETURN
+       END IF
+       this%rchi2_arr_cmp(i) = y(i)
+    END DO
+    this%orb_ml_cmp = copy(this%orb_arr_cmp(1))
+
+  CONTAINS 
+
+    SUBROUTINE simplex_private 
+
+      IMPLICIT NONE
+      TYPE (Orbit) :: orb
+      REAL(bp), DIMENSION(6) :: ptry_ref, ptry_exp, ptry_co
+      REAL(bp) :: rtol, ytry_ref, ytry_exp, ytry_co, ytmp
+      INTEGER(ibp) :: i, j, inhi
+      LOGICAL :: contraction_successful
+
+      ndim = SIZE(p,dim=2)
+      this%smplx_niter_cmp = 0 
+      psum(:) = SUM(p(:,:),dim=1) 
+      DO !Iteration loop.  
+         ! Determine which point is the highest (worst),
+         ! next-highest, and lowest (best)
+         ilo = iminloc(y(:))
+         ihi = imaxloc(y(:))
+         ytmp = y(ihi) 
+         y(ihi) = y(ilo)
+         inhi = imaxloc(y(:))
+         y(ihi) = ytmp
+         IF (y_best > y(ilo)) THEN
+            p_best = p(ilo,:)
+            y_best = y(ilo)
+         END IF
+         ! Compute the fractional range from highest to lowest and
+         ! reinitialize if very similar values
+         IF (2.0_bp*ABS(y(ihi)-y(ilo))/(ABS(y(ihi))+ABS(y(ilo))+TINY) &
+              < 0.000001_bp) THEN
+            j = 0
+            DO i=1,ndim+1
+               IF (i == ilo) THEN
+                  CYCLE
+               END IF
+               j = j + 1
+               CALL NULLIFY(orb_arr(i))
+               p(i,:) = p(ilo,:)
+               p(i,j) = p(i,j)*1.1_bp
+               CALL NEW(orb_arr(i), p(i,:), this%element_type_prm, &
+                    frame, this%t_inv_prm)
+               CALL setParameters(orb_arr(i), &
+                    dyn_model=this%dyn_model_prm, &
+                    perturbers=this%perturbers_prm, &
+                    integrator=this%integrator_prm, &
+                    integration_step=this%integration_step_prm)
+               y(i) = getChi2(this, orb_arr(i))*rchi2_denom
+            END DO
+            IF (error) THEN
+               CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                    "TRACE BACK (20)", 1)
+               RETURN
+            END IF
+            ilo = iminloc(y(:))
+            ihi = imaxloc(y(:))
+            ytmp = y(ihi) 
+            y(ihi) = y(ilo)
+            inhi = imaxloc(y(:))
+            y(ihi) = ytmp
+            IF (info_verb >= 2) THEN
+               WRITE(stdout,"(5X,A)") "Reinitialization performed."
+            END IF
+         END IF
+         IF (info_verb >= 3) THEN
+            DO i=1,7
+               IF (i == ilo) THEN
+                  WRITE(stdout,"('ILO:',1X,6(F20.15,1X),1(F15.3,1X))") &
+                       p(i,:), y(i)
+               ELSE IF (i == ihi) THEN
+                  WRITE(stdout,"('IHI:',1X,6(F20.15,1X),1(F15.3,1X))") &
+                       p(i,:), y(i)
+               ELSE
+                  WRITE(stdout,"(5X,6(F20.15,1X),1(F15.3,1X))") &
+                       p(i,:), y(i)
+               END IF
+            END DO
+            WRITE(stdout,"(1X)")
+         END IF
+         rtol = y(ihi)
+         ! return if satisfactory.  
+         IF (rtol < this%smplx_tol_prm) THEN 
+            ! If returning, put best point and value in slot 1. 
+            CALL swap(y(1),y(ilo))
+            CALL swap(p(1,:),p(ilo,:)) 
+            ilo = 1
+            RETURN 
+         END IF
+         IF (this%smplx_niter_cmp >= this%smplx_niter_prm) THEN
+            RETURN
+         END IF
+         ! Begin a new iteration. First extrapolate by a factor -1
+         ! through the face of the simplex across from the high
+         ! point, i.e., reflect the simplex from the high point.
+         CALL simtry(this, 1.0_bp, ptry_ref, ytry_ref) ! Reflect
+         IF (error) THEN
+            CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                 "TRACE BACK (30)", 1)
+            RETURN
+         END IF
+         this%smplx_niter_cmp = this%smplx_niter_cmp + 1 
+         IF (ytry_ref >= y(ilo) .AND. ytry_ref < y(inhi)) THEN
+            ! If it's better than the highest, then replace
+            ! the highest.
+            y(ihi) = ytry_ref
+            psum(:) = psum(:) - p(ihi,:) + ptry_ref(:)
+            p(ihi,:) = ptry_ref(:)
+         ELSE IF (ytry_ref < y(ilo)) THEN
+            ! Gives a result better than the best point, so try an
+            ! additional extrapolation by a factor of 2.  
+            CALL simtry(this, 2.0_bp, ptry_exp, ytry_exp) ! Expand
+            IF (error) THEN
+               CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                    "TRACE BACK (35)", 1)
+               RETURN
+            END IF
+            this%smplx_niter_cmp = this%smplx_niter_cmp + 1
+            IF (ytry_exp < ytry_ref) THEN
+               y(ihi) = ytry_exp
+               psum(:) = psum(:) - p(ihi,:) + ptry_exp(:)
+               p(ihi,:) = ptry_exp(:)
+            ELSE
+               y(ihi) = ytry_ref
+               psum(:) = psum(:) - p(ihi,:) + ptry_ref(:)
+               p(ihi,:) = ptry_ref(:)
+            END IF
+         ELSE IF (ytry_ref >= y(inhi)) THEN 
+            ! The reflected point is worse than the second highest,
+            ! so look for an intermediate lower point, i.e., do a
+            ! one-dimensional contraction.
+            contraction_successful = .FALSE.
+            IF (ytry_ref >= y(inhi) .AND. ytry_ref < y(ihi)) THEN
+               CALL simtry(this, 0.5_bp, ptry_co, ytry_co) ! Outside contraction
+               IF (error) THEN
+                  CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                       "TRACE BACK (40)", 1)
+                  RETURN
+               END IF
+               IF (ytry_co < ytry_ref) THEN
+                  y(ihi) = ytry_co
+                  psum(:) = psum(:) - p(ihi,:) + ptry_co(:)
+                  p(ihi,:) = ptry_co(:)
+                  contraction_successful = .TRUE. 
+               END IF
+            ELSE ! ytry_ref >= y(ihi) 
+               CALL simtry(this, -0.5_bp, ptry_co, ytry_co) ! Inside contraction
+               IF (error) THEN
+                  CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                       "TRACE BACK (40)", 1)
+                  RETURN
+               END IF
+               IF (ytry_co < y(ihi)) THEN
+                  y(ihi) = ytry_co
+                  psum(:) = psum(:) - p(ihi,:) + ptry_co(:)
+                  p(ihi,:) = ptry_co(:)
+                  contraction_successful = .TRUE. 
+               END IF
+            END IF
+            this%smplx_niter_cmp = this%smplx_niter_cmp + 1
+            IF (.NOT.contraction_successful) THEN
+               ! Can't seem to get rid of that high point. Better
+               ! contract around the lowest (best) point.
+               p(:,:) = 0.5_bp*(p(:,:) + SPREAD(p(ilo,:),1,SIZE(p,dim=1)))
+               DO i=1,ndim+1
+                  IF (i /= ilo) THEN
+                     IF (this%element_type_prm == "keplerian") THEN
+                        IF (p(i,1) < this%apriori_a_min_prm .OR. &
+                             p(i,1) > this%apriori_a_max_prm .OR. &
+                             p(i,2) < 0.0_bp .OR. &
+                             p(i,2) > 1.0_bp .OR. &
+                             p(i,3) < 0.0_bp .OR. &
+                             p(i,3) > pi) THEN
+                           p(i,:) = p_init(i,:)
+                        END IF
+                        p(i,4:6) = MODULO(p(i,4:6), two_pi)
+                     ELSE IF (this%element_type_prm == "cartesian") THEN
+!!!$                        IF (SQRT(SUM(p(i,1:3)**2)) > this%apriori_hcentric_dist_max_prm .or. &
+!!!$                             SQRT(SUM(p(i,4:6)**2)) > this%apriori_velocity_max_prm) THEN
+!!!$                           p(i,:) = p_init(i,:)
+!!!$                        END IF
+                     END IF
+                     CALL NEW(orb, p(i,:), this%element_type_prm, &
+                          frame, this%t_inv_prm)
+                     IF (error) THEN
+                        CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                             "TRACE BACK (45)", 1)
+                        RETURN
+                     END IF
+                     CALL setParameters(orb, &
+                          dyn_model=this%dyn_model_prm, &
+                          perturbers=this%perturbers_prm, &
+                          integrator=this%integrator_prm, &
+                          integration_step=this%integration_step_prm)
+                     IF (error) THEN
+                        CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                             "TRACE BACK (45)", 1)
+                        RETURN
+                     END IF
+                     y(i) = getChi2(this, orb)*rchi2_denom
+                     IF (error) THEN
+                        CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
+                             "TRACE BACK (50)", 1)
+                        RETURN
+                     END IF
+                     CALL NULLIFY(orb)
+                  END IF
+               END DO
+               this%smplx_niter_cmp = this%smplx_niter_cmp + ndim ! Keep track of function evaluations.
+               psum(:) = SUM(p(:,:),dim=1)
+            END IF
+         END IF
+      END DO ! Go back for the test of doneness and the next iteration.
+
+    END SUBROUTINE simplex_private
+
+
+    !! *Description*:
+    !!
+    !! Extrapolates by a factor fac through the face of the
+    !! simplex across from the high point, tries it, and replaces
+    !! the high point if the new point is better.
+    !!
+    SUBROUTINE simtry(this, fac, ptry, ytry)
+
+      IMPLICIT NONE
+      TYPE (StochasticOrbit), INTENT(in) :: this
+      REAL(bp), INTENT(IN) :: fac
+      REAL(bp), DIMENSION(ndim), INTENT(out) :: ptry 
+      REAL(bp), INTENT(out) :: ytry
+
+      TYPE (Orbit) :: orb
+      REAL(bp) :: ran
+
+      ptry(:) = (1.0_bp+fac)*(psum(:)-p(ihi,:))/ndim - fac*p(ihi,:)
+      ! Evaluate the function at the trial point.
+      IF (this%element_type_prm == "keplerian") THEN
+         IF (ptry(1) < this%apriori_a_min_prm .OR. &
+              ptry(1) > this%apriori_a_max_prm .OR. &
+              ptry(2) < 0.0_bp .OR. &
+              ptry(2) > 1.0_bp .OR. &
+              ptry(3) < 0.0_bp .OR. &
+              ptry(3) > pi) THEN
+            CALL randomNumber(ran)
+            ptry = p_init(1+NINT(6*ran),:)
+         END IF
+         ptry(4:6) = MODULO(ptry(4:6), two_pi)
+      ELSE IF (this%element_type_prm == "cartesian") THEN
+!!$         IF (SQRT(SUM(ptry(1:3)**2)) > this%apriori_hcentric_dist_max_prm .or. &
+!!$              SQRT(SUM(ptry(4:6)**2)) > this%apriori_velocity_max_prm) THEN
+!!$            CALL randomNumber(ran)
+!!$            ptry = p_init(1+NINT(6*(ran)),:)            
+!!$         END IF
+      END IF
+      CALL NEW(orb, ptry, this%element_type_prm, &
+           frame, this%t_inv_prm)
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / simplexOrbits / simtry", &
+              "TRACE BACK (55)", 1)
+         RETURN
+      END IF
+      CALL setParameters(orb, &
+           dyn_model=this%dyn_model_prm, &
+           perturbers=this%perturbers_prm, &
+           integrator=this%integrator_prm, &
+           integration_step=this%integration_step_prm)
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / simplexOrbits / simtry", &
+              "TRACE BACK (45)", 1)
+         RETURN
+      END IF
+      ytry = getChi2(this, orb)*rchi2_denom
+      IF (error) THEN
+         CALL errorMessage("StochasticOrbit / simplexOrbits / simtry", &
+              "TRACE BACK (60)", 1)
+         RETURN
+      END IF
+      CALL NULLIFY(orb)
+
+    END SUBROUTINE simtry
+
+  END SUBROUTINE simplexOrbits
+
+
+
+
+
+  !! *Description*:
+  !!
   !! Statistical orbital ranging using two astrometric observations.
   !! Make use of the multiple orbit propagation scheme. CONTINUE TESTING!
   !! 
@@ -8166,7 +9428,7 @@ CONTAINS
     END IF
 
     ! Relative bound for probability density:
-    pdf_relative_bound = EXP(-0.5_bp*chi2c)
+    pdf_relative_bound = EXP(-0.5_bp*this%dchi2_prm)
 
     ! Observation number counter (observation mask must be up-to-date!), 
     ! construct cosine array:
@@ -9433,16 +10695,13 @@ CONTAINS
              ! orbital elements ("Cartesian Wrt Keplerian"):
              CALL partialsCartesianWrtKeplerian(orb_arr(i), &
                   jacobian_matrix, "equatorial")
-             jac_car_kep = ABS(determinant(jacobian_matrix, errstr)) 
-             IF (LEN_TRIM(errstr) /= 0) THEN
+             IF (error .AND. TRIM(this%element_type_prm) /= "keplerian") THEN
+                error = .FALSE.
+                jac_car_kep = -1.0_bp
+             ELSE IF (error) THEN
                 CALL errorMessage("StochasticOrbit / statisticalRanging", &
-                     "Unsuccessful computation of " // &
-                     "jacobian matrix " // TRIM(errstr), 1)
-                errstr = ""
-                IF (err_verb >= 1) THEN
-                   CALL matrix_print(jacobian_matrix, stderr, errstr)
-                END IF
-                errstr = ""
+                     "Unsuccessful computation of jacobian matrix " // &
+                     "between Cartesian and Keplerian elements.", 1)
                 DO j=1,SIZE(orb_arr_)
                    CALL NULLIFY(orb_arr_(j))
                 END DO
@@ -9474,6 +10733,50 @@ CONTAINS
                 DEALLOCATE(scoords, stat=err)
                 DEALLOCATE(partials_arr, stat=err)
                 RETURN
+             ELSE
+                jac_car_kep = ABS(determinant(jacobian_matrix, errstr)) 
+                IF (LEN_TRIM(errstr) /= 0) THEN
+                   CALL errorMessage("StochasticOrbit / statisticalRanging", &
+                        "Unsuccessful computation of determinant of" // &
+                        " jacobian matrix between Cartesian and Keplerian" // &
+                        " elements:" // TRIM(errstr), 1)
+                   errstr = ""
+                   IF (err_verb >= 1) THEN
+                      CALL matrix_print(jacobian_matrix, stderr, errstr)
+                   END IF
+                   errstr = ""
+                   DO j=1,SIZE(orb_arr_)
+                      CALL NULLIFY(orb_arr_(j))
+                   END DO
+                   DO j=1,SIZE(orb_arr)
+                      CALL NULLIFY(orb_arr(j))
+                   END DO
+                   DEALLOCATE(orb_arr_, stat=err)
+                   DEALLOCATE(rho_distribution, stat=err)
+                   DEALLOCATE(residuals, stat=err)
+                   DEALLOCATE(pdf_arr, stat=err)
+                   DEALLOCATE(reg_apriori_arr, stat=err)
+                   DEALLOCATE(jacobians, stat=err)
+                   DEALLOCATE(rchi2_arr, stat=err)
+                   DEALLOCATE(rms, stat=err)
+                   DEALLOCATE(pair_histogram, stat=err)
+                   DEALLOCATE(cosdec0_arr, stat=err)
+                   DEALLOCATE(residual_vector, stat=err)
+                   DEALLOCATE(maskarr, stat=err)
+                   DEALLOCATE(obs_scoords, stat=err)
+                   DEALLOCATE(information_matrix_obs, stat=err)
+                   DEALLOCATE(cov_matrices, stat=err)
+                   DEALLOCATE(obsies_ccoords, stat=err)
+                   DEALLOCATE(orb_arr, stat=err)
+                   DEALLOCATE(obs_pair_arr, stat=err)
+                   DEALLOCATE(rho1, stat=err)
+                   DEALLOCATE(rho2,stat=err)
+                   DEALLOCATE(sphdev, stat=err)
+                   DEALLOCATE(mjd_lt, stat=err)
+                   DEALLOCATE(scoords, stat=err)
+                   DEALLOCATE(partials_arr, stat=err)
+                   RETURN
+                END IF
              END IF
 
              ! Determinant of Jacobian between equinoctial and
@@ -10057,7 +11360,8 @@ CONTAINS
             apriori_rho_min=this%apriori_rho_min_prm, &
             sor_norb=this%sor_norb_sw_prm, &
                                 ! Number of trial orbits increases with number of observations:
-            sor_ntrial=this%sor_ntrial_sw_prm*i, &
+                                !sor_ntrial=this%sor_ntrial_sw_prm*i, &
+            sor_ntrial=this%sor_ntrial_sw_prm, &
             sor_rho1_l=rho(1), &
             sor_rho1_u=rho(2), &
             sor_rho2_l=rho(3), &
