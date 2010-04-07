@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-01-22
+!! @version 2010-04-06
 !!
 PROGRAM oorb
 
@@ -56,6 +56,7 @@ PROGRAM oorb
        orb_arr_in
   TYPE (Orbit), DIMENSION(:), POINTER :: &
        orb_arr, &
+       orb_arr_, &       
        orb_arr_cmp, &
        orb_lt_corr_arr
   TYPE (Orbit) :: &
@@ -98,6 +99,8 @@ PROGRAM oorb
   CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: &
        group_name_arr, &
        id_arr_in
+  CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), ALLOCATABLE :: &
+       id_arr                        
   CHARACTER(len=32), DIMENSION(:), ALLOCATABLE :: &
        str_arr
   CHARACTER(len=32), DIMENSION(6) :: &
@@ -126,6 +129,8 @@ PROGRAM oorb
   CHARACTER(len=INTEGRATOR_LEN) :: &
        integrator, &                                                !! Integrator.
        integrator_init                                              !! Integrator used to propagate init orbit to epoch in LSL.
+  CHARACTER(len=FRAME_LEN) :: &
+       frame
   CHARACTER(len=256) :: &
        frmt, &
        str, &
@@ -201,7 +206,7 @@ PROGRAM oorb
        apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, &
-       cos_obj_phase, &
+       cos_nsigma, cos_obj_phase, &
        day0, day1, dDelta, ddec, dec, dra, dt, dt_fulfill_night, &
        ephemeris_r2, &
        hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
@@ -214,7 +219,7 @@ PROGRAM oorb
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
        pdf_ml_init, periapsis_distance, pp_G, pp_G_unc, &
        ra, &
-       sec, solar_elongation, solar_elon_min, solar_elon_max, &
+       sec, smplx_tol, solar_elongation, solar_elon_min, solar_elon_max, &
        solar_alt, solar_alt_max, sor_genwin_multiplier, stdev, &
        step, sun_moon_r2, &
        timespan, tlat, tlon, toclat, toclon
@@ -222,6 +227,7 @@ PROGRAM oorb
        indx_arr, &
        int_arr
   INTEGER :: &
+       cos_norb, cos_ntrial, &
        err, &
        err_verb_, &
        i, &
@@ -243,11 +249,8 @@ PROGRAM oorb
        norb, &
        noutlier, &
        nstep, &
-       sor_niter, &
-       sor_norb, &
-       sor_norb_sw, &
-       sor_ntrial, &
-       sor_ntrial_sw, &
+       smplx_niter, &
+       sor_niter, sor_norb, sor_norb_sw, sor_ntrial, sor_ntrial_sw, &
        sor_type_prm, &
        year, year0, year1
   LOGICAL, DIMENSION(:,:), POINTER :: &
@@ -260,6 +263,7 @@ PROGRAM oorb
        sor_iterate_bounds
   LOGICAL :: &
        compress, &
+       cos_gaussian, &
        first, &
        gaussian_rho, &
        mjd_epoch, &
@@ -297,7 +301,7 @@ PROGRAM oorb
   pp_H_estimation = .FALSE.
   pp_G = 99.9_bp
   pp_G_unc = 99.9_bp
-  mjd_epoch = .FALSE.
+  mjd_epoch = .TRUE.
 
   IF (get_cl_option("--version",.FALSE.)) THEN
      WRITE(stdout,"(A)") ""
@@ -520,32 +524,51 @@ PROGRAM oorb
               nobj = nobj + 1
            END IF
         END DO
+        DEALLOCATE(indx_arr)
 
         ! Initialize stochasticorbits if uncertainty information available:
-        IF (nobj == 1 .AND. norb > 1 .AND. &
+        IF (norb > nobj .AND. &
              ALL(pdf_arr_in > 0.0_bp) .AND. &
              ALL(jac_arr_in > 0.0_bp)) THEN
-           ALLOCATE(storb_arr_in(1))
-           CALL NEW(storb_arr_in(1), orb_arr_in, pdf_arr_in, &
-                element_type_pdf_arr_in(1), jac_arr=jac_arr_in, &
-                reg_apr_arr=reg_apr_arr_in, &
-                rchi2_arr=rchi2_arr_in)
-           id = id_arr_in(1)
+           ALLOCATE(storb_arr_in(nobj))
+           i = 0
+           j = 1
+           DO k=2,SIZE(id_arr_in)
+              IF (id_arr_in(k-1) /= id_arr_in(k)) THEN
+                 i = i + 1
+                 CALL NEW(storb_arr_in(i), orb_arr_in(j:k-1), pdf_arr_in(j:k-1), &
+                      element_type_pdf_arr_in(1), jac_arr=jac_arr_in(j:k-1,:), &
+                      reg_apr_arr=reg_apr_arr_in(j:k-1), &
+                      rchi2_arr=rchi2_arr_in(j:k-1))
+                 j = k
+              END IF
+           END DO
+           i = i + 1
+           CALL NEW(storb_arr_in(i), orb_arr_in(j:), pdf_arr_in(j:), &
+                element_type_pdf_arr_in(1), jac_arr=jac_arr_in(j:,:), &
+                reg_apr_arr=reg_apr_arr_in(j:), &
+                rchi2_arr=rchi2_arr_in(j:))
+           ALLOCATE(id_arr(nobj))
+           id_arr = ""
+           id_arr(1) = id_arr_in(1)
+           j = 1
+           DO i=2,SIZE(id_arr_in)
+              IF (ALL(id_arr(1:j) /= id_arr_in(i))) THEN
+                 j = j + 1
+                 id_arr(j) = id_arr_in(i)
+              END IF
+           END DO
            DEALLOCATE(id_arr_in)
-           ALLOCATE(id_arr_in(1))
-           id_arr_in(1) = id
+           ALLOCATE(id_arr_in(nobj))
+           id_arr_in = id_arr
+           DEALLOCATE(id_arr)
         ELSE IF (nobj == norb .AND. &
-             ALL(cov_arr_in(:,1,1) >= 0.0_bp)) THEN
+             ALL(cov_arr_in(:,1,1) > 0.0_bp)) THEN
            ALLOCATE(storb_arr_in(norb))
            DO i=1,norb
               CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
                    cov_type=element_type_in, element_type=element_type_in)            
-              !WRITE(*,*) "cond nr", cond_nr(cov_arr_in(i,:,:), error)
            END DO
-        ELSE IF (nobj > 1 .AND. nobj /= norb) THEN
-           CALL errorMessage("oorb", &
-                "Input of more than one sampled orbital-element pdf not supported.", 1)
-           STOP
         END IF
 
      CASE ("des")
@@ -595,12 +618,15 @@ PROGRAM oorb
      ! Convert to the desired element type if needed:
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)
-           IF (element_type_in == "cartesian" .AND. &
-                element_type_comp_prm == "keplerian") THEN
-              CALL toKeplerian(storb_arr_in(i))
-           ELSE IF (element_type_in == "keplerian" .AND. &
+           IF (element_type_in /= "cartesian" .AND. &
                 element_type_comp_prm == "cartesian") THEN
               CALL toCartesian(storb_arr_in(i), "ecliptic")
+           ELSE IF (element_type_in /= "cometary" .AND. &
+                element_type_comp_prm == "cometary") THEN
+              CALL toCometary(storb_arr_in(i))
+           ELSE IF (element_type_in /= "keplerian" .AND. &
+                element_type_comp_prm == "keplerian") THEN
+              CALL toKeplerian(storb_arr_in(i))
            ELSE IF (element_type_comp_prm /= "cartesian" .AND. &
                 element_type_comp_prm /= "keplerian") THEN
               CALL errorMessage("oorb", &
@@ -676,9 +702,32 @@ PROGRAM oorb
 
   CASE ("toorbpdf")
 
+     tmp_fname = get_cl_option("--id-in=","")
+     IF (LEN_TRIM(tmp_fname) /= 0) THEN
+        ! Read and sort ids
+        CALL NEW(tmp_file, TRIM(tmp_fname))
+        CALL setStatusOld(tmp_file)
+        CALL OPEN(tmp_file)
+        IF (error) THEN
+           STOP
+        END IF
+        j = getNrOfLines(tmp_file)
+        ALLOCATE(id_arr(i))
+        DO i=1,j
+           READ(getUnit(tmp_file),*) id_arr(i)
+        END DO
+        CALL quickSort(id_arr,errstr)
+     END IF
+
      ! Convert orbits + uncertainties
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)
+           IF (get_cl_option("--id-in=",.FALSE.)) THEN
+              j = binarySearch(id_arr_in(i),id_arr,errstr)
+              IF (j < 0 .OR. LEN_TRIM(errstr) /= 0) THEN
+                 CYCLE
+              END IF
+           END IF
            IF (containsSampledPDF(storb_arr_in(i))) THEN
               orb_arr_in => getSampleOrbits(storb_arr_in(i))
               pdf_arr_in => getPDFValues(storb_arr_in(i), element_type_out_prm)
@@ -704,6 +753,9 @@ PROGRAM oorb
            END IF
         END DO
      END IF
+     IF (ALLOCATED(id_arr)) THEN
+        DEALLOCATE(id_arr, stat=err)
+     END IF
 
   CASE ("toorb")
 
@@ -711,37 +763,74 @@ PROGRAM oorb
      norb = get_cl_option("--norb=",norb)
      H_max = get_cl_option("--H-max=",HUGE(H_max))
 
+     tmp_fname = get_cl_option("--id-in=","")
+     IF (LEN_TRIM(tmp_fname) /= 0) THEN
+        ! Read and sort ids
+        CALL NEW(tmp_file, TRIM(tmp_fname))
+        CALL setStatusOld(tmp_file)
+        CALL OPEN(tmp_file)
+        IF (error) THEN
+           STOP
+        END IF
+        j = getNrOfLines(tmp_file)
+        ALLOCATE(id_arr(i))
+        DO i=1,j
+           READ(getUnit(tmp_file),*) id_arr(i)
+        END DO
+        CALL quickSort(id_arr,errstr)
+     END IF
+
      ! Convert orbits
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)        
-           orb_arr_in => getSampleOrbits(storb_arr_in(i))
-           k = 0
-           DO j=1,SIZE(orb_arr_in)
-              IF (get_cl_option("--only-prograde",.FALSE.)) THEN
-                 elements = getElements(orb_arr_in(j), "keplerian")
-                 IF (elements(3) > pi/2) THEN
-                    ! retrograde orbit -> skip it
-                    CYCLE
+           IF (get_cl_option("--id-in=",.FALSE.)) THEN
+              j = binarySearch(id_arr_in(i),id_arr,errstr)
+              IF (j < 0 .OR. LEN_TRIM(errstr) /= 0) THEN
+                 CYCLE
+              END IF
+           END IF
+           IF (containsSampledPDF(storb_arr_in(i))) THEN
+              orb_arr_in => getSampleOrbits(storb_arr_in(i))
+              k = 0
+              DO j=1,SIZE(orb_arr_in)
+                 IF (get_cl_option("--only-prograde",.FALSE.)) THEN
+                    elements = getElements(orb_arr_in(j), "keplerian")
+                    IF (elements(3) > pi/2) THEN
+                       ! retrograde orbit -> skip it
+                       CYCLE
+                    END IF
                  END IF
-              END IF
-              IF (get_cl_option("--H-max=",.FALSE.)) THEN
-                 IF (HG_arr_in(i,1) > H_max) THEN
-                    ! too large H magnitude -> skip it
-                    CYCLE
+                 IF (get_cl_option("--H-max=",.FALSE.)) THEN
+                    IF (HG_arr_in(i,1) > H_max) THEN
+                       ! too large H magnitude -> skip it
+                       CYCLE
+                    END IF
                  END IF
-              END IF
-              k = k + 1
-              CALL writeOpenOrbOrbitFile(lu_orb_out, i==1 &
-                   .AND. (j==1 .OR. k==1), element_type_out_prm, id_arr_in(i), &
-                   orb_arr_in(j), H=HG_arr_in(i,1), G=HG_arr_in(i,3), mjd=mjd_epoch)
-              IF (k ==  norb) THEN
-                 EXIT
-              END IF
-           END DO
+                 k = k + 1
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, i==1 &
+                      .AND. (j==1 .OR. k==1), element_type_out_prm, id_arr_in(i), &
+                      orb_arr_in(j), H=HG_arr_in(i,1), G=HG_arr_in(i,3), mjd=mjd_epoch)
+                 IF (k ==  norb) THEN
+                    EXIT
+                 END IF
+              END DO
+           ELSE
+              orb = getNominalOrbit(storb_arr_in(i))
+              CALL writeOpenOrbOrbitFile(lu_orb_out, i==1, &
+                   element_type_out_prm, id_arr_in(i), &
+                   orb=orb, H=HG_arr_in(i,1), &
+                   G=HG_arr_in(i,3), mjd=mjd_epoch)              
+           END IF
         END DO
      ELSE IF (ASSOCIATED(orb_arr_in)) THEN
         j = 0
         DO i=1,SIZE(orb_arr_in)
+           IF (get_cl_option("--id-in=",.FALSE.)) THEN
+              k = binarySearch(id_arr_in(i),id_arr,errstr)
+              IF (k < 0 .OR. LEN_TRIM(errstr) /= 0) THEN
+                 CYCLE
+              END IF
+           END IF
            IF (get_cl_option("--only-prograde",.FALSE.)) THEN
               elements = getElements(orb_arr_in(i), "keplerian")
               IF (elements(3) > pi/2) THEN
@@ -764,6 +853,9 @@ PROGRAM oorb
            END IF
         END DO
      END IF
+     IF (ALLOCATED(id_arr)) THEN
+        DEALLOCATE(id_arr, stat=err)
+     END IF
 
   CASE ("orbitstodes")
 
@@ -771,8 +863,31 @@ PROGRAM oorb
      i_min = get_cl_option("--i-min=",0.0_bp)
      i_max = get_cl_option("--i-max=",HUGE(i_max))
 
+     tmp_fname = get_cl_option("--id-in=","")
+     IF (LEN_TRIM(tmp_fname) /= 0) THEN
+        ! Read and sort ids
+        CALL NEW(tmp_file, TRIM(tmp_fname))
+        CALL setStatusOld(tmp_file)
+        CALL OPEN(tmp_file)
+        IF (error) THEN
+           STOP
+        END IF
+        j = getNrOfLines(tmp_file)
+        ALLOCATE(id_arr(i))
+        DO i=1,j
+           READ(getUnit(tmp_file),*) id_arr(i)
+        END DO
+        CALL quickSort(id_arr,errstr)
+     END IF
+
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)
+           IF (get_cl_option("--id-in=",.FALSE.)) THEN
+              j = binarySearch(id_arr_in(i),id_arr,errstr)
+              IF (j < 0 .OR. LEN_TRIM(errstr) /= 0) THEN
+                 CYCLE
+              END IF
+           END IF
            IF (containsSampledPDF(storb_arr_in(i))) THEN
               orb_arr_in => getSampleOrbits(storb_arr_in(i))
               DO j=1,SIZE(orb_arr_in)
@@ -840,6 +955,12 @@ PROGRAM oorb
      END IF
      IF (ASSOCIATED(orb_arr_in)) THEN
         DO i=1,SIZE(orb_arr_in)
+           IF (get_cl_option("--id-in=",.FALSE.)) THEN
+              j = binarySearch(id_arr_in(i),id_arr,errstr)
+              IF (j < 0 .OR. LEN_TRIM(errstr) /= 0) THEN
+                 CYCLE
+              END IF
+           END IF
            IF (get_cl_option("--H-max=",.FALSE.)) THEN
               IF (HG_arr_in(i,1) > H_max) THEN
                  ! too large H magnitude -> skip it
@@ -862,6 +983,9 @@ PROGRAM oorb
               STOP
            END IF
         END DO
+     END IF
+     IF (ALLOCATED(id_arr)) THEN
+        DEALLOCATE(id_arr, stat=err)
      END IF
 
   CASE ("observationstodes")
@@ -933,7 +1057,7 @@ PROGRAM oorb
         CALL NULLIFY(obs_file)
      END IF
 
-  CASE ("astorbtoorb")
+  CASE ("astorb")
 
      ! Convert Ted's astorb file to the .orb format:
 
@@ -982,13 +1106,14 @@ PROGRAM oorb
         END IF
 !!$        ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 !!$        ! Discard some orbits depending on the following requirement:
-!!$        IF (int_arr(7) < 90 .OR. & ! orbital arc in days
-!!$                                !             elements(1)*(1.0_bp-elements(2)) < 1.666_bp .OR. &
-!!$                                !             elements(1) <= 2.0_bp .or. elements(1) >= 3.5_bp) then ! .or. &
+!!$        IF (int_arr(7) < 30 .OR. & ! orbital arc in days
+!!$                                !elements(1)*(1.0_bp-elements(2)) < 1.666_bp .OR. &
+!!$                                !elements(1) <= 2.0_bp .or. elements(1) >= 3.5_bp) then ! .or. &
 !!$             elements(1)*(1.0_bp-elements(2)) < 1.3_bp .OR. &
 !!$             elements(1) > 4.5_bp .OR. &
-!!$             elements(3) > 60.0_bp .OR. &
-!!$             H_value > 15.5_bp) THEN
+!!$                                !elements(3) > 60.0_bp .OR. &
+!!$                                !H_value > 15.5_bp
+!!$             int_arr(9) >= 2008) THEN
 !!$           CYCLE
 !!$        END IF
 !!$        ! End requirement
@@ -1050,7 +1175,7 @@ PROGRAM oorb
      END DO
      CALL NULLIFY(orb_in_file)
 
-  CASE ("mpcorbtoorb")
+  CASE ("mpcorb")
 
      ! Convert MPC's MPCORB.DAT file to the .orb format:
 
@@ -1084,7 +1209,14 @@ PROGRAM oorb
         elements = getElements(orb_arr_in(i), "keplerian")
 !!$        ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 !!$        ! Discard some orbits depending on the following requirement:
-!!$        IF (arc_arr(i) > 30.0_bp .OR. elements(1) < 30.0_bp) THEN
+!!$        IF (elements(1) < 2.1_bp .or. elements(1) > 3.3_bp .or. & 
+!!$             elements(2) > 0.35_bp .or. elements(3) > 26.0_bp*rad_deg) THEN ! not-MBO
+!!$        IF (.not.(elements(1)*(1.0_bp-elements(2)) <= 1.3_bp .and. &
+!!$             elements(1)*(1.0_bp-elements(2)) > 1.017_bp)) THEN ! not-Amor
+!!$        IF (.not.(elements(1)*(1.0_bp-elements(2)) <= 1.017_bp .and. &
+!!$             elements(1) > 1.0_bp)) THEN ! not-Apollo
+!!$        IF (.not.(elements(1)*(1.0_bp+elements(2)) > 0.983_bp .and. &
+!!$             elements(1) <= 1.0_bp)) THEN ! not-Aten
 !!$           CYCLE
 !!$        END IF
 !!$        ! End requirement
@@ -1344,7 +1476,7 @@ PROGRAM oorb
            CALL NULLIFY(storb)
         ELSE
            IF (info_verb >= 2) THEN
-              WRITE(stdout,"(3(1X,A))") "Ranging inversion for object", &
+              WRITE(stdout,"(3(1X,A))") "Ranging for object", &
                    TRIM(id), "is ready."
            END IF
 
@@ -1438,21 +1570,37 @@ PROGRAM oorb
            END IF
            DO j=1,SIZE(orb_arr_cmp,dim=1)
               IF (orbit_format_out == "orb") THEN
-                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
-                      print_header=j==1, &
-                      element_type_out=element_type_out_prm, &
-                      id=id, &
-                      orb=orb_arr_cmp(j), &
-                      element_type_pdf=element_type_comp_prm, &
-                      pdf=pdf_arr_cmp(j), &
-                      rchi2=rchi2_arr_cmp(j), &
-                      reg_apr=reg_apr_arr_cmp(j), &
-                      jac_sph_inv=jac_arr_cmp(j,1), &
-                      jac_car_kep=jac_arr_cmp(j,2), &
-                      jac_equ_kep=jac_arr_cmp(j,3), &
-                      H=HG_arr_in(j,1), &
-                      G=HG_arr_in(j,3), &
-                      mjd=mjd_epoch)
+                 IF (ASSOCIATED(HG_arr_in)) THEN
+                    CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                         print_header=j==1, &
+                         element_type_out=element_type_out_prm, &
+                         id=id, &
+                         orb=orb_arr_cmp(j), &
+                         element_type_pdf=element_type_comp_prm, &
+                         pdf=pdf_arr_cmp(j), &
+                         rchi2=rchi2_arr_cmp(j), &
+                         reg_apr=reg_apr_arr_cmp(j), &
+                         jac_sph_inv=jac_arr_cmp(j,1), &
+                         jac_car_kep=jac_arr_cmp(j,2), &
+                         jac_equ_kep=jac_arr_cmp(j,3), &
+                         H=HG_arr_in(j,1), &
+                         G=HG_arr_in(j,3), &
+                         mjd=mjd_epoch)
+                 ELSE
+                    CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                         print_header=j==1, &
+                         element_type_out=element_type_out_prm, &
+                         id=id, &
+                         orb=orb_arr_cmp(j), &
+                         element_type_pdf=element_type_comp_prm, &
+                         pdf=pdf_arr_cmp(j), &
+                         rchi2=rchi2_arr_cmp(j), &
+                         reg_apr=reg_apr_arr_cmp(j), &
+                         jac_sph_inv=jac_arr_cmp(j,1), &
+                         jac_car_kep=jac_arr_cmp(j,2), &
+                         jac_equ_kep=jac_arr_cmp(j,3), &
+                         mjd=mjd_epoch)
+                 END IF
               ELSE IF (orbit_format_out == "des") THEN
                  CALL errorMessage("oorb / ranging ", &
                       "DES format not yet supported for Ranging output.", 1)
@@ -1651,11 +1799,453 @@ PROGRAM oorb
      END IF
 
 
+  CASE ("simplex")
+
+     ! Orbit optimization using the downhill simplex method.
+
+     ALLOCATE(orb_arr_(7))
+
+     CALL NULLIFY(epoch)
+     CALL readConfigurationFile(conf_file, &
+          t0=epoch, &
+          dyn_model=dyn_model, &
+          perturbers=perturbers, &
+          integrator=integrator, &
+          integration_step=integration_step, &
+          dyn_model_init=dyn_model_init, &
+          integrator_init=integrator_init, &
+          integration_step_init=integration_step_init, &
+          accwin_multiplier=accwin_multiplier, &
+          smplx_niter=smplx_niter, &
+          smplx_tol=smplx_tol)
+     IF (error) THEN
+        CALL errorMessage("oorb / simplex", &
+             "TRACE BACK (5)", 1)
+        STOP
+     END IF
+
+     obss_sep => getSeparatedSets(obss_in)
+     IF (error) THEN
+        CALL errorMessage("oorb / simplex", &
+             "TRACE BACK (20)", 1)
+        STOP
+     END IF
+     CALL NULLIFY(obss_in)
+     ! Print header before printing first orbit:
+     first = .TRUE.
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / simplex", &
+                "TRACE BACK (25)", 1)
+           STOP
+        END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
+                ". observation set (", TRIM(id), ")."
+        END IF
+        nobs = getNrOfObservations(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / simplex", &
+                "TRACE BACK (30)", 1)
+           STOP
+        END IF
+        IF (nobs < 4) THEN
+           CALL errorMessage("oorb / simplex", &
+                "Too few observations:", 1)
+           WRITE(stderr,*) "ID: ", TRIM(id), "  and number of observations: ", nobs
+           CYCLE
+        END IF
+        norb = 0
+        IF (ALLOCATED(storb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                    orb_arr => getSampleOrbits(storb_arr_in(j))
+                    IF (error) THEN
+                       CALL errorMessage("oorb / simplex", &
+                            "TRACE BACK (35)", 1)
+                       STOP
+                    END IF
+                    norb = SIZE(orb_arr)
+                    EXIT
+                 ELSE
+                    ALLOCATE(orb_arr(1))
+                    orb_arr(1) = getNominalOrbit(storb_arr_in(j))
+                    IF (error) THEN
+                       CALL errorMessage("oorb / simplex", &
+                            "TRACE BACK (35)", 1)
+                       STOP
+                    END IF
+                    norb = 1
+                    EXIT                    
+                 END IF
+              END IF
+           END DO
+           IF (norb == 0) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "Initial orbit not available.", 1)
+              STOP
+           END IF
+        ELSE IF (ASSOCIATED(orb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 norb = norb + 1
+                 IF (.NOT.ASSOCIATED(orb_arr)) THEN
+                    orb_arr => reallocate(orb_arr,2*norb)
+                 ELSE IF (SIZE(orb_arr) < norb) THEN
+                    orb_arr => reallocate(orb_arr,2*norb)
+                 END IF
+                 orb_arr(norb) = copy(orb_arr_in(j))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / simplex", &
+                         "TRACE BACK (35)", 1)
+                    STOP
+                 END IF
+              END IF
+           END DO
+           IF (norb == 0) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "Initial orbit not available.", 1)
+              STOP
+           ELSE
+              orb_arr => reallocate(orb_arr,norb)
+           END IF
+        END IF
+        dt = getObservationalTimespan(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / simplex", &
+                "TRACE BACK (40)", 1)
+           STOP
+        END IF
+        IF (.NOT.exist(epoch)) THEN
+           CALL NULLIFY(t)
+           obs = getObservation(obss_sep(i),1)
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (45)", 1)
+              STOP
+           END IF
+           t = getTime(obs)
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (50)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obs)
+           mjd = getMJD(t, "tt")
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (65)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(t)
+           mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
+           CALL NEW(t, mjd, "tt")   
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (70)", 1)
+              STOP
+           END IF
+        ELSE
+           CALL NULLIFY(t)
+           t = copy(epoch)
+        END IF
+        CALL NEW(storb, obss_sep(i))        
+        IF (error) THEN
+           CALL errorMessage("oorb / simplex", &
+                "TRACE BACK (75)", 1)
+           STOP
+        END IF
+        CALL setParameters(storb, &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step, &
+             outlier_rejection=outlier_rejection_prm, &
+             outlier_multiplier=outlier_multiplier_prm, &
+             t_inv=t, &
+             element_type=element_type_comp_prm, &
+             accept_multiplier=accwin_multiplier, &
+             smplx_niter=smplx_niter, &
+             smplx_tol=smplx_tol)
+        IF (error) THEN
+           CALL errorMessage("oorb / simplex", &
+                "TRACE BACK (80)", 1)
+           STOP
+        END IF
+        DO j=1,SIZE(orb_arr,dim=1),7
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(2(A,I0))") "Orbits ", j, " to ", j+6
+           END IF
+           DO k=1,7
+              CALL NULLIFY(orb_arr_(k))
+              orb_arr_(k) = copy(orb_arr(j+k-1))
+              CALL setParameters(orb_arr_(k), &
+                   dyn_model=dyn_model_init, &
+                   perturbers=perturbers, &
+                   integrator=integrator_init, &
+                   integration_step=integration_step_init)
+              IF (error) THEN
+                 CALL errorMessage("oorb / simplex", &
+                      "TRACE BACK (85)", 1)
+                 STOP
+              END IF
+              CALL propagate(orb_arr_(k), t)
+              IF (error) THEN
+                 CALL errorMessage("oorb / simplex", &
+                      "TRACE BACK (90)", 1)
+                 STOP
+              END IF
+              CALL setParameters(orb_arr_(k), &
+                   dyn_model=dyn_model, &
+                   perturbers=perturbers, &
+                   integrator=integrator, &
+                   integration_step=integration_step)
+              IF (error) THEN
+                 CALL errorMessage("oorb / simplex", &
+                      "TRACE BACK (95)", 1)
+                 STOP
+              END IF
+           END DO
+           CALL simplexOrbits(storb, orb_arr_)
+           IF (.NOT.error) THEN
+              EXIT
+           ELSE IF (j + 13 < norb) THEN
+              error = .FALSE.
+           ELSE
+              EXIT
+           END IF
+        END DO
+        IF (error) THEN
+           CALL errorMessage("oorb / simplex", &
+                "Simplex failed:", 1)
+           IF (err_verb >= 1) THEN
+              WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
+                   " and number of observations: ", nobs
+           END IF
+           error  = .FALSE.
+           CALL NEW(out_file, "problematic_observation_sets" // "." // &
+                TRIM(observation_format_out))
+           CALL setPositionAppend(out_file)
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (115)", 1)
+              STOP
+           END IF
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out))
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (120)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (125)", 1)
+              STOP
+           END IF
+        ELSE
+           obs_masks => getObservationMasks(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (130)", 1)
+              STOP
+           END IF
+           noutlier = 0
+           DO j=1,SIZE(obs_masks,dim=1)
+              IF (ALL(.NOT.obs_masks(j,:))) THEN
+                 noutlier = noutlier + 1
+              END IF
+           END DO
+           IF (noutlier > SIZE(obs_masks,dim=1)/5) THEN
+              ! In case of too many outliers (>20% of obs), throw the
+              ! observation set in a separate bin:
+              CALL NEW(out_file, "observation_sets_with_many_outliers." // TRIM(observation_format_out))
+              CALL setPositionAppend(out_file)
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / simplex", &
+                      "TRACE BACK (145)", 1)
+                 STOP
+              END IF
+              WRITE(getUnit(out_file),"(1X)")
+              WRITE(getUnit(out_file),"(A,I0,A)",advance="no") "# ", &
+                   noutlier, " outliers: "
+              DO j=1,SIZE(obs_masks,dim=1)
+                 IF (ALL(.NOT.obs_masks(j,:))) THEN
+                    WRITE(getUnit(out_file),"(A)",advance="no") "*"
+                 ELSE
+                    WRITE(getUnit(out_file),"(A)",advance="no") "-"
+                 END IF
+              END DO
+              WRITE(getUnit(out_file),"(1X)")
+              CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                   TRIM(observation_format_out))
+              IF (error) THEN
+                 CALL errorMessage("oorb / simplex", &
+                      "TRACE BACK (150)", 1)
+                 STOP
+              END IF
+              CALL NULLIFY(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / simplex", &
+                      "TRACE BACK (155)", 1)
+                 STOP
+              END IF
+              CYCLE
+           END IF
+           DEALLOCATE(obs_masks, stat=err)
+
+           IF (pp_H_estimation) THEN
+              CALL NEW(physparam, storb)
+              IF (pp_G > 99.0_bp) THEN
+                 CALL estimateHAndG(physparam, obss_sep(i))
+              ELSE
+                 CALL estimateHAndG(physparam, obss_sep(i), &
+                      input_G=pp_G, input_delta_G=pp_G_unc)
+              END IF
+              HG_arr_in(i,1:2) = getH0(physparam)
+              HG_arr_in(i,3:4) = getG(physparam)
+              CALL NULLIFY(physparam)
+           END IF
+
+           CALL NEW(out_file, TRIM(out_fname) // ".smplx")
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (160)", 1)
+              STOP
+           END IF
+           CALL setPositionAppend(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (165)", 1)
+              STOP
+           END IF
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (170)", 1)
+              STOP
+           END IF
+
+           ! WRITE OBSERVATIONS:
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out)) 
+           IF (error) THEN
+              CALL errorMessage("oorb / simplex", &
+                   "TRACE BACK (175)", 1)
+              WRITE(getUnit(out_file),"(A)") &
+                   "Could not write observations for object " // TRIM(id) 
+              error = .FALSE.
+           END IF
+           WRITE(getUnit(out_file),"(A)") "#"
+
+           CALL NULLIFY(out_file)
+
+           ! WRITE ORBITS
+           orb_arr_cmp => getSampleOrbits(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / ranging ", &
+                   "TRACE BACK (175)", 1)
+              STOP
+           END IF
+           rchi2_arr_cmp => getReducedChi2Distribution(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / ranging ", &
+                   "TRACE BACK (185)", 1)
+              STOP
+           END IF
+           IF (separately) THEN
+              CALL NEW(out_file, TRIM(id) // ".orb")
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (200)", 1)
+                 STOP
+              END IF
+              lu_orb_out = getUnit(out_file)
+           END IF
+           DO j=1,SIZE(orb_arr_cmp,dim=1)
+              IF (orbit_format_out == "orb") THEN
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                      print_header=j==1, &
+                      element_type_out=element_type_out_prm, &
+                      id=id, &
+                      orb=orb_arr_cmp(j), &
+                      rchi2=rchi2_arr_cmp(j), &
+                      H=HG_arr_in(j,1), &
+                      G=HG_arr_in(j,3), &
+                      mjd=mjd_epoch)
+              ELSE IF (orbit_format_out == "des") THEN
+                 CALL errorMessage("oorb / ranging ", &
+                      "DES format not yet supported for Ranging output.", 1)
+                 STOP                 
+              END IF
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging ", &
+                      "TRACE BACK (205)", 1)
+                 STOP
+              END IF
+           END DO
+           IF (separately) THEN
+              CALL NULLIFY(out_file)
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(id) // ".orb")
+              END IF
+           END IF
+           ! WRITE RESIDUALS
+           IF (write_residuals) THEN
+              CALL NEW(out_file, TRIM(out_fname) // ".res")
+              CALL setPositionAppend(out_file)
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (225)", 1)
+                 STOP
+              END IF
+              CALL writeResiduals(storb, obss_sep(i), getUnit(out_file), compute=.TRUE.)
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (230)", 1)
+                 STOP
+              END IF
+              CALL NULLIFY(out_file)
+           END IF
+
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(3(1X,A))") "Object", &
+                   TRIM(id), "successfully processed."
+           END IF
+        END IF
+        DEALLOCATE(orb_arr, stat=err)
+        IF (err /= 0) THEN
+           CALL errorMessage("oorb / simplex", &
+                "Could not deallocate memory (10)", 1)
+           STOP
+        END IF
+        CALL NULLIFY(storb)
+        CALL NULLIFY(orb)
+        IF (info_verb > 2) THEN
+           WRITE(stdout,*)
+           WRITE(stdout,*)
+        END IF
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep, orb_arr_, stat=err)
+     IF (err /= 0) THEN
+        CALL errorMessage("oorb / simplex", &
+             "Could not deallocate memory (15)", 1)
+        STOP
+     END IF
+
   CASE ("lsl")
 
      ! Orbital inversion using least squares with linearized
-     ! covariances, that is, fixing the resulting shape of
-     ! the orbital-element pdf to a Gaussian.
+     ! covariances, that is, fixing the resulting shape of the
+     ! orbital-element pdf to a multidimensional Gaussian.
 
      CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
@@ -1840,6 +2430,9 @@ PROGRAM oorb
            STOP
         END IF
         DO j=1,SIZE(orb_arr,dim=1)
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(A,I0)") "Orbit #", j
+           END IF
            CALL setParameters(orb_arr(j), &
                 dyn_model=dyn_model_init, &
                 perturbers=perturbers, &
@@ -2364,6 +2957,503 @@ PROGRAM oorb
              "Could not deallocate memory (15)", 1)
         STOP
      END IF
+
+  CASE ("covariance_sampling")
+
+     ! Guided orbital inversion by randomly sampling an error
+     ! hyperellipsoid defined by the covariance matrix of the global
+     ! least-squares solution.
+
+     CALL NULLIFY(epoch)
+     CALL readConfigurationFile(conf_file, &
+          t0=epoch, &
+          dyn_model=dyn_model, &
+          perturbers=perturbers, &
+          integrator=integrator, &
+          integration_step=integration_step, &
+          dyn_model_init=dyn_model_init, &
+          integrator_init=integrator_init, &
+          integration_step_init=integration_step_init, &
+          accwin_multiplier=accwin_multiplier, &
+          cos_gaussian=cos_gaussian, &
+          cos_nsigma=cos_nsigma, &
+          cos_norb=cos_norb, &
+          cos_ntrial=cos_ntrial)
+     IF (error) THEN
+        CALL errorMessage("oorb / covariance_sampling", &
+             "TRACE BACK (5)", 1)
+        STOP
+     END IF
+
+     obss_sep => getSeparatedSets(obss_in)
+     IF (error) THEN
+        CALL errorMessage("oorb / covariance_sampling", &
+             "TRACE BACK (20)", 1)
+        STOP
+     END IF
+     CALL NULLIFY(obss_in)
+     ! Print header before printing first orbit:
+     first = .TRUE.
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "TRACE BACK (25)", 1)
+           STOP
+        END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
+                ". observation set (", TRIM(id), ")."
+        END IF
+        nobs = getNrOfObservations(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "TRACE BACK (30)", 1)
+           STOP
+        END IF
+        IF (ALLOCATED(storb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                    CALL errorMessage("oorb / covariance_sampling", &
+                         "TRACE BACK (35)", 1)
+                    STOP
+                 ELSE
+                    EXIT                    
+                 END IF
+              END IF
+           END DO
+           IF (j > SIZE(id_arr_in,dim=1)) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "Initial orbit not available.", 1)
+              STOP
+           END IF
+        ELSE
+           CALL errorMessage("oorb / covariance_sampling", &
+                "Initial orbit + covariance matrix not available.", 1)
+           STOP
+        END IF
+        orb = getNominalOrbit(storb_arr_in(j))
+        frame = getFrame(orb)
+        cov = getCovarianceMatrix(storb_arr_in(j),element_type_comp_prm,frame)
+        CALL NEW(storb, orb, cov, element_type_comp_prm, &
+             element_type_comp_prm, obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "TRACE BACK (75)", 1)
+           STOP
+        END IF
+        dt = getObservationalTimespan(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "TRACE BACK (40)", 1)
+           STOP
+        END IF
+        IF (.NOT.exist(epoch)) THEN
+           CALL NULLIFY(t)
+           obs = getObservation(obss_sep(i),1)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (45)", 1)
+              STOP
+           END IF
+           t = getTime(obs)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (50)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obs)
+           mjd = getMJD(t, "tt")
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (65)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(t)
+           mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
+           CALL NEW(t, mjd, "tt")   
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (70)", 1)
+              STOP
+           END IF
+        ELSE
+           CALL NULLIFY(t)
+           t = copy(epoch)
+        END IF
+        CALL setParameters(storb, &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step, &
+             outlier_rejection=outlier_rejection_prm, &
+             outlier_multiplier=outlier_multiplier_prm, &
+             t_inv=t, &
+             element_type=element_type_comp_prm, &
+             accept_multiplier=accwin_multiplier, &
+             cos_gaussian=cos_gaussian, &
+             cos_nsigma=cos_nsigma, &
+             cos_norb=cos_norb, &
+             cos_ntrial=cos_ntrial)
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "TRACE BACK (80)", 1)
+           STOP
+        END IF
+        CALL propagate(storb, t)
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "TRACE BACK (90)", 1)
+           STOP
+        END IF
+        CALL covarianceSampling(storb)
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "Least squares failed:", 1)
+           IF (err_verb >= 1) THEN
+              WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
+                   " and number of observations: ", nobs
+           END IF
+           error  = .FALSE.
+           CALL NEW(out_file, "problematic_observation_sets" // "." // &
+                TRIM(observation_format_out))
+           CALL setPositionAppend(out_file)
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (115)", 1)
+              STOP
+           END IF
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out))
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (120)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (125)", 1)
+              STOP
+           END IF
+        ELSE
+
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(3(1X,A))") "Covariance sampling for object", &
+                   TRIM(id), "is ready."
+           END IF
+
+           IF (pp_H_estimation) THEN
+              IF (info_verb >= 2) THEN
+                 WRITE(stdout,"(1X,A)") "Computing HG parameters..."
+              END IF
+              CALL NEW(physparam, storb)
+              IF (pp_G > 99.0_bp) THEN
+                 CALL estimateHAndG(physparam, obss_sep(i))
+              ELSE
+                 CALL estimateHAndG(physparam, obss_sep(i), &
+                      input_G=pp_G, input_delta_G=pp_G_unc)
+              END IF
+              HG_arr_in => getH0Distribution(physparam)
+              ALLOCATE(temp_arr(SIZE(HG_arr_in,dim=1),4))
+              temp_arr(:,1:2) = HG_arr_in(:,1:2)
+              DEALLOCATE(HG_arr_in)
+              HG_arr_in => getGDistribution(physparam)
+              temp_arr(:,3:4) = HG_arr_in(:,1:2)
+              DEALLOCATE(HG_arr_in)
+              ALLOCATE(HG_arr_in(SIZE(temp_arr,dim=1),4))
+              HG_arr_in = temp_arr
+              DEALLOCATE(temp_arr)              
+              CALL NULLIFY(physparam)
+              IF (info_verb >= 2) THEN
+                 WRITE(stdout,"(1X,A)") "Computing HG parameters... done"
+              END IF
+           END IF
+
+           CALL NEW(out_file, TRIM(id) // ".cos")
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (150)", 1)
+              STOP
+           END IF
+           ! WRITE OBSERVATIONS:
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out)) 
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (155)", 1)
+              STOP
+           END IF
+           WRITE(getUnit(out_file),"(A)") "#" 
+!!$           ! WRITE COVARIANCE_SAMPLING PARAMETERS
+!!$           CALL writeCOSResults(storb, obss_sep(i), getUnit(out_file))
+!!$           IF (error) THEN
+!!$              CALL errorMessage("oorb / covariance_sampling", &
+!!$                   "TRACE BACK (160)", 1)
+!!$              STOP
+!!$           END IF
+           CALL NULLIFY(out_file) 
+!!$           CALL getResults(storb, sor_rho_cmp=sor_rho_cmp)
+!!$           IF (error) THEN
+!!$              CALL errorMessage("oorb / covariance_sampling", &
+!!$                   "TRACE BACK (170)", 1)
+!!$              STOP
+!!$           END IF
+           ! WRITE ORBITAL-ELEMENT PDF
+           orb_arr_cmp => getSampleOrbits(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling ", &
+                   "TRACE BACK (175)", 1)
+              STOP
+           END IF
+           pdf_arr_cmp => getPDFValues(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling ", &
+                   "TRACE BACK (180)", 1)
+              STOP
+           END IF
+           rchi2_arr_cmp => getReducedChi2Distribution(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling ", &
+                   "TRACE BACK (185)", 1)
+              STOP
+           END IF
+           CALL getResults(storb, &
+                reg_apr_arr=reg_apr_arr_cmp, &
+                jac_arr=jac_arr_cmp)
+           IF (error) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "TRACE BACK (190)", 1)
+              STOP
+           END IF
+           IF (separately) THEN
+              CALL NEW(out_file, TRIM(id) // ".orb")
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling", &
+                      "TRACE BACK (200)", 1)
+                 STOP
+              END IF
+              lu_orb_out = getUnit(out_file)
+           END IF
+           DO j=1,SIZE(orb_arr_cmp,dim=1)
+              IF (orbit_format_out == "orb") THEN
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                      print_header=j==1, &
+                      element_type_out=element_type_out_prm, &
+                      id=id, &
+                      orb=orb_arr_cmp(j), &
+                      element_type_pdf=element_type_comp_prm, &
+                      pdf=pdf_arr_cmp(j), &
+                      rchi2=rchi2_arr_cmp(j), &
+                      reg_apr=reg_apr_arr_cmp(j), &
+                      jac_sph_inv=jac_arr_cmp(j,1), &
+                      jac_car_kep=jac_arr_cmp(j,2), &
+                      jac_equ_kep=jac_arr_cmp(j,3), &
+                      H=HG_arr_in(j,1), &
+                      G=HG_arr_in(j,3), &
+                      mjd=mjd_epoch)
+              ELSE
+                 CALL errorMessage("oorb / covariance_sampling", &
+                      TRIM(orbit_format_out) // &
+                      " format not yet supported for Covariance_sampling output.", 1)
+                 STOP                 
+              END IF
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling ", &
+                      "TRACE BACK (205)", 1)
+                 STOP
+              END IF
+           END DO
+           IF (separately) THEN
+              CALL NULLIFY(out_file)
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(id) // ".orb")
+              END IF
+           END IF
+           ! WRITE RESIDUALS
+           IF (write_residuals) THEN
+              CALL NEW(out_file, TRIM(out_fname) // ".res")
+              CALL setPositionAppend(out_file)
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling", &
+                      "TRACE BACK (225)", 1)
+                 STOP
+              END IF
+              CALL writeResiduals(storb, obss_sep(i), getUnit(out_file))
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling", &
+                      "TRACE BACK (230)", 1)
+                 STOP
+              END IF
+              CALL NULLIFY(out_file)
+           END IF
+           IF (plot_results) THEN
+              CALL toString(dt, str, error, frmt="(F10.2)")
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling ", &
+                      "TRACE BACK (235)", 1)
+                 STOP
+              END IF
+              str = TRIM(id) // "_"// TRIM(str)
+              CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
+                   "_cos_residual_stamps.eps")
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling", &
+                      "TRACE BACK (240)", 1)
+                 STOP
+              END IF
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(str) // "_cos_residual_stamps.eps")
+              END IF
+              IF (plot_open) THEN
+                 CALL system("gv " // TRIM(str) // "_cos_residual_stamps.eps* &")
+              END IF
+              ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
+              IF (err /= 0) THEN
+                 CALL errorMessage("oorb / covariance_sampling", &
+                      "Could not allocate memory (3).", 1)
+                 STOP
+              END IF
+              CALL NEW(tmp_file, TRIM(str)// "_cos_orbits.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling ", &
+                      "TRACE BACK (250)", 1)
+                 STOP
+              END IF
+              DO j=1,SIZE(orb_arr_cmp,dim=1)
+                 IF (element_type_comp_prm == "cartesian") THEN
+                    CALL rotateToEcliptic(orb_arr_cmp(j))
+                 END IF
+                 elements_arr(j,1:6) = getElements(orb_arr_cmp(j), element_type_comp_prm)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / covariance_sampling", &
+                         "TRACE BACK (255)", 1)
+                    STOP
+                 END IF
+                 IF (element_type_comp_prm == "keplerian") THEN
+                    elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
+                 END IF
+                 elements_arr(j,7) = pdf_arr_cmp(j)
+                 t = getTime(orb_arr_cmp(j))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / covariance_sampling ", &
+                         "TRACE BACK (260)", 1)
+                    STOP
+                 END IF
+                 WRITE(getUnit(tmp_file),"(7(E23.15,1X),A)") &
+                      elements_arr(j,1:6), &
+                      pdf_arr_cmp(j), &
+                      getCalendarDateString(t,"tdt")
+                 IF (error) THEN
+                    CALL errorMessage("oorb / covariance_sampling ", &
+                         "TRACE BACK (265)", 1)
+                    STOP
+                 END IF
+                 CALL NULLIFY(t)
+              END DO
+              CALL NULLIFY(tmp_file)
+              CALL NEW(tmp_file, TRIM(str) // &
+                   "_cos_sample_standard_deviations.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling ", &
+                      "TRACE BACK (275)", 1)
+                 STOP
+              END IF
+              WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                   advance="no") &
+                   getObservationalTimespan(obss_sep(i))
+              IF (error) THEN
+                 CALL errorMessage("oorb / covariance_sampling ", &
+                      "TRACE BACK (280)", 1)
+                 STOP
+              END IF
+              DO j=1,6
+                 CALL moments(elements_arr(:,j), &
+                      pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                 IF (LEN_TRIM(errstr) /= 0) THEN
+                    CALL errorMessage("oorb / covariance_sampling", &
+                         "Could not compute moments. " // TRIM(errstr), 1)
+                    STOP
+                 END IF
+                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                      advance="no") stdev
+              END DO
+              WRITE(getUnit(tmp_file),*)
+              CALL NULLIFY(tmp_file)
+              DEALLOCATE(elements_arr, stat=err)
+              IF (err /= 0) THEN
+                 CALL errorMessage("oorb / covariance_sampling", &
+                      "Could not deallocate memory (5).", 1)
+                 STOP
+              END IF
+              ! Make plot using gnuplot:
+              CALL system("cp " // TRIM(str) // &
+                   "_cos_orbits.out cos_orbits.out")
+              IF (element_type_comp_prm == "cartesian") THEN
+                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/cos_plot_car.gp")
+              ELSE
+                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/cos_plot_kep.gp")
+              END IF
+              CALL system("cp cos_results.eps " // TRIM(str) // &
+                   "_cos_" // TRIM(element_type_comp_prm) // &
+                   "_results.eps")
+              CALL system("rm -f cos_orbits.out cos_results.eps " // & 
+                   TRIM(str) // "_cos_orbits.out " // TRIM(str) // &
+                   "_cos_sample_standard_deviations.out")
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(str) // "_cos_" // &
+                      TRIM(element_type_comp_prm) // "_results.eps")
+              END IF
+              IF (plot_open) THEN
+                 CALL system("gv " // TRIM(str) // "_cos_" // &
+                      TRIM(element_type_comp_prm) // &
+                      "_results.eps* &")
+              END IF
+           END IF
+           DO j=1,SIZE(orb_arr_cmp)
+              CALL NULLIFY(orb_arr_cmp(j))
+           END DO
+           DEALLOCATE(orb_arr_cmp, stat=err)
+           DEALLOCATE(pdf_arr_cmp, stat=err)
+           DEALLOCATE(rchi2_arr_cmp, stat=err)
+           DEALLOCATE(reg_apr_arr_cmp, stat=err)
+           DEALLOCATE(jac_arr_cmp, stat=err)
+           IF (err /= 0) THEN
+              CALL errorMessage("oorb / covariance_sampling", &
+                   "Could not deallocate memory (10).", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obss_sep(i))
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(3(1X,A))") "Object", &
+                   TRIM(id), "successfully processed."
+           END IF
+        END IF
+        CALL NULLIFY(storb)
+        CALL NULLIFY(orb)
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,*)
+           WRITE(stdout,*)
+        END IF
+        IF (ASSOCIATED(HG_arr_in)) THEN
+           DEALLOCATE(HG_arr_in, stat=err)
+        END IF
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep, stat=err)
+     IF (err /= 0) THEN
+        CALL errorMessage("oorb / covariance_sampling", &
+             "Could not deallocate memory (15).", 1)
+        STOP
+     END IF
+
 
   CASE ("propagation")
 
@@ -3032,6 +4122,24 @@ PROGRAM oorb
 
            IF (exist(obss_in)) THEN
               observers => getObservatoryCCoords(obss_in)
+              IF (info_verb >= 2) THEN
+                 WRITE(stdout,"(9(1X,A17))") "GEO2OBSY X [KM]", &
+                      "GEO2OBSY Y [KM]", "GEO2OBSY Z [KM]", &
+                      "HELIO2GEO X [AU]", "HELIO2GEO Y [AU]", &
+                      "HELIO2GEO Z [AU]", "HELIO2OBSY X [AU]", &
+                      "HELIO2OBSY Y [AU]", "HELIO2OBSY Z [AU]" 
+                 DO j=1,SIZE(observers)
+                    CALL rotateToEcliptic(observers(j))
+                    obsy_pos = getPosition(observers(j))
+                    t = getTime(observers(j))
+                    ccoord = getObservatoryCCoord(obsies,"500",t)
+                    CALL rotateToEcliptic(ccoord)
+                    pos = getPosition(ccoord)
+                    geoc_obsy = obsy_pos - pos
+                    WRITE(stdout,"(3(1X,F17.5),6(1X,F17.13))") &
+                         geoc_obsy*km_au, pos, obsy_pos
+                 END DO
+              END IF
               DO j=1,SIZE(observers)
                  CALL rotateToEquatorial(observers(j))
               END DO
@@ -3474,24 +4582,15 @@ PROGRAM oorb
      ! Compute apoapsis distance(s) for input orbit(s)
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)
+           CALL getApoapsisDistance(storb_arr_in(i), apoapsis_distance_pdf)
            IF (containsSampledPDF(storb_arr_in(i))) THEN
-              CALL getApoapsisDistance(storb_arr_in(i), apoapsis_distance_pdf)
               DO j=1,SIZE(apoapsis_distance_pdf,dim=1)
                  WRITE(stdout,*) apoapsis_distance_pdf(j,:) 
               END DO
-              DEALLOCATE(apoapsis_distance_pdf)
            ELSE
-              CALL errorMessage("oorb / apoapsis_distance", &
-                   "Input orbits do not contain sampled " // &
-                   "uncertainty information currently required for this task.", 1)        
-              STOP
-              !              orb = getNominalOrbit(storb_arr_in(i))
-              !              cov = getCovarianceMatrix(storb_arr_in(i), element_type_out_prm)
-              !              CALL writeOpenOrbOrbitFile(lu_orb_out, i==1, &
-              !                   element_type_out_prm, id_arr_in(i), &
-              !                   orb=orb, cov=cov, H=HG_arr_in(i,1), &
-              !                   G=HG_arr_in(i,2))
+              WRITE(stdout,*) apoapsis_distance_pdf(1,:) 
            END IF
+           DEALLOCATE(apoapsis_distance_pdf)
         END DO
      ELSE
         DO i=1,SIZE(orb_arr_in)
@@ -3506,24 +4605,15 @@ PROGRAM oorb
      ! Compute periapsis distance(s) for input orbit(s)
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)
+           CALL getPeriapsisDistance(storb_arr_in(i), periapsis_distance_pdf)
            IF (containsSampledPDF(storb_arr_in(i))) THEN
-              CALL getPeriapsisDistance(storb_arr_in(i), periapsis_distance_pdf)
               DO j=1,SIZE(periapsis_distance_pdf,dim=1)
                  WRITE(stdout,*) periapsis_distance_pdf(j,:) 
               END DO
-              DEALLOCATE(periapsis_distance_pdf)
            ELSE
-              CALL errorMessage("oorb / periapsis_distance", &
-                   "Input orbits do not contain sampled " // &
-                   "uncertainty information currently required for this task.", 1)        
-              STOP
-              !              orb = getNominalOrbit(storb_arr_in(i))
-              !              cov = getCovarianceMatrix(storb_arr_in(i), element_type_out_prm)
-              !              CALL writeOpenOrbOrbitFile(lu_orb_out, i==1, &
-              !                   element_type_out_prm, id_arr_in(i), &
-              !                   orb=orb, cov=cov, H=HG_arr_in(i,1), &
-              !                   G=HG_arr_in(i,2))
+              WRITE(stdout,*) periapsis_distance_pdf(1,:) 
            END IF
+           DEALLOCATE(periapsis_distance_pdf)
         END DO
      ELSE
         DO i=1,SIZE(orb_arr_in)
@@ -4106,6 +5196,25 @@ PROGRAM oorb
         STOP
      END IF
      WRITE(stdout,'(F15.8)') mjd_tai
+     CALL NULLIFY(epoch)
+
+
+  CASE ("utc2tt")
+
+     mjd_utc = get_cl_option("--epoch-mjd-utc=", 0.0_bp)
+     CALL NEW(epoch, mjd_utc, "UTC")
+     IF (error) THEN
+        CALL errorMessage("oorb / utc2tt", &
+             "TRACE BACK (5)", 1)
+        STOP
+     END IF
+     mjd_tt = getMJD(epoch, "TT")
+     IF (error) THEN
+        CALL errorMessage("oorb / utc2tt", &
+             "TRACE BACK (10)", 1)
+        STOP
+     END IF
+     WRITE(stdout,'(F15.8)') mjd_tt
      CALL NULLIFY(epoch)
 
 
