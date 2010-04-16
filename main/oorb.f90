@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-04-06
+!! @version 2010-04-15
 !!
 PROGRAM oorb
 
@@ -52,6 +52,8 @@ PROGRAM oorb
        storb_arr_in
   TYPE (StochasticOrbit) :: &
        storb
+  TYPE (Orbit), DIMENSION(:,:), POINTER :: &
+       orb_lt_corr_arr2
   TYPE (Orbit), DIMENSION(:), POINTER :: &
        orb_arr_in
   TYPE (Orbit), DIMENSION(:), POINTER :: &
@@ -80,7 +82,8 @@ PROGRAM oorb
        observers
   TYPE (CartesianCoordinates) :: &
        ccoord, &
-       obsy_ccoord
+       obsy_ccoord, &
+       sun_ccoord
   TYPE (Time) :: &
        epoch, &
        epoch0, &
@@ -159,6 +162,8 @@ PROGRAM oorb
        planeph
   REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
        elements_arr, &
+       ephem_, &
+       hist, &
        jac_arr_in, &
        temp_arr
   REAL(bp), DIMENSION(6,6) :: &
@@ -196,13 +201,17 @@ PROGRAM oorb
        obsy_sun, &
        pos, &
        pos_opp, &
+       pos_sun, &
        sun_moon, &
        vec3
+  REAL(bp), DIMENSION(2) :: &
+       bounds
   REAL(bp) :: &
        Delta, &
        H_max, H_value, &
        G_value, &
-       accwin_multiplier, apoapsis_distance, apriori_a_max, &
+       accwin_multiplier, angular_distance_dec, angular_distance_ra, &
+       apoapsis_distance, apriori_a_max, &
        apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, &
@@ -217,12 +226,12 @@ PROGRAM oorb
        mjd, mjd_tai, mjd_tt, mjd_utc, moid, &
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
-       pdf_ml_init, periapsis_distance, pp_G, pp_G_unc, &
+       pdf_ml_init, periapsis_distance, peak, pp_G, pp_G_unc, &
        ra, &
        sec, smplx_tol, solar_elongation, solar_elon_min, solar_elon_max, &
-       solar_alt, solar_alt_max, sor_genwin_multiplier, stdev, &
-       step, sun_moon_r2, &
-       timespan, tlat, tlon, toclat, toclon
+       solar_alt, solar_alt_max, solelon_max, solelon_min, sor_genwin_multiplier, stdev, &
+       step, sun_moon_r2, sunlat, sunlon, &
+       timespan, tlat, tlon, toclat, toclon, tsclat, tsclon
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
        indx_arr, &
        int_arr
@@ -232,7 +241,7 @@ PROGRAM oorb
        err_verb_, &
        i, &
        iday, &
-       indx, &
+       indx, indx_max, indx_min, &
        istep, &
        j, &
        k, &
@@ -244,11 +253,7 @@ PROGRAM oorb
        lu_orb_out, &
        min, minstep, &
        month, month0, month1, &
-       nobj, &
-       nobs, &
-       norb, &
-       noutlier, &
-       nstep, &
+       nhist, nobj, nobs, norb, noutlier, nstep, &
        smplx_niter, &
        sor_niter, sor_norb, sor_norb_sw, sor_ntrial, sor_ntrial_sw, &
        sor_type_prm, &
@@ -5160,6 +5165,486 @@ PROGRAM oorb
 
      DEALLOCATE(temp_arr)
 
+
+  CASE ("fom")
+
+     !! Produces a table with the quantities required for the
+     !! computation of the Figure of Merit proposed for scheduling
+     !! follow-up observations with NEOSSat. The three key quantities
+     !! are the minimum solar elongation, the minimum apparent
+     !! brightness (max mag), and the 3-sigma (~equivalent) ephemeris
+     !! uncertainty.
+
+     CALL readConfigurationFile(conf_file, &
+          dyn_model=dyn_model, &
+          perturbers=perturbers, &
+          integrator=integrator, &
+          integration_step=integration_step)
+
+     ! Input observatory code
+     obsy_code = get_cl_option("--code=", obsy_code)
+
+     ! Input evolutionary timespan [days]
+     timespan = get_cl_option("--timespan=", 0.0_bp)
+
+     ! Input time step [days]
+     step = get_cl_option("--step=", 1.0_bp)
+     IF (step == 0.0_bp) THEN
+        nstep = 1        
+     ELSE
+        step = SIGN(ABS(step),timespan)
+        IF (ABS(timespan) > 10.0_bp*EPSILON(timespan) .AND. &
+             ABS(timespan) < ABS(step)) THEN
+           step = timespan
+        END IF
+        nstep = NINT(timespan/step) + 1
+     END IF
+     integration_step = MIN(ABS(step),integration_step)
+
+     CALL NEW(obsies)
+     IF (error) THEN
+        CALL errorMessage('oorb4neossat / fom', &
+             'TRACE BACK (5)',1)
+        STOP
+     END IF
+
+     IF (ALLOCATED(storb_arr_in)) THEN
+        ! Input orbits contain uncertainty information.
+
+        DO i=1,SIZE(storb_arr_in)
+
+           ! Use equatorial coordinates:
+           CALL toCartesian(storb_arr_in(i), "equatorial")
+
+           IF (exist(obss_in)) THEN
+              observers => getObservatoryCCoords(obss_in)
+              DO j=1,SIZE(observers)
+                 CALL rotateToEquatorial(observers(j))
+              END DO
+              obsy_code_arr => getObservatoryCodes(obss_in)
+           ELSE
+              t = getTime(storb_arr_in(i))
+              mjd_tt = getMJD(t, "TT")
+              CALL NULLIFY(t)
+              ALLOCATE(observers(nstep), obsy_code_arr(nstep))
+              DO j=1,nstep
+                 CALL NEW(t, mjd_tt+(j-1)*step, "TT")
+                 IF (error) THEN
+                    CALL errorMessage("oorb4neossat / fom", &
+                         "TRACE BACK (10)", 1)
+                    STOP
+                 END IF
+                 obsy_code_arr(j) = obsy_code
+                 ! Compute heliocentric observatory coordinates
+                 observers(j) = getObservatoryCCoord(obsies, obsy_code_arr(j), t)
+                 IF (error) THEN
+                    CALL errorMessage('oorb4neossat / fom', &
+                         'TRACE BACK (15)',1)
+                    STOP
+                 END IF
+                 CALL rotateToEquatorial(observers(j))
+                 CALL NULLIFY(t)
+              END DO
+           END IF
+
+           ! Set integration parameters
+           CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
+                perturbers=perturbers, integrator=integrator, &
+                integration_step=integration_step)
+           IF (error) THEN
+              CALL errorMessage("oorb4neossat / fom", &
+                   "TRACE BACK (20)", 1)
+              STOP
+           END IF
+
+           ! Compute topocentric ephemerides
+           CALL getEphemerides(storb_arr_in(i), observers, ephemerides_arr, &
+                cov_arr=cov_arr, pdfs_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr2)
+           IF (error) THEN
+              CALL errorMessage('oorb4neossat / fom', &
+                   'TRACE BACK (25)',1)
+              STOP
+           END IF
+
+           IF (separately) THEN
+              CALL NEW(tmp_file, TRIM(id_arr_in(i)) // ".fom")
+              IF (error) THEN
+                 CALL errorMessage('oorb4neossat / fom', &
+                      'TRACE BACK (30)',1)
+                 STOP
+              END IF
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage('oorb4neossat / fom', &
+                      'TRACE BACK (35)',1)
+                 STOP
+              END IF
+              lu = getUnit(tmp_file)
+           ELSE
+              lu = stdout
+           END IF
+
+           IF (separately .OR. i == 1) THEN
+              WRITE(lu,'(9(A,2X))') "#JD", "SolElon_min", &
+                   "SolElon_max", "VMag_max", "EELon", "ELat", &
+                   "EphWidth", "RA", "Dec"
+           END IF
+
+           ! Loop over time steps:
+           DO j=1,nstep
+
+              t = getTime(observers(j))
+              mjd_tt = getMJD(t, "TT")
+              mjd_utc = getMJD(t, "UTC")
+
+              obsy_pos = getPosition(observers(j))
+              IF (error) THEN
+                 CALL errorMessage('oorb4neossat / fom', &
+                      'TRACE BACK (40)',1)
+                 STOP
+              END IF
+              observer_r2 = DOT_PRODUCT(obsy_pos,obsy_pos)
+
+              obsy_ccoord = getObservatoryCCoord(obsies, obsy_code_arr(j), t)
+              IF (error) THEN
+                 CALL errorMessage('oorb4neossat / fom', &
+                      'TRACE BACK (45)',1)
+                 STOP
+              END IF
+              CALL rotateToEcliptic(obsy_ccoord)
+              sun_ccoord = opposite(obsy_ccoord)
+              CALL NULLIFY(obsy_ccoord)
+              obsy_sun = getPosition(sun_ccoord)
+
+              ! Compute topocentric coordinates for the Sun (actually,
+              ! get heliocentric observatory coordinates)
+              scoord = getSCoord(sun_ccoord)
+              CALL NULLIFY(sun_ccoord)
+              CALL rotateToEcliptic(scoord)
+              pos_sun = getPosition(scoord)
+              sunlon = pos_sun(2)
+              sunlat = pos_sun(3)
+              CALL NULLIFY(scoord)
+
+              IF (containsSampledPDF(storb_arr_in(i))) THEN
+
+                 ! Input orbits correspond to one or more sampled pdfs.
+                 ! Loop over sampled orbits:
+                 norb = SIZE(ephemerides_arr,dim=1)
+                 ALLOCATE(temp_arr(norb,6))
+                 DO k=1,norb
+
+                    ! RA & DEC
+                    CALL rotateToEquatorial(ephemerides_arr(k,j))        
+                    comp_coord = getCoordinates(ephemerides_arr(k,j))
+                    IF (error) THEN
+                       CALL errorMessage('oorb4neossat / fom', &
+                            'TRACE BACK (50)',1)
+                       STOP
+                    END IF
+                    Delta = comp_coord(1)
+                    temp_arr(k,5:6) = comp_coord(2:3)
+
+                    ! Compute topocentric ecliptic coordinates
+                    ! relative to the Sun
+                    CALL rotateToEcliptic(ephemerides_arr(k,j))        
+                    comp_coord = getCoordinates(ephemerides_arr(k,j))
+                    IF (error) THEN
+                       CALL errorMessage('oorb4neossat / fom', &
+                            'TRACE BACK (55)',1)
+                       STOP
+                    END IF
+                    tsclon = comp_coord(2) - sunlon
+                    tsclat = comp_coord(3) - sunlat
+                    IF (tsclon > pi) THEN
+                       tsclon = tsclon - two_pi
+                    ELSE IF (tsclon < -pi) THEN
+                       tsclon = tsclon + two_pi
+                    END IF
+                    temp_arr(k,1:2) = (/ tsclon, tsclat /)
+
+                    ! APPARENT BRIGHTNESS:
+                    ! Compute phase angle
+                    CALL NEW(ccoord, ephemerides_arr(k,j))
+                    IF (error) THEN
+                       CALL errorMessage('oorb4neossat / fom', &
+                            'TRACE BACK (60)',1)
+                       STOP
+                    END IF
+                    CALL rotateToEcliptic(ccoord)
+                    obsy_obj = getPosition(ccoord)
+                    IF (error) THEN
+                       CALL errorMessage('oorb4neossat / fom', &
+                            'TRACE BACK (65)',1)
+                       STOP
+                    END IF
+                    ephemeris_r2 = DOT_PRODUCT(obsy_obj,obsy_obj)
+                    CALL toCartesian(orb_lt_corr_arr2(k,j), frame='ecliptic')
+                    pos = getPosition(orb_lt_corr_arr2(k,j))
+                    IF (error) THEN
+                       CALL errorMessage('oorb4neossat / fom', &
+                            'TRACE BACK (70)',1)
+                       STOP
+                    END IF
+                    heliocentric_r2 = DOT_PRODUCT(pos,pos)
+                    cos_obj_phase = 0.5_bp * (heliocentric_r2 + ephemeris_r2 - &
+                         observer_r2) / (SQRT(heliocentric_r2) * &
+                         SQRT(ephemeris_r2))
+                    obj_phase = ACOS(cos_obj_phase)
+                    ! Input absolute magnitude
+                    H_value = get_cl_option("--H=", HG_arr_in(k,1))
+                    ! Input slope parameter
+                    G_value = get_cl_option("--G=", HG_arr_in(k,3))
+                    temp_arr(k,3) = getApparentMagnitude(H=H_value, &
+                         G=G_value, r=SQRT(heliocentric_r2), &
+                         Delta=Delta, phase_angle=obj_phase)
+                    IF (error) THEN
+                       CALL errorMessage('oorb4neossat / fom', &
+                            'TRACE BACK (75)',1)
+                       STOP
+                    END IF
+
+                    ! SOLAR ELONGATION
+                    vec3 = cross_product(obsy_obj,obsy_sun)
+                    temp_arr(k,4) = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
+
+                    CALL NULLIFY(ccoord)
+                    CALL NULLIFY(ephemerides_arr(k,j))
+                    CALL NULLIFY(orb_lt_corr_arr2(k,j))
+
+                 END DO
+
+                 CALL NULLIFY(observers(j))
+
+                 ! WIDTH OF EPHEMERIS UNCERTAINTY
+                 ! First, try in measuring largest width in RA:
+                 nhist = 360
+                 ALLOCATE(hist(nhist,2))
+                 CALL histogram(temp_arr(:,5), hist, 0.0_bp, two_pi)
+                 DO k=1,nhist
+                    IF (hist(k,2) == 0.0_bp) THEN
+                       EXIT
+                    END IF
+                 END DO
+                 DEALLOCATE(hist)
+                 ALLOCATE(ephem_(norb,2))
+                 WHERE (temp_arr(1:norb,5) < two_pi*((k-1)/nhist))
+                    ephem_(1:norb,1) = temp_arr(1:norb,5) + two_pi*(1 - (k-1)/nhist)
+                    ephem_(1:norb,2) = temp_arr(1:norb,6)
+                 END WHERE
+                 WHERE (temp_arr(1:norb,5) > two_pi*((k-1)/nhist))
+                    ephem_(1:norb,1) = temp_arr(1:norb,5) - two_pi*((k-1)/nhist)
+                    ephem_(1:norb,2) = temp_arr(1:norb,6)
+                 END WHERE
+                 indx_min = MINLOC(ephem_(1:norb,1),dim=1)
+                 indx_max = MAXLOC(ephem_(1:norb,1),dim=1)
+                 angular_distance_ra = angularDistance(ephem_(indx_min,1), ephem_(indx_min,2), &
+                      ephem_(indx_max,1), ephem_(indx_max,2))
+                 DEALLOCATE(ephem_)
+                 ! Second, try in measuring largest width in Dec:
+                 indx_min = MINLOC(temp_arr(1:norb,6),dim=1)
+                 indx_max = MAXLOC(temp_arr(1:norb,6),dim=1)
+                 angular_distance_dec = angularDistance(temp_arr(indx_min,5), temp_arr(indx_min,6), &
+                      temp_arr(indx_max,5), temp_arr(indx_max,6))
+
+                 WRITE(lu,"(F13.5,8(2X,F9.4))") &
+                      2400000.5_bp + mjd_utc, &
+                      MINVAL(temp_arr(:,4))/rad_deg, & 
+                      MAXVAL(temp_arr(:,4))/rad_deg, & 
+                      MAXVAL(temp_arr(:,3)), & 
+                      SUM(temp_arr(:,1))/REAL(SIZE(temp_arr,dim=1),bp)/rad_deg, &
+                      SUM(temp_arr(:,2))/REAL(SIZE(temp_arr,dim=1),bp)/rad_deg, &
+                      MAX(angular_distance_ra,angular_distance_dec)/rad_deg, &
+                      SUM(temp_arr(:,5))/REAL(SIZE(temp_arr,dim=1),bp)/rad_deg, &
+                      SUM(temp_arr(:,6))/REAL(SIZE(temp_arr,dim=1),bp)/rad_deg
+
+                 DEALLOCATE(temp_arr)
+
+              ELSE
+
+                 ! Input orbits correspond to one or more single-point estimates of the pdf.
+                 ALLOCATE(temp_arr(1,6))
+
+                 ! RA & DEC
+                 CALL rotateToEquatorial(ephemerides_arr(1,j))        
+                 comp_coord = getCoordinates(ephemerides_arr(1,j))
+                 IF (error) THEN
+                    CALL errorMessage('oorb4neossat / fom', &
+                         'TRACE BACK (80)',1)
+                    STOP
+                 END IF
+                 Delta = comp_coord(1)
+                 temp_arr(1,5:6) = comp_coord(2:3)
+
+                 ! Compute topocentric ecliptic coordinates
+                 ! relative to the Sun
+                 CALL rotateToEcliptic(ephemerides_arr(1,j))        
+                 comp_coord = getCoordinates(ephemerides_arr(1,j))
+                 IF (error) THEN
+                    CALL errorMessage('oorb4neossat / fom', &
+                         'TRACE BACK (85)',1)
+                    STOP
+                 END IF
+                 tsclon = comp_coord(2) - sunlon
+                 tsclat = comp_coord(3) - sunlat
+                 IF (tsclon > pi) THEN
+                    tsclon = tsclon - two_pi
+                 ELSE IF (tsclon < -pi) THEN
+                    tsclon = tsclon + two_pi
+                 END IF
+                 temp_arr(1,1:2) = (/ tsclon, tsclat /)
+
+                 ! APPARENT BRIGHTNESS:
+                 ! Compute phase angle
+                 CALL NEW(ccoord, ephemerides_arr(1,j))
+                 IF (error) THEN
+                    CALL errorMessage('oorb4neossat / fom', &
+                         'TRACE BACK (90)',1)
+                    STOP
+                 END IF
+                 CALL rotateToEcliptic(ccoord)
+                 obsy_obj = getPosition(ccoord)
+                 IF (error) THEN
+                    CALL errorMessage('oorb4neossat / fom', &
+                         'TRACE BACK (95)',1)
+                    STOP
+                 END IF
+                 ephemeris_r2 = DOT_PRODUCT(obsy_obj,obsy_obj)
+                 CALL toCartesian(orb_lt_corr_arr2(1,j), frame='ecliptic')
+                 pos = getPosition(orb_lt_corr_arr2(1,j))
+                 IF (error) THEN
+                    CALL errorMessage('oorb4neossat / fom', &
+                         'TRACE BACK (100)',1)
+                    STOP
+                 END IF
+                 heliocentric_r2 = DOT_PRODUCT(pos,pos)
+                 cos_obj_phase = 0.5_bp * (heliocentric_r2 + ephemeris_r2 - &
+                      observer_r2) / (SQRT(heliocentric_r2) * &
+                      SQRT(ephemeris_r2))
+                 obj_phase = ACOS(cos_obj_phase)
+                 ! Input absolute magnitude
+                 H_value = get_cl_option("--H=", HG_arr_in(1,1))
+                 ! Input slope parameter
+                 G_value = get_cl_option("--G=", HG_arr_in(1,3))
+                 temp_arr(1,3) = getApparentMagnitude(H=H_value, &
+                      G=G_value, r=SQRT(heliocentric_r2), &
+                      Delta=Delta, phase_angle=obj_phase)
+                 IF (error) THEN
+                    CALL errorMessage('oorb4neossat / fom', &
+                         'TRACE BACK (105)',1)
+                    STOP
+                 END IF
+
+                 ! SOLAR ELONGATION
+                 vec3 = cross_product(obsy_obj,obsy_sun)
+                 temp_arr(1,4) = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
+
+                 CALL NULLIFY(ccoord)
+                 CALL NULLIFY(ephemerides_arr(1,j))
+                 CALL NULLIFY(orb_lt_corr_arr2(1,j))
+
+                 CALL NULLIFY(observers(j))
+
+                 ! WIDTH OF EPHEMERIS UNCERTAINTY
+                 ! Make sure that the ephemeris is equatorial:
+                 DO k=1,6
+                    stdev_arr(k) = SQRT(cov_arr(k,k,j)) 
+                 END DO
+
+                 ! First, try measuring largest width in RA:
+                 angular_distance_ra = 3.0_bp*2.0_bp*stdev_arr(2)
+                 ! Second, try measuring largest width in Dec:
+                 angular_distance_dec = 3.0_bp*2.0_bp*stdev_arr(3)
+
+                 ! MG 20100202:
+                 ! NOTE THAT THE MIN,MAX VALUES FOR SOLELON ARE FOR
+                 ! NOW USING A TEMPORARY SOLUTION WHICH PROVIDES AN
+                 ! APPROXIMATION OF THE UNCERTAINTY. ASSUMPTION IS THE
+                 ! ELONGATION UNCERTAINTY IS MOSTLY DEPENDENT ON THE
+                 ! RA UNCERTAINTY AND LESS ON THE DEC UNCERTAINTY.
+                 ! MG 20100414:
+                 ! NEED TO MAKE SURE THAT THE MIN/MAX FOR SOLELON ARE
+                 ! REASONABLE (IE BETWEEN 0 AND 180 DEG AT ALL TIMES).
+
+                 solelon_min = (temp_arr(1,4)-angular_distance_ra/2.0_bp)/rad_deg
+                 IF (solelon_min < 0.0_bp) THEN
+                    solelon_min = 0.0_bp
+                 END IF
+                 solelon_max = (temp_arr(1,4)+angular_distance_ra/2.0_bp)/rad_deg
+                 IF (solelon_max > 180.0_bp) THEN
+                    solelon_max = 180.0_bp
+                 END IF
+
+                 WRITE(lu,"(F13.5,8(2X,F9.4))") &
+                      2400000.5_bp + mjd_utc, &
+                      solelon_min, & 
+                      solelon_max, & 
+                      temp_arr(1,3), & 
+                      temp_arr(1,1)/rad_deg, &
+                      temp_arr(1,2)/rad_deg, &
+                      MAX(angular_distance_ra,angular_distance_dec)/rad_deg, &
+                      temp_arr(:,5:6)/rad_deg
+
+                 DEALLOCATE(temp_arr)
+
+              END IF
+
+              CALL NULLIFY(t)
+
+           END DO
+
+           DEALLOCATE(ephemerides_arr, orb_lt_corr_arr2)
+           IF (ASSOCIATED(pdfs_arr)) THEN
+              DEALLOCATE(pdfs_arr)
+           END IF
+           IF (ASSOCIATED(cov_arr)) THEN
+              DEALLOCATE(cov_arr)
+           END IF
+           CALL NULLIFY(storb_arr_in(i))
+           IF (separately) THEN
+              CALL NULLIFY(tmp_file)
+           END IF
+
+        END DO
+        DEALLOCATE(storb_arr_in, observers)
+
+     END IF
+
+  CASE ("obs_timespan")
+
+     !! Returns the total observational timespan of the input
+     !! observations.
+
+     WRITE(stdout,"(F20.6)") getObservationalTimespan(obss_in)
+
+  CASE ("afrac")
+
+     !! Fractional uncertainty on the semimajor axis; da/a where da
+     !! either covers 99.73% of the total probability mass or is equal
+     !! to the 3-sigma limits.
+
+     DO i=1,SIZE(storb_arr_in)
+        IF (containsSampledPDF(storb_arr_in(i))) THEN
+           orb_arr_in => getSampleOrbits(storb_arr_in(i))
+           ALLOCATE(elements_arr(SIZE(orb_arr_in),6))
+           DO j=1,SIZE(orb_arr_in)
+              elements_arr(j,:) = getElements(orb_arr_in(j), "keplerian")
+              CALL NULLIFY(orb_arr_in(j))
+           END DO
+           pdf_arr_in => getPDFValues(storb_arr_in(i), "keplerian")
+           CALL confidence_limits(elements_arr(:,1), pdf_arr_in, &
+                probability_mass=0.9973_bp, peak=peak, bounds=bounds, &
+                error=errstr)
+           WRITE(stdout,'(F12.6)') (bounds(2)-bounds(1))/peak
+           DEALLOCATE(orb_arr_in, elements_arr, pdf_arr_in)
+        ELSE
+           orb = getNominalOrbit(storb_arr_in(i))
+           elements = getElements(orb, "keplerian")
+           CALL NULLIFY(orb)
+           cov = getCovarianceMatrix(storb_arr_in(i), "keplerian")
+           WRITE(stdout,'(F12.6)') (3.0_bp*2.0_bp*SQRT(cov(1,1)))/elements(1)           
+        END IF
+     END DO
 
   CASE ("tai2utc")
 
