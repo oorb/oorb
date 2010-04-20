@@ -220,7 +220,7 @@ PROGRAM oorb
        ephemeris_r2, &
        hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
        i_min, i_max, integration_step, integration_step_init, &
-       ls_correction_factor, lunar_alt, lunar_alt_max, &
+       ls_correction_factor, ls_rchi2_max, lunar_alt, lunar_alt_max, &
        lunar_elongation, lunar_elongation_min, lunar_phase, &
        lunar_phase_min, lunar_phase_max, &
        mjd, mjd_tai, mjd_tt, mjd_utc, moid, &
@@ -2263,6 +2263,7 @@ PROGRAM oorb
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
           ls_correction_factor=ls_correction_factor, &
+          ls_rchi2_max=ls_rchi2_max, &
           ls_element_mask=ls_element_mask, &
           ls_niter_major_max=ls_niter_major_max, &
           ls_niter_major_min=ls_niter_major_min, &
@@ -2425,6 +2426,7 @@ PROGRAM oorb
              element_type=element_type_comp_prm, &
              accept_multiplier=accwin_multiplier, &
              ls_correction_factor=ls_correction_factor, &
+             ls_rchi2_max=ls_rchi2_max, &
              ls_element_mask=ls_element_mask, &
              ls_niter_major_max=ls_niter_major_max, &
              ls_niter_major_min=ls_niter_major_min, &
