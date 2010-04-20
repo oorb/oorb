@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2010-04-06
+!! @version 2010-04-19
 !!
 MODULE io
 
@@ -540,7 +540,7 @@ CONTAINS
        sor_rho_gauss2, sor_iterate_bounds, &
        vov_type, vov_norb, vov_ntrial, vov_niter, vov_norb_iter, &
        vov_ntrial_iter, vov_nmap, vov_mapping_mask, vov_scaling, &
-       ls_type, ls_element_mask, ls_correction_factor, &
+       ls_type, ls_element_mask, ls_correction_factor, ls_rchi2_max, &
        ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
        cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
        smplx_tol, smplx_niter, &
@@ -587,6 +587,7 @@ CONTAINS
          outlier_multiplier, &
          sor_genwin_multiplier, &
          ls_correction_factor, &
+         ls_rchi2_max, &
          cos_nsigma, &
          smplx_tol, &
          integration_step, &
@@ -1355,6 +1356,10 @@ CONTAINS
        CASE ("ls.correction_factor")
           IF (PRESENT(ls_correction_factor)) THEN
              CALL toReal(TRIM(par_val), ls_correction_factor, error)
+          END IF
+       CASE ("ls.rchi2.max")
+          IF (PRESENT(ls_rchi2_max)) THEN
+             CALL toReal(TRIM(par_val), ls_rchi2_max, error)
           END IF
        CASE ("ls.element_mask")
           IF (PRESENT(ls_element_mask)) THEN
