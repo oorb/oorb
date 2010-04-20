@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2010-04-06
+!! @version 2010-04-19
 !!  
 MODULE StochasticOrbit_cl
 
@@ -188,6 +188,7 @@ MODULE StochasticOrbit_cl
      ! Parameters for the least-squares fitting:
      REAL(bp)                            :: ls_corr_fac_prm         = 1.0_bp
      REAL(bp)                            :: ls_rchi2_diff_tresh_prm = 0.00001_bp
+     REAL(bp)                            :: ls_rchi2_max_prm        = 1.5_bp
      INTEGER                             :: ls_niter_major_max_prm  = 10
      INTEGER                             :: ls_niter_major_min_prm  = 2
      INTEGER                             :: ls_niter_minor_prm      = 20
@@ -200,7 +201,7 @@ MODULE StochasticOrbit_cl
      LOGICAL                             :: cos_gaussian_prm = .FALSE.
 
      ! Parameters for simplex optimization:
-     REAL(bp)                            :: smplx_tol_prm  = 1.05_bp
+     REAL(bp)                            :: smplx_rchi2_max_prm  = 1.05_bp
      INTEGER                             :: smplx_niter_prm = 1000
      INTEGER                             :: smplx_niter_cmp
 
@@ -6590,8 +6591,6 @@ CONTAINS
     LOGICAL, DIMENSION(:,:), ALLOCATABLE :: mask_measur
     LOGICAL, DIMENSION(6) :: mask_param
 
-    REAL(bp), PARAMETER :: rchi2_max_prm = 1.5_bp
-
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A)") "LEAST SQUARES"
     END IF
@@ -7049,7 +7048,7 @@ CONTAINS
     DEALLOCATE(mask_measur, stat=err)
 
     ! Check whether acceptable solution based on rchi2
-    IF (rchi2 > rchi2_max_prm) THEN
+    IF (rchi2 > this%ls_rchi2_max_prm) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / " // &
             "levenbergMarquardt", &
@@ -7732,7 +7731,7 @@ CONTAINS
        vov_norb, vov_ntrial, vov_norb_iter, vov_ntrial_iter, &
        vov_nmap, vov_niter, vov_scaling, vov_mapping_mask, &
        ls_correction_factor, ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
-       ls_element_mask, &
+       ls_element_mask, ls_rchi2_max, &
        cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
        smplx_tol, smplx_niter)
 
@@ -7770,6 +7769,7 @@ CONTAINS
          sor_rho2_u, &
          sor_generat_multiplier, &
          ls_correction_factor, &
+         ls_rchi2_max, &
          cos_nsigma, &
          smplx_tol
     INTEGER, INTENT(in), OPTIONAL :: &
@@ -8142,6 +8142,9 @@ CONTAINS
     IF (PRESENT(ls_correction_factor)) THEN
        this%ls_corr_fac_prm = ls_correction_factor
     END IF
+    IF (PRESENT(ls_rchi2_max)) THEN
+       this%ls_rchi2_max_prm = ls_rchi2_max
+    END IF
     IF (PRESENT(ls_niter_major_max)) THEN
        this%ls_niter_major_max_prm = ls_niter_major_max
     END IF
@@ -8167,7 +8170,7 @@ CONTAINS
        this%cos_gaussian_prm = cos_gaussian
     END IF
     IF (PRESENT(smplx_tol)) THEN
-       this%smplx_tol_prm = smplx_tol
+       this%smplx_rchi2_max_prm = smplx_tol
     END IF
     IF (PRESENT(smplx_niter)) THEN
        this%smplx_niter_prm = smplx_niter
@@ -8752,7 +8755,7 @@ CONTAINS
   !! maximum number of function evaluations, while on output the same
   !! parameter gives the actual number of function evaluations
   !! perfomed. Also on output, p and y will have been reset to N+1 new
-  !! points all within this%smplx_tol_prm of a minimum function value.
+  !! points all within this%smplx_rchi2_max_prm of a minimum function value.
   !!
   !! Parameters: The maximum allowed number of function evaluations,
   !! and a small number.
@@ -8955,7 +8958,7 @@ CONTAINS
          END IF
          rtol = y(ihi)
          ! return if satisfactory.  
-         IF (rtol < this%smplx_tol_prm) THEN 
+         IF (rtol < this%smplx_rchi2_max_prm) THEN 
             ! If returning, put best point and value in slot 1. 
             CALL swap(y(1),y(ilo))
             CALL swap(p(1,:),p(ilo,:)) 
