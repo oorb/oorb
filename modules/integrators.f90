@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2010-02-03
+!! @version 2010-04-20
 !!
 MODULE integrators
 
@@ -1974,10 +1974,12 @@ CONTAINS
        ! Log impacts and distances to solar-system objects
        DO j=1,N+naddit
           IF (j <= N) THEN
-             ! Basic perturbers
+             ! Basic perturbers (compute drs and r2d regardless of
+             ! perturbers to be included in the force model so that
+             ! the distance to planets can be logged)
+             drs(1:3,j) = wc(j,1:3) - ws(1:3,i) 
+             r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j)) 
              IF (perturbers(j)) THEN
-                drs(1:3,j) = wc(j,1:3) - ws(1:3,i) 
-                r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j)) 
                 ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))
              END IF
           ELSE
