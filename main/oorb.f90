@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-04-15
+!! @version 2010-04-23
 !!
 PROGRAM oorb
 
@@ -707,6 +707,7 @@ PROGRAM oorb
 
   CASE ("toorbpdf")
 
+     first = .TRUE.
      tmp_fname = get_cl_option("--id-in=","")
      IF (LEN_TRIM(tmp_fname) /= 0) THEN
         ! Read and sort ids
@@ -738,23 +739,25 @@ PROGRAM oorb
               pdf_arr_in => getPDFValues(storb_arr_in(i), element_type_out_prm)
               !pdf_arr_in = pdf_arr_in/sum(pdf_arr_in)
               DO j=1,SIZE(orb_arr_in)
-                 CALL writeOpenOrbOrbitFile(lu_orb_out, i==1.AND.j==1, &
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                       element_type_out_prm, id_arr_in(i), &
                       orb_arr_in(j), pdf=pdf_arr_in(j), &
                       element_type_pdf=element_type_out_prm, &
                       H=HG_arr_in(i,1), &
                       G=HG_arr_in(i,3), &
                       mjd=mjd_epoch)
+                 first = .FALSE.
                  CALL NULLIFY(orb_arr_in(j))
               END DO
               DEALLOCATE(orb_arr_in, pdf_arr_in)
            ELSE
               orb = getNominalOrbit(storb_arr_in(i))
               cov = getCovarianceMatrix(storb_arr_in(i), element_type_out_prm)
-              CALL writeOpenOrbOrbitFile(lu_orb_out, i==1, &
+              CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                    element_type_out_prm, id_arr_in(i), &
                    orb=orb, cov=cov, H=HG_arr_in(i,1), &
                    G=HG_arr_in(i,3), mjd=mjd_epoch)
+              first = .FALSE.
            END IF
         END DO
      END IF
@@ -767,6 +770,7 @@ PROGRAM oorb
      norb = HUGE(norb)
      norb = get_cl_option("--norb=",norb)
      H_max = get_cl_option("--H-max=",HUGE(H_max))
+     first = .TRUE.
 
      tmp_fname = get_cl_option("--id-in=","")
      IF (LEN_TRIM(tmp_fname) /= 0) THEN
@@ -812,19 +816,22 @@ PROGRAM oorb
                     END IF
                  END IF
                  k = k + 1
-                 CALL writeOpenOrbOrbitFile(lu_orb_out, i==1 &
-                      .AND. (j==1 .OR. k==1), element_type_out_prm, id_arr_in(i), &
-                      orb_arr_in(j), H=HG_arr_in(i,1), G=HG_arr_in(i,3), mjd=mjd_epoch)
-                 IF (k ==  norb) THEN
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
+                      element_type_out_prm, id_arr_in(i), &
+                      orb_arr_in(j), H=HG_arr_in(i,1), &
+                      G=HG_arr_in(i,3), mjd=mjd_epoch)
+                 first = .FALSE.
+                 IF (k == norb) THEN
                     EXIT
                  END IF
               END DO
            ELSE
               orb = getNominalOrbit(storb_arr_in(i))
-              CALL writeOpenOrbOrbitFile(lu_orb_out, i==1, &
+              CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                    element_type_out_prm, id_arr_in(i), &
                    orb=orb, H=HG_arr_in(i,1), &
-                   G=HG_arr_in(i,3), mjd=mjd_epoch)              
+                   G=HG_arr_in(i,3), mjd=mjd_epoch)
+              first = .FALSE.
            END IF
         END DO
      ELSE IF (ASSOCIATED(orb_arr_in)) THEN
@@ -850,9 +857,10 @@ PROGRAM oorb
               END IF
            END IF
            j = j + 1
-           CALL writeOpenOrbOrbitFile(lu_orb_out, (i==1 .OR. j==1), &
+           CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                 element_type_out_prm, id_arr_in(i), orb_arr_in(i), &
                 H=HG_arr_in(i,1), G=HG_arr_in(i,3), mjd=mjd_epoch)
+           first = .FALSE.
            IF (j == norb) THEN
               EXIT
            END IF
@@ -867,6 +875,7 @@ PROGRAM oorb
      H_max = get_cl_option("--H-max=",HUGE(H_max))
      i_min = get_cl_option("--i-min=",0.0_bp)
      i_max = get_cl_option("--i-max=",HUGE(i_max))
+     first = .TRUE.
 
      tmp_fname = get_cl_option("--id-in=","")
      IF (LEN_TRIM(tmp_fname) /= 0) THEN
@@ -925,7 +934,7 @@ PROGRAM oorb
                        CYCLE
                     END IF
                  END IF
-                 CALL writeDESOrbitFile(lu_orb_out, i==1 .AND. j==1, &
+                 CALL writeDESOrbitFile(lu_orb_out, first, &
                       element_type_out_prm, id_arr_in(i), &
                       orb_arr_in(j), HG_arr_in(i,1))
                  IF (error) THEN
@@ -934,6 +943,7 @@ PROGRAM oorb
                     WRITE(stderr,*) j
                     STOP
                  END IF
+                 first = .FALSE.
                  CALL NULLIFY(orb_arr_in(j))
               END DO
               DEALLOCATE(orb_arr_in)
@@ -950,9 +960,10 @@ PROGRAM oorb
                     CYCLE
                  END IF
               END IF
-              CALL writeDESOrbitFile(lu_orb_out, i==1, &
+              CALL writeDESOrbitFile(lu_orb_out, first, &
                    element_type_out_prm, id_arr_in(i), orb, &
                    HG_arr_in(i,1))
+              first = .FALSE.
               CALL NULLIFY(orb)
            END IF
         END DO
@@ -979,7 +990,7 @@ PROGRAM oorb
                  CYCLE
               END IF
            END IF
-           CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
+           CALL writeDESOrbitFile(lu_orb_out, first, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1))
            IF (error) THEN
               CALL errorMessage("oorb", &
@@ -987,6 +998,7 @@ PROGRAM oorb
               WRITE(stderr,*) i
               STOP
            END IF
+           first = .FALSE.
         END DO
      END IF
      IF (ALLOCATED(id_arr)) THEN
