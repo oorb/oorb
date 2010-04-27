@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-04-23
+!! @version 2010-04-26
 !!
 PROGRAM oorb
 
@@ -718,7 +718,7 @@ PROGRAM oorb
            STOP
         END IF
         j = getNrOfLines(tmp_file)
-        ALLOCATE(id_arr(i))
+        ALLOCATE(id_arr(j))
         DO i=1,j
            READ(getUnit(tmp_file),*) id_arr(i)
         END DO
@@ -782,7 +782,7 @@ PROGRAM oorb
            STOP
         END IF
         j = getNrOfLines(tmp_file)
-        ALLOCATE(id_arr(i))
+        ALLOCATE(id_arr(j))
         DO i=1,j
            READ(getUnit(tmp_file),*) id_arr(i)
         END DO
@@ -887,7 +887,7 @@ PROGRAM oorb
            STOP
         END IF
         j = getNrOfLines(tmp_file)
-        ALLOCATE(id_arr(i))
+        ALLOCATE(id_arr(j))
         DO i=1,j
            READ(getUnit(tmp_file),*) id_arr(i)
         END DO
