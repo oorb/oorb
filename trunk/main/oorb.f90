@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-04-26
+!! @version 2010-04-28
 !!
 PROGRAM oorb
 
@@ -101,9 +101,8 @@ PROGRAM oorb
        obsy_code_arr                                                !! IAU/MPC designated observatory code.
   CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: &
        group_name_arr, &
-       id_arr_in
-  CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), ALLOCATABLE :: &
-       id_arr                        
+       id_arr_in, &
+       id_arr
   CHARACTER(len=32), DIMENSION(:), ALLOCATABLE :: &
        str_arr
   CHARACTER(len=32), DIMENSION(6) :: &
@@ -761,7 +760,7 @@ PROGRAM oorb
            END IF
         END DO
      END IF
-     IF (ALLOCATED(id_arr)) THEN
+     IF (ASSOCIATED(id_arr)) THEN
         DEALLOCATE(id_arr, stat=err)
      END IF
 
@@ -866,7 +865,7 @@ PROGRAM oorb
            END IF
         END DO
      END IF
-     IF (ALLOCATED(id_arr)) THEN
+     IF (ASSOCIATED(id_arr)) THEN
         DEALLOCATE(id_arr, stat=err)
      END IF
 
@@ -1001,7 +1000,7 @@ PROGRAM oorb
            first = .FALSE.
         END DO
      END IF
-     IF (ALLOCATED(id_arr)) THEN
+     IF (ASSOCIATED(id_arr)) THEN
         DEALLOCATE(id_arr, stat=err)
      END IF
 
@@ -4136,12 +4135,32 @@ PROGRAM oorb
 
      ELSE
 
+        IF (exist(obss_in)) THEN
+           obss_sep => getSeparatedSets(obss_in)           
+           id_arr => getObjects(obss_in)
+        ELSE
+           obss_sep => NULL()
+        END IF
 
         DO i=1,norb
 
-           IF (exist(obss_in)) THEN
-              observers => getObservatoryCCoords(obss_in)
-              IF (info_verb >= 2) THEN
+           IF (ASSOCIATED(obss_sep)) THEN
+              k = -1
+              DO j=1,SIZE(id_arr)
+                 IF (TRIM(id_arr_in(i)) == TRIM(id_arr(j))) THEN
+                    k = j
+                    EXIT
+                 END IF
+              END DO
+              IF (k < 0) THEN
+                 IF (err_verb >= 1) THEN
+                    WRITE(stderr,*) "WARNING: Observations for object " // &
+                         TRIM(id_arr_in(i)) // " not found..."
+                 END IF
+                 CYCLE
+              END IF
+              observers => getObservatoryCCoords(obss_sep(k))
+              IF (info_verb >= 3) THEN
                  WRITE(stdout,"(9(1X,A17))") "GEO2OBSY X [KM]", &
                       "GEO2OBSY Y [KM]", "GEO2OBSY Z [KM]", &
                       "HELIO2GEO X [AU]", "HELIO2GEO Y [AU]", &
@@ -4162,7 +4181,8 @@ PROGRAM oorb
               DO j=1,SIZE(observers)
                  CALL rotateToEquatorial(observers(j))
               END DO
-              obsy_code_arr => getObservatoryCodes(obss_in)
+              obsy_code_arr => getObservatoryCodes(obss_sep(k))
+              CALL NULLIFY(obss_sep(k))
            ELSE
               t = getTime(orb_arr_in(i))
               mjd_tt = getMJD(t, "TT")
@@ -4505,6 +4525,17 @@ PROGRAM oorb
            END IF
            DEALLOCATE(observers, ephemerides, orb_lt_corr_arr)
 
+        END DO
+
+        first = .TRUE.
+        DO i=1,SIZE(obss_sep)
+           IF (exist(obss_sep(i))) THEN
+              IF (first) THEN
+                 WRITE(stderr,"(A)") "Orbit missing for the following observation set(s):"
+                 first = .FALSE.
+              END IF
+              WRITE(stderr,"(A)") TRIM(id_arr(i))
+           END IF
         END DO
 
      END IF
