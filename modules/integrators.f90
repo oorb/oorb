@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2010-04-20
+!! @version 2010-06-03
 !!
 MODULE integrators
 
@@ -201,8 +201,21 @@ CONTAINS
        ! Use default step length:
        istep = SIGN(step_def,tmp)
     END IF
-    rstep = SIGN(MOD(tmp,istep),tmp)
     total = ABS(INT(tmp/istep))
+    !rstep = SIGN(MOD(tmp,istep),tmp)
+    rstep = tmp - total*istep
+
+    IF (ABS(rstep) > ABS(istep)) THEN
+       WRITE(0,*) "There appears to be a problem with the " // &
+            "selection of # of steps in the BS integrator. " // &
+            "Please send the lines below to MG for analysis."
+       WRITE(0,*) "tmp:         ", tmp
+       WRITE(0,*) "istep:       ", istep
+       WRITE(0,*) "rstep:       ", rstep
+       WRITE(0,*) "total:       ", total
+       WRITE(0,*) "total*istep: ", total*istep
+       STOP
+    END IF
 
     ! Integration loop
     k       = 1
@@ -1997,19 +2010,19 @@ CONTAINS
              IF (j <= N) THEN
                 ! Basic perturbers
                 IF (dist < planetary_radii(j)) THEN
-                   encounters(i,j,1) = mjd_tdt
-                   encounters(i,j,2) = 1          
-                   encounters(i,j,3) = dist          
+                   encounters(i,j,1) = mjd_tdt ! date
+                   encounters(i,j,2) = 1       ! = impact          
+                   encounters(i,j,3) = dist    ! distance
                 ELSE
-                   encounters(i,j,1) = mjd_tdt
-                   encounters(i,j,2) = 2
-                   encounters(i,j,3) = dist
+                   encounters(i,j,1) = mjd_tdt ! date
+                   encounters(i,j,2) = 2       ! = non-impact
+                   encounters(i,j,3) = dist    ! distance
                 END IF
              ELSE IF (NS+j-N /= i) THEN
                 ! Additional perturbers
-                encounters(i,j,1) = mjd_tdt
-                encounters(i,j,2) = 2
-                encounters(i,j,3) = dist
+                encounters(i,j,1) = mjd_tdt ! date
+                encounters(i,j,2) = 2       ! always non-impact (we don't know the size)
+                encounters(i,j,3) = dist    ! distance
              END IF
           END IF
        END DO
@@ -2017,7 +2030,7 @@ CONTAINS
           ! Distance to Sun
           dist = SQRT(DOT_PRODUCT(ws(1:3,i), ws(1:3,i)))
           IF (dist < planetary_radii(11)) THEN
-             encounters(i,11,1) = mjd_tdt
+             encounters(i,11,1) = mjd_tdt 
              encounters(i,11,2) = 1
              encounters(i,11,3) = dist
           ELSE
