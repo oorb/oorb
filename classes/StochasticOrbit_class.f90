@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2010-04-19
+!! @version 2010-06-19
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1259,9 +1259,10 @@ CONTAINS
     TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
          obsy_ccoords
     CHARACTER(len=FRAME_LEN) :: frame
+    CHARACTER(len=12) :: str1, str2
     CHARACTER(len=64) :: &
          frmt = "(F20.15,1X)", &
-         efrmt = "(E10.4,1X)"
+         efrmt = "(E11.4,1X)"
     REAL(bp), DIMENSION(:,:,:), POINTER :: &
          residuals3, &
          partials_arr, &
@@ -1289,12 +1290,14 @@ CONTAINS
          comp_coord, &
          stdev
     REAL(bp) :: &
+         sma, &
          apriori, &
          pdf_ml_global_ls, &
          chi2, &
          pdf_val, &
          pdf_relative_bound, &
          obs_, &
+         q, &
          comp_
     INTEGER, DIMENSION(:), ALLOCATABLE :: &
          failed_flag
@@ -1371,7 +1374,7 @@ CONTAINS
     nobs = SIZE(obs_scoords,dim=1)
     ALLOCATE(orb_arr(this%cos_norb_prm), cosdec0(nobs), &
          residuals2(nobs,6), residuals3(this%cos_norb_prm,nobs,6), &
-         failed_flag(4), reg_apriori_arr(this%cos_norb_prm), &
+         failed_flag(11), reg_apriori_arr(this%cos_norb_prm), &
          pdf_arr(this%cos_norb_prm), rchi2_arr(this%cos_norb_prm), &
          jacobian_arr(this%cos_norb_prm,3), obs_coords(nobs,6), &
          mask_arr(nobs,6), stat=err)
@@ -1424,8 +1427,12 @@ CONTAINS
           residuals2(i,2) = (obs_ - comp_) * cosdec0(i)
        END IF
        IF (info_verb >= 4) THEN
-          WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "observed pos.", obs_coords(i,1:3)
-          WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "computed pos.", comp_coord(1:3)
+          WRITE(stdout,"(2X,A,1X,A,3"//TRIM(frmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "observed pos.", obs_coords(i,1:3)
+          WRITE(stdout,"(2X,A,1X,A,3"//TRIM(frmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "computed pos.", comp_coord(1:3)
        END IF
     END DO
     ! Compute chi2:
@@ -1438,7 +1445,9 @@ CONTAINS
     END IF
     DEALLOCATE(residuals2)
     IF (chi2 < 0.0_bp) THEN
-       WRITE(stdout,*) "Negative chi2 (", chi2, ") for ML solution."
+       WRITE(stdout,"(2X,A,1X,A,F10.5,A)") &
+            "StochasticOrbit / covarianceSampling:", &
+            "Negative chi2 (", chi2, ") for ML solution."
     END IF
     ! Jeffrey's apriori:
     IF (this%regularization_prm) THEN
@@ -1479,18 +1488,38 @@ CONTAINS
 
     ! From Devroye: "Non-Uniform Random Variate Generation", 1986,
     ! chapter 11
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,2(A,1X),E12.4)") &
+            "StochasticOrbit / covarianceSampling:", &
+            "Condition number for orbital-element covariance matrix:", cond_nr(cov, errstr)
+    END IF
     A = 0.0_bp
     DO i=1,6
        DO j=1,i
           IF (j == 1) THEN
              A(i,1) = cov(i,1)/SQRT(cov(1,1))
           ELSE IF (i == j) THEN
-             A(i,i) = SQRT(cov(i,i) - SUM(A(i,1:i-1)**2))
+             IF (cov(i,i) - SUM(A(i,1:i-1)**2) < -1E-9_bp) THEN
+                CALL toString(i, str1, error)
+                CALL toString(cov(i,i) - SUM(A(i,1:i-1)**2), str2, error, frmt=efrmt)
+                error = .TRUE.
+                CALL errorMessage("StochasticOrbit / covarianceSampling", &
+                     "Square of element (" // TRIM(str1) // "," // TRIM(str1) // &
+                     ") of Devroye's matrix A is negative (" // TRIM(str2) // ").", 1)
+                RETURN
+             END IF
+             A(i,i) = SQRT(ABS(cov(i,i) - SUM(A(i,1:i-1)**2)))
           ELSE IF (j < i) THEN
              A(i,j) = (cov(i,j) - SUM(A(i,1:j-1)*A(j,1:j-1)))/A(j,j)
           END IF
        END DO
     END DO
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,1X,A)") &
+            "StochasticOrbit / covarianceSampling:", &
+            "Devroye's A matrix:"
+       CALL matrix_print(A,stdout,errstr)
+    END IF
 
     ! Relative bound for probability density:
     pdf_relative_bound = EXP(-0.5_bp*this%dchi2_prm)
@@ -1498,22 +1527,65 @@ CONTAINS
     iorb = 0
     itrial = 0
     mean = 0.0_bp
-    IF (this%element_type_prm == "keplerian") THEN
-       WRITE(stdout,"(A20,6(1X,F15.10))") "Nominal elements:", elements_nominal(1:2), elements_nominal(3:6)/rad_deg
-    ELSE
-       WRITE(stdout,"(A20,6(1X,F15.10))") "Nominal elements:", elements_nominal(1:6)
+    IF (info_verb >= 2) THEN
+       IF (this%element_type_prm == "keplerian") THEN
+          WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Nominal elements:", elements_nominal(1:2), elements_nominal(3:6)/rad_deg
+       ELSE
+          WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Nominal elements:", elements_nominal(1:6)
+       END IF
+    END IF
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,1X,A)") &
+            "StochasticOrbit / covarianceSampling:", &
+            "Starting sampling."
     END IF
     DO WHILE (iorb < this%cos_norb_prm .AND. itrial < this%cos_ntrial_prm)
 
        itrial = itrial + 1
 
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A,I0)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Trial orbit #", itrial
+          WRITE(stdout,"(2X,A,1X,A,I0)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Accepted orbits so far: ", iorb
+          WRITE(stdout,"(2X,A,1X,2A)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Element type: ", TRIM(this%element_type_prm)
+          IF (this%element_type_prm == "keplerian") THEN
+             WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Nominal elements:", elements_nominal(1:2), elements_nominal(3:6)/rad_deg
+             WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Element uncertainty:", stdev(1:2), stdev(3:6)/rad_deg
+          ELSE
+             WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Nominal elements:", elements_nominal(1:6)
+             WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Element uncertainty:", stdev(1:6)
+          END IF
+       END IF
+
        IF (itrial == 1) THEN
+          ! Use the nominal orbit as first trial orbit.
+          IF (info_verb >= 2) THEN
+             deviates = 0.0_bp
+             elements = elements_nominal
+             WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Deviates:", deviates
+          END IF
+          CALL NULLIFY(orb)
           orb = copy(orb_nominal)
        ELSE
-
-          WRITE(stdout,"(1X,A,I0)") "Trial orbit #", itrial
-          WRITE(stdout,"(1X,A,I0)") "Accepted orbits so far: ", iorb
-
           IF (this%cos_gaussian_prm) THEN
              CALL randomGaussian(ran)
           ELSE
@@ -1523,42 +1595,148 @@ CONTAINS
           deviates = this%cos_nsigma_prm*MATMUL(A,ran) + mean
           ! New coordinates = old coordinates + deviates:
           elements = elements_nominal + deviates
-          !WRITE(50,"(12(F20.15,1X))") elements, ran
+          IF (this%element_type_prm == "keplerian") THEN
+             ! 0 <= angle < 2pi :
+             elements(4:6) = MODULO(elements(4:6), two_pi)
+          END IF
           IF (info_verb >= 2) THEN
              IF (this%element_type_prm == "keplerian") THEN
-                WRITE(stdout,"(A20,6(1X,F15.10))") "Element uncertainty:", stdev(1:2), stdev(3:6)/rad_deg
-                WRITE(stdout,"(A20,6(1X,F15.10))") "Deviates:", deviates(1:2), deviates(3:6)/rad_deg
-                IF (elements(2) < 0.0_bp .OR. elements(2) > 1.0_bp) THEN
-                   ! Eccentricity out of bounds (or should non-elliptic orbits be accepted?).
-                   failed_flag(1) = failed_flag(1) + 1
-                   CYCLE
-                END IF
-                IF (elements(3) < 0.0_bp .OR. elements(3) > pi) THEN
-                   ! Inclination not defined.
-                   failed_flag(2) = failed_flag(2) + 1
-                   CYCLE
-                END IF
-                ! 0 <= angle < 2pi :
-                elements(4:6) = MODULO(elements(4:6), two_pi)
+                WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                     "StochasticOrbit / covarianceSampling:", &
+                     "Deviates:", deviates(1:2), deviates(3:6)/rad_deg
              ELSE
-                WRITE(stdout,"(A20,6(1X,F15.10))") "Element uncertainty:", stdev(1:6)
-                WRITE(stdout,"(A20,6(1X,F15.10))") "Deviates:", deviates(1:6)          
-             END IF
-             IF (this%element_type_prm == "keplerian") THEN
-                WRITE(stdout,"(A20,6(1X,F15.10))") "Generated elements:", elements(1:2), elements(3:6)/rad_deg
-             ELSE
-                WRITE(stdout,"(A20,6(1X,F15.10))") "Generated elements:", elements(1:6)          
+                WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                     "StochasticOrbit / covarianceSampling:", &
+                     "Deviates:", deviates(1:6)          
              END IF
           END IF
           IF (ANY(ABS(deviates) > this%cos_nsigma_prm*stdev)) THEN
              WRITE(stdout,*) ABS(deviates) > this%cos_nsigma_prm*stdev
              !stop
           END IF
+          CALL NULLIFY(orb)
           CALL NEW(orb, elements, this%element_type_prm, frame, t0)
           IF (error) THEN
              CALL errorMessage("StochasticOrbit / covarianceSampling", &
                   "TRACE BACK (70)", 1)
              RETURN
+          END IF
+       END IF
+       IF (info_verb >= 2) THEN
+          IF (this%element_type_prm == "keplerian") THEN
+             WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Generated elements:", elements(1:2), elements(3:6)/rad_deg
+          ELSE
+             WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Generated elements:", elements(1:6)          
+          END IF
+       END IF
+
+       ! Check whether there are a priori requirements on the orbits
+       IF (this%informative_apriori_prm) THEN
+          elements = getElements(orb,"cometary")
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
+                  "TRACE BACK (71)", 1)
+             RETURN
+          END IF
+          ! Semimajor axis:
+          IF (this%apriori_a_min_prm >= 0.0_bp .OR. &
+               this%apriori_a_max_prm >= 0.0_bp) THEN
+             sma = elements(1)/(1.0_bp-elements(2))
+             IF (this%apriori_a_min_prm >= 0.0_bp .AND. &
+                  sma < this%apriori_a_min_prm) THEN
+                ! Semimajor axis too small
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F13.7,A)") &
+                        "Failed (semimajor axis too small: ", sma, " AU)"
+                END IF
+                failed_flag(1) = failed_flag(1) + 1
+                CYCLE
+             END IF
+             IF (this%apriori_a_max_prm >= 0.0_bp .AND. &
+                  sma > this%apriori_a_max_prm) THEN
+                ! Semimajor axis too large
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F10.7,A)") &
+                        "Failed (semimajor axis too large: ", sma, " AU)"
+                END IF
+                failed_flag(2) = failed_flag(2) + 1
+                CYCLE
+             END IF
+          END IF
+          ! Eccentricity:
+          IF (elements(2) < 0.0_bp) THEN
+             ! Eccentricity too small.
+             failed_flag(3) = failed_flag(3) + 1
+             CYCLE
+          END IF
+          IF (elements(2) > 1.0_bp) THEN
+             ! Eccentricity too large (or should non-elliptic orbits be accepted?).
+             failed_flag(4) = failed_flag(4) + 1
+             CYCLE
+          END IF
+          ! Inclination:
+          IF (elements(3) < 0.0_bp) THEN
+             ! Inclination not defined.
+             failed_flag(5) = failed_flag(5) + 1
+             CYCLE
+          END IF
+          IF (elements(3) > pi) THEN
+             ! Inclination not defined.
+             failed_flag(6) = failed_flag(6) + 1
+             CYCLE
+          END IF
+          ! Periapsis distance:
+          IF (this%apriori_periapsis_min_prm >= 0.0_bp .OR. &
+               this%apriori_periapsis_max_prm >= 0.0_bp) THEN
+             ! Periapsis distance too small:
+             IF (this%apriori_periapsis_min_prm >= 0.0_bp .AND. &
+                  elements(1) < this%apriori_periapsis_min_prm) THEN
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F13.7,A)") &
+                        "Failed (periapsis distance too small: ", q, " AU)"
+                END IF
+                failed_flag(7) = failed_flag(7) + 1
+                CYCLE
+             END IF
+             ! Periapsis distance too large:
+             IF (this%apriori_periapsis_max_prm >= 0.0_bp .AND. &
+                  elements(1) > this%apriori_periapsis_max_prm) THEN
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F10.7,A)") &
+                        "Failed (periapsis distance too large: ", q, " AU)"
+                END IF
+                failed_flag(8) = failed_flag(8) + 1
+                CYCLE
+             END IF
+          END IF
+          ! Apoapsis distance:
+          IF (this%apriori_apoapsis_min_prm >= 0.0_bp .OR. &
+               this%apriori_apoapsis_max_prm >= 0.0_bp) THEN
+             Q = sma*(1.0_bp+elements(2))
+             ! Apoapsis distance too small:
+             IF (this%apriori_apoapsis_min_prm >= 0.0_bp .AND. &
+                  Q < this%apriori_apoapsis_min_prm) THEN
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F13.7,A)") &
+                        "Failed (apoapsis distance too small: ", Q, " AU)"
+                END IF
+                failed_flag(9) = failed_flag(9) + 1
+                CYCLE
+             END IF
+             ! Apoapsis distance too large:
+             IF (this%apriori_apoapsis_max_prm >= 0.0_bp .AND. &
+                  Q > this%apriori_apoapsis_max_prm) THEN
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F10.7,A)") &
+                        "Failed (apoapsis distance too large: ", Q, " AU)"
+                END IF
+                failed_flag(10) = failed_flag(10) + 1
+                CYCLE
+             END IF
           END IF
        END IF
 
@@ -1575,12 +1753,22 @@ CONTAINS
        !!
        !! 5) ACCEPTANCE / REJECTION OF GENERATED ORBIT
        !!
+       IF (info_verb >= 4) THEN
+          WRITE(stdout,"(2X,A,1X,A)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Start computing ephemerides..."
+       END IF
        CALL getEphemerides(orb, obsy_ccoords, comp_scoords, &
             partials_arr=partials_arr)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / covarianceSampling", &
                "TRACE BACK (80)",1)
           RETURN
+       END IF
+       IF (info_verb >= 4) THEN
+          WRITE(stdout,"(2X,A,1X,A)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Ephemerides ready..."
        END IF
        ! Multiply RA partials with cosine of observed declination:
        DO i=1,nobs
@@ -1608,8 +1796,16 @@ CONTAINS
              residuals3(iorb+1,i,2) = (obs_ - comp_) * cosdec0(i)
           END IF
           IF (info_verb >= 4) THEN
-             WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "observed pos.", obs_coords(i,1:3)
-             WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "computed pos.", comp_coord(1:3)
+             WRITE(stdout,"(2X,A,1X,A21,3"//TRIM(frmt)//")") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "observed pos.", obs_coords(i,1:3)
+             WRITE(stdout,"(2X,A,1X,A21,3"//TRIM(frmt)//")") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "computed pos.", comp_coord(1:3)
+             WRITE(stdout,"(2X,A,1X,A21,3"//TRIM(frmt)//")") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "residuals [AU,arcsec]", residuals3(iorb+1,i,1), &
+                  residuals3(iorb+1,i,2:3)/rad_asec
           END IF
        END DO
 
@@ -1619,10 +1815,10 @@ CONTAINS
 !!$       END WHERE
 !!$       IF (info_verb >= 4) THEN
 !!$          DO i=1,nobs
-!!$             WRITE(stdout,"(2X,A,2"//TRIM(frmt)//")") "O-C residuals (RA, Dec):", &
+!!$             WRITE(stdout,"(2X,A,1X,A,2"//TRIM(frmt)//")") "O-C residuals (RA, Dec):", &
 !!$                  residuals3(iorb+1,i,2:3)/rad_asec
 !!$          END DO
-!!$          WRITE(stdout,"(2X,A,I0,A,I0)") &
+!!$          WRITE(stdout,"(2X,A,1X,A,I0,A,I0)") &
 !!$               "No of omitted obs/included obs: ", &
 !!$               COUNT(mask_arr),"/",n0(2)
 !!$       END IF
@@ -1630,7 +1826,7 @@ CONTAINS
 !!$          ! Residuals are too large for at least one observation.
 !!$          failed_flag(3) = failed_flag(3) + 1
 !!$          IF (info_verb >= 5) THEN
-!!$             WRITE(stdout,"(2X,A)") &
+!!$             WRITE(stdout,"(2X,A,1X,A)") &
 !!$                  "Failed (residuals are too large)"
 !!$          END IF
 !!$          CALL NULLIFY(orb)
@@ -1655,7 +1851,9 @@ CONTAINS
           RETURN
        END IF
        IF (chi2 < 0.0_bp) THEN
-          WRITE(stdout,*) "Negative chi2 (", chi2, ") at trial ", itrial
+          WRITE(stdout,"(2X,A,1X,A,F10.5,A,I0)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Negative chi2 (", chi2, ") at trial ", itrial
        END IF
        ! Jeffrey's apriori:
        ! Monitor the matrix inversion?
@@ -1692,22 +1890,39 @@ CONTAINS
        ! is there for practical reasons):
        pdf_val = apriori*EXP(-0.5_bp*(chi2 - COUNT(this%obs_masks_prm)))
        IF (info_verb >= 2) THEN
-          WRITE(stdout,"(2X,A)") "Sample information matrix:"
+          WRITE(stdout,"(2X,A,1X,A)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample information matrix:"
           CALL matrix_print(information_matrix_elem,stdout,errstr)
-          WRITE(stdout,"(2X,A,1X,2"//TRIM(frmt)//")") "Sample chi2, rchi2:", chi2, chi2-SUM(n0(1:6))
-          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample apriori:", apriori
-          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample pdf:", pdf_val
-          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "ML pdf:", this%pdf_ml_prm
-          WRITE(stdout,*) "Uniform sampling: ", this%uniform_pdf_prm 
-          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample PDF / ML PDF:", pdf_val / this%pdf_ml_prm
-          WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Relative bound for pdf:", pdf_relative_bound        
+          WRITE(stdout,"(2X,A,1X,A,1X,2"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample chi2, rchi2:", chi2, chi2-SUM(n0(1:6))
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample apriori:", apriori
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample pdf:", pdf_val
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "ML pdf:", this%pdf_ml_prm
+          WRITE(stdout,"(2X,A,1X,A,L1)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Uniform sampling: ", this%uniform_pdf_prm 
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample PDF / ML PDF:", pdf_val / this%pdf_ml_prm
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Relative bound for pdf:", pdf_relative_bound        
        END IF
        IF (.NOT.this%uniform_pdf_prm .AND. &
             pdf_val / this%pdf_ml_prm < pdf_relative_bound) THEN
           ! The PDF is used and its value is not acceptable.
-          failed_flag(4) = failed_flag(4) + 1
+          failed_flag(11) = failed_flag(11) + 1
           IF (info_verb >= 5) THEN
-             WRITE(stdout,"(2X,A,1X,E10.5)") &
+             WRITE(stdout,"(2X,A,1X,A,1X,E10.5)") &
+                  "StochasticOrbit / covarianceSampling:", &
                   "Failed (PDF value not acceptable)", pdf_val
           END IF
           CALL NULLIFY(orb)
@@ -1724,7 +1939,11 @@ CONTAINS
        END IF
 
        iorb = iorb + 1
-       WRITE(stdout,"(1X,A,I0,1X,A)") "Orbit #", iorb, "accepted."
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A,I0,1X,A)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Orbit #", iorb, "accepted."
+       END IF
        orb_arr(iorb) = copy(orb)
        reg_apriori_arr(iorb) = apriori
        pdf_arr(iorb) = pdf_val
@@ -1748,7 +1967,7 @@ CONTAINS
                cosdec0(nobs)
           jacobian_arr(iorb,1) = ABS(determinant(jacobian_matrix, errstr))
           IF (LEN_TRIM(errstr) /= 0) THEN
-             CALL errorMessage("StochasticOrbit / statisticalRanging", &
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
                   "Unsuccessful computation of determinant of orbital element " // &
                   "jacobian matrix " // TRIM(errstr), 1)
              errstr = ""
@@ -1765,7 +1984,7 @@ CONTAINS
                jacobian_matrix, "equatorial")
           jacobian_arr(iorb,2) = ABS(determinant(jacobian_matrix, errstr)) 
           IF (LEN_TRIM(errstr) /= 0) THEN
-             CALL errorMessage("StochasticOrbit / statisticalRanging", &
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
                   "Unsuccessful computation of " // &
                   "jacobian matrix " // TRIM(errstr), 1)
              errstr = ""
@@ -1784,8 +2003,12 @@ CONTAINS
           jacobian_arr(iorb,3) = 0.5_bp*elements(2) * &
                SIN(0.5_bp*elements(3)) / COS(0.5_bp*elements(3))**3
           IF (info_verb >= 5) THEN
-             WRITE(stdout,"(2X,A,F15.12)") "Chi2 new: ", chi2
-             WRITE(stdout,"(2X,A,3(1X,F10.5))") "PDF values:", pdf_val, &
+             WRITE(stdout,"(2X,A,1X,A,F15.12)") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Chi2 new: ", chi2
+             WRITE(stdout,"(2X,A,1X,A,3(1X,F10.5))") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "PDF values:", pdf_val, &
                   pdf_val/this%pdf_ml_prm, pdf_relative_bound
           END IF
        ELSE
@@ -1812,20 +2035,37 @@ CONTAINS
 
     END DO
 
-    IF (info_verb >= 1) THEN
-       WRITE(stdout,*) "Final number of orbits and the required trials:"
-       WRITE(stdout,"(2(I0,2X))") iorb, itrial
-       WRITE(stdout,*) "Total failure percentage (1), and failure " // &
-            "due to (2) eccentricity, (3) inclination, " // &
-            "(4) residuals, and (5) pdf:"
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,1X,A)") &
+            "StochasticOrbit / covarianceSampling:", &
+            "Final number of orbits and the required trials:"
+       WRITE(stdout,"(2X,A,1X,2(I0,2X))") &
+            "StochasticOrbit / covarianceSampling:", &
+            iorb, itrial
+       WRITE(stdout,"(2X,A,1X,A)") &
+            "StochasticOrbit / covarianceSampling:", &
+            "Total failure percentage (1), and failure due to " // &
+            "(2) min a, " // &
+            "(3) max a, " // &
+            "(4) min e, " // &
+            "(5) max e, " // &
+            "(6) min i, " // &
+            "(7) max i, " // &
+            "(8) min q, " // &
+            "(9) max q, " // &
+            "(10) min Q, " // &
+            "(11) max Q, " // &
+            "(12) pdf:"
        nfailed = SUM(failed_flag)
        nfailed = MAX(1,nfailed)
-       WRITE(stdout,"(5"//TRIM(frmt)//")") &
-            100.0_bp*REAL(SUM(failed_flag),bp)/itrial, &
-            100.0_bp*REAL(failed_flag(1),bp)/nfailed, &
-            100.0_bp*REAL(failed_flag(2),bp)/nfailed, &
-            100.0_bp*REAL(failed_flag(3),bp)/nfailed, &
-            100.0_bp*REAL(failed_flag(4),bp)/nfailed
+       WRITE(stdout,"(2X,A,1X,1"//TRIM(frmt)//")") &
+            "StochasticOrbit / covarianceSampling:", &
+            100.0_bp*REAL(SUM(failed_flag),bp)/itrial
+       DO i=1,SIZE(failed_flag)
+          WRITE(stdout,"(2X,A,1X,1"//TRIM(frmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               100.0_bp*REAL(failed_flag(i),bp)/nfailed
+       END DO
     END IF
 
     ALLOCATE(this%reg_apr_arr_cmp(iorb), this%res_arr_cmp(iorb,nobs,6))
