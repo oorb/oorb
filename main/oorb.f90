@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-06-15
+!! @version 2010-06-18
 !!
 PROGRAM oorb
 
@@ -3130,7 +3130,7 @@ PROGRAM oorb
         CALL covarianceSampling(storb)
         IF (error) THEN
            CALL errorMessage("oorb / covariance_sampling", &
-                "Least squares failed:", 1)
+                "Covariance sampling failed:", 1)
            IF (err_verb >= 1) THEN
               WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
                    " and number of observations: ", nobs
@@ -5215,10 +5215,10 @@ PROGRAM oorb
      DEALLOCATE(temp_arr)
 
 
-  CASE ("fom")
+  CASE ("fou")
 
      !! Produces a table with the quantities required for the
-     !! computation of the Figure of Merit proposed for scheduling
+     !! computation of the Figure of Urgency proposed for scheduling
      !! follow-up observations with NEOSSat. The three key quantities
      !! are the minimum solar elongation, the minimum apparent
      !! brightness (max mag), and the 3-sigma (~equivalent) ephemeris
@@ -5252,7 +5252,7 @@ PROGRAM oorb
 
      CALL NEW(obsies)
      IF (error) THEN
-        CALL errorMessage('oorb / fom', &
+        CALL errorMessage('oorb / fou', &
              'TRACE BACK (5)',1)
         STOP
      END IF
@@ -5279,7 +5279,7 @@ PROGRAM oorb
               DO j=1,nstep
                  CALL NEW(t, mjd_tt+(j-1)*step, "TT")
                  IF (error) THEN
-                    CALL errorMessage("oorb / fom", &
+                    CALL errorMessage("oorb / fou", &
                          "TRACE BACK (10)", 1)
                     STOP
                  END IF
@@ -5287,7 +5287,7 @@ PROGRAM oorb
                  ! Compute heliocentric observatory coordinates
                  observers(j) = getObservatoryCCoord(obsies, obsy_code_arr(j), t)
                  IF (error) THEN
-                    CALL errorMessage('oorb / fom', &
+                    CALL errorMessage('oorb / fou', &
                          'TRACE BACK (15)',1)
                     STOP
                  END IF
@@ -5301,7 +5301,7 @@ PROGRAM oorb
                 perturbers=perturbers, integrator=integrator, &
                 integration_step=integration_step)
            IF (error) THEN
-              CALL errorMessage("oorb / fom", &
+              CALL errorMessage("oorb / fou", &
                    "TRACE BACK (20)", 1)
               STOP
            END IF
@@ -5310,21 +5310,21 @@ PROGRAM oorb
            CALL getEphemerides(storb_arr_in(i), observers, ephemerides_arr, &
                 cov_arr=cov_arr, pdfs_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr2)
            IF (error) THEN
-              CALL errorMessage('oorb / fom', &
+              CALL errorMessage('oorb / fou', &
                    'TRACE BACK (25)',1)
               STOP
            END IF
 
            IF (separately) THEN
-              CALL NEW(tmp_file, TRIM(id_arr_in(i)) // ".fom")
+              CALL NEW(tmp_file, TRIM(id_arr_in(i)) // ".fou")
               IF (error) THEN
-                 CALL errorMessage('oorb / fom', &
+                 CALL errorMessage('oorb / fou', &
                       'TRACE BACK (30)',1)
                  STOP
               END IF
               CALL OPEN(tmp_file)
               IF (error) THEN
-                 CALL errorMessage('oorb / fom', &
+                 CALL errorMessage('oorb / fou', &
                       'TRACE BACK (35)',1)
                  STOP
               END IF
@@ -5348,7 +5348,7 @@ PROGRAM oorb
 
               obsy_pos = getPosition(observers(j))
               IF (error) THEN
-                 CALL errorMessage('oorb / fom', &
+                 CALL errorMessage('oorb / fou', &
                       'TRACE BACK (40)',1)
                  STOP
               END IF
@@ -5356,7 +5356,7 @@ PROGRAM oorb
 
               obsy_ccoord = getObservatoryCCoord(obsies, obsy_code_arr(j), t)
               IF (error) THEN
-                 CALL errorMessage('oorb / fom', &
+                 CALL errorMessage('oorb / fou', &
                       'TRACE BACK (45)',1)
                  STOP
               END IF
@@ -5387,7 +5387,7 @@ PROGRAM oorb
                     CALL rotateToEquatorial(ephemerides_arr(k,j))        
                     comp_coord = getCoordinates(ephemerides_arr(k,j))
                     IF (error) THEN
-                       CALL errorMessage('oorb / fom', &
+                       CALL errorMessage('oorb / fou', &
                             'TRACE BACK (50)',1)
                        STOP
                     END IF
@@ -5399,7 +5399,7 @@ PROGRAM oorb
                     CALL rotateToEcliptic(ephemerides_arr(k,j))        
                     comp_coord = getCoordinates(ephemerides_arr(k,j))
                     IF (error) THEN
-                       CALL errorMessage('oorb / fom', &
+                       CALL errorMessage('oorb / fou', &
                             'TRACE BACK (55)',1)
                        STOP
                     END IF
@@ -5416,14 +5416,14 @@ PROGRAM oorb
                     ! Compute phase angle
                     CALL NEW(ccoord, ephemerides_arr(k,j))
                     IF (error) THEN
-                       CALL errorMessage('oorb / fom', &
+                       CALL errorMessage('oorb / fou', &
                             'TRACE BACK (60)',1)
                        STOP
                     END IF
                     CALL rotateToEcliptic(ccoord)
                     obsy_obj = getPosition(ccoord)
                     IF (error) THEN
-                       CALL errorMessage('oorb / fom', &
+                       CALL errorMessage('oorb / fou', &
                             'TRACE BACK (65)',1)
                        STOP
                     END IF
@@ -5431,7 +5431,7 @@ PROGRAM oorb
                     CALL toCartesian(orb_lt_corr_arr2(k,j), frame='ecliptic')
                     pos = getPosition(orb_lt_corr_arr2(k,j))
                     IF (error) THEN
-                       CALL errorMessage('oorb / fom', &
+                       CALL errorMessage('oorb / fou', &
                             'TRACE BACK (70)',1)
                        STOP
                     END IF
@@ -5448,7 +5448,7 @@ PROGRAM oorb
                          G=G_value, r=SQRT(heliocentric_r2), &
                          Delta=Delta, phase_angle=obj_phase)
                     IF (error) THEN
-                       CALL errorMessage('oorb / fom', &
+                       CALL errorMessage('oorb / fou', &
                             'TRACE BACK (75)',1)
                        STOP
                     END IF
@@ -5518,7 +5518,7 @@ PROGRAM oorb
                  CALL rotateToEquatorial(ephemerides_arr(1,j))        
                  comp_coord = getCoordinates(ephemerides_arr(1,j))
                  IF (error) THEN
-                    CALL errorMessage('oorb / fom', &
+                    CALL errorMessage('oorb / fou', &
                          'TRACE BACK (80)',1)
                     STOP
                  END IF
@@ -5530,7 +5530,7 @@ PROGRAM oorb
                  CALL rotateToEcliptic(ephemerides_arr(1,j))        
                  comp_coord = getCoordinates(ephemerides_arr(1,j))
                  IF (error) THEN
-                    CALL errorMessage('oorb / fom', &
+                    CALL errorMessage('oorb / fou', &
                          'TRACE BACK (85)',1)
                     STOP
                  END IF
@@ -5547,14 +5547,14 @@ PROGRAM oorb
                  ! Compute phase angle
                  CALL NEW(ccoord, ephemerides_arr(1,j))
                  IF (error) THEN
-                    CALL errorMessage('oorb / fom', &
+                    CALL errorMessage('oorb / fou', &
                          'TRACE BACK (90)',1)
                     STOP
                  END IF
                  CALL rotateToEcliptic(ccoord)
                  obsy_obj = getPosition(ccoord)
                  IF (error) THEN
-                    CALL errorMessage('oorb / fom', &
+                    CALL errorMessage('oorb / fou', &
                          'TRACE BACK (95)',1)
                     STOP
                  END IF
@@ -5562,7 +5562,7 @@ PROGRAM oorb
                  CALL toCartesian(orb_lt_corr_arr2(1,j), frame='ecliptic')
                  pos = getPosition(orb_lt_corr_arr2(1,j))
                  IF (error) THEN
-                    CALL errorMessage('oorb / fom', &
+                    CALL errorMessage('oorb / fou', &
                          'TRACE BACK (100)',1)
                     STOP
                  END IF
@@ -5579,7 +5579,7 @@ PROGRAM oorb
                       G=G_value, r=SQRT(heliocentric_r2), &
                       Delta=Delta, phase_angle=obj_phase)
                  IF (error) THEN
-                    CALL errorMessage('oorb / fom', &
+                    CALL errorMessage('oorb / fou', &
                          'TRACE BACK (105)',1)
                     STOP
                  END IF
@@ -5660,7 +5660,7 @@ PROGRAM oorb
 
      ELSE
 
-        CALL errorMessage("oorb / fom", &
+        CALL errorMessage("oorb / fou", &
              "Uncertainty information not available for input orbits.",1)
         STOP
 
