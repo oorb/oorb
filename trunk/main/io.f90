@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2010-04-19
+!! @version 2010-07-13
 !!
 MODULE io
 
@@ -1631,6 +1631,7 @@ CONTAINS
 
 
 
+
   SUBROUTINE readDESOrbitFile(lu, norb, header, id_arr, orb_arr, H_arr)
 
     IMPLICIT NONE
@@ -1641,7 +1642,7 @@ CONTAINS
     TYPE (Orbit), DIMENSION(:), INTENT(out) :: orb_arr
     REAL(bp), DIMENSION(:), INTENT(out) :: H_arr
     TYPE (Time) :: epoch
-    CHARACTER(len=16) :: compcode
+    CHARACTER(len=16) :: compcode, str
     CHARACTER(len=3) :: frmt
     REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: mjd_epoch, moid
@@ -1673,9 +1674,10 @@ CONTAINS
        READ(lu, *, iostat=err) id_arr(norb+1), frmt, elements, &
             H_arr(norb+1), mjd_epoch, indx_, npar, moid, compcode
        IF (err > 0) THEN
+          CALL toString(norb+1, str, error)
           error = .TRUE.
           CALL errorMessage("io / readDESOrbitFile", &
-               "Read error (5).", 1)
+               "Problem reading line #" // TRIM(str) // " of the data file.", 1)
           RETURN
        ELSE IF (err < 0) THEN
           EXIT
@@ -3130,7 +3132,7 @@ CONTAINS
     IF (PRESENT(mjd)) THEN
        IF (mjd) THEN
           mjd_tt = getMJD(t, "TT")
-          WRITE(lu, "(A16,6(1X,E21.14),1X,F16.10)", &
+          WRITE(lu, "(A16,6(1X,E21.14),1X,F16.8)", &
                advance="no", iostat=err) id, elements(1:6), mjd_tt
           IF (err /= 0) THEN
              error = .TRUE.
