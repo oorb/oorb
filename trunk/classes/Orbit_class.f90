@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-04-06
+!! @version 2010-07-29
 !!
 MODULE Orbit_cl
 
@@ -115,121 +115,121 @@ MODULE Orbit_cl
      MODULE PROCEDURE new_Orb_spherical
      MODULE PROCEDURE new_Orb_elements
      MODULE PROCEDURE new_Orb_2point
-  END INTERFACE
+  END INTERFACE NEW
 
   INTERFACE NULLIFY
      MODULE PROCEDURE nullify_Orb
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   INTERFACE copy
      MODULE PROCEDURE copy_Orb
-  END INTERFACE
+  END INTERFACE copy
 
   INTERFACE exist
      MODULE PROCEDURE exist_Orb
-  END INTERFACE
+  END INTERFACE exist
 
   INTERFACE getApoapsisDistance
      MODULE PROCEDURE getApoapsisDistance_Orb
-  END INTERFACE
+  END INTERFACE getApoapsisDistance
 
   INTERFACE getCCoord
      MODULE PROCEDURE getCCoord_Orb
-  END INTERFACE
+  END INTERFACE getCCoord
 
   INTERFACE getFrame
      MODULE PROCEDURE getFrame_Orb
-  END INTERFACE
+  END INTERFACE getFrame
 
   INTERFACE getParameters
      MODULE PROCEDURE getParameters_Orb
-  END INTERFACE
+  END INTERFACE getParameters
 
   INTERFACE getPeriapsisDistance
      MODULE PROCEDURE getPeriapsisDistance_Orb
-  END INTERFACE
+  END INTERFACE getPeriapsisDistance
 
   INTERFACE getPhaseAngle
      MODULE PROCEDURE getPhaseAngle_Orb
-  END INTERFACE
+  END INTERFACE getPhaseAngle
 
   INTERFACE getPhaseAngles
      MODULE PROCEDURE getPhaseAngles_Orb
-  END INTERFACE
+  END INTERFACE getPhaseAngles
 
   INTERFACE getPosition
      MODULE PROCEDURE getPosition_Orb
-  END INTERFACE
+  END INTERFACE getPosition
 
   INTERFACE getSCoord
      MODULE PROCEDURE getSCoord_Orb
-  END INTERFACE
+  END INTERFACE getSCoord
 
   INTERFACE getTime
      MODULE PROCEDURE getTime_Orb
-  END INTERFACE
+  END INTERFACE getTime
 
   INTERFACE getVelocity
      MODULE PROCEDURE getVelocity_Orb
-  END INTERFACE
+  END INTERFACE getVelocity
 
   INTERFACE propagate
      MODULE PROCEDURE propagate_Orb_single
      MODULE PROCEDURE propagate_Orb_multiple
-  END INTERFACE
+  END INTERFACE propagate
 
   INTERFACE reallocate
      MODULE PROCEDURE reallocate_Orb
      MODULE PROCEDURE reallocate_Orb_1
      MODULE PROCEDURE reallocate_Orb_2
-  END INTERFACE
+  END INTERFACE reallocate
 
   INTERFACE rotateToEquatorial
      MODULE PROCEDURE rotateToEquatorial_Orb
-  END INTERFACE
+  END INTERFACE rotateToEquatorial
 
   INTERFACE rotateToEcliptic
      MODULE PROCEDURE rotateToEcliptic_Orb
-  END INTERFACE
+  END INTERFACE rotateToEcliptic
 
   INTERFACE setParameters
      MODULE PROCEDURE setParameters_Orb
-  END INTERFACE
+  END INTERFACE setParameters
 
   INTERFACE solveKeplerEquation
      MODULE PROCEDURE solveKeplerEquation_stumpff
      MODULE PROCEDURE solveKeplerEquation_newton
-  END INTERFACE
+  END INTERFACE solveKeplerEquation
 
   INTERFACE opposite
      MODULE PROCEDURE opposite_Orb
-  END INTERFACE
+  END INTERFACE opposite
 
   INTERFACE GaussfgJacobian
      MODULE PROCEDURE GaussfgJacobian_Orb
-  END INTERFACE
+  END INTERFACE GaussfgJacobian
 
   INTERFACE getEphemeris
      MODULE PROCEDURE getEphemeris_Orb_single
      MODULE PROCEDURE getEphemeris_Orb_multiple
-  END INTERFACE
+  END INTERFACE getEphemeris
 
   INTERFACE getEphemerides
      MODULE PROCEDURE getEphemerides_Orb_single
      MODULE PROCEDURE getEphemerides_Orb_multiple
-  END INTERFACE
+  END INTERFACE getEphemerides
 
   INTERFACE toCartesian
      MODULE PROCEDURE toCartesian_Orb
-  END INTERFACE
+  END INTERFACE toCartesian
 
   INTERFACE toCometary
      MODULE PROCEDURE toCometary_Orb
-  END INTERFACE
+  END INTERFACE toCometary
 
   INTERFACE toKeplerian
      MODULE PROCEDURE toKeplerian_Orb
-  END INTERFACE
+  END INTERFACE toKeplerian
 
 CONTAINS
 
@@ -280,11 +280,12 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE new_Orb_cartesian(this, ccoord)
+  SUBROUTINE new_Orb_cartesian(this, ccoord, central_body)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)             :: this
     TYPE (CartesianCoordinates), INTENT(in) :: ccoord
+    INTEGER, INTENT(in), OPTIONAL           :: central_body
 
     IF (this%is_initialized) THEN
        error = .TRUE.
@@ -303,7 +304,11 @@ CONTAINS
     this%frame = getFrame(ccoord)
     NULLIFY(this%additional_perturbers)
     this%t = getTime(ccoord)
-    this%central_body      = 11
+    IF (PRESENT(central_body)) THEN
+       this%central_body = central_body
+    ELSE
+       this%central_body = 11
+    END IF
     this%dyn_model_prm = "2-body"
     this%finite_diff_prm = -1.0_bp
     this%is_initialized = .TRUE.
@@ -934,7 +939,7 @@ CONTAINS
        !!
 
        r01 = DOT_PRODUCT(pos0,pos1)
-       tau = ggc*(getMJD(t1,"TT") - getMJD(t0,"TT"))
+       tau = SQRT(planetary_mu(this%central_body))*(getMJD(t1,"TT") - getMJD(t0,"TT"))
        IF (ABS(tau) < tol) THEN
           ! t0 and t1 practically the same.
           CALL errorMessage("Orbit / new", &
@@ -2556,10 +2561,12 @@ CONTAINS
     !! REAL(bp), PARAMETER :: tol2 = 1.0e-8_bp
     !! REAL(bp), PARAMETER :: tol3 = 1.0e-11_bp
     !! REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
-    !! The tolerances have subsequently been updated using the S1b population
+    !! The tolerances have subsequently been updated using the S1b
+    !! population and when generating initial orbits for the tidal
+    !! disruption studies.
     REAL(bp), PARAMETER :: tol1 = 1.0e-6_bp
-    REAL(bp), PARAMETER :: tol2 = 1.0e-7_bp
-    REAL(bp), PARAMETER :: tol3 = 1.0e-11_bp
+    REAL(bp), PARAMETER :: tol2 = 1.0e-6_bp
+    REAL(bp), PARAMETER :: tol3 = 1.0e-10_bp
     REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
     INTEGER, PARAMETER :: max_iter = 100
     REAL(bp), DIMENSION(0:3) :: stumpff_c, stumpff_cs
@@ -4218,7 +4225,8 @@ CONTAINS
 
     ! Propagate to the observer epoch:
     IF (info_verb >= 4) THEN
-       WRITE(stdout,"(1X,2(1X,A),I0,A)") "Orbit / getEphemeris:", &
+       WRITE(stdout,"(1X,2(1X,A),I0,A)") &
+            "Orbit / getEphemeris_multiple:", &
             "Propagate orbit array (size=", nthis, &
             ") to the observer epoch."
     END IF
@@ -4261,7 +4269,8 @@ CONTAINS
     ! Make the light-time correction (since the new epoch is orbit
     ! dependent, all orbits must be propagated individually):
     IF (info_verb >= 4 .AND. lt_corr_) THEN
-       WRITE(stdout,"(1X,2(1X,A))") "Orbit / getEphemeris:", &
+       WRITE(stdout,"(1X,2(1X,A))") &
+            "Orbit / getEphemeris_multiple:", &
             "Make light-time correction."
     END IF
     DO i=1,nthis
@@ -4270,7 +4279,9 @@ CONTAINS
        END IF
        this_1 = copy(this_arr_(i))
        IF (info_verb >= 4) THEN
-          WRITE(stdout,"(5A)") "Orbital elements (" // &
+          WRITE(stdout,"(2X,A,1X,5A)") &
+               "Orbit / getEphemeris_multiple:", &
+               "Orbital elements (" // &
                TRIM(this_1%element_type) // ", " // &
                TRIM(this_1%frame) // &
                ") at observation date without light-time correction:"
@@ -4317,7 +4328,7 @@ CONTAINS
           END IF
           IF (info_verb >= 5) THEN
              WRITE(stdout,"(1X,2(1X,A),1X,I0,A,I0,1X,A)") &
-                  "Orbit / getEphemeris:", "Propagate orbit:", i, &
+                  "Orbit / getEphemeris_multiple:", "Propagate orbit:", i, &
                   "/", nthis, "due to light-time correction."
           END IF
           IF (PRESENT(partials_arr) .OR. PRESENT(jacobian_lt_corr_arr)) THEN
@@ -4396,7 +4407,9 @@ CONTAINS
           END IF
        END IF
        IF (info_verb >= 4) THEN
-          WRITE(stdout,"(5A)") "Orbital elements (" // &
+          WRITE(stdout,"(2X,A,1X,5A)") &
+               "Orbit / getEphemeris_multiple:", &
+               "Orbital elements (" // &
                TRIM(this_1%element_type) // ", " // &
                TRIM(this_1%frame) // &
                ") at observation date with light-time correction:"
@@ -5012,7 +5025,7 @@ CONTAINS
     REAL(bp), DIMENSION(6) :: elem1, elem2
     REAL(bp), DIMENSION(3) :: coord1, coord2, coord11, coord22, &
          rad1, rad2, dr, der2
-    REAL(bp), DIMENSION(2) :: sinus, cosinus, f1, f2, ff
+    REAL(bp), DIMENSION(2) :: sine, cosine, f1, f2, ff
     REAL(bp) :: par1, par2, par11, par22, r1, r2, ta0, dta, q1, q2
     INTEGER :: i, j, k, N, m1, m2, err
 
@@ -5077,13 +5090,20 @@ CONTAINS
             "TRACE TRACK (20).", 1)
        RETURN
     END IF
+    IF (info_verb >= 3) THEN
+       WRITE(stdout,"(A)") "Orbit #1:"
+       WRITE(stdout,"(6(1X,F20.15))") elem1(1:2), elem1(3:6)/rad_deg
+       WRITE(stdout,"(A)") "Orbit #2:"
+       WRITE(stdout,"(6(1X,F20.15))") elem2(1:2), elem2(3:6)/rad_deg
+    END IF
+
     par1 = (1-elem1(2)**2)*elem1(1)
     par2 = (1-elem2(2)**2)*elem2(1)
     q1 = elem1(1)*(1.0_bp - elem1(2))
     q2 = elem2(1)*(1.0_bp - elem2(2))
 
     k = 0
-    N = 36000
+    N = 360
     rmin = HUGE(rmin)
 
     !-----------------------------------------------------------
@@ -5101,16 +5121,16 @@ CONTAINS
           RETURN
        END IF
 
-       dta = 2.0_bp*pi/N
+       dta = two_pi/N
        ta0 = 0.0_bp
 
        ! Moving along the first orbit with steps of dta:
        ! (N=360, dta=1 deg)
        DO i=1,N
           ta1(i) = ta0 + (i-1)*dta
-          CALL SOLVE(elem1, ta1(i), elem2, rot, sinus, cosinus)
-          ta2(1,i) = angle(cosinus(1), sinus(1))
-          ta2(2,i) = angle(cosinus(2), sinus(2))
+          CALL SOLVE(elem1, ta1(i), elem2, rot, sine, cosine)
+          ta2(1,i) = angle(cosine(1), sine(1))
+          ta2(2,i) = angle(cosine(2), sine(2))
        END DO
 
        ! Sign-changes-intervals:
@@ -5143,6 +5163,11 @@ CONTAINS
                 f2(2) = two_pi - 100*EPSILON(f2(2))
              END IF
 
+             IF (info_verb >= 3) THEN
+                WRITE(stdout,"(A)") "(F,f) intervals:"
+                WRITE(stdout,"(4(1X,F10.6))") f1/rad_deg, f2/rad_deg
+             END IF
+
              par11 = (1.0_bp - elem1(2)**2)*elem1(1)
              r1 = par11/(1.0_bp + elem1(2)*COS(f1(1)))
              coord1(1) = r1*COS(f1(1))
@@ -5171,7 +5196,7 @@ CONTAINS
 
              m2 = NINT(SIGN(1.0_bp, derivative(coord1, coord2, r2, rot, elem2)))
 
-             IF (m1 /= m2) THEN
+             IF (m1*m2 < 0) THEN
 
                 ! Refine the initial interval by successive halving
 
@@ -5278,13 +5303,15 @@ CONTAINS
     ! See Sitarski, Eq. (10).
 
     IMPLICIT NONE
+    REAL(bp), DIMENSION(2,2), INTENT(in) :: rot
+    REAL(bp), DIMENSION(6), INTENT(in) :: elem1, elem2
+    REAL(bp), DIMENSION(2), INTENT(out) :: v1, v2
+    REAL(bp), INTENT(in) :: ta1
+
     COMPLEX(cbp), DIMENSION(2) :: z1, z2, zz
     COMPLEX(cbp) :: s, t, w
-    REAL(bp), DIMENSION(2,2) :: rot
-    REAL(bp), DIMENSION(6) :: elem1, elem2
     REAL(bp), DIMENSION(3) :: coord1
-    REAL(bp), DIMENSION(2) :: v1, v2
-    REAL(bp) :: ta1, r1, par1, par2
+    REAL(bp) :: r1, par1, par2
 
     par1 = (1.0_bp - elem1(2)**2)*elem1(1)
     r1 = par1/(1.0_bp + elem1(2)*COS(ta1))
@@ -5334,7 +5361,7 @@ CONTAINS
     REAL(bp), DIMENSION(2,2) :: rot
     REAL(bp), DIMENSION(6) :: elem1, elem2
     REAL(bp), DIMENSION(3) :: coord1, coord2
-    REAL(bp), DIMENSION(2) :: df, f1, f2, sinus, cosinus
+    REAL(bp), DIMENSION(2) :: df, f1, f2, sine, cosine
     REAL(bp) :: par1, par2, r1, r2, eps
     INTEGER :: i, m, m1, m2
 
@@ -5342,8 +5369,8 @@ CONTAINS
     DO WHILE (ABS(f1(1)-f1(2)) > eps)
        df(1) = 0.5_bp*(f1(1) + f1(2))
 
-       CALL solve(elem1, df(1), elem2, rot, sinus, cosinus)
-       df(2) = angle(cosinus(i),sinus(i))
+       CALL solve(elem1, df(1), elem2, rot, sine, cosine)
+       df(2) = angle(cosine(i),sine(i))
 
        par1 = (1.0_bp - elem1(2)**2)*elem1(1)
        r1 = par1/(1.0_bp + elem1(2)*COS(df(1)))
@@ -6723,7 +6750,7 @@ CONTAINS
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
 
     ! Mean motion:
-    mm = ggc/SQRT(kep_elements(1)**3.0_bp)
+    mm = SQRT(planetary_mu(this%central_body))/SQRT(kep_elements(1)**3.0_bp)
 
     ! Sines and cosines of the inclination, the longitude of the
     ! ascending node, and the argument of periapsis:
@@ -6882,7 +6909,7 @@ CONTAINS
     ! a
     partials(1,2) = elements(1)
     ! Inverse of mean motion:
-    partials(6,6) = SQRT(elements(1)**3.0_bp)/ggc
+    partials(6,6) = SQRT(elements(1)**3.0_bp)/SQRT(planetary_mu(this%central_body))
 
   END SUBROUTINE partialsCometaryWrtKeplerian
 
@@ -7080,9 +7107,9 @@ CONTAINS
     ! Eccentricity and mean anomaly
     da      = v*(v*dr+2.0_bp*r*dv)/planetary_mu(this%central_body)
     db(1:3) = (car_elements(4:6)-rv*partials(1,1:3)/(2.0_bp*kep_elements(1))) / &
-         (ggc*SQRT(kep_elements(1)))
+         (SQRT(planetary_mu(this%central_body))*SQRT(kep_elements(1)))
     db(4:6) = (car_elements(1:3)-rv*partials(1,4:6)/(2.0_bp*kep_elements(1))) / &
-         (ggc*SQRT(kep_elements(1)))
+         (SQRT(planetary_mu(this%central_body))*SQRT(kep_elements(1)))
     dea     = (-sea*da+cea*db)/kep_elements(2)
 
     partials(2,1:6) = cea*da+sea*db
@@ -7238,7 +7265,7 @@ CONTAINS
     ! Semiminor axis:
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
     ! Mean motion:
-    mm = ggc/SQRT(kep_elements(1)**3.0_bp)
+    mm = SQRT(planetary_mu(this%central_body))/SQRT(kep_elements(1)**3.0_bp)
 
     CALL solveKeplerEquation(this, this%t, ea)
     IF (error) THEN
@@ -7985,6 +8012,12 @@ CONTAINS
 
     CASE ("2-body")
 
+       IF (info_verb >= 3) THEN
+          WRITE(stdout,"(2X,A,1X,A)") &
+               "Orbit / propagate_Orb_multiple:", &
+               "Preparing for 2-body propagation..."
+       END IF
+
        dt = mjd_tt - mjd_tt0
        IF (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
           ALLOCATE(elm_arr(2,6), stat=err)
@@ -8004,6 +8037,11 @@ CONTAINS
 
           CASE ("cartesian")
 
+             IF (info_verb >= 4) THEN
+                WRITE(stdout,"(2X,A,1X,A,I0,A)") &
+                     "Orbit / propagate_Orb_multiple:", &
+                     "Carrying out 2-body propagation for orbit #", i, "..."
+             END IF
              r0      = SQRT(DOT_PRODUCT(this_arr(i)%elements(1:3),this_arr(i)%elements(1:3))) ! r_0
              u       = DOT_PRODUCT(this_arr(i)%elements(1:3),this_arr(i)%elements(4:6)) 
              alpha   = 2.0_bp*mu_/r0 - DOT_PRODUCT(this_arr(i)%elements(4:6),this_arr(i)%elements(4:6)) ! 
@@ -8037,6 +8075,12 @@ CONTAINS
              END IF
              this_arr(i)%elements(1:3) = pos(1:3)
              this_arr(i)%elements(4:6) = vel(1:3)
+             IF (info_verb >= 4) THEN
+                WRITE(stdout,"(2X,A,1X,A,I0,A)") &
+                     "Orbit / propagate_Orb_multiple:", &
+                     "2-body propagation carried out for orbit #", i, "."
+             END IF
+
 
           CASE ("cometary")
 
@@ -9524,7 +9568,9 @@ CONTAINS
     END IF
 
     IF (info_verb >= 4) THEN
-       WRITE(stdout,"(A)") "Conversion to " // TRIM(frame_) // &
+       WRITE(stdout,"(2X,A,1X,A)") &
+            "Orbit / toCartesian:", &
+            "Conversion to " // TRIM(frame_) // &
             " Cartesian elements. Initial " // TRIM(this%frame) // &
             " " // TRIM(this%element_type) // " elements:"
        IF (this%element_type == "cartesian") THEN
@@ -9557,7 +9603,9 @@ CONTAINS
     END IF
 
     IF (info_verb >= 4) THEN
-       WRITE(stdout,"(A)") "Final " // TRIM(this%frame) // &
+       WRITE(stdout,"(2X,A,1X,A)") &
+            "Orbit / toCartesian:", &
+            "Final " // TRIM(this%frame) // &
             " " // TRIM(this%element_type) // " elements:"
        WRITE(stdout,"(6(F22.15))") this%elements
     END IF
