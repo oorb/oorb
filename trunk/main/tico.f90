@@ -43,7 +43,7 @@
 !!
 !! AUTHOR
 !!
-!! Mikael Granvik 2010-03-31
+!! Mikael Granvik 2010-09-17
 !!
 PROGRAM tico
 
@@ -86,7 +86,7 @@ PROGRAM tico
      END IF
   ELSE
      CALL errorMessage("tico", &
-          "Input time/timescale not specified.", 1)     
+          "Input time/timescale not specified. Use the '--[tai|utc|tt]_in=' option.", 1)     
      STOP
   END IF
 
@@ -117,7 +117,7 @@ PROGRAM tico
      WRITE(stdout,'(F15.8)') mjd_out
   ELSE
      CALL errorMessage("tico", &
-          "Output timescale not specified.", 1)
+          "Output timescale not specified. Use the '--[tai|utc|tt]_out' option.", 1)
   END IF
   CALL NULLIFY(t)
 
@@ -146,8 +146,7 @@ CONTAINS
     IF (i > 1) THEN
        CALL toInt(str(1:indx_arr(1)-1), year, error)
        CALL toInt(str(indx_arr(1)+1:indx_arr(2)-1), month, error)
-       CALL toReal(TRIM(str(indx_arr(2)+2:)), day, error)
-       !write(*,*) year, month, day
+       CALL toReal(TRIM(str(indx_arr(2)+1:)), day, error)
        CALL NEW(t, year, month, day, TRIM(timescale))
     ELSE
        CALL toReal(str, mjd_in, error)
