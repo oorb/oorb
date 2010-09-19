@@ -1356,7 +1356,7 @@ PROGRAM oorb
         dt = getObservationalTimespan(obss_sep(i))
         IF (error) THEN
            CALL errorMessage("oorb / ranging", &
-                "TRACE BACK (30)", 1)
+                "TRACE BACK (27)", 1)
            STOP
         END IF
         IF (sor_rho_init(3) > HUGE(sor_rho_init(3))/2) THEN
@@ -1375,6 +1375,19 @@ PROGRAM oorb
               END IF
            END DO
            IF (j <= SIZE(id_arr_in)) THEN
+              CALL setParameters(storb_arr_in(j), &
+                   dyn_model=dyn_model, &
+                   perturbers=perturbers, &
+                   integrator=integrator, &
+                   integration_step=integration_step, &
+                   accept_multiplier=accwin_multiplier, &
+                   apriori_rho_min=apriori_rho_min, &
+                   set_acceptance_window=.FALSE.)
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (30)", 1)
+                 STOP
+              END IF
               CALL constrainRangeDistributions(storb_arr_in(j), obss_sep(i))
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
@@ -1393,10 +1406,15 @@ PROGRAM oorb
                       "TRACE BACK (33)", 1)
                  STOP
               END IF
+              pdf_arr_in => getPDFValues(storb_arr_in(j))
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (34)", 1)
+                 STOP
+              END IF
+              pdf_ml_init = MAXVAL(pdf_arr_in)
+              DEALLOCATE(pdf_arr_in)
            END IF
-           pdf_arr_in => getPDFValues(storb_arr_in(j))
-           pdf_ml_init = MAXVAL(pdf_arr_in)
-           DEALLOCATE(pdf_arr_in)
         END IF
         IF (.NOT.exist(epoch)) THEN
            CALL NULLIFY(t)

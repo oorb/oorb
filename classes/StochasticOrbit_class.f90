@@ -8118,7 +8118,8 @@ CONTAINS
        ls_correction_factor, ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
        ls_element_mask, ls_rchi2_acceptable, &
        cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
-       smplx_tol, smplx_niter)
+       smplx_tol, smplx_niter, &
+       set_acceptance_window)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
@@ -8188,7 +8189,8 @@ CONTAINS
          sor_random_obs_selection, &
          gaussian_pdf, &
          outlier_rejection, &
-         cos_gaussian
+         cos_gaussian, &
+         set_acceptance_window
     CHARACTER(len=256) :: str
     INTEGER :: i, err
 
@@ -8364,7 +8366,13 @@ CONTAINS
           RETURN
        END IF
        this%accept_multiplier_prm = accept_multiplier
-       CALL setAcceptanceWindow(this)
+       IF (PRESENT(set_acceptance_window)) THEN
+          IF (set_acceptance_window) THEN
+             CALL setAcceptanceWindow(this)
+          END IF
+       ELSE
+          CALL setAcceptanceWindow(this)          
+       END IF
     END IF
     IF (PRESENT(pdf_ml)) THEN
        this%pdf_ml_init_prm = pdf_ml
@@ -11980,6 +11988,7 @@ CONTAINS
     END IF
 
     mask = .TRUE.
+WRITE(*,*) this%accept_multiplier_prm*stdevs(:,2:3)/rad_asec
     DO i=1,norb
        ! Note that RA,Dec is hardwired here
        IF (ANY(ABS(residuals(:,i,2:3)) > this%accept_multiplier_prm*stdevs(:,2:3))) THEN
