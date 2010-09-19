@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2010-06-19
+!! @version 2010-09-18
 !!  
 MODULE StochasticOrbit_cl
 
@@ -76,6 +76,8 @@ MODULE StochasticOrbit_cl
   PRIVATE :: getPhaseAngles_SO
   PRIVATE :: getObservationMasks_SO
   PRIVATE :: getRangeBounds_SO
+  PRIVATE :: getResiduals_SO_obss
+  PRIVATE :: getResiduals_SO_orb
   PRIVATE :: getResults_SO
   PRIVATE :: getSampleOrbit_SO
   PRIVATE :: getStandardDeviations_SO
@@ -188,7 +190,7 @@ MODULE StochasticOrbit_cl
      ! Parameters for the least-squares fitting:
      REAL(bp)                            :: ls_corr_fac_prm         = 1.0_bp
      REAL(bp)                            :: ls_rchi2_diff_tresh_prm = 0.00001_bp
-     REAL(bp)                            :: ls_rchi2_max_prm        = 1.5_bp
+     REAL(bp)                            :: ls_rchi2_acceptable_prm = 1.5_bp
      INTEGER                             :: ls_niter_major_max_prm  = 10
      INTEGER                             :: ls_niter_major_min_prm  = 2
      INTEGER                             :: ls_niter_minor_prm      = 20
@@ -213,137 +215,138 @@ MODULE StochasticOrbit_cl
      MODULE PROCEDURE new_SO_observations
      MODULE PROCEDURE new_SO_orb_cov
      MODULE PROCEDURE new_SO_orb_arr
-  END INTERFACE
+  END INTERFACE NEW
 
   INTERFACE NULLIFY
      MODULE PROCEDURE nullify_SO
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   INTERFACE copy
      MODULE PROCEDURE copy_SO
-  END INTERFACE
+  END INTERFACE copy
 
   INTERFACE exist
      MODULE PROCEDURE exist_SO
-  END INTERFACE
+  END INTERFACE exist
 
   INTERFACE getApoapsisDistance
      MODULE PROCEDURE getApoapsisDistance_SO
-  END INTERFACE
+  END INTERFACE getApoapsisDistance
 
   INTERFACE getChi2
      MODULE PROCEDURE getChi2_matrix
      MODULE PROCEDURE getChi2_this_orb
-  END INTERFACE
+  END INTERFACE getChi2
 
   INTERFACE getCovarianceMatrix
      MODULE PROCEDURE getCovarianceMatrix_SO
-  END INTERFACE
+  END INTERFACE getCovarianceMatrix
 
   INTERFACE getEphemerides
      MODULE PROCEDURE getEphemerides_SO
-  END INTERFACE
+  END INTERFACE getEphemerides
 
   INTERFACE getEphemeris
      MODULE PROCEDURE getEphemeris_SO
-  END INTERFACE
+  END INTERFACE getEphemeris
 
   INTERFACE getParameters
      MODULE PROCEDURE getParameters_SO
-  END INTERFACE
+  END INTERFACE getParameters
 
   INTERFACE getPeriapsisDistance
      MODULE PROCEDURE getPeriapsisDistance_SO
-  END INTERFACE
+  END INTERFACE getPeriapsisDistance
 
   INTERFACE getPhaseAngle
      MODULE PROCEDURE getPhaseAngle_SO_pdf
      MODULE PROCEDURE getPhaseAngle_SO_point
-  END INTERFACE
+  END INTERFACE getPhaseAngle
 
   INTERFACE getPhaseAngles
      MODULE PROCEDURE getPhaseAngles_SO
-  END INTERFACE
+  END INTERFACE getPhaseAngles
 
   INTERFACE getObservationMasks
      MODULE PROCEDURE getObservationMasks_SO
-  END INTERFACE
+  END INTERFACE getObservationMasks
 
   INTERFACE getRangeBounds
      MODULE PROCEDURE getRangeBounds_SO
-  END INTERFACE
+  END INTERFACE getRangeBounds
 
   INTERFACE getResiduals
-     MODULE PROCEDURE getResiduals_single
-  END INTERFACE
+     MODULE PROCEDURE getResiduals_SO_obss
+     MODULE PROCEDURE getResiduals_SO_orb
+  END INTERFACE getResiduals
 
   INTERFACE getResults
      MODULE PROCEDURE getResults_SO
-  END INTERFACE
+  END INTERFACE getResults
 
   INTERFACE getRMS
      MODULE PROCEDURE getRMS_single
-  END INTERFACE
+  END INTERFACE getRMS
 
   INTERFACE getSampleOrbit
      MODULE PROCEDURE getSampleOrbit_SO
-  END INTERFACE
+  END INTERFACE getSampleOrbit
 
   INTERFACE getStandardDeviations
      MODULE PROCEDURE getStandardDeviations_SO
-  END INTERFACE
+  END INTERFACE getStandardDeviations
 
   INTERFACE leastSquares
      MODULE PROCEDURE leastSquares_SO
-  END INTERFACE
+  END INTERFACE leastSquares
 
   INTERFACE levenbergMarquardt
      MODULE PROCEDURE levenbergMarquardt_SO
-  END INTERFACE
+  END INTERFACE levenbergMarquardt
 
   INTERFACE getTime
      MODULE PROCEDURE getTime_SO
-  END INTERFACE
+  END INTERFACE getTime
 
   INTERFACE propagate
      MODULE PROCEDURE propagate_SO
-  END INTERFACE
+  END INTERFACE propagate
 
   INTERFACE setAcceptanceWindow
      MODULE PROCEDURE setAcceptanceWindow_sigma
-  END INTERFACE
+  END INTERFACE setAcceptanceWindow
 
   INTERFACE setObservationMask
      MODULE PROCEDURE setObservationMask_one
      MODULE PROCEDURE setObservationMask_all
      MODULE PROCEDURE setObservationMask_all_notes
-  END INTERFACE
+  END INTERFACE setObservationMask
 
   INTERFACE setObservationPair
      MODULE PROCEDURE setObservationPair_default
      MODULE PROCEDURE setObservationPair_pair
-  END INTERFACE
+  END INTERFACE setObservationPair
 
   INTERFACE setParameters
      MODULE PROCEDURE setParameters_SO
-  END INTERFACE
+  END INTERFACE setParameters
 
   INTERFACE setRangeBounds
      MODULE PROCEDURE setRangeBounds_3sigma
      MODULE PROCEDURE setRangeBounds_values
-  END INTERFACE
+  END INTERFACE setRangeBounds
 
   INTERFACE toCartesian
      MODULE PROCEDURE toCartesian_SO
-  END INTERFACE
+  END INTERFACE toCartesian
 
   INTERFACE toCometary
      MODULE PROCEDURE toCometary_SO
-  END INTERFACE
+  END INTERFACE toCometary
 
   INTERFACE toKeplerian
      MODULE PROCEDURE toKeplerian_SO
-  END INTERFACE
+  END INTERFACE toKeplerian
 
 CONTAINS
 
@@ -895,7 +898,7 @@ CONTAINS
        copy_SO%sor_deviates_prm = this%sor_deviates_prm
     END IF
     IF (ASSOCIATED(this%sor_rho_arr_cmp)) THEN
-       ALLOCATE(copy_SO%sor_rho_arr_cmp(norb,2), stat=err)
+       ALLOCATE(copy_SO%sor_rho_arr_cmp(SIZE(this%sor_rho_arr_cmp,dim=1),2), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / copy", &
@@ -1499,7 +1502,7 @@ CONTAINS
           IF (j == 1) THEN
              A(i,1) = cov(i,1)/SQRT(cov(1,1))
           ELSE IF (i == j) THEN
-             IF (cov(i,i) - SUM(A(i,1:i-1)**2) < -1E-9_bp) THEN
+             IF (cov(i,i) - SUM(A(i,1:i-1)**2) < -1E-7_bp) THEN
                 CALL toString(i, str1, error)
                 CALL toString(cov(i,i) - SUM(A(i,1:i-1)**2), str2, error, frmt=efrmt)
                 error = .TRUE.
@@ -2566,13 +2569,13 @@ CONTAINS
   !! @author MG, JV
   !! @version 22.5.2006
   !!
-  FUNCTION getChi2_matrix(residuals, information_matrix, mask)
+  REAL(bp) FUNCTION getChi2_matrix(residuals, information_matrix, mask)
 
     IMPLICIT NONE
-    REAL(bp), DIMENSION(:,:), INTENT(in)          :: residuals
-    REAL(bp), DIMENSION(:,:), INTENT(in)          :: information_matrix
-    LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: mask
-    REAL(bp)                                      :: getChi2_matrix
+    REAL(bp), DIMENSION(:,:), INTENT(in)          :: residuals ! (1:nobs,1:nmulti)
+    REAL(bp), DIMENSION(:,:), INTENT(in)          :: information_matrix ! (1:nobs*nmulti,1:nobs*nmulti)
+    LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: mask ! (1:nobs,1:nmulti)
+
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: residuals_
     REAL(bp), DIMENSION(:), ALLOCATABLE :: residual_vector, tmp
     INTEGER :: i, j, nobs, nmulti,err
@@ -4638,24 +4641,166 @@ CONTAINS
 
 
 
+  FUNCTION getResiduals_SO_obss(this, obss)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(in)                   :: this
+    TYPE (Observations), INTENT(in)                      :: obss
+    REAL(bp), DIMENSION(:,:,:), POINTER                  :: getResiduals_SO_obss
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER   :: obsy_ccoords
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: computed_scoords
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER   :: observed_scoords
+    REAL(bp), DIMENSION(:,:,:), ALLOCATABLE              :: computed_coords
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE                :: observed_coords
+    INTEGER                                              :: err, i, j, nobs, norb
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getResults", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT.exist(obss)) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getResults", &
+            "Object 'obss' has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    nobs = getNrOfObservations(obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / getResiduals", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
+    norb = SIZE(this%orb_arr_cmp)
+    ALLOCATE(getResiduals_SO_obss(nobs,norb,6), observed_coords(nobs,6), &
+         computed_coords(nobs,norb,6), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getResiduals", &
+            "Could not allocate memory.", 1)
+       RETURN
+    END IF
+
+    observed_scoords => getObservationSCoords(obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / getResiduals", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+
+    obsy_ccoords => getObservatoryCCoords(obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / getResiduals", &
+            "TRACE BACK (15)", 1)
+       RETURN
+    END IF
+
+    CALL getEphemerides(this%orb_arr_cmp, obsy_ccoords, computed_scoords)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / getResiduals", &
+            "TRACE BACK (20)", 1)
+       RETURN
+    END IF
+
+    observed_coords = 0.0_bp
+    computed_coords = 0.0_bp
+    DO i=1,nobs
+       CALL rotateToEquatorial(observed_scoords(i))
+       observed_coords(i,:) = getCoordinates(observed_scoords(i))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / getResiduals", &
+               "TRACE BACK (25)", 1)
+          RETURN
+       END IF
+       DO j=1,norb
+          CALL rotateToEquatorial(computed_scoords(j,i))
+          computed_coords(i,j,:) = getCoordinates(computed_scoords(j,i))
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / getResiduals", &
+                  "TRACE BACK (30)", 1)
+             RETURN
+          END IF
+       END DO
+    END DO
+
+    DO j=1,norb
+       getResiduals_SO_obss(1:nobs,j,1:6) = observed_coords(1:nobs,1:6) - &
+            computed_coords(1:nobs,j,1:6)        
+       getResiduals_SO_obss(1:nobs,j,2) = getResiduals_SO_obss(1:nobs,j,2) * &
+            COS(observed_coords(1:nobs,3))
+       DO i=1,nobs
+          IF (ABS(getResiduals_SO_obss(i,j,2)) > pi) THEN
+             IF (observed_coords(i,2) < computed_coords(i,j,2)) THEN
+                observed_coords(i,2) = observed_coords(i,2) + two_pi
+             ELSE
+                computed_coords(i,j,2) = computed_coords(i,j,2) + two_pi
+             END IF
+             getResiduals_SO_obss(i,j,2) = (observed_coords(i,2) - &
+                  computed_coords(i,j,2)) * COS(observed_coords(i,3))
+          END IF
+       END DO
+    END DO
+    DO i=1,SIZE(observed_scoords)
+       CALL NULLIFY(observed_scoords(i))
+    END DO
+    DO i=1,SIZE(obsy_ccoords)
+       CALL NULLIFY(obsy_ccoords(i))
+    END DO
+    DO i=1,SIZE(computed_scoords,dim=1)
+       DO j=1,SIZE(computed_scoords,dim=2)
+          CALL NULLIFY(computed_scoords(i,j))
+       END DO
+    END DO
+    DEALLOCATE(observed_coords, computed_coords, observed_scoords, &
+         obsy_ccoords, computed_scoords, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getResiduals", &
+            "Could not deallocate memory.", 1)
+       RETURN
+    END IF
+
+  END FUNCTION getResiduals_SO_obss
+
+
+
+
+
   !! *Description*:
   !!
   !!
   !!
   !! Returns error.
   !!
-  FUNCTION getResiduals_single(this, orb)
+  FUNCTION getResiduals_SO_orb(this, orb)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in)                 :: this
     TYPE (Orbit), INTENT(in)                           :: orb
-    REAL(bp), DIMENSION(:,:), POINTER                  :: getResiduals_single
+    REAL(bp), DIMENSION(:,:), POINTER                  :: getResiduals_SO_orb
     TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
     TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: computed_scoords, &
          observed_scoords
     REAL(bp), DIMENSION(:,:), ALLOCATABLE              :: observed_coords, &
          computed_coords
     INTEGER                                            :: err, i, nobs
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getResults", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT.exist(orb)) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getResults", &
+            "Object 'orb' has not yet been initialized.", 1)
+       RETURN
+    END IF
 
     nobs = getNrOfObservations(this%obss)
     IF (error) THEN
@@ -4664,7 +4809,7 @@ CONTAINS
        RETURN
     END IF
 
-    ALLOCATE(getResiduals_single(nobs,6), observed_coords(nobs,6), &
+    ALLOCATE(getResiduals_SO_orb(nobs,6), observed_coords(nobs,6), &
          computed_coords(nobs,6), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
@@ -4711,18 +4856,18 @@ CONTAINS
        END IF
     END DO
 
-    getResiduals_single(1:nobs,1:6) = observed_coords(1:nobs,1:6) - &
+    getResiduals_SO_orb(1:nobs,1:6) = observed_coords(1:nobs,1:6) - &
          computed_coords(1:nobs,1:6)        
-    getResiduals_single(1:nobs,2) = getResiduals_single(1:nobs,2) * &
+    getResiduals_SO_orb(1:nobs,2) = getResiduals_SO_orb(1:nobs,2) * &
          COS(observed_coords(1:nobs,3))
     DO i=1,nobs
-       IF (ABS(getResiduals_single(i,2)) > pi) THEN
+       IF (ABS(getResiduals_SO_orb(i,2)) > pi) THEN
           IF (observed_coords(i,2) < computed_coords(i,2)) THEN
              observed_coords(i,2) = observed_coords(i,2) + two_pi
           ELSE
              computed_coords(i,2) = computed_coords(i,2) + two_pi
           END IF
-          getResiduals_single(i,2) = (observed_coords(i,2) - &
+          getResiduals_SO_orb(i,2) = (observed_coords(i,2) - &
                computed_coords(i,2)) * COS(observed_coords(i,3))
        END IF
     END DO
@@ -4744,7 +4889,7 @@ CONTAINS
        RETURN
     END IF
 
-  END FUNCTION getResiduals_single
+  END FUNCTION getResiduals_SO_orb
 
 
 
@@ -4841,7 +4986,7 @@ CONTAINS
     END IF
     IF (PRESENT(sor_rho_arr_cmp)) THEN
        IF (ASSOCIATED(this%sor_rho_arr_cmp)) THEN
-          ALLOCATE(sor_rho_arr_cmp(this%sor_norb_cmp,2), stat=err)
+          ALLOCATE(sor_rho_arr_cmp(SIZE(this%sor_rho_arr_cmp,dim=1),2), stat=err)
           IF (err /= 0) THEN
              error = .TRUE.
              CALL errorMessage("StochasticOrbit / getResults", &
@@ -6795,8 +6940,8 @@ CONTAINS
   !! *Description*:
   !!
   !! Computation of the least-squares orbital elements (Cartesian or
-  !! Keplerian) and their covariances in the two-body and full
-  !! many-body approaches.
+  !! Keplerian) and their covariances in the two-body or full
+  !! many-body approaches using the Levenberg-Marquardt algorithm.
   !!
   !! Returns error.
   !!
@@ -7288,7 +7433,7 @@ CONTAINS
     DEALLOCATE(mask_measur, stat=err)
 
     ! Check whether acceptable solution based on rchi2
-    IF (rchi2 > this%ls_rchi2_max_prm) THEN
+    IF (rchi2 > this%ls_rchi2_acceptable_prm) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / " // &
             "levenbergMarquardt", &
@@ -7971,7 +8116,7 @@ CONTAINS
        vov_norb, vov_ntrial, vov_norb_iter, vov_ntrial_iter, &
        vov_nmap, vov_niter, vov_scaling, vov_mapping_mask, &
        ls_correction_factor, ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
-       ls_element_mask, ls_rchi2_max, &
+       ls_element_mask, ls_rchi2_acceptable, &
        cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
        smplx_tol, smplx_niter)
 
@@ -8009,7 +8154,7 @@ CONTAINS
          sor_rho2_u, &
          sor_generat_multiplier, &
          ls_correction_factor, &
-         ls_rchi2_max, &
+         ls_rchi2_acceptable, &
          cos_nsigma, &
          smplx_tol
     INTEGER, INTENT(in), OPTIONAL :: &
@@ -8382,8 +8527,8 @@ CONTAINS
     IF (PRESENT(ls_correction_factor)) THEN
        this%ls_corr_fac_prm = ls_correction_factor
     END IF
-    IF (PRESENT(ls_rchi2_max)) THEN
-       this%ls_rchi2_max_prm = ls_rchi2_max
+    IF (PRESENT(ls_rchi2_acceptable)) THEN
+       this%ls_rchi2_acceptable_prm = ls_rchi2_acceptable
     END IF
     IF (PRESENT(ls_niter_major_max)) THEN
        this%ls_niter_major_max_prm = ls_niter_major_max
@@ -8743,8 +8888,8 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Determines the new range bounds from the 3-sigma cutoff values
-  !! of the a posteriori range probability density.
+  !! Determines the new range bounds from the 3-sigma cutoff values of
+  !! the a posteriori range probability density.
   !! 
   !!
   !! Returns error.
@@ -8752,14 +8897,14 @@ CONTAINS
   SUBROUTINE setRangeBounds_3sigma(this)
 
     IMPLICIT NONE
-    TYPE (StochasticOrbit), INTENT(inout) :: this
-    REAL(bp), DIMENSION(2)                :: mean, stdev
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: histo
-    REAL(bp), DIMENSION(:), ALLOCATABLE   :: topo_range
-    REAL(bp), DIMENSION(2,2)              :: rho_
-    REAL(bp)                              :: rhomin1, rhomax1, &
+    TYPE (StochasticOrbit), INTENT(inout)    :: this
+    REAL(bp), DIMENSION(2)                   :: mean, stdev
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE    :: histo
+    REAL(bp), DIMENSION(:), ALLOCATABLE      :: topo_range
+    REAL(bp), DIMENSION(2,2)                 :: rho_
+    REAL(bp)                                 :: rhomin1, rhomax1, &
          rhomin2, rhomax2
-    INTEGER                               :: grid_num, err
+    INTEGER                                  :: grid_num, err
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -8834,7 +8979,7 @@ CONTAINS
     IF (ANY(this%sor_iterate_bounds_prm(3:4))) THEN
 
        ! Second topocentric range (with respect to the first)
-       ALLOCATE(topo_range(this%sor_norb_cmp), stat=err)
+       ALLOCATE(topo_range(SIZE(this%sor_rho_arr_cmp,dim=1)), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / setRangeBounds", &
@@ -11496,8 +11641,9 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(inout)     :: this
     INTEGER, INTENT(in)                       :: nobs_max
 
-    TYPE (Observations)                       :: obss
+    TYPE (Observations)                       :: obss, obss_next
     TYPE (Observation), DIMENSION(:), POINTER :: obs_arr
+    TYPE (Observation)                        :: obs_next
     TYPE (StochasticOrbit)                    :: storb
     CHARACTER(len=4)                          :: str1, str2
     REAL(bp), DIMENSION(4)                    :: rho
@@ -11559,9 +11705,15 @@ CONTAINS
        i = i + 1
        IF ((-1)**i < 0) THEN
           CALL addObservation(obss, obs_arr(j))
+          IF (i /= nobs) THEN 
+             CALL NEW(obss_next, obs_arr(k))
+          END IF
           j = j + 1
        ELSE
           CALL addObservation(obss, obs_arr(k))
+          IF (i /= nobs) THEN 
+             CALL NEW(obss_next, obs_arr(j))
+          END IF
           k = k - 1
        END IF
        IF (error) THEN
@@ -11642,7 +11794,7 @@ CONTAINS
           this%sor_ntrial_sw_cmp = storb%sor_ntrial_cmp
           IF (this%sor_norb_sw_cmp < 2) THEN
              CALL toString(this%sor_norb_sw_cmp, str1, error)
-             !             CALL toString(i, str2, error)
+             CALL toString(i, str2, error)
              CALL errorMessage("StochasticOrbit / stepwiseRanging", &
                   TRIM(str1) // "sample orbits found when " // &
                   TRIM(str2) // " observations were included." , 1)
@@ -11651,6 +11803,10 @@ CONTAINS
              CALL NULLIFY(obss)
              CALL NULLIFY(storb)
              RETURN
+          END IF
+          IF (exist(obss_next)) THEN
+             CALL constrainRangeDistributions(storb, obss_next)
+             CALL NULLIFY(obss_next)
           END IF
           CALL setRangeBounds(storb)
           IF (error) THEN
@@ -11750,6 +11906,420 @@ CONTAINS
     CALL NULLIFY(storb)
 
   END SUBROUTINE stepwiseRanging
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Optimizes the range distribution corresponding to the first and
+  !! last observation of a set of observations which is a combination
+  !! of this%obss and the additional observations supplied with this
+  !! subroutine. For the estimation of the ranges the algorithm
+  !! selects all orbits which reproduce the observations with
+  !! acceptable residuals (limit is set by the 1-sigma astrometric
+  !! uncertainty multiplied by this%accept_multiplier_prm) or, if i<10
+  !! orbits with acceptable residuals are found, selects the 10-i
+  !! orbits that produce the smallest rchi2 values.
+  !!
+  !! Sets error=.TRUE. if an error occurs.
+  !!
+  SUBROUTINE constrainRangeDistributions(this, obss)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout)  :: this
+    TYPE (Observations), INTENT(in) :: obss
+
+    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr
+    TYPE (Observations) :: obss_
+    TYPE (Observation) :: obs
+    TYPE (CartesianCoordinates), DIMENSION(2) :: observers
+    TYPE (SphericalCoordinates) , DIMENSION(:,:), POINTER :: ephemerides
+    REAL(bp), DIMENSION(:,:,:), POINTER :: residuals, &
+         information_matrix_obs
+    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: sor_rho_arr_cmp
+    REAL(bp), DIMENSION(:), POINTER :: dates_orig, dates_add
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: chi2_arr
+    INTEGER :: err, i, j, norb
+    LOGICAL, DIMENSION(:), ALLOCATABLE :: mask, mask_
+
+    ! Get residuals between predicted positions and additional
+    ! observations:
+    residuals => getResiduals(this, obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "TRACE BACK (5)", 1)
+       DEALLOCATE(residuals, stat=err)
+       RETURN
+    END IF
+
+    ! Get astrometric uncertainty for additional observations:
+    stdevs => getStandardDeviations(obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "TRACE BACK (10)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(stdevs, stat=err)
+       RETURN
+    END IF
+
+    ! Find out which orbits reproduce the additional observations
+    ! within the set limits:
+    norb = SIZE(residuals,dim=2)
+    ALLOCATE(mask(norb), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "Could not allocate memory (5)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(stdevs, stat=err)
+       DEALLOCATE(mask, stat=err)
+       RETURN
+    END IF
+
+    mask = .TRUE.
+    DO i=1,norb
+       ! Note that RA,Dec is hardwired here
+       IF (ANY(ABS(residuals(:,i,2:3)) > this%accept_multiplier_prm*stdevs(:,2:3))) THEN
+          mask(i) = .FALSE.
+       END IF
+    END DO
+    DEALLOCATE(stdevs, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "Could not deallocate memory (5)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       RETURN
+    END IF
+    IF (info_verb >= 2 .AND. COUNT(mask) > 0) THEN
+       WRITE(stdout,"(2X,2(A,1X),I0,1X,A)") "constrainRangeDistributions:", &
+            "RA,Dec residuals corresponding to the", COUNT(mask), &
+            "orbits having residuals smaller than the acceptance window [asec]:"
+       DO i=1,SIZE(mask)
+          IF (mask(i)) THEN
+             DO j=1,SIZE(residuals,dim=1)
+                WRITE(stdout,"(2X,2(A,1X,I0,1X),A,2(1X,F10.3))") &
+                     "Orbit #", i, "& observation #", j, ":", residuals(j,i,2:3)/rad_asec
+             END DO
+          END IF
+       END DO
+    END IF
+
+    ! If less than 10 orbits acceptably reproduce the additional
+    ! observations, then select (10 - norb) orbits that have the
+    ! smallest chi2 wrt the additional observations:
+    IF (COUNT(mask) < 10) THEN
+       information_matrix_obs => getBlockDiagInformationMatrix(obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "TRACE BACK (15)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          RETURN
+       END IF
+       ALLOCATE(chi2_arr(norb), mask_(norb), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "Could not allocate memory (10)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(chi2_arr, stat=err)
+          DEALLOCATE(mask_, stat=err)
+          RETURN
+       END IF
+       mask_ = mask
+       DO i=1,norb
+          chi2_arr(i) = chi_square(residuals(:,i,:), information_matrix_obs, error=errstr)
+          IF (LEN_TRIM(errstr) /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+                  TRIM(errstr), 1)             
+             DEALLOCATE(residuals, stat=err)
+             DEALLOCATE(mask, stat=err)
+             DEALLOCATE(information_matrix_obs, stat=err)
+             DEALLOCATE(chi2_arr, stat=err)
+             DEALLOCATE(mask_, stat=err)
+             RETURN
+          END IF
+       END DO
+       j = COUNT(mask)
+       DO WHILE (COUNT(mask) < 10 .AND. j < norb)
+          j = j + 1
+          i = MINLOC(chi2_arr,1,.NOT.mask)
+          mask(i) = .TRUE.
+       END DO
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A,1X,I0,1X,A)") "constrainRangeDistributions:", &
+               "RA,Dec residuals corresponding to the", COUNT(mask), &
+               "additional orbits included [asec]:"
+          DO i=1,SIZE(mask)
+             IF (mask(i) .AND. .NOT.mask_(i)) THEN
+                DO j=1,SIZE(residuals,dim=1)
+                   WRITE(stdout,"(2X,2(A,1X,I0,1X),A,2(1X,F10.3))") &
+                        "Orbit #", i, "& observation #", j, ":", residuals(j,i,2:3)/rad_asec
+                END DO
+             END IF
+          END DO
+       END IF
+       DEALLOCATE(information_matrix_obs, chi2_arr, mask_, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "Could not deallocate memory (10)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(chi2_arr, stat=err)
+          DEALLOCATE(mask_, stat=err)
+          RETURN
+       END IF
+    END IF
+
+    ! Get observation dates for original data and additional data
+    IF (exist(this%obss)) THEN
+       dates_orig => getDates(this%obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "TRACE BACK (20)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          RETURN
+       END IF
+       dates_add => getDates(obss)       
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "TRACE BACK (25)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          RETURN
+       END IF
+    ELSE
+       ALLOCATE(dates_orig(1), dates_add(1), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "Could not allocate memory (15)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          RETURN
+       END IF
+       dates_orig = 1.0_bp
+       dates_add  = 0.0_bp
+    END IF
+
+    ! Re-calculate this%sor_rho_arr_cmp if...
+    IF (& 
+                                ! ...rhos don't exist:
+         .NOT.ASSOCIATED(this%sor_rho_arr_cmp) .OR. & 
+                                ! ...previous observations don't exist -> no way to find out if
+                                ! update needed:
+         .NOT.exist(this%obss) .OR. & 
+                                ! ...additional data earlier than original data:
+         MINVAL(dates_add) < MINVAL(dates_orig) .OR. & 
+                                ! ...additional data later than original data
+         MAXVAL(dates_add) > MAXVAL(dates_orig)) THEN 
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A)") "constrainRangeDistributions:", &
+               "Re-calculating the rho1 and rho2 distributions..."
+       END IF
+       IF (.NOT.exist(this%obss)) THEN
+          obs = getObservation(obss,1)
+          observers(1) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+          obs = getObservation(obss,getNrOfObservations(obss))
+          observers(2) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+       ELSE
+          obss_ = this%obss + obss
+          obs = getObservation(obss_,1)
+          observers(1) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+          obs = getObservation(obss_,getNrOfObservations(obss_))
+          observers(2) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+          CALL NULLIFY(obss_)
+       END IF
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "TRACE BACK (30)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          RETURN
+       END IF
+       orb_arr => getSampleOrbits(this)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "TRACE BACK (35)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err) 
+          DEALLOCATE(orb_arr, stat=err)         
+          RETURN
+       END IF
+       CALL getEphemerides(orb_arr, observers, ephemerides)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "TRACE BACK (40)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          DEALLOCATE(orb_arr, stat=err)         
+          DEALLOCATE(ephemerides, stat=err)         
+          RETURN
+       END IF
+       IF (ASSOCIATED(this%sor_rho_arr_cmp)) THEN
+          DEALLOCATE(this%sor_rho_arr_cmp, stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+                  "Could not deallocate memory (15)", 1)
+             DEALLOCATE(residuals, stat=err)
+             DEALLOCATE(mask, stat=err)
+             DEALLOCATE(dates_orig, stat=err)
+             DEALLOCATE(dates_add, stat=err)
+             DEALLOCATE(orb_arr, stat=err)         
+             DEALLOCATE(ephemerides, stat=err)         
+             RETURN
+          END IF
+       END IF
+       ALLOCATE(this%sor_rho_arr_cmp(norb,2), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "Could not allocate memory (20)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          DEALLOCATE(orb_arr, stat=err)         
+          DEALLOCATE(ephemerides, stat=err)         
+          RETURN
+       END IF
+       DO i=1,norb
+          this%sor_rho_arr_cmp(i,1) = getDistance(ephemerides(i,1))
+          this%sor_rho_arr_cmp(i,2) = getDistance(ephemerides(i,2))
+          CALL NULLIFY(ephemerides(i,1))
+          CALL NULLIFY(ephemerides(i,2))
+          CALL NULLIFY(orb_arr(i))
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+                  "TRACE BACK (45)", 1)
+             DEALLOCATE(residuals, stat=err)
+             DEALLOCATE(mask, stat=err)
+             DEALLOCATE(dates_orig, stat=err)
+             DEALLOCATE(dates_add, stat=err)
+             DEALLOCATE(orb_arr, stat=err)         
+             DEALLOCATE(ephemerides, stat=err)         
+             RETURN
+          END IF
+       END DO
+       CALL NULLIFY(observers(1))
+       CALL NULLIFY(observers(2))
+       DEALLOCATE(ephemerides, orb_arr, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+               "Could not deallocate memory (20)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          DEALLOCATE(orb_arr, stat=err)         
+          DEALLOCATE(ephemerides, stat=err)         
+          RETURN
+       END IF
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A)") "constrainRangeDistributions:", &
+               "Re-calculating the rho1 and rho2 distributions... done"
+       END IF
+    END IF
+    DEALLOCATE(dates_orig, dates_add, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "Could not deallocate memory (25)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(dates_orig, stat=err)
+       DEALLOCATE(dates_add, stat=err)
+       RETURN
+    END IF
+
+    ! Rewrite sor_rho_arr_cmp (N.B. The size of the 1st dimension of
+    ! sor_rho_arr_cmp is no longer necessary equal to norb!)
+    ALLOCATE(sor_rho_arr_cmp(COUNT(mask),2), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "Could not allocate memory (25)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(sor_rho_arr_cmp, stat=err)
+       RETURN
+    END IF
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,1X,A)") "constrainRangeDistributions:", &
+            "Constrained (rho1,rho2-rho1) distribution [AU]: "
+    END IF
+    j = 0
+    DO i=1,SIZE(this%sor_rho_arr_cmp,dim=1)
+       IF (mask(i)) THEN
+          IF (info_verb >= 2) THEN
+             WRITE(stdout,"(2X,2(1X,F11.7))") &
+                  this%sor_rho_arr_cmp(i,1), &
+                  this%sor_rho_arr_cmp(i,2)-this%sor_rho_arr_cmp(i,1)
+          END IF
+          j = j + 1
+          sor_rho_arr_cmp(j,:) = this%sor_rho_arr_cmp(i,:)
+       END IF
+    END DO
+    DEALLOCATE(this%sor_rho_arr_cmp, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "Could not deallocate memory (30)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(sor_rho_arr_cmp, stat=err)
+       RETURN
+    END IF
+    ALLOCATE(this%sor_rho_arr_cmp(COUNT(mask),2), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "Could not allocate memory (30)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       RETURN
+    END IF
+    this%sor_rho_arr_cmp = sor_rho_arr_cmp
+    DEALLOCATE(sor_rho_arr_cmp, residuals, mask, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions", &
+            "Could not deallocate memory (35)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(sor_rho_arr_cmp, stat=err)
+       RETURN
+    END IF
+
+  END SUBROUTINE constrainRangeDistributions
 
 
 
