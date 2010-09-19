@@ -11988,7 +11988,6 @@ CONTAINS
     END IF
 
     mask = .TRUE.
-WRITE(*,*) this%accept_multiplier_prm*stdevs(:,2:3)/rad_asec
     DO i=1,norb
        ! Note that RA,Dec is hardwired here
        IF (ANY(ABS(residuals(:,i,2:3)) > this%accept_multiplier_prm*stdevs(:,2:3))) THEN
