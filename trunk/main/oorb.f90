@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-06-18
+!! @version 2010-09-18
 !!
 PROGRAM oorb
 
@@ -219,7 +219,7 @@ PROGRAM oorb
        ephemeris_r2, &
        hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
        i_min, i_max, integration_step, integration_step_init, &
-       ls_correction_factor, ls_rchi2_max, lunar_alt, lunar_alt_max, &
+       ls_correction_factor, ls_rchi2_acceptable, lunar_alt, lunar_alt_max, &
        lunar_elongation, lunar_elongation_min, lunar_phase, &
        lunar_phase_min, lunar_phase_max, &
        mjd, mjd_tai, mjd_tt, mjd_utc, moid, &
@@ -534,9 +534,11 @@ PROGRAM oorb
         IF (norb > nobj .AND. &
              ALL(pdf_arr_in > 0.0_bp) .AND. &
              ALL(jac_arr_in > 0.0_bp)) THEN
+           ! Sampled PDF available
            ALLOCATE(storb_arr_in(nobj))
            i = 0
            j = 1
+           ! generate storbs for sets 1...n-1
            DO k=2,SIZE(id_arr_in)
               IF (id_arr_in(k-1) /= id_arr_in(k)) THEN
                  i = i + 1
@@ -547,6 +549,7 @@ PROGRAM oorb
                  j = k
               END IF
            END DO
+           ! generate storb for set n (note k-1 above)
            i = i + 1
            CALL NEW(storb_arr_in(i), orb_arr_in(j:), pdf_arr_in(j:), &
                 element_type_pdf_arr_in(1), jac_arr=jac_arr_in(j:,:), &
@@ -568,6 +571,7 @@ PROGRAM oorb
            DEALLOCATE(id_arr)
         ELSE IF (nobj == norb .AND. &
              ALL(cov_arr_in(:,1,1) > 0.0_bp)) THEN
+           ! Covariance matrix/ces available
            ALLOCATE(storb_arr_in(norb))
            DO i=1,norb
               CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
@@ -1364,6 +1368,36 @@ PROGRAM oorb
            END IF
            sor_rho_init(4) = -sor_rho_init(3)
         END IF
+        IF (ASSOCIATED(id_arr_in) .AND. ALLOCATED(storb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in)
+              IF (TRIM(id) == TRIM(id_arr_in(j))) THEN
+                 EXIT
+              END IF
+           END DO
+           IF (j <= SIZE(id_arr_in)) THEN
+              CALL constrainRangeDistributions(storb_arr_in(j), obss_sep(i))
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (31)", 1)
+                 STOP
+              END IF
+              CALL setRangeBounds(storb_arr_in(j))
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (32)", 1)
+                 STOP
+              END IF
+              sor_rho_init(1:4) = getRangeBounds(storb_arr_in(j))
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging", &
+                      "TRACE BACK (33)", 1)
+                 STOP
+              END IF
+           END IF
+           pdf_arr_in => getPDFValues(storb_arr_in(j))
+           pdf_ml_init = MAXVAL(pdf_arr_in)
+           DEALLOCATE(pdf_arr_in)
+        END IF
         IF (.NOT.exist(epoch)) THEN
            CALL NULLIFY(t)
            obs = getObservation(obss_sep(i),1)
@@ -1994,7 +2028,8 @@ PROGRAM oorb
         END IF
         DO j=1,SIZE(orb_arr,dim=1),7
            IF (info_verb >= 2) THEN
-              WRITE(stdout,"(2(A,I0))") "Orbits ", j, " to ", j+6
+              WRITE(stdout,"(3(A,1X,I0,1X))") "Orbits", j, "to", &
+                   j+6, "out of", SIZE(orb_arr,dim=1)
            END IF
            DO k=1,7
               CALL NULLIFY(orb_arr_(k))
@@ -2276,7 +2311,7 @@ PROGRAM oorb
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
           ls_correction_factor=ls_correction_factor, &
-          ls_rchi2_max=ls_rchi2_max, &
+          ls_rchi2_acceptable=ls_rchi2_acceptable, &
           ls_element_mask=ls_element_mask, &
           ls_niter_major_max=ls_niter_major_max, &
           ls_niter_major_min=ls_niter_major_min, &
@@ -2439,7 +2474,7 @@ PROGRAM oorb
              element_type=element_type_comp_prm, &
              accept_multiplier=accwin_multiplier, &
              ls_correction_factor=ls_correction_factor, &
-             ls_rchi2_max=ls_rchi2_max, &
+             ls_rchi2_acceptable=ls_rchi2_acceptable, &
              ls_element_mask=ls_element_mask, &
              ls_niter_major_max=ls_niter_major_max, &
              ls_niter_major_min=ls_niter_major_min, &
