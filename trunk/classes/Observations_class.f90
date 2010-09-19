@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2010-03-11
+!! @version 2010-09-18
 !!  
 MODULE Observations_cl
 
@@ -89,6 +89,7 @@ MODULE Observations_cl
   PRIVATE :: getDeclinations_Obss
   PRIVATE :: setNumber_Obss
   PRIVATE :: sortObservations
+  PRIVATE :: getDates_Obss
   PRIVATE :: getMinAndMaxValues_Obss
   PRIVATE :: getObservationMasks_Obss
   PRIVATE :: getObservatoryCodes_Obss
@@ -123,92 +124,97 @@ MODULE Observations_cl
      MODULE PROCEDURE NEW_Obss_file
      MODULE PROCEDURE NEW_Obss_obs
      MODULE PROCEDURE NEW_Obss_obs_arr
-  END INTERFACE
+  END INTERFACE NEW
 
   !! Nullifies an Observations-object.
   INTERFACE NULLIFY
      MODULE PROCEDURE NULLIFY_Obss
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   !! Makes a copy of an Observations-object:
   INTERFACE copy
      MODULE PROCEDURE copy_Obss
-  END INTERFACE
+  END INTERFACE copy
 
   !! Returns state of an Observations-object:
   INTERFACE exist
      MODULE PROCEDURE exist_Obss
-  END INTERFACE
+  END INTERFACE exist
 
   !! Adds Gaussian noise to the observations. 
   INTERFACE addMultinormalDeviate
      MODULE PROCEDURE addMultinormalDeviate_Obss
-  END INTERFACE
+  END INTERFACE addMultinormalDeviate
 
   !! Adds uniform noise to the observations. 
   INTERFACE addUniformDeviate
      MODULE PROCEDURE addUniformDeviate_Obss
-  END INTERFACE
+  END INTERFACE addUniformDeviate
+
+  !! Returns MJDs in UTC for all observations in this object.
+  INTERFACE getDates
+     MODULE PROCEDURE getDates_Obss
+  END INTERFACE getDates
 
   !! Returns the declinations of all observations in this object.
   INTERFACE getDeclinations
      MODULE PROCEDURE getDeclinations_Obss
-  END INTERFACE
+  END INTERFACE getDeclinations
 
   !! Changes the designation for all observations in this object.
   INTERFACE getDesignation
      MODULE PROCEDURE getDesignation_Obss
-  END INTERFACE
+  END INTERFACE getDesignation
 
   !! Changes the designation for all observations in this object.
   INTERFACE setDesignation
      MODULE PROCEDURE setDesignation_Obss
-  END INTERFACE
+  END INTERFACE setDesignation
 
   !! Removes multiple observations from this object:
   INTERFACE clean
      MODULE PROCEDURE clean_Obss
-  END INTERFACE
+  END INTERFACE clean
 
   INTERFACE getID
      MODULE PROCEDURE getID_Obss
-  END INTERFACE
+  END INTERFACE getID
 
   !! Gets the end (read documentation) values of this object. 
   INTERFACE getMinAndMaxValues
      MODULE PROCEDURE getMinAndMaxValues_Obss
-  END INTERFACE
+  END INTERFACE getMinAndMaxValues
 
   !! Returns the number of this object assuming that the set contains only one object.. 
   INTERFACE getNumber
      MODULE PROCEDURE getNumber_Obss
-  END INTERFACE
+  END INTERFACE getNumber
 
   INTERFACE getObservationMasks
      MODULE PROCEDURE getObservationMasks_Obss
-  END INTERFACE
+  END INTERFACE getObservationMasks
 
   INTERFACE getObservatoryCodes
      MODULE PROCEDURE getObservatoryCodes_Obss
-  END INTERFACE
+  END INTERFACE getObservatoryCodes
 
   !! Returns an Observations-object containing the combined 
   !! observations from two given Observations-objects.
   INTERFACE OPERATOR (+) 
      MODULE PROCEDURE addition_Obss
-  END INTERFACE
+  END INTERFACE OPERATOR (+)
 
   INTERFACE getStandardDeviations
      MODULE PROCEDURE getStandardDeviations_Obss
-  END INTERFACE
+  END INTERFACE getStandardDeviations
 
   INTERFACE reallocate
      MODULE PROCEDURE reallocate_a1_Obss
-  END INTERFACE
+  END INTERFACE reallocate
 
   INTERFACE setNumber
      MODULE PROCEDURE setNumber_Obss
-  END INTERFACE
+  END INTERFACE setNumber
 
 CONTAINS
 
@@ -1325,6 +1331,60 @@ CONTAINS
     END DO
 
   END FUNCTION getCovarianceMatrices
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns MJDs in UTC for all observations within this object.
+  !!
+  !! Returns error.
+  !!
+  FUNCTION getDates_Obss(this)
+
+    IMPLICIT NONE
+    TYPE (Observations), INTENT(in) :: this
+    REAL(bp), DIMENSION(:), POINTER :: getDates_Obss
+    TYPE (Time)                     :: t
+    INTEGER                         :: i, err
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / getDates", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (this%nobs < 1) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / getDates", &
+            "Observations missing.", 1)
+       RETURN
+    END IF
+
+    ALLOCATE(getDates_Obss(this%nobs), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / getDates", &
+            "Could not allocate memory.", 1)
+       RETURN
+    END IF
+
+    DO i=1,this%nobs
+       t = getTime(this%obs_arr(i))
+       getDates_Obss(i) = getMJD(t, "UTC")
+       IF (error) THEN
+          CALL errorMessage("Observations / getDates", &
+               "TRACE BACK", 1)
+          DEALLOCATE(getDates_Obss, stat=err)
+          RETURN
+       END IF
+       CALL NULLIFY(t)
+    END DO
+
+  END FUNCTION getDates_Obss
 
 
 
