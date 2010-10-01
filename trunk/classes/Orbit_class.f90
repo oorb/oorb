@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-07-29
+!! @version 2010-09-30
 !!
 MODULE Orbit_cl
 
@@ -5019,14 +5019,15 @@ CONTAINS
     TYPE (Time) :: t
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: ta2
     REAL(bp), DIMENSION(:), ALLOCATABLE :: ta1
+    REAL(bp), DIMENSION(10,10) :: local_minima
     REAL(bp), DIMENSION(3,3) :: rot1, rot2
     REAL(bp), DIMENSION(2,2) :: rot
-    REAL(bp), DIMENSION(10) :: rmin
     REAL(bp), DIMENSION(6) :: elem1, elem2
     REAL(bp), DIMENSION(3) :: coord1, coord2, coord11, coord22, &
          rad1, rad2, dr, der2
     REAL(bp), DIMENSION(2) :: sine, cosine, f1, f2, ff
-    REAL(bp) :: par1, par2, par11, par22, r1, r2, ta0, dta, q1, q2
+    REAL(bp) :: par1, par2, par11, par22, r1, r2, ta0, dta, q1, q2, &
+         f, ea, sin_ea, cos_ea, ma
     INTEGER :: i, j, k, N, m1, m2, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -5104,14 +5105,14 @@ CONTAINS
 
     k = 0
     N = 360
-    rmin = HUGE(rmin)
+    local_minima(:,1) = HUGE(local_minima(:,1))
 
     !-----------------------------------------------------------
     ! Find minimum, increase true anomaly sampling if necessary:
     !-----------------------------------------------------------
 
     DO WHILE (N <= 360000 .AND. &
-         (k == 0 .OR. MINVAL(rmin) > q2 + q1))
+         (k == 0 .OR. MINVAL(local_minima(:,1)) > q2 + q1))
 
        ALLOCATE(ta1(N), ta2(2,N), stat=err)
        IF (err /= 0) THEN
@@ -5243,20 +5244,28 @@ CONTAINS
                    rad1 = MATMUL(rot1, coord11)
                    rad2 = MATMUL(rot2, coord22)
                    dr = rad1 - rad2
-                   rmin(k) = SQRT(SUM(dr**2))
-                   IF (info_verb >= 3) THEN
-                      IF (i == 1) THEN
-                         WRITE(stdout,*) N, rmin(k), ta1(N)/rad_deg, &
-                              ta1(i)/rad_deg, ta2(j,N)/rad_deg, &
-                              ta2(j,i)/rad_deg
-                      ELSE
-                         WRITE(stdout,*) N, rmin(k), ta1(i-1)/rad_deg, &
-                              ta1(i)/rad_deg, ta2(j,i-1)/rad_deg, &
-                              ta2(j,i)/rad_deg
-                      END IF
-                      WRITE(stdout,*) N, rmin(k), f1(1)/rad_deg, &
-                           f1(2)/rad_deg, f2(1)/rad_deg, f2(2)/rad_deg
+                   IF (i == 1) THEN
+                      local_minima(k,1:6) = (/ &
+                           SQRT(SUM(dr**2)), &
+                           REAL(N,bp), &
+                           ta1(N), &
+                           ta1(i), &
+                           ta2(j,N), &
+                           ta2(j,i) /)
+                   ELSE
+                      local_minima(k,1:6) = (/ &
+                           SQRT(SUM(dr**2)), &
+                           REAL(N,bp), &
+                           ta1(i-1), &
+                           ta1(i), &
+                           ta2(j,i-1), &
+                           ta2(j,i) /)
                    END IF
+                   local_minima(k,7:10) = (/ &
+                        f1(1), &
+                        f1(2), &
+                        f2(1), &
+                        f2(2) /)
                 END IF
              END IF
           END DO
@@ -5281,12 +5290,39 @@ CONTAINS
     ! Global minimum, MOID:
     !----------------------
     IF (k /= 0) THEN
-       getMOID = MINVAL(rmin(1:k))
+       getMOID = MINVAL(local_minima(1:k,1),1)
+       IF (info_verb >= 2) THEN
+          i = MINLOC(local_minima(1:k,1),1)
+          WRITE(stdout,"(10(F13.9,1X))") local_minima(i,1:2), &
+               local_minima(i,3:10)/rad_deg
+          f = 0.5_bp*SUM(local_minima(i,7:8))
+          cos_ea = (elem1(2) + COS(f))/(1.0_bp + elem1(2)*COS(f))
+          sin_ea = (SQRT(1.0_bp - elem1(2)**2)*SIN(f))/(1.0_bp + elem1(2)*COS(f))
+          ea = ATAN2(sin_ea, cos_ea)
+          ma = MODULO(ea - elem1(2)*SIN(ea), two_pi)
+          WRITE(stdout,"(A,6(1X,F15.10))") &
+               "Keplerian elements for the 1st orbit at the epoch:", &
+               elem1(1:2), elem1(3:6)/rad_deg
+          WRITE(stdout,"(A,1X,F15.10)") &
+               "Mean anomaly M for the 1st orbit when MOID takes place:", &
+               ma/rad_deg
+          f = 0.5_bp*SUM(local_minima(i,9:10))
+          cos_ea = (elem2(2) + COS(f))/(1.0_bp + elem2(2)*COS(f))
+          sin_ea = (SQRT(1.0_bp - elem2(2)**2)*SIN(f))/(1.0_bp + elem2(2)*COS(f))
+          ea = ATAN2(sin_ea, cos_ea)
+          ma = MODULO(ea - elem2(2)*SIN(ea), two_pi)
+          WRITE(stdout,"(A,6(1X,F15.10))") &
+               "Keplerian elements for the 2nd orbit at the epoch of the 1st orbit:", &
+               elem2(1:2), elem2(3:6)/rad_deg
+          WRITE(stdout,"(A,1X,F15.10)") &
+               "Mean anomaly M for the 2nd orbit when MOID takes place:", &
+               ma/rad_deg
+       END IF
     ELSE
        error = .TRUE.
        CALL errorMessage("Orbit / getMOID", &
             "Minimum not found.", 1)       
-       getMOID = HUGE(rmin(1))
+       getMOID = HUGE(local_minima(1,1))
     END IF
 
     CALL NULLIFY(this_)
@@ -8407,7 +8443,8 @@ CONTAINS
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     addit_masses=this_arr(1)%additional_perturbers(:,8))
+                     addit_masses=this_arr(1)%additional_perturbers(:,8), &
+                     info_verb=info_verb)
              END IF
              IF (info_verb >= 3) THEN
                 WRITE(stdout,"(2X,A)") &
@@ -8439,13 +8476,14 @@ CONTAINS
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      jacobian=jacobian_, ncenter=central_body, &
-                     encounters=encounters, addit_masses=addit_masses)
+                     encounters=encounters, addit_masses=addit_masses, &
+                     info_verb=info_verb)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      jacobian=jacobian_, ncenter=central_body, &
-                     addit_masses=addit_masses)
+                     addit_masses=addit_masses, info_verb=info_verb)
              END IF
              DO i=1,nthis+naddit
                 jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
@@ -8459,12 +8497,15 @@ CONTAINS
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     encounters=encounters, addit_masses=addit_masses)
+                     encounters=encounters, &
+                     addit_masses=addit_masses, &
+                     info_verb=info_verb)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, addit_masses=addit_masses)
+                     ncenter=central_body, addit_masses=addit_masses, &
+                     info_verb=info_verb)
              END IF
           END IF
           IF (error) THEN
