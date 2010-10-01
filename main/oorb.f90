@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-09-18
+!! @version 2010-09-30
 !!
 PROGRAM oorb
 
@@ -252,7 +252,7 @@ PROGRAM oorb
        lu_orb_out, &
        min, minstep, &
        month, month0, month1, &
-       nhist, nobj, nobs, norb, noutlier, nstep, &
+       ncenter, nhist, nobj, nobs, norb, noutlier, nstep, &
        smplx_niter, &
        sor_niter, sor_norb, sor_norb_sw, sor_ntrial, sor_ntrial_sw, &
        sor_type_prm, &
@@ -419,8 +419,8 @@ PROGRAM oorb
      CALL NULLIFY(obs_file)
      indx = INDEX(obs_fname,".",back=.TRUE.)
      out_fname = obs_fname(1:indx-1)
-  ELSE IF (task == "tompc3" .OR. &
-       task == "tompc" .OR. &
+  ELSE IF (task == "2mpc3" .OR. &
+       task == "2mpc" .OR. &
        task == "ranging" .OR. &
        task == "lsl") THEN
      CALL errorMessage("oorb", &
@@ -710,7 +710,7 @@ PROGRAM oorb
 
      CONTINUE
 
-  CASE ("toorbpdf")
+  CASE ("2oorbpdf", "toorbpdf")
 
      first = .TRUE.
      tmp_fname = get_cl_option("--id-in=","")
@@ -770,7 +770,7 @@ PROGRAM oorb
         DEALLOCATE(id_arr, stat=err)
      END IF
 
-  CASE ("toorb")
+  CASE ("2oorb", "toorb")
 
      norb = HUGE(norb)
      norb = get_cl_option("--norb=",norb)
@@ -875,7 +875,7 @@ PROGRAM oorb
         DEALLOCATE(id_arr, stat=err)
      END IF
 
-  CASE ("orbitstodes")
+  CASE ("orb2des", "orbitstodes")
 
      H_max = get_cl_option("--H-max=",HUGE(H_max))
      i_min = get_cl_option("--i-min=",0.0_bp)
@@ -1010,7 +1010,7 @@ PROGRAM oorb
         DEALLOCATE(id_arr, stat=err)
      END IF
 
-  CASE ("observationstodes")
+  CASE ("obs2des", "observationstodes")
 
      ! Output input observations in DES format.
 
@@ -1033,7 +1033,7 @@ PROGRAM oorb
         CALL NULLIFY(obs_file)
      END IF
 
-  CASE ("tompc3")
+  CASE ("2mpc3", "tompc3")
 
      ! Output input observations in new MPC format.
 
@@ -1056,7 +1056,7 @@ PROGRAM oorb
         CALL NULLIFY(obs_file)
      END IF
 
-  CASE ("tompc")
+  CASE ("2mpc", "tompc")
 
      ! Output input observations in current MPC format.
 
@@ -1228,7 +1228,7 @@ PROGRAM oorb
      CALL NULLIFY(orb_in_file)
 
      DO i=1,norb
-        elements = getElements(orb_arr_in(i), "keplerian")
+!!$        elements = getElements(orb_arr_in(i), "keplerian")
 !!$        ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 !!$        ! Discard some orbits depending on the following requirement:
 !!$        IF (elements(1) < 2.1_bp .or. elements(1) > 3.3_bp .or. & 
@@ -1255,7 +1255,7 @@ PROGRAM oorb
                 H=HG_arr_in(i,1), G=HG_arr_in(i,2), &
                 mjd=mjd_epoch)
         CASE default
-           CALL errorMessage("oorb / astorbtoorb", &
+           CALL errorMessage("oorb / mpcorbtoorb", &
                 "Orbit format " // TRIM(orbit_format_out) // &
                 " not supported.",1)
            STOP           
@@ -1267,6 +1267,53 @@ PROGRAM oorb
         END IF
      END DO
 
+  CASE ("2planetocentric")
+
+     ncenter = get_cl_option("--center=",-1)
+     IF (ncenter < 0 .OR. ncenter > 13) THEN
+        CALL errorMessage("oorb / planetocentricorbits", &
+             "New center must be given with the --center=CENTER option where 1 <= CENTER <= 13.", 1)
+        STOP
+     END IF
+
+     DO i=1,SIZE(orb_arr_in)
+        t = getTime(orb_arr_in(i))
+        mjd = getMJD(t, "TT")
+        ! Get Sun's coordinates at the epoch as seen from the planet:
+        planeph => JPL_ephemeris(mjd, 11, ncenter, error)
+        CALL NEW(ccoord, planeph(1,1:6), "equatorial", t)
+        DEALLOCATE(planeph)
+        CALL rotateToEcliptic(ccoord)
+        coordinates = getCoordinates(ccoord)
+        CALL NULLIFY(ccoord)
+        elements = getElements(orb_arr_in(i), "cartesian", "ecliptic")
+        ! New center -> asteroid = new_center -> Sun + Sun -> asteroid
+        CALL NEW(orb, coordinates + elements, "cartesian", "ecliptic", t, central_body=ncenter)
+        SELECT CASE (TRIM(orbit_format_out))
+        CASE ("des")
+           CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
+                id_arr_in(i), orb, HG_arr_in(i,1), 1, 6, &
+                -1.0_bp, "OPENORB")
+        CASE ("orb")
+           CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
+                element_type_out=element_type_out_prm, &
+                id=TRIM(id_arr_in(i)), orb=orb, &
+                H=HG_arr_in(i,1), G=HG_arr_in(i,2), &
+                mjd=mjd_epoch)
+        CASE default
+           CALL errorMessage("oorb / planetocentricorbits", &
+                "Orbit format " // TRIM(orbit_format_out) // &
+                " not supported.",1)
+           STOP           
+        END SELECT
+        IF (error) THEN
+           CALL errorMessage("oorb / planetocentricorbits", &
+                "TRACE BACK (15)", 1)
+           STOP        
+        END IF
+        CALL NULLIFY(orb)        
+        CALL NULLIFY(t)
+     END DO
 
   CASE ("ranging")
 
@@ -5812,7 +5859,7 @@ PROGRAM oorb
      CALL NULLIFY(epoch)
 
 
-  CASE ("degreestosexagesimal")
+  CASE ("deg2radec", "degreestosexagesimal")
 
      ! Input RA in degrees
      IF (get_cl_option("--ra-degrees=", .FALSE.)) THEN
