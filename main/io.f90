@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2010-09-18
+!! @version 2010-09-30
 !!
 MODULE io
 
@@ -1643,7 +1643,7 @@ CONTAINS
     REAL(bp), DIMENSION(:), INTENT(out) :: H_arr
     TYPE (Time) :: epoch
     CHARACTER(len=16) :: compcode, str
-    CHARACTER(len=3) :: frmt
+    CHARACTER(len=8) :: frmt
     REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: mjd_epoch, moid
     INTEGER :: err, indx_, npar
@@ -1702,6 +1702,8 @@ CONTAINS
           CALL NEW(orb_arr(norb+1), elements, "keplerian", "ecliptic", epoch)
        ELSE IF (frmt == "CAR") THEN
           CALL NEW(orb_arr(norb+1), elements, "cartesian", "ecliptic", epoch)
+       ELSE IF (frmt == "CAREQ") THEN
+          CALL NEW(orb_arr(norb+1), elements, "cartesian", "equatorial", epoch)
        ELSE
           error = .TRUE.
           CALL errorMessage("io / readDESOrbitFile", &
