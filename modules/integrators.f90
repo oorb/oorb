@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2010-06-03
+!! @version 2010-09-30
 !!
 MODULE integrators
 
@@ -73,12 +73,12 @@ MODULE integrators
   INTERFACE ratf_extrapolation
      MODULE PROCEDURE ratf_extrapolation_vec, ratf_extrapolation_mat, &
           ratf_extrapolation_vec_n, ratf_extrapolation_mat_n 
-  END INTERFACE
+  END INTERFACE ratf_extrapolation
 
   INTERFACE polf_extrapolation
      MODULE PROCEDURE polf_extrapolation_vec, polf_extrapolation_mat, &
           polf_extrapolation_vec_n, polf_extrapolation_mat_n
-  END INTERFACE
+  END INTERFACE polf_extrapolation
 
 CONTAINS
 
@@ -111,7 +111,7 @@ CONTAINS
   !!
   SUBROUTINE bulirsch_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
        perturbers, error, jacobian, step, ncenter, encounters, &
-       addit_masses)
+       addit_masses, info_verb)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt0, mjd_tdt1
     REAL(prec), DIMENSION(:,:), INTENT(inout)             :: celements
@@ -122,11 +122,12 @@ CONTAINS
     INTEGER,  INTENT(in), OPTIONAL                        :: ncenter
     REAL(prec), DIMENSION(:,:,:), INTENT(out), OPTIONAL   :: encounters
     REAL(prec), DIMENSION(:), INTENT(in), OPTIONAL        :: addit_masses
+    INTEGER, INTENT(in), OPTIONAL                         :: info_verb
 
     REAL(prec), DIMENSION(:,:,:), ALLOCATABLE :: pws, encounters_
     REAL(prec), DIMENSION(:,:), ALLOCATABLE :: ws
     REAL(prec) :: mjd_tdt, tmp, istep, rstep
-    INTEGER    :: k, m, n, total, err, naddit
+    INTEGER    :: i, j, k, m, n, total, err, naddit
 
     ! The 'addit_masses' variable refers to masses of additional
     ! massive objects that need to be integrated and act as pertubers
@@ -220,6 +221,12 @@ CONTAINS
     ! Integration loop
     k       = 1
     mjd_tdt = mjd_tdt0
+    IF (info_verb >= 3) THEN
+       DO i=1,SIZE(ws,dim=2)
+          WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
+               i, "at epoch", mjd_tdt0, ws(:,i)
+       END DO
+    END IF
     IF (PRESENT(jacobian)) THEN
        pws = jacobian
        DO WHILE (k <= total)
@@ -248,6 +255,12 @@ CONTAINS
           END IF
           mjd_tdt = mjd_tdt0 + k * istep
           k       = k + 1
+          IF (info_verb >= 3) THEN
+             DO i=1,SIZE(ws,dim=2)
+                WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
+                     i, "at epoch", mjd_tdt, ws(:,i)
+             END DO
+          END IF
        END DO
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
@@ -315,6 +328,12 @@ CONTAINS
           END IF
           mjd_tdt = mjd_tdt0 + k * istep
           k       = k + 1
+          IF (info_verb >= 3) THEN
+             DO i=1,SIZE(ws,dim=2)
+                WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
+                     i, "at epoch", mjd_tdt, ws(:,i)
+             END DO
+          END IF
        END DO
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
@@ -348,6 +367,12 @@ CONTAINS
           END FORALL
        END IF
        celements = ws
+    END IF
+    IF (info_verb >= 3) THEN
+       DO i=1,SIZE(ws,dim=2)
+          WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
+               i, "at epoch", mjd_tdt1, ws(:,i)
+       END DO
     END IF
     DEALLOCATE(ws, stat=err)
     IF (err /= 0) THEN
