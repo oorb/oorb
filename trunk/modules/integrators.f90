@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2010-09-30
+!! @version 2010-11-18
 !!
 MODULE integrators
 
@@ -69,6 +69,7 @@ MODULE integrators
   ! passed on as an global module parameter.
   PUBLIC :: bulirsch_full_jpl
   PUBLIC :: gauss_radau_15_full_jpl
+  PUBLIC :: set_relativity
 
   INTERFACE ratf_extrapolation
      MODULE PROCEDURE ratf_extrapolation_vec, ratf_extrapolation_mat, &
@@ -1980,12 +1981,14 @@ CONTAINS
     ! Number of massless bodies.
     NS = SIZE(ws,dim=2) - naddit
 
-    ! Get positions of massive bodies (-10 = 9 planets + Moon).
-    !wc => JPL_ephemeris(mjd_tdt, perturbers(:), 11, error)
-    wc => JPL_ephemeris(mjd_tdt, -10, 11, error)
-    IF (error) THEN 
-       DEALLOCATE(wc, stat=err)
-       RETURN 
+    IF (COUNT(perturbers) > 0) THEN
+       ! Get positions of massive bodies (-10 = 9 planets + Moon).
+       !wc => JPL_ephemeris(mjd_tdt, perturbers(:), 11, error)
+       wc => JPL_ephemeris(mjd_tdt, -10, 11, error)
+       IF (error) THEN 
+          DEALLOCATE(wc, stat=err)
+          RETURN 
+       END IF
     END IF
 
     ! Useful quantities. 
@@ -2011,10 +2014,12 @@ CONTAINS
        drs = 0.0_prec ; r2d = 0.0_prec ; ir3d = 0.0_prec
        ! Log impacts and distances to solar-system objects
        DO j=1,N+naddit
-          IF (j <= N) THEN
-             ! Basic perturbers (compute drs and r2d regardless of
-             ! perturbers to be included in the force model so that
-             ! the distance to planets can be logged)
+          IF (j <= N .AND. COUNT(perturbers) > 0) THEN
+             ! Basic perturbers. Compute drs and r2d regardless of
+             ! perturbers to be included in the force model (as long
+             ! as there is at least one perturber included in the
+             ! force model) so that the distance to planets can be
+             ! logged:
              drs(1:3,j) = wc(j,1:3) - ws(1:3,i) 
              r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j)) 
              IF (perturbers(j)) THEN
@@ -2186,10 +2191,12 @@ CONTAINS
 
     END DO
 
-    DEALLOCATE(wc, stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       RETURN
+    IF (ASSOCIATED(wc)) THEN
+       DEALLOCATE(wc, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          RETURN
+       END IF
     END IF
 
   END SUBROUTINE interact_full_jpl
@@ -2415,6 +2422,18 @@ CONTAINS
     END IF
 
   END SUBROUTINE interact_full_jpl_center
+
+
+
+  SUBROUTINE set_relativity(rel)
+
+    IMPLICIT NONE
+    LOGICAL, INTENT(in) :: rel
+
+    relativity = rel
+
+  END SUBROUTINE set_relativity
+
 
 
 END MODULE integrators
