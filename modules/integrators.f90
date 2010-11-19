@@ -59,7 +59,7 @@ MODULE integrators
        256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, &
        12288, 16384, 24576 /) ! n_i = 2 * n_(i-2)
 
-  LOGICAL, PARAMETER :: relativity = .TRUE.
+  LOGICAL :: relativity = .TRUE.
   ! Default central body for the dynamical system
   INTEGER, PARAMETER :: central_body_prm = 11
   INTEGER :: central_body
