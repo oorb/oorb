@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-09-30
+!! @version 2010-11-30
 !!
 PROGRAM oorb
 
@@ -87,6 +87,7 @@ PROGRAM oorb
   TYPE (Time) :: &
        epoch, &
        epoch0, &
+       epoch1, &
        t
   TYPE (File) :: &
        conf_file, &                                                 !! Configuration file.
@@ -215,16 +216,17 @@ PROGRAM oorb
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, &
        cos_nsigma, cos_obj_phase, &
-       day0, day1, dDelta, ddec, dec, dra, dt, dt_fulfill_night, &
+       day0, day1, dDelta, ddec, dec, dra, dt, dt_, dt_fulfill_night, &
        ephemeris_r2, &
        hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
        i_min, i_max, integration_step, integration_step_init, &
        ls_correction_factor, ls_rchi2_acceptable, lunar_alt, lunar_alt_max, &
        lunar_elongation, lunar_elongation_min, lunar_phase, &
        lunar_phase_min, lunar_phase_max, &
-       mjd, mjd_tai, mjd_tt, mjd_utc, moid, &
+       mjd, mjd0, mjd1, mjd_tai, mjd_tt, mjd_utc, moid, &
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
+       output_interval, &
        pdf_ml_init, periapsis_distance, peak, pp_G, pp_G_unc, &
        ra, &
        sec, smplx_tol, solar_elongation, solar_elon_min, solar_elon_max, &
@@ -277,7 +279,7 @@ PROGRAM oorb
        pp_H_estimation, &
        random_obs, &
        regularized, &
-       separately, &                        !! Output orbit(s)/ephemerides/etc separately for each object
+       separately, separately_, & !! Output orbit(s)/ephemerides/etc separately for each object
        uniform, &
        write_residuals
 
@@ -3577,17 +3579,19 @@ PROGRAM oorb
 
   CASE ("propagation")
 
+     first = .TRUE.
+
      CALL readConfigurationFile(conf_file, &
           dyn_model=dyn_model, &
           perturbers=perturbers, &
           integrator=integrator, &
           integration_step=integration_step)
 
-     CALL NULLIFY(epoch)
+     CALL NULLIFY(epoch1)
      IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
         ! New epoch given as MJD TT
         mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
-        CALL NEW(epoch, mjd_tt, "TT")
+        CALL NEW(epoch1, mjd_tt, "TT")
         IF (error) THEN
            CALL errorMessage("oorb / propagation", &
                 "TRACE BACK (5)", 1)
@@ -3596,14 +3600,15 @@ PROGRAM oorb
      ELSE IF (get_cl_option("--epoch-mjd-utc=", .FALSE.)) THEN
         mjd_utc = get_cl_option("--epoch-mjd-utc=", 0.0_bp)
         ! New epoch given as MJD UTC
-        CALL NEW(epoch, mjd_utc, "UTC")
+        CALL NEW(epoch1, mjd_utc, "UTC")
         IF (error) THEN
            CALL errorMessage("oorb / propagation", &
                 "TRACE BACK (10)", 1)
            STOP
         END IF
      END IF
-     IF (.NOT.exist(epoch) .AND. &
+
+     IF (.NOT.exist(epoch1) .AND. &
           .NOT.get_cl_option("--delta-epoch-mjd=", .FALSE.) .AND. &
           .NOT.exist(obss_in)) THEN
         CALL errorMessage("oorb / propagation", &
@@ -3616,26 +3621,20 @@ PROGRAM oorb
         ! Input orbits contain uncertainty information.
 
         DO i=1,SIZE(storb_arr_in)
-           ! Set integration parameters
-           CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
-           IF (error) THEN
-              CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (15)", 1)
-              STOP
-           END IF
-           IF (.NOT.exist(epoch) .AND. &
+
+           separately_ = separately
+
+           IF (.NOT.exist(epoch1) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) THEN
               ! New epoch relative to current epoch of orbit 
               dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
-              epoch = getTime(storb_arr_in(i))
-              mjd_tt = getMJD(epoch, "TT")
-              CALL NULLIFY(epoch)
-              CALL NEW(epoch, mjd_tt + dt, "TT")
-           ELSE IF (.NOT.exist(epoch) .AND. &
+              epoch1 = getTime(storb_arr_in(i))
+              mjd_tt = getMJD(epoch1, "TT")
+              CALL NULLIFY(epoch1)
+              CALL NEW(epoch1, mjd_tt + dt, "TT")
+           ELSE IF (.NOT.exist(epoch1) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.) .OR. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) .AND. &
@@ -3659,7 +3658,7 @@ PROGRAM oorb
                          "TRACE BACK (25)", 1)
                     STOP
                  END IF
-                 epoch = getTime(obs)
+                 epoch1 = getTime(obs)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (30)", 1)
@@ -3680,207 +3679,244 @@ PROGRAM oorb
                          "TRACE BACK (40)", 1)
                     STOP
                  END IF
-                 epoch = getTime(obs)
+                 epoch1 = getTime(obs)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (45)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(obs)
-                 mjd = getMJD(epoch, "tt")
+                 mjd = getMJD(epoch1, "tt")
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (50)", 1)
                     STOP
                  END IF
-                 CALL NULLIFY(epoch)
+                 CALL NULLIFY(epoch1)
                  mjd = mjd + dt/2.0_bp
-                 CALL NEW(epoch, mjd, "tt")
+                 CALL NEW(epoch1, mjd, "tt")
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (55)", 1)
                     STOP
                  END IF
               END IF
-           ELSE IF (.NOT.exist(epoch)) THEN
+           ELSE IF (.NOT.exist(epoch1)) THEN
               CALL errorMessage("oorb / propagation", &
                    "No epoch specified (10).", 1)
               STOP              
            END IF
-           IF (info_verb >= 2) THEN
-              epoch0 = getTime(storb_arr_in(i))
+           epoch0 = getTime(storb_arr_in(i))
+           mjd0 = getMJD(epoch0, "TT")
+           mjd = mjd0
+           mjd1 = getMJD(epoch1, "TT")
+
+           ! How frequently should the elements be reported? Default is to
+           ! only report them for the last epoch (output_interval < 0).
+           output_interval = get_cl_option("--output-interval-days=", -1.0_bp)
+           IF (output_interval > 0.0_bp .AND. output_interval >= integration_step) THEN
+              output_interval = SIGN(output_interval,mjd1-mjd0)
+           ELSE IF (output_interval > 0.0_bp .AND. output_interval < integration_step) THEN
+              integration_step = output_interval
+              output_interval = SIGN(output_interval,mjd1-mjd0)
+           ELSE
+              output_interval = mjd1 - mjd0
            END IF
 
-           ! Propagate orbital-element pdf from one epoch (=input) to another:
-           CALL propagate(storb_arr_in(i), epoch, encounters=encounters)
+           ! Set integration parameters
+           CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
+                perturbers=perturbers, integrator=integrator, &
+                integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (60)", 1)
+                   "TRACE BACK (15)", 1)
               STOP
            END IF
 
-           IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
-              CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
-              CALL getCalendarDate(epoch, "TT", year1, month1, day1)
-              CALL NULLIFY(epoch0)
-              WRITE(stderr,'(A)') ""
-              WRITE(stderr,'(A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
-                   "Planetary encounters by object " // TRIM(id_arr_in(i)) // &
-                   " between ", year0, "-", month0, "-", day0, " and ", &
-                   year1, "-", month1, "-", day1, ":"
-              DO j=1,SIZE(encounters,dim=1)
-                 WRITE(stderr,'(A,I0,A)') "Orbit #", j, ":"
-                 DO k=1,SIZE(encounters,dim=2)
-                    IF (encounters(j,k,2) < 1.1_bp) THEN
-                       WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F0.6,1X,A)') &
-                            "!! I-M-P-A-C-T !! with", planetary_locations(k), &
-                            "at MJD", encounters(j,k,1), "TT given a stepsize of", &
-                            encounters(j,k,4), "days."
-                    ELSE
-                       WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
-                            "Closest encounter with", planetary_locations(k), &
-                            "at MJD", encounters(j,k,1), &
-                            "TT at a distance of", encounters(j,k,3), &
-                            "AU given a stepsize of", encounters(j,k,4), "days."
-                    END IF
-                 END DO
-              END DO
-           END IF
-           DEALLOCATE(encounters, stat=err)
-           IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
-                get_cl_option("--epoch-mjd-utc=", .FALSE.))) THEN
-              CALL NULLIFY(epoch)
+           IF (separately) THEN
+              CALL NEW(out_file, TRIM(id_arr_in(i)) // ".orb")
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / propagation", &
+                      "TRACE BACK (85)", 1)
+                 STOP
+              END IF
+              lu_orb_out = getUnit(out_file)
            END IF
 
-           IF (containsSampledPDF(storb_arr_in(1))) THEN
-              ! Sampled orbital-element pdf:
-              orb_arr_cmp => getSampleOrbits(storb_arr_in(i))
+           ! Loop over the integration interval and output
+           ! intermediate results during each step if requested
+           DO WHILE ((output_interval > 0.0_bp .AND. mjd < mjd1) .OR. &
+                (output_interval < 0.0_bp .AND. mjd > mjd1))
+
+              IF ((output_interval > 0.0_bp .AND. mjd + output_interval >= mjd1) .OR. &
+                   (output_interval < 0.0_bp .AND. mjd + output_interval <= mjd1)) THEN
+                 mjd = mjd1
+              ELSE
+                 mjd = mjd + output_interval
+              END IF
+              CALL NEW(epoch, mjd, "TT")
+
+
+              ! Propagate orbital-element pdf from one epoch (=input) to another:
+              IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
+                 CALL propagate(storb_arr_in(i), epoch, encounters=encounters)
+              ELSE
+                 CALL propagate(storb_arr_in(i), epoch)
+              END IF
               IF (error) THEN
-                 CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (65)", 1)
+                 CALL errorMessage("oorb / propagation", &
+                      "TRACE BACK (60)", 1)
                  STOP
               END IF
-              pdf_arr_cmp => getPDFValues(storb_arr_in(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (70)", 1)
-                 STOP
+
+              IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
+                 CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
+                 CALL getCalendarDate(epoch, "TT", year1, month1, day1)
+                 WRITE(stderr,'(A)') ""
+                 WRITE(stderr,'(A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
+                      "Planetary encounters by object " // TRIM(id_arr_in(i)) // &
+                      " between ", year0, "-", month0, "-", day0, " and ", &
+                      year1, "-", month1, "-", day1, ":"
+                 DO j=1,SIZE(encounters,dim=1)
+                    WRITE(stderr,'(A,I0,A)') "Orbit #", j, ":"
+                    DO k=1,SIZE(encounters,dim=2)
+                       IF (encounters(j,k,2) < 1.1_bp) THEN
+                          WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F0.6,1X,A)') &
+                               "!! I-M-P-A-C-T !! with", planetary_locations(k), &
+                               "at MJD", encounters(j,k,1), "TT given a stepsize of", &
+                               encounters(j,k,4), "days."
+                       ELSE
+                          WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
+                               "Closest encounter with", planetary_locations(k), &
+                               "at MJD", encounters(j,k,1), &
+                               "TT at a distance of", encounters(j,k,3), &
+                               "AU given a stepsize of", encounters(j,k,4), "days."
+                       END IF
+                    END DO
+                 END DO
               END IF
-              rchi2_arr_cmp => getReducedChi2Distribution(storb_arr_in(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (75)", 1)
-                 STOP
+              DEALLOCATE(encounters, stat=err)
+              CALL NULLIFY(epoch0)
+              IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
+                 epoch0 = copy(epoch)
               END IF
-              CALL getResults(storb_arr_in(i), &
-                   reg_apr_arr=reg_apr_arr_cmp, &
-                   jac_arr=jac_arr_cmp)
-              IF (error) THEN
-                 CALL errorMessage("oorb / propagation ", &
-                      "TRACE BACK (80)", 1)
-                 STOP
-              END IF
-              IF (separately) THEN
-                 CALL NEW(out_file, TRIM(id_arr_in(i)) // ".orb")
-                 CALL OPEN(out_file)
+              CALL NULLIFY(epoch)
+
+              IF (containsSampledPDF(storb_arr_in(i))) THEN
+                 ! Sampled orbital-element pdf:
+                 orb_arr_cmp => getSampleOrbits(storb_arr_in(i))
                  IF (error) THEN
-                    CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (85)", 1)
+                    CALL errorMessage("oorb / propagation ", &
+                         "TRACE BACK (65)", 1)
                     STOP
                  END IF
-                 lu_orb_out = getUnit(out_file)
-              END IF
-              DO j=1,SIZE(orb_arr_cmp,dim=1)
+                 pdf_arr_cmp => getPDFValues(storb_arr_in(i))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation ", &
+                         "TRACE BACK (70)", 1)
+                    STOP
+                 END IF
+                 rchi2_arr_cmp => getReducedChi2Distribution(storb_arr_in(i))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation ", &
+                         "TRACE BACK (75)", 1)
+                    STOP
+                 END IF
+                 CALL getResults(storb_arr_in(i), &
+                      reg_apr_arr=reg_apr_arr_cmp, &
+                      jac_arr=jac_arr_cmp)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation ", &
+                         "TRACE BACK (80)", 1)
+                    STOP
+                 END IF
+                 DO j=1,SIZE(orb_arr_cmp,dim=1)
+                    IF (orbit_format_out == "orb") THEN
+                       CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                            print_header=first.OR.separately_, &
+                            element_type_out=element_type_out_prm, &
+                            id=id_arr_in(i), &
+                            orb=orb_arr_cmp(j), &
+                            element_type_pdf=element_type_comp_prm, &
+                            pdf=pdf_arr_cmp(j), &
+                            rchi2=rchi2_arr_cmp(j), &
+                            reg_apr=reg_apr_arr_cmp(j), &
+                            jac_sph_inv=jac_arr_cmp(j,1), &
+                            jac_car_kep=jac_arr_cmp(j,2), &
+                            jac_equ_kep=jac_arr_cmp(j,3), &
+                            H=HG_arr_in(i,1), &
+                            G=HG_arr_in(i,3), &
+                            mjd=mjd_epoch)
+                    ELSE IF (orbit_format_out == "des") THEN
+                       CALL errorMessage("oorb / propagation", &
+                            "DES format not yet supported for propagation of sampled pdfs.", 1)
+                       STOP                 
+                    END IF
+                    IF (error) THEN
+                       CALL errorMessage("oorb / propagation ", &
+                            "TRACE BACK (90)", 1)
+                       STOP
+                    END IF
+                    CALL NULLIFY(orb_arr_cmp(j))
+                    first = .FALSE.
+                    separately_ = .FALSE.
+                 END DO
+                 DEALLOCATE(orb_arr_cmp, pdf_arr_cmp, rchi2_arr_cmp, &
+                      reg_apr_arr_cmp, jac_arr_cmp)
+              ELSE
+                 ! LSL orbit:
+                 orb = getNominalOrbit(storb_arr_in(i))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (95)", 1)
+                    STOP
+                 END IF
+                 cov = getCovarianceMatrix(storb_arr_in(i), element_type_out_prm, "ecliptic")
+                 IF (error) THEN
+                    CALL errorMessage("oorb / propagation", &
+                         "TRACE BACK (100)", 1)
+                    STOP
+                 END IF
                  IF (orbit_format_out == "orb") THEN
                     CALL writeOpenOrbOrbitFile(lu_orb_out, &
-                         print_header=first.OR.separately, &
+                         print_header=first.OR.separately_, &
                          element_type_out=element_type_out_prm, &
                          id=id_arr_in(i), &
-                         orb=orb_arr_cmp(j), &
-                         element_type_pdf=element_type_comp_prm, &
-                         pdf=pdf_arr_cmp(j), &
-                         rchi2=rchi2_arr_cmp(j), &
-                         reg_apr=reg_apr_arr_cmp(j), &
-                         jac_sph_inv=jac_arr_cmp(j,1), &
-                         jac_car_kep=jac_arr_cmp(j,2), &
-                         jac_equ_kep=jac_arr_cmp(j,3), &
+                         orb=orb, &
+                         cov=cov, &
                          H=HG_arr_in(i,1), &
                          G=HG_arr_in(i,3), &
                          mjd=mjd_epoch)
                  ELSE IF (orbit_format_out == "des") THEN
                     CALL errorMessage("oorb / propagation", &
-                         "DES format not yet supported for propagation of sampled pdfs.", 1)
+                         "DES format not yet supported for propagation of covariance matrices.", 1)
                     STOP                 
                  END IF
                  IF (error) THEN
-                    CALL errorMessage("oorb / propagation ", &
-                         "TRACE BACK (90)", 1)
-                    STOP
-                 END IF
-                 CALL NULLIFY(orb_arr_cmp(j))
-                 first = .FALSE.
-              END DO
-              IF (separately) THEN
-                 CALL NULLIFY(out_file)
-                 IF (compress) THEN
-                    CALL system("gzip -f " // TRIM(id_arr_in(i)) // ".orb")
-                 END IF
-              END IF
-              DEALLOCATE(orb_arr_cmp, pdf_arr_cmp, rchi2_arr_cmp, &
-                   reg_apr_arr_cmp, jac_arr_cmp)
-           ELSE
-              ! LSL orbit:
-              orb = getNominalOrbit(storb_arr_in(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / propagation", &
-                      "TRACE BACK (95)", 1)
-                 STOP
-              END IF
-              cov = getCovarianceMatrix(storb_arr_in(i), element_type_out_prm, "ecliptic")
-              IF (error) THEN
-                 CALL errorMessage("oorb / propagation", &
-                      "TRACE BACK (100)", 1)
-                 STOP
-              END IF
-              IF (separately) THEN
-                 CALL NEW(out_file, TRIM(id_arr_in(i)) // ".orb")
-                 CALL OPEN(out_file)
-                 IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
-                         "TRACE BACK (105)", 1)
+                         "TRACE BACK (110)", 1)
                     STOP
                  END IF
-                 lu_orb_out = getUnit(out_file)
+                 CALL NULLIFY(orb)
+                 first = .FALSE.
+                 separately_ = .FALSE.
               END IF
-              IF (orbit_format_out == "orb") THEN
-                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
-                      print_header=first.OR.separately, &
-                      element_type_out=element_type_out_prm, &
-                      id=id_arr_in(i), &
-                      orb=orb, &
-                      cov=cov, &
-                      H=HG_arr_in(i,1), &
-                      G=HG_arr_in(i,3), &
-                      mjd=mjd_epoch)
-              ELSE IF (orbit_format_out == "des") THEN
-                 CALL errorMessage("oorb / propagation", &
-                      "DES format not yet supported for propagation of covariance matrices.", 1)
-                 STOP                 
+
+           END DO
+
+           IF (separately) THEN
+              CALL NULLIFY(out_file)
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(id_arr_in(i)) // ".orb")
               END IF
-              IF (error) THEN
-                 CALL errorMessage("oorb / propagation", &
-                      "TRACE BACK (110)", 1)
-                 STOP
-              END IF
-              IF (separately) THEN
-                 CALL NULLIFY(out_file)
-                 IF (compress) THEN
-                    CALL system("gzip -f " // TRIM(id_arr_in(i)) // ".orb")
-                 END IF
-              END IF
-              CALL NULLIFY(orb)
-              first = .FALSE.
            END IF
+
+           IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
+                get_cl_option("--epoch-mjd-utc=", .FALSE.))) THEN
+              CALL NULLIFY(epoch1)
+           END IF
+
         END DO
 
      ELSE
@@ -3897,25 +3933,17 @@ PROGRAM oorb
 
         dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
         DO i=1,SIZE(orb_arr_in)
-           CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
-           IF (error) THEN
-              CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (120)", 1)
-              STOP
-           END IF
-           IF (.NOT.exist(epoch) .AND. &
+           IF (.NOT.exist(epoch1) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) THEN
               ! New epoch relative to current epoch of orbit 
               dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
-              epoch = getTime(orb_arr_in(i))
-              mjd_tt = getMJD(epoch, "TT")
-              CALL NULLIFY(epoch)
-              CALL NEW(epoch, mjd_tt + dt, "TT")
-           ELSE IF (.NOT.exist(epoch) .AND. &
+              epoch1 = getTime(orb_arr_in(i))
+              mjd_tt = getMJD(epoch1, "TT")
+              CALL NULLIFY(epoch1)
+              CALL NEW(epoch1, mjd_tt + dt, "TT")
+           ELSE IF (.NOT.exist(epoch1) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.) .OR. & 
                 get_cl_option("--delta-epoch-mjd=", .FALSE.)) .AND. &
@@ -3939,7 +3967,7 @@ PROGRAM oorb
                          "TRACE BACK (130)", 1)
                     STOP
                  END IF
-                 epoch = getTime(obs)
+                 epoch1 = getTime(obs)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (135)", 1)
@@ -3960,88 +3988,138 @@ PROGRAM oorb
                          "TRACE BACK (145)", 1)
                     STOP
                  END IF
-                 epoch = getTime(obs)
+                 epoch1 = getTime(obs)
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (150)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(obs)
-                 mjd = getMJD(epoch, "tt")
+                 mjd = getMJD(epoch1, "tt")
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (155)", 1)
                     STOP
                  END IF
-                 CALL NULLIFY(epoch)
+                 CALL NULLIFY(epoch1)
                  mjd = mjd + dt/2.0_bp
-                 CALL NEW(epoch, mjd, "tt")
+                 CALL NEW(epoch1, mjd, "tt")
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation", &
                          "TRACE BACK (160)", 1)
                     STOP
                  END IF
               END IF
-           ELSE IF (.NOT.exist(epoch)) THEN
+           ELSE IF (.NOT.exist(epoch1)) THEN
               CALL errorMessage("oorb / propagation", &
                    "No epoch specified (15).", 1)
               STOP              
            END IF
-           IF (info_verb >= 2) THEN
-              epoch0 = getTime(orb_arr_in(i))
+           epoch0 = getTime(orb_arr_in(i))
+           mjd0 = getMJD(epoch0, "TT")
+           mjd = mjd0
+           mjd1 = getMJD(epoch1, "TT")
+
+           ! How frequently should the elements be reported? Default is to
+           ! only report them for the last epoch (output_interval < 0).
+           output_interval = get_cl_option("--output-interval-days=", -1.0_bp)
+           IF (output_interval > 0.0_bp .AND. output_interval >= integration_step) THEN
+              output_interval = SIGN(output_interval,mjd1-mjd0)
+           ELSE IF (output_interval > 0.0_bp .AND. output_interval < integration_step) THEN
+              integration_step = output_interval
+              output_interval = SIGN(output_interval,mjd1-mjd0)
+           ELSE
+              output_interval = mjd1 - mjd0
            END IF
-           CALL propagate(orb_arr_in(i), epoch, encounters=encounters)
+
+           ! Set integration parameters
+           CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
+                perturbers=perturbers, integrator=integrator, &
+                integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (165)", 1)
+                   "TRACE BACK (120)", 1)
               STOP
            END IF
-           IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
-              CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
-              CALL getCalendarDate(epoch, "TT", year1, month1, day1)
+
+           ! Loop over the integration interval and output
+           ! intermediate results during each step if requested
+           DO WHILE ((output_interval > 0.0_bp .AND. mjd < mjd1) .OR. &
+                (output_interval < 0.0_bp .AND. mjd > mjd1))
+
+              IF ((output_interval > 0.0_bp .AND. mjd + output_interval >= mjd1) .OR. &
+                   (output_interval < 0.0_bp .AND. mjd + output_interval <= mjd1)) THEN
+                 mjd = mjd1
+              ELSE
+                 mjd = mjd + output_interval
+              END IF
+              CALL NEW(epoch, mjd, "TT")
+              IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
+                 CALL propagate(orb_arr_in(i), epoch, encounters=encounters)
+              ELSE
+                 CALL propagate(orb_arr_in(i), epoch)
+              END IF
+              IF (error) THEN
+                 CALL errorMessage("oorb / propagation", &
+                      "TRACE BACK (165)", 1)
+                 STOP
+              END IF
+              IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
+                 CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
+                 CALL getCalendarDate(epoch, "TT", year1, month1, day1)
+                 WRITE(stderr,'(A)') ""
+                 WRITE(stderr,'(A,I0,A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
+                      "Planetary encounters by object " // TRIM(id_arr_in(i)) // &
+                      " (orbit #", i, ") between ", year0, "-", month0, &
+                      "-", day0, " and ", year1, "-", month1, "-", day1, ":"
+                 DO j=1,SIZE(encounters,dim=2)
+                    IF (encounters(1,j,2) < 1.1_bp) THEN
+                       WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F0.6,1X,A)') &
+                            "!! I-M-P-A-C-T !! with", planetary_locations(j), &
+                            "at MJD", encounters(1,j,1), "TT given a stepsize of", &
+                            encounters(1,j,4), "days."
+                    ELSE
+                       WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
+                            "Closest encounter with", planetary_locations(j), &
+                            "at MJD", encounters(1,j,1), "TT at a distance of", &
+                            encounters(1,j,3), "AU given a stepsize of", encounters(1,j,4), "days."
+                    END IF
+                 END DO
+              END IF
+              DEALLOCATE(encounters, stat=err)
               CALL NULLIFY(epoch0)
-              WRITE(stderr,'(A)') ""
-              WRITE(stderr,'(A,I0,A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
-                   "Planetary encounters by object " // TRIM(id_arr_in(i)) // &
-                   " (orbit #", i, ") between ", year0, "-", month0, &
-                   "-", day0, " and ", year1, "-", month1, "-", day1, ":"
-              DO j=1,SIZE(encounters,dim=2)
-                 IF (encounters(1,j,2) < 1.1_bp) THEN
-                    WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F0.6,1X,A)') &
-                         "!! I-M-P-A-C-T !! with", planetary_locations(j), &
-                         "at MJD", encounters(1,j,1), "TT given a stepsize of", &
-                         encounters(1,j,4), "days."
-                 ELSE
-                    WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F12.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
-                         "Closest encounter with", planetary_locations(j), &
-                         "at MJD", encounters(1,j,1), "TT at a distance of", &
-                         encounters(1,j,3), "AU given a stepsize of", encounters(1,j,4), "days."
-                 END IF
-              END DO
-           END IF
-           DEALLOCATE(encounters, stat=err)
+              IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
+                 epoch0 = copy(epoch)
+              END IF
+              CALL NULLIFY(epoch)
+
+              IF (orbit_format_out == "des") THEN
+                 CALL writeDESOrbitFile(lu_orb_out, & 
+                      first, element_type_out_prm, &
+                      id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), &
+                      1, 6, -1.0_bp, "OPENORB")
+              ELSE IF (orbit_format_out == "orb") THEN
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                      print_header=first, &
+                      element_type_out=element_type_out_prm, &
+                      id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
+                      H=HG_arr_in(i,1), G=HG_arr_in(i,3), &
+                      mjd=mjd_epoch)
+              END IF
+              IF (error) THEN
+                 CALL errorMessage("oorb / propagation", &
+                      "TRACE BACK (170) " // TRIM(id_arr_in(i)), 1)
+                 STOP              
+              END IF
+              first = .FALSE.
+
+           END DO
+
            IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.))) THEN
-              CALL NULLIFY(epoch)
+              CALL NULLIFY(epoch1)
            END IF
-        END DO
-        DO i=1,SIZE(orb_arr_in)
-           IF (orbit_format_out == "des") THEN
-              CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
-                   id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                   -1.0_bp, "OPENORB")
-           ELSE IF (orbit_format_out == "orb") THEN
-              CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
-                   element_type_out=element_type_out_prm, &
-                   id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
-                   H=HG_arr_in(i,1), G=HG_arr_in(i,3), &
-                   mjd=mjd_epoch)
-           END IF
-           IF (error) THEN
-              CALL errorMessage("oorb / propagation", &
-                   "TRACE BACK (170) " // TRIM(id_arr_in(i)), 1)
-              STOP              
-           END IF
+
         END DO
 
      END IF
@@ -4625,7 +4703,8 @@ PROGRAM oorb
            IF (separately) THEN
               CALL NULLIFY(tmp_file)
            END IF
-           DEALLOCATE(observers, ephemerides, orb_lt_corr_arr)
+           DEALLOCATE(observers, ephemerides, orb_lt_corr_arr, &
+                obsy_code_arr, stat=err)
 
         END DO
 
@@ -4717,7 +4796,8 @@ PROGRAM oorb
         ! Compute weights for each class that has been defined:
         CALL getGroupWeights(storb_arr_in(i), weight_arr, group_name_arr)
         weight_arr(5) = weight_arr(5)*35.0_bp
-        weight_arr(6:SIZE(weight_arr)-1) = weight_arr(6:SIZE(weight_arr)-1)*400.0_bp
+        !weight_arr(6:SIZE(weight_arr)-1) = weight_arr(6:SIZE(weight_arr)-1)*400.0_bp
+        weight_arr(6:10) = weight_arr(6:10)*500.0_bp
         weight_arr = weight_arr/SUM(weight_arr)
         ! Write output
         DO j=1,SIZE(weight_arr)
@@ -4729,6 +4809,44 @@ PROGRAM oorb
         CALL NULLIFY(storb_arr_in(i))
      END DO
      DEALLOCATE(storb_arr_in, id_arr_in)
+
+  CASE ("ephemeris_planets")
+
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        ! Epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+     ELSE IF (get_cl_option("--epoch-mjd-utc=", .FALSE.)) THEN
+        mjd_utc = get_cl_option("--epoch-mjd-utc=", 0.0_bp)
+        ! Epoch given as MJD UTC
+        CALL NEW(epoch, mjd_utc, "UTC")
+        IF (error) THEN
+           CALL errorMessage("oorb / propagation", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+        mjd_tt = getMJD(epoch, "TT")
+        CALL NULLIFY(epoch)
+     END IF
+     CALL NEW(epoch, mjd_tt, "TT")
+
+     planeph => JPL_ephemeris(mjd_tt, -10, 11, error)
+     DO i=1,SIZE(planeph,dim=1)
+        CALL NEW(ccoord, planeph(i,:), "equatorial", epoch)
+        CALL rotateToEcliptic(ccoord)
+        coordinates = getCoordinates(ccoord)
+        CALL NULLIFY(ccoord)
+        WRITE(stdout,"(A,6(1X,E25.18))") TRIM(planetary_locations(i)), coordinates
+     END DO
+     DEALLOCATE(planeph)
+
+     ! JPL_ephemeris PRODUCES BOGUS RESULTS FOR EMB 
+     !planeph => JPL_ephemeris(mjd_tt, 13, 11, error)
+     !call new(ccoord, planeph(1,:), "equatorial", epoch)
+     !call rotateToEcliptic(ccoord)
+     !coordinates = getCoordinates(ccoord)
+     !call nullify(ccoord)
+     !write(stdout,"(A,6(1X,F20.15))") trim(planetary_locations(13)), coordinates
+     !deallocate(planeph)
 
 
   CASE("apoapsis_distance")
