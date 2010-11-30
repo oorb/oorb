@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2010-09-30
+!! @version 2010-11-30
 !!
 MODULE io
 
@@ -1773,6 +1773,8 @@ CONTAINS
           EXIT
        ELSE IF (line(1:1) == "#") THEN
           CYCLE
+       ELSE IF (LEN_TRIM(line) == 0) THEN
+          CYCLE
        END IF
        norb = norb + 1
        ! Designation or number
@@ -2660,6 +2662,28 @@ CONTAINS
 
 
 
+!!$  subroutine writeMercuryOrbitFile(lu, print_header, type, &
+!!$       element_type_out, id, orb, mass, close_encounter_threshold,)
+!!$
+!!$    implicit none
+!!$    
+!!$    if (print_header) then
+!!$       write(lu,"(A)") ")O+_06 Big-body initial data  (WARNING: Do not delete this line!!)"
+!!$       write(lu,"(A)") ") Lines beginning with `)' are ignored."
+!!$       write(lu,"(A)") ")---------------------------------------------------------------------"
+!!$       write(lu,"(A)") " style (Cartesian, Asteroidal, Cometary) = Cartesian"
+!!$       write(lu,"(A)") " epoch (in days) = 2451000.5"
+!!$       write(lu,"(A)") ")---------------------------------------------------------------------"
+!!$    end if
+!!$    write(lu,"(A,1X,'m=',F)") trim(id), , 
+!!$    
+!!$
+!!$  end subroutine writeMercuryOrbitFile
+
+
+
+
+
   SUBROUTINE writeOpenOrbOrbitFile(lu, print_header, element_type_out, &
        id, orb, element_type_pdf, cov, pdf, rchi2, reg_apr, &
        jac_sph_inv, jac_car_kep, jac_equ_kep, H, G, rho1, rho2, &
@@ -3057,22 +3081,18 @@ CONTAINS
           indx = indx + 19
        END IF
        IF (PRESENT(H)) THEN
-          IF (H < 99.0_bp) THEN
-             header(1)(indx:indx+10) = " Absolute "
-             Header(2)(indx:indx+10) = " magnitude"
-             header(3)(indx:indx+10) = "     H    "
-             header(4)(indx:indx+10) = ">---0036-<"
-             indx = indx + 10
-          END IF
+          header(1)(indx:indx+10) = " Absolute "
+          Header(2)(indx:indx+10) = " magnitude"
+          header(3)(indx:indx+10) = "     H    "
+          header(4)(indx:indx+10) = ">---0036-<"
+          indx = indx + 10
        END IF
        IF (PRESENT(G)) THEN
-          IF (G < 9.0_bp) THEN
-             header(1)(indx:indx+10) = "  Slope   "
-             header(2)(indx:indx+10) = " parameter"
-             header(3)(indx:indx+10) = "     G    "
-             header(4)(indx:indx+10) = ">---0037-<"
-             indx = indx + 10
-          END IF
+          header(1)(indx:indx+10) = "  Slope   "
+          header(2)(indx:indx+10) = " parameter"
+          header(3)(indx:indx+10) = "     G    "
+          header(4)(indx:indx+10) = ">---0037-<"
+          indx = indx + 10
        END IF
        IF (PRESENT(rho1)) THEN
           header(1)(indx:indx+19) = "    Distance at    "
@@ -3289,25 +3309,21 @@ CONTAINS
        END IF
     END IF
     IF (PRESENT(H)) THEN
-       IF (H < 99.0_bp) THEN     
-          WRITE(lu, "(1X,F9.5)", advance="no", iostat=err) H
-          IF (err /= 0) THEN
-             error = .TRUE.
-             CALL errorMessage("io / writeOpenOrbOrbitFile", &
-                  "Write error (45).", 1)
-             RETURN
-          END IF
+       WRITE(lu, "(1X,F9.5)", advance="no", iostat=err) H
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / writeOpenOrbOrbitFile", &
+               "Write error (45).", 1)
+          RETURN
        END IF
     END IF
     IF (PRESENT(G)) THEN
-       IF (G < 9.0_bp) THEN
-          WRITE(lu, "(1X,F9.6)", advance="no", iostat=err) G
-          IF (err /= 0) THEN
-             error = .TRUE.
-             CALL errorMessage("io / writeOpenOrbOrbitFile", &
-                  "Write error (50).", 1)
-             RETURN
-          END IF
+       WRITE(lu, "(1X,F9.6)", advance="no", iostat=err) G
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / writeOpenOrbOrbitFile", &
+               "Write error (50).", 1)
+          RETURN
        END IF
     END IF
     IF (PRESENT(rho1)) THEN
