@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-09-30
+!! @version 2010-12-31
 !!
 MODULE Orbit_cl
 
@@ -8048,7 +8048,7 @@ CONTAINS
 
     CASE ("2-body")
 
-       IF (info_verb >= 3) THEN
+       IF (info_verb >= 4) THEN
           WRITE(stdout,"(2X,A,1X,A)") &
                "Orbit / propagate_Orb_multiple:", &
                "Preparing for 2-body propagation..."
@@ -8195,15 +8195,6 @@ CONTAINS
     CASE ("n-body")
 
        ! Check for inconcistensies:
-       IF (COUNT(this_arr(1)%perturbers_prm) == 0) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / propagate (multiple)", &
-               "Number of perturbers equal to zero.", 1)
-          IF (PRESENT(jacobian)) THEN
-             DEALLOCATE(jacobian, stat=err)
-          END IF
-          RETURN
-       END IF
        DO i=2,nthis
           IF (ANY(this_arr(1)%perturbers_prm .NEQV. this_arr(i)%perturbers_prm)) THEN
              error = .TRUE.
@@ -8250,6 +8241,10 @@ CONTAINS
              RETURN
           END IF
        END DO
+       IF (info_verb >= 3) THEN
+          WRITE(stdout,"(2X,A,1X,I0)") "Number of standard perturbers:", &
+               COUNT(this_arr(1)%perturbers_prm)
+       END IF
 
        IF (ASSOCIATED(this_arr(1)%additional_perturbers)) THEN
           naddit = SIZE(this_arr(1)%additional_perturbers,dim=1)
