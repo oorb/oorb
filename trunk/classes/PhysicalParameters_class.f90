@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2010-03-03
+!! @version 2011-01-26
 !!
 MODULE PhysicalParameters_cl
 
@@ -44,6 +44,7 @@ MODULE PhysicalParameters_cl
   USE planetary_data
   USE linal
   USE sort
+  use statistics
 
   IMPLICIT NONE
 
@@ -62,6 +63,9 @@ MODULE PhysicalParameters_cl
      REAL(bp), DIMENSION(:,:), POINTER :: G_arr
      REAL(bp)                          :: G_nominal
      REAL(bp)                          :: G_unc
+     REAL(bp), DIMENSION(:,:), POINTER :: m_arr
+     REAL(bp)                          :: m_nominal
+     REAL(bp)                          :: m_unc     
      TYPE (StochasticOrbit)            :: storb
      LOGICAL                           :: is_initialized = .FALSE.
 
@@ -903,6 +907,19 @@ CONTAINS
   END FUNCTION HGPhaseFunctions
 
 
+
+
+
+  !! MCMC mass estimation algorithm
+  SUBROUTINE massEstimation_mcmc(this, perturber_arr, proposal_density_masses, estimated_masses)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(in) :: this
+    TYPE (StochasticOrbit), DIMENSION(:), INTENT(in) :: perturber_arr
+    REAL(bp), DIMENSION(:), INTENT(in) :: proposal_density_masses
+    REAL(bp), DIMENSION(:,:), POINTER :: estimated_masses
+
+  END SUBROUTINE massEstimation_mcmc
 
 
 
