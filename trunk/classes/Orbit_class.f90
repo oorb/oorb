@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2010-12-31
+!! @version 2011-01-26
 !!
 MODULE Orbit_cl
 
@@ -45,7 +45,6 @@ MODULE Orbit_cl
   USE sort
 
   IMPLICIT NONE
-
   PRIVATE :: new_Orb
   PRIVATE :: new_Orb_cartesian
   PRIVATE :: new_Orb_spherical
@@ -102,7 +101,6 @@ MODULE Orbit_cl
      CHARACTER(len=DYN_MODEL_LEN)        :: dyn_model_prm        = "2-body"
      CHARACTER(len=INTEGRATOR_LEN)       :: integrator_prm       = "bulirsch-stoer"
      REAL(bp), DIMENSION(:,:), POINTER   :: additional_perturbers => NULL() ! (car equ + mjdtt + mass)
-     TYPE (Orbit), DIMENSION(:), POINTER :: additional_perturbers2 => NULL() ! (car equ + mjdtt + mass)
      REAL(bp), DIMENSION(6)              :: finite_diff_prm      = -1.0_bp
      REAL(bp)                            :: integration_step_prm = 5.0_bp 
      LOGICAL, DIMENSION(10)              :: perturbers_prm       = .FALSE.
@@ -2114,43 +2112,6 @@ CONTAINS
 
   END SUBROUTINE GaussfgJacobian_Orb
 
-
-
-
-
-  !! *Description*:
-  !!
-  !! Returns the current set of orbital elements for additional
-  !! perturbers if available. The shape of the table is (1:n,1:8)
-  !! where n is the number of perturbers. The first six elements on a
-  !! row (n,1:6) contain the Cartesian equatorial orbital elements,
-  !! (n,7) is the epoch given as MJD TT, and (n,8) is the mass of the
-  !! perturber given as solar masses.
-  !!
-  !! Returns error.
-  !!
-  FUNCTION getAdditionalPerturbers(this)
-
-    IMPLICIT NONE
-    TYPE (Orbit), INTENT(in)          :: this    
-    REAL(bp), DIMENSION(:,:), POINTER :: getAdditionalPerturbers
-    INTEGER :: err
-
-    IF (ASSOCIATED(this%additional_perturbers)) THEN
-       ALLOCATE(getAdditionalPerturbers(SIZE(this%additional_perturbers,dim=1), &
-            SIZE(this%additional_perturbers,dim=2)), stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getAdditionalPerturbers", &
-               "Could not allocate memory.", 1)
-          RETURN
-       END IF
-       getAdditionalPerturbers = this%additional_perturbers
-    ELSE
-       NULLIFY(getAdditionalPerturbers)
-    END IF
-
-  END FUNCTION getAdditionalPerturbers
 
 
 
@@ -5523,7 +5484,7 @@ CONTAINS
   !! Returns error.
   !!
   SUBROUTINE getParameters_Orb(this, dyn_model, integration_step, &
-       integrator, finite_diff)
+       integrator, finite_diff, additional_perturbers)
 
     IMPLICIT NONE
     TYPE(Orbit), INTENT(in) :: this
@@ -5531,6 +5492,9 @@ CONTAINS
     REAL(bp), INTENT(out), OPTIONAL :: integration_step
     CHARACTER(len=INTEGRATOR_LEN), INTENT(out), OPTIONAL :: integrator
     REAL(bp), DIMENSION(6), INTENT(out), OPTIONAL :: finite_diff
+    REAL(bp), DIMENSION(:,:), POINTER, OPTIONAL :: additional_perturbers
+
+    INTEGER :: err
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -5550,6 +5514,27 @@ CONTAINS
     END IF
     IF (PRESENT(finite_diff)) THEN
        finite_diff = this%finite_diff_prm
+    END IF
+    IF (PRESENT(additional_perturbers)) THEN
+       !! Returns the current set of orbital elements for additional
+       !! perturbers if available. The shape of the table is (1:n,1:8)
+       !! where n is the number of perturbers. The first six elements on a
+       !! row (n,1:6) contain the Cartesian equatorial orbital elements,
+       !! (n,7) is the epoch given as MJD TT, and (n,8) is the mass of the
+       !! perturber given as solar masses.
+       IF (ASSOCIATED(this%additional_perturbers)) THEN
+          ALLOCATE(additional_perturbers(SIZE(this%additional_perturbers,dim=1), &
+               SIZE(this%additional_perturbers,dim=2)), stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Orbit / getParameters", &
+                  "Could not allocate memory.", 1)
+             RETURN
+          END IF
+          additional_perturbers = this%additional_perturbers
+       ELSE
+          NULLIFY(additional_perturbers)
+       END IF
     END IF
 
   END SUBROUTINE getParameters_Orb
@@ -9258,13 +9243,15 @@ CONTAINS
                "Minimum information includes orbital elements, epoch, and perturber mass.", 1)
           RETURN          
        END IF
-       ALLOCATE(this%additional_perturbers(SIZE(additional_perturbers,dim=1), &
-            SIZE(additional_perturbers,dim=2)), stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / setParameters", &
-               "Could not allocate memory.", 1)
-          RETURN
+       IF (.NOT.ASSOCIATED(this%additional_perturbers)) THEN
+          ALLOCATE(this%additional_perturbers(SIZE(additional_perturbers,dim=1), &
+               SIZE(additional_perturbers,dim=2)), stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Orbit / setParameters", &
+                  "Could not allocate memory.", 1)
+             RETURN
+          END IF
        END IF
        this%additional_perturbers = additional_perturbers
     END IF
