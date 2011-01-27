@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2010-11-18
+!! @version 2011-01-26
 !!
 MODULE integrators
 
@@ -222,7 +222,7 @@ CONTAINS
     ! Integration loop
     k       = 1
     mjd_tdt = mjd_tdt0
-    IF (info_verb >= 3) THEN
+    IF (info_verb >= 4) THEN
        DO i=1,SIZE(ws,dim=2)
           WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
                i, "at epoch", mjd_tdt0, ws(:,i)
@@ -256,7 +256,7 @@ CONTAINS
           END IF
           mjd_tdt = mjd_tdt0 + k * istep
           k       = k + 1
-          IF (info_verb >= 3) THEN
+          IF (info_verb >= 4) THEN
              DO i=1,SIZE(ws,dim=2)
                 WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
                      i, "at epoch", mjd_tdt, ws(:,i)
@@ -329,7 +329,7 @@ CONTAINS
           END IF
           mjd_tdt = mjd_tdt0 + k * istep
           k       = k + 1
-          IF (info_verb >= 3) THEN
+          IF (info_verb >= 4) THEN
              DO i=1,SIZE(ws,dim=2)
                 WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
                      i, "at epoch", mjd_tdt, ws(:,i)
@@ -369,7 +369,7 @@ CONTAINS
        END IF
        celements = ws
     END IF
-    IF (info_verb >= 3) THEN
+    IF (info_verb >= 4) THEN
        DO i=1,SIZE(ws,dim=2)
           WRITE(*,"(A,I0,1X,A,1X,F15.5,6(1X,F20.15))") "Orbit #", &
                i, "at epoch", mjd_tdt1, ws(:,i)
@@ -1607,7 +1607,7 @@ CONTAINS
        ns = 0 ; nf = 0 ; ni = 6 ; tm = 0.0_prec
        IF (PRESENT(jacobian)) THEN
           CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
-               perturbers, naddit, wd_massless1, error, pwd_massless)
+               perturbers, naddit, wd_massless1, error, pwd_massless, addit_masses=addit_masses)
 !!$          CALL interact_full_jpl_center(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
 !!$               wd_massless1, error, pwd_massless)
           DO i=1,norb
@@ -1626,7 +1626,7 @@ CONTAINS
           END DO
        ELSE
           CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
-               perturbers, naddit, wd_massless1, error)
+               perturbers, naddit, wd_massless1, error, addit_masses=addit_masses)
 !!$          CALL interact_full_jpl_center(w_massless1, mjd_tdt0+tm, &
 !!$               wd_massless1, error)
        END IF
@@ -1692,7 +1692,8 @@ CONTAINS
                 ! Find forces at each substep.
                 IF (PRESENT(jacobian)) THEN
                    CALL interact_full_jpl(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
-                        perturbers, naddit, wd_massless2, error, pwd_massless)
+                        perturbers, naddit, wd_massless2, error, pwd_massless, &
+                        addit_masses=addit_masses)
 !!$                   CALL interact_full_jpl_center(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
 !!$                        wd_massless2, error, pwd_massless)
                    DO i=1,norb
@@ -1713,7 +1714,7 @@ CONTAINS
                    CALL interact_full_jpl(w_massless2, &
                         mjd_tdt0+tm+s*t, perturbers, &
                         naddit, wd_massless2, &
-                        error)
+                        error, addit_masses=addit_masses)
 !!$                   CALL interact_full_jpl_center(w_massless2, mjd_tdt0+tm+s*t, wd_massless2, error)
                 END IF
                 IF (error) THEN
@@ -1857,10 +1858,12 @@ CONTAINS
           ! cover the integration span. last_seq=.true. Set on last sequence.
           IF (PRESENT(jacobian)) THEN
              CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
-                  perturbers, naddit, wd_massless1, error, pwd_massless)
+                  perturbers, naddit, wd_massless1, error, pwd_massless, &
+                  addit_masses=addit_masses)
           ELSE
              CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
-                  perturbers, naddit, wd_massless1, error)
+                  perturbers, naddit, wd_massless1, error, &
+                  addit_masses=addit_masses)
           END IF
           IF (error) THEN
              DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
@@ -1931,18 +1934,20 @@ CONTAINS
   !!
   !! Interaction.
   !!
-  !!  ws          heliocentric, ecliptical, Cartesian coordinates for the
-  !!                 massless bodies
-  !!  mjd_tdt     modified Julian date (for ephemerides)
-  !!  wds         evaluated force function
-  !!  perturbers  boolean mask for the basic set of perturbers available (true = use in force model)
-  !!  naddit      number of additional particles with masses and needing integration
-  !!  error       true, if reading from ephemerides fails
-  !!  pwds        evaluated partial derivatives of the force function
-  !!  encounters  encounters(i,j) where i=massless particle,
-  !!              j=perturber, encounters(i,j)=1 or 2, where 1=within
-  !!              planetary radius (~collision) and 2=outside
-  !!              planetary radius
+  !!  ws           heliocentric, equatorial, Cartesian coordinates for bodies
+  !!                that need to be integrated (massless particles +
+  !!                additional perturbers)
+  !!  mjd_tdt      modified Julian date (for ephemerides)
+  !!  wds          evaluated force function
+  !!  perturbers   boolean mask for the basic set of perturbers available (true = use in force model)
+  !!  naddit       number of additional particles with masses and needing integration
+  !!  error        true, if reading from ephemerides fails
+  !!  pwds         evaluated partial derivatives of the force function
+  !!  encounters   encounters(i,j) where i=massless particle,
+  !!                j=perturber, encounters(i,j)=1 or 2, where 1=within
+  !!                planetary radius (~collision) and 2=outside
+  !!                planetary radius
+  !!  addit_masses masses for additional perturbers
   !!
   SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers, naddit, wds, error, pwds, encounters, addit_masses)
 
@@ -1974,6 +1979,12 @@ CONTAINS
     ! Utility variables.
     REAL(prec), DIMENSION(3,3) :: A, B, P1, P2 
     INTEGER :: i, j, k, l, err
+
+    IF (naddit > 0 .AND. .NOT.PRESENT(addit_masses)) THEN
+       error = .TRUE.
+       WRITE(0,*) "Masses for additional perturbers missing..."
+       RETURN 
+    END IF
 
     ! Number of basic perturbers.
     N = SIZE(perturbers)
@@ -2025,7 +2036,7 @@ CONTAINS
              IF (perturbers(j)) THEN
                 ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))
              END IF
-          ELSE
+          ELSE IF (j > N) THEN
              ! Additional perturbers
              IF (NS+j-N == i) THEN
                 ! Skip references to self
@@ -2084,11 +2095,11 @@ CONTAINS
        END DO
        ! Additional perturbers
        DO j=1,naddit
-          IF (i == NS+j) THEN
+          IF (i == NS + j) THEN
              CYCLE
           END IF
           wds(4:6,i) = wds(4:6,i) + &
-               addit_masses(j)* (drs(1:3,N+j) * ir3d(N+j) - ws(1:3,NS+j) * ir3c(N+j))
+               addit_masses(j) * (drs(1:3,N+j) * ir3d(N+j) - ws(1:3,NS+j) * ir3c(N+j))
        END DO
        wds(4:6,i) = gc * wds(4:6,i)
 
