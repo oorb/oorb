@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2010-09-18
+!! @version 2011-01-26
 !!  
 MODULE StochasticOrbit_cl
 
@@ -5527,7 +5527,7 @@ CONTAINS
          cov_mat_obs, inform_mat_obs_bd
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: design_mat ! (data,obs,parameter)
     REAL(bp), DIMENSION(:,:), POINTER :: stdev_arr_obs, &
-         elements_iter_arr, rmss_iter_arr
+         elements_iter_arr, rmss_iter_arr, orb_additional_perturbers
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: observed, & ! incl. cos(dec)
          computed, & ! incl. cos(dec)
          residuals
@@ -6216,7 +6216,8 @@ CONTAINS
           CALL getParameters(orb, &
                integration_step=orb_integration_step, &
                integrator=orb_integrator, &
-               finite_diff=orb_finite_diff)
+               finite_diff=orb_finite_diff, &
+               additional_perturbers=orb_additional_perturbers)
           IF (error) THEN
              CALL errorMessage("StochasticOrbit / " // &
                   "leastSquares", &
@@ -6263,7 +6264,8 @@ CONTAINS
                perturbers=this%perturbers_prm, &
                integration_step=orb_integration_step, &
                integrator=orb_integrator, &
-               finite_diff=orb_finite_diff)
+               finite_diff=orb_finite_diff, &
+               additional_perturbers=orb_additional_perturbers)
           IF (error) THEN
              CALL errorMessage("StochasticOrbit / " // &
                   "leastSquares", &
@@ -11305,16 +11307,18 @@ CONTAINS
                "Nr of accepted orbits and accepted trial orbits:", &
                naccepted, norb
        END IF
-       IF (naccepted == 0) THEN
-          norb = norb*100
-       ELSE
-          norb = NINT((this%sor_norb_prm - iorb)*(1.1_bp*norb/naccepted))
+       norb = NINT((this%sor_norb_prm - iorb)*(1.0_bp*itrial/MAX(REAL(iorb,bp),0.0000001_bp)))
+       IF (info_verb >= 3) THEN
+          WRITE(stdout,"(2X,A,1X,I0,A,I0)") "Number of sample orbits accepted so far:", iorb, "/", this%sor_norb_prm
+          WRITE(stdout,"(2X,A,1X,I0)") "Number of trial orbits generated so far:", itrial
+          WRITE(stdout,"(2X,A,1X,I0)") "Number of trial orbits expected to be required for completion:", norb
        END IF
        IF (norb > norb_simult_max) THEN
           norb = norb_simult_max
        END IF
        IF (info_verb >= 3) THEN
-          WRITE(stdout,"(2X,A,1X,I0)") "Nr of orbits to be generated:", norb
+          WRITE(stdout,"(2X,A,1X,I0)") "Number of trial orbits to be generated for next batch:", norb
+          WRITE(stdout,*)
        END IF
        IF (norb /= SIZE(orb_arr,dim=1) .OR. &
             iorb == this%sor_norb_prm .OR. &
@@ -12065,7 +12069,7 @@ CONTAINS
        END DO
        IF (info_verb >= 2) THEN
           WRITE(stdout,"(2X,A,1X,A,1X,I0,1X,A)") "constrainRangeDistributions:", &
-               "RA,Dec residuals corresponding to the", COUNT(mask), &
+               "RA,Dec residuals corresponding to the", 10-COUNT(mask_), &
                "additional orbits included [asec]:"
           DO i=1,SIZE(mask)
              IF (mask(i) .AND. .NOT.mask_(i)) THEN
