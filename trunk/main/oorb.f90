@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2010-11-30
+!! @version 2011-01-26
 !!
 PROGRAM oorb
 
@@ -67,9 +67,12 @@ PROGRAM oorb
   TYPE (Observations), DIMENSION(:), POINTER :: &
        obss_sep
   TYPE (Observations) :: &
+       obss, &
        obss_in  
   TYPE (Observation) :: &
        obs
+  TYPE (Observation), DIMENSION(:), POINTER :: &
+       obs_arr
   TYPE (Observatories) :: &
        obsies
   TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: &
@@ -77,6 +80,7 @@ PROGRAM oorb
   TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
        ephemerides
   TYPE (SphericalCoordinates) :: &
+       ephemeris, &
        scoord
   TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
        observers
@@ -188,6 +192,7 @@ PROGRAM oorb
        elements, &
        h_ecl_car_coord_obj, &
        h_ecl_car_coord_obsy, &
+       mean, &
        obs_stdev_arr_prm, &
        stdev_arr
   REAL(bp), DIMENSION(4) :: &
@@ -276,6 +281,7 @@ PROGRAM oorb
        outlier_rejection_prm, &
        plot_open, &
        plot_results, &
+       relativity, &
        pp_H_estimation, &
        random_obs, &
        regularized, &
@@ -297,6 +303,9 @@ PROGRAM oorb
   obs_stdev_arr_prm = -1.0_bp
   observation_format_out = "mpc3"
   obsy_code = "500"
+  dyn_model = " "
+  integrator = " "
+  integration_step = -1.0_bp
   orb_in_fname = " "
   orb_out_fname = " "
   separately = .FALSE.
@@ -304,6 +313,7 @@ PROGRAM oorb
   outlier_rejection_prm = .FALSE.
   plot_open = .FALSE.
   plot_results = .FALSE.
+  relativity = .TRUE.
   pp_H_estimation = .FALSE.
   pp_G = 99.9_bp
   pp_G_unc = 99.9_bp
@@ -365,6 +375,11 @@ PROGRAM oorb
        outlier_multiplier=outlier_multiplier_prm, &
        plot_open=plot_open, &
        plot_results=plot_results, &
+       dyn_model=dyn_model, &
+       perturbers=perturbers, &
+       integrator=integrator, &
+       integration_step=integration_step, &
+       relativity=relativity, &
        pp_H_estimation=pp_H_estimation, &
        pp_G=pp_G, &
        pp_G_unc=pp_G_unc)
@@ -378,6 +393,7 @@ PROGRAM oorb
         obs_stdev_arr_prm = 0.0_bp
      END WHERE
   END IF
+  CALL set_relativity(relativity)
 
   ! Set path to data files:
   CALL setAccessToDataFiles()
@@ -534,8 +550,8 @@ PROGRAM oorb
 
         ! Initialize stochasticorbits if uncertainty information available:
         IF (norb > nobj .AND. &
-             ALL(pdf_arr_in > 0.0_bp) .AND. &
-             ALL(jac_arr_in > 0.0_bp)) THEN
+             ALL(pdf_arr_in /= -1.0_bp) .AND. &
+             ALL(jac_arr_in /= -1.0_bp)) THEN
            ! Sampled PDF available
            ALLOCATE(storb_arr_in(nobj))
            i = 0
@@ -767,7 +783,11 @@ PROGRAM oorb
               first = .FALSE.
            END IF
         END DO
+     ELSE
+        CALL errorMessage("oorb / 2oorbpdf", &
+             "Orbital-element PDFs were not detected in the input.", 1)
      END IF
+
      IF (ASSOCIATED(id_arr)) THEN
         DEALLOCATE(id_arr, stat=err)
      END IF
@@ -1324,9 +1344,6 @@ PROGRAM oorb
      ! orbital-element pdf.
 
      CALL NULLIFY(epoch)
-     dyn_model = " "
-     integrator = " "
-     integration_step = -1.0_bp
      apriori_a_max = -1.0_bp
      apriori_a_min = -1.0_bp
      apriori_periapsis_max = -1.0_bp
@@ -1354,10 +1371,6 @@ PROGRAM oorb
      pdf_ml_init = -1.0_bp
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step, &
           apriori_a_max=apriori_a_max, &
           apriori_a_min=apriori_a_min, &
           apriori_periapsis_max=apriori_periapsis_max, &
@@ -1927,10 +1940,6 @@ PROGRAM oorb
      CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step, &
           dyn_model_init=dyn_model_init, &
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
@@ -2370,10 +2379,6 @@ PROGRAM oorb
      CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step, &
           dyn_model_init=dyn_model_init, &
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
@@ -2819,7 +2824,7 @@ PROGRAM oorb
               WRITE(getUnit(tmp_file), "(6(E22.15,1X))", advance="no") &
                    elements(1:6)
               DO j=1,6
-                 CALL toString(elements(j), element_str_arr(j), error, frmt="(F15.9)")
+                 CALL toString(elements(j), element_str_arr(j), error, frmt="(E22.15)")
                  IF (error) THEN
                     CALL errorMessage("oorb / lsl", &
                          "TRACE BACK (220)", 1)
@@ -2829,9 +2834,9 @@ PROGRAM oorb
                  IF (element_type_comp_prm == "keplerian" .AND. j>=3) THEN
                     stdev = stdev/rad_deg
                  END IF
-                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                 WRITE(getUnit(tmp_file), "(E22.15,1X)", &
                       advance="no") stdev
-                 CALL toString(stdev, stdev_str_arr(j), error, frmt="(F22.16)")
+                 CALL toString(stdev, stdev_str_arr(j), error, frmt="(E22.15)")
                  IF (error) THEN
                     CALL errorMessage("oorb / lsl", &
                          "TRACE BACK (225)", 1)
@@ -2840,17 +2845,17 @@ PROGRAM oorb
               END DO
               stdev = SQRT(cov(1,1))
               DO j=2,6
-                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                 WRITE(getUnit(tmp_file), "(E22.15,1X)", &
                       advance="no") cov(1,j)/(stdev*SQRT(cov(j,j)))
                  CALL toString(cov(1,j)/(stdev*SQRT(cov(j,j))), &
-                      corr_str_arr(j-1), error, frmt="(F15.9)")
+                      corr_str_arr(j-1), error, frmt="(E22.15)")
                  IF (error) THEN
                     CALL errorMessage("oorb / lsl", &
                          "TRACE BACK (230)", 1)
                     STOP
                  END IF
               END DO
-              WRITE(getUnit(tmp_file), "(F22.15,1X,A)") &
+              WRITE(getUnit(tmp_file), "(E22.15,1X,A)") &
                    getObservationalTimespan(obss_sep(i)), &
                    getCalendarDateString(t,"tdt")
               IF (error) THEN
@@ -3089,10 +3094,6 @@ PROGRAM oorb
      CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step, &
           dyn_model_init=dyn_model_init, &
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
@@ -3580,12 +3581,6 @@ PROGRAM oorb
   CASE ("propagation")
 
      first = .TRUE.
-
-     CALL readConfigurationFile(conf_file, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step)
 
      CALL NULLIFY(epoch1)
      IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
@@ -4125,12 +4120,6 @@ PROGRAM oorb
      END IF
 
   CASE ("ephemeris")
-
-     CALL readConfigurationFile(conf_file, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step)
 
      ! Input observatory code
      obsy_code = get_cl_option("--code=", obsy_code)
@@ -4946,12 +4935,6 @@ PROGRAM oorb
 
   CASE ("obsplanner")
 
-     CALL readConfigurationFile(conf_file, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step)
-
      ! Input observatory code
      obsy_code = get_cl_option("--code=", obsy_code)
      !write(*,*) obsy_code
@@ -5441,12 +5424,6 @@ PROGRAM oorb
      !! are the minimum solar elongation, the minimum apparent
      !! brightness (max mag), and the 3-sigma (~equivalent) ephemeris
      !! uncertainty.
-
-     CALL readConfigurationFile(conf_file, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step)
 
      ! Input observatory code
      obsy_code = get_cl_option("--code=", obsy_code)
@@ -6082,6 +6059,43 @@ PROGRAM oorb
         END DO
         CALL NULLIFY(tmp_file)
      END IF
+
+  CASE ("synthetic_astrometry")
+
+     DO i=1,SIZE(orb_arr_in)
+        CALL setParameters(orb_arr_in(i), &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step)
+     END DO
+
+     obs_arr => getObservations(obss_in)
+     observers => getObservatoryCCoords(obss_in)
+     DO i=1,SIZE(observers)
+        CALL rotateToEquatorial(observers(i))
+     END DO
+
+     mean = 0.0_bp
+     DO i=1,SIZE(observers)
+        CALL getEphemeris(orb_arr_in(1), observers(i), ephemeris)
+        CALL setObservationSCoord(obs_arr(i), ephemeris)
+        cov = getCovarianceMatrix(obs_arr(i))
+        CALL addMultinormalDeviate(obs_arr(i), mean, cov)
+        CALL NULLIFY(ephemeris)
+     END DO
+
+     CALL NEW(obss, obs_arr)
+     CALL writeObservationFile(obss, stdout, &
+          TRIM(observation_format_out))
+
+     DO i=1,SIZE(observers)
+        CALL NULLIFY(observers(i))
+        CALL NULLIFY(obs_arr(i))
+     END DO
+     DEALLOCATE(observers, obs_arr)
+
+
 
   CASE default
 
