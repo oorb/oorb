@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Independent utilities.
 !!
 !! @author  MG
-!! @version 2009-10-20
+!! @version 2010-01-26
 !!
 MODULE utilities
 
@@ -66,15 +66,15 @@ MODULE utilities
 
   INTERFACE arrayToInteger
      MODULE PROCEDURE arrayToInteger_r8i8
-  END INTERFACE
+  END INTERFACE arrayToInteger
 
   INTERFACE arrayToReal
      MODULE PROCEDURE arrayToReal_r8r16
-  END INTERFACE
+  END INTERFACE arrayToReal
 
   INTERFACE integerToArray
      MODULE PROCEDURE integerToArray_ri8
-  END INTERFACE
+  END INTERFACE integerToArray
 
   INTERFACE imaxloc
      MODULE PROCEDURE imaxloc_i4
@@ -82,7 +82,7 @@ MODULE utilities
      MODULE PROCEDURE imaxloc_r4
      MODULE PROCEDURE imaxloc_r8
      MODULE PROCEDURE imaxloc_r16
-  END INTERFACE
+  END INTERFACE imaxloc
 
   INTERFACE iminloc
      MODULE PROCEDURE iminloc_i4
@@ -90,11 +90,11 @@ MODULE utilities
      MODULE PROCEDURE iminloc_r4
      MODULE PROCEDURE iminloc_r8
      MODULE PROCEDURE iminloc_r16
-  END INTERFACE
+  END INTERFACE iminloc
 
   INTERFACE realToArray
      MODULE PROCEDURE realToArray_r16r8
-  END INTERFACE
+  END INTERFACE realToArray
 
   INTERFACE reallocate
      MODULE PROCEDURE reallocate_ch_1
@@ -113,7 +113,7 @@ MODULE utilities
      MODULE PROCEDURE reallocate_i8_2
      MODULE PROCEDURE reallocate_l_1
      MODULE PROCEDURE reallocate_l_2
-  END INTERFACE
+  END INTERFACE reallocate
 
   INTERFACE swap
      MODULE PROCEDURE swap_i4
@@ -122,28 +122,28 @@ MODULE utilities
      MODULE PROCEDURE swap_vector_r8
      MODULE PROCEDURE swap_r16
      MODULE PROCEDURE swap_ch
-  END INTERFACE
+  END INTERFACE swap
 
   INTERFACE toInt
      MODULE PROCEDURE toInt_4
-  END INTERFACE
+  END INTERFACE toInt
 
   INTERFACE secToHMS
      MODULE PROCEDURE secToHMS_r4
      MODULE PROCEDURE secToHMS_r8
-  END INTERFACE
+  END INTERFACE secToHMS
 
   INTERFACE toReal
      MODULE PROCEDURE toReal_8
      MODULE PROCEDURE toReal_16
-  END INTERFACE
+  END INTERFACE toReal
 
   INTERFACE toString
      MODULE PROCEDURE toString_i4
      MODULE PROCEDURE toString_i8
      MODULE PROCEDURE toString_r4
      MODULE PROCEDURE toString_r8
-  END INTERFACE
+  END INTERFACE toString
 
 
 
@@ -902,19 +902,32 @@ CONTAINS
 
 
 
-  FUNCTION reallocate_r8_2(array,n,m)
+  FUNCTION reallocate_r8_2(array,n,m,nmask)
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), POINTER :: reallocate_r8_2, array
     INTEGER, INTENT(in) :: n, m
-    INTEGER :: nold, mold
+    LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: nmask
+    INTEGER :: i, in, nold, mold
 
     ALLOCATE(reallocate_r8_2(n,m))
-    IF (ASSOCIATED(array)) THEN
+    IF (ASSOCIATED(array) .AND. .NOT.PRESENT(nmask)) THEN
        nold = SIZE(array,1)
        mold = SIZE(array,2)
        reallocate_r8_2(1:MIN(n,nold),1:MIN(m,mold)) = &
             array(1:MIN(n,nold),1:MIN(m,mold))
+       DEALLOCATE(array)
+    ELSE IF (ASSOCIATED(array) .AND. PRESENT(nmask)) THEN
+       in = 0
+       DO i=1,nold
+          IF (in == n) THEN
+             EXIT
+          END IF
+          IF (nmask(i)) THEN
+             in = in + 1
+             reallocate_r8_2(in,1:MIN(m,mold)) = array(i,1:MIN(m,mold))
+          END IF
+       END DO
        DEALLOCATE(array)
     END IF
 
