@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2010-11-30
+!! @version 2010-01-26
 !!
 MODULE io
 
@@ -524,7 +524,7 @@ CONTAINS
        observation_format_out, orbit_format_out, &
        plot_results, &
        plot_open, &
-       dyn_model, perturbers, integrator, integration_step, &
+       dyn_model, perturbers, integrator, integration_step, relativity, &
        dyn_model_init, integrator_init, integration_step_init, &
        accwin_multiplier, &
        uniform_pdf, regularized_pdf, &
@@ -638,6 +638,7 @@ CONTAINS
          plot_results, &
          plot_open, &
          multiple_ids, &
+         relativity, &
          uniform_pdf, &
          regularized_pdf, &
          masked_obs, &
@@ -1077,6 +1078,22 @@ CONTAINS
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
                      "Integration step must be larger than zero.", 1)
+             END IF
+          END IF
+       CASE ("relativity")
+          IF (PRESENT(relativity)) THEN
+             IF (.NOT.error) THEN
+                SELECT CASE (ADJUSTL(par_val))
+                CASE ("t", "T")
+                   relativity = .TRUE.
+                CASE ("f", "F")
+                   relativity = .FALSE.
+                CASE default
+                   error = .TRUE.
+                   CALL errorMessage("io / readConfigurationFile", &
+                        "Cannot understand logical value: " // &
+                        TRIM(ADJUSTL(par_val)) // ".", 1)
+                END SELECT
              END IF
           END IF
        CASE ("dynamical_model_init")
