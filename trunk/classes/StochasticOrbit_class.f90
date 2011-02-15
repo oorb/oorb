@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-01-26
+!! @version 2011-02-14
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1614,7 +1614,7 @@ CONTAINS
              END IF
           END IF
           IF (ANY(ABS(deviates) > this%cos_nsigma_prm*stdev)) THEN
-             WRITE(stdout,*) ABS(deviates) > this%cos_nsigma_prm*stdev
+             WRITE(stdout,*) this%cos_gaussian_prm, ": ", ABS(deviates) > this%cos_nsigma_prm*stdev
              !stop
           END IF
           CALL NULLIFY(orb)
@@ -2869,8 +2869,6 @@ CONTAINS
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / getEphemerides", &
                "Element types for ML Orbit and StochasticOrbit are not compatible.", 1)
-          DEALLOCATE(ephemerides_arr_, stat=err)
-          DEALLOCATE(partials_arr3, stat=err)
           RETURN
        END IF
        IF (getElementType(this%orb_ml_cmp) /= &
@@ -2878,8 +2876,6 @@ CONTAINS
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / getEphemerides", &
                "Element types for ML orbit and covariance are not compatible.", 1)
-          DEALLOCATE(ephemerides_arr_, stat=err)
-          DEALLOCATE(partials_arr3, stat=err)
           RETURN
        END IF
        IF (PRESENT(this_lt_corr_arr)) THEN
@@ -11307,7 +11303,7 @@ CONTAINS
                "Nr of accepted orbits and accepted trial orbits:", &
                naccepted, norb
        END IF
-       norb = NINT((this%sor_norb_prm - iorb)*(1.0_bp*itrial/MAX(REAL(iorb,bp),0.0000001_bp)))
+       norb = NINT((this%sor_norb_prm - iorb)*(1.0_bp*itrial/MAX(REAL(iorb,bp),1.0_bp)))
        IF (info_verb >= 3) THEN
           WRITE(stdout,"(2X,A,1X,I0,A,I0)") "Number of sample orbits accepted so far:", iorb, "/", this%sor_norb_prm
           WRITE(stdout,"(2X,A,1X,I0)") "Number of trial orbits generated so far:", itrial
