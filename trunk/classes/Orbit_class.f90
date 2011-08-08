@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2011-01-26
+!! @version 2011-08-08
 !!
 MODULE Orbit_cl
 
@@ -139,6 +139,10 @@ MODULE Orbit_cl
      MODULE PROCEDURE getFrame_Orb
   END INTERFACE getFrame
 
+  INTERFACE getJacobiConstants
+     MODULE PROCEDURE getJacobiConstants_Orb
+  END INTERFACE getJacobiConstants
+
   INTERFACE getParameters
      MODULE PROCEDURE getParameters_Orb
   END INTERFACE getParameters
@@ -166,6 +170,10 @@ MODULE Orbit_cl
   INTERFACE getTime
      MODULE PROCEDURE getTime_Orb
   END INTERFACE getTime
+
+  INTERFACE getTisserandsParameters
+     MODULE PROCEDURE getTisserandsParameters_Orb
+  END INTERFACE getTisserandsParameters
 
   INTERFACE getVelocity
      MODULE PROCEDURE getVelocity_Orb
@@ -6358,6 +6366,114 @@ CONTAINS
     getTime_Orb = copy(this%t)
 
   END FUNCTION getTime_Orb
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the Tisserand's parameters for this orbit wrt the 8
+  !! planets, Pluto, and the Moon.
+  !!
+  !! Returns error.
+  !!
+  FUNCTION getTisserandsParameters_Orb(this) RESULT(tisserands_parameter)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in) :: this
+    REAL(bp), DIMENSION(10) :: tisserands_parameter 
+
+    TYPE (Orbit) :: orb
+    TYPE (Time) :: t
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(6) :: elements, elements_
+    REAL(bp) :: mjd_tt
+    INTEGER :: i
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / getTisserandsParameters", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    elements = getElements(this,"keplerian")
+    t = getTime(this)
+    mjd_tt = getMJD(t, "TT")
+    planeph => JPL_ephemeris(mjd_tt, -10, 11, error)
+
+    DO i=1,SIZE(planeph,dim=1)
+       CALL NEW(orb, planeph(i,1:6), "cartesian", "equatorial", t) 
+       elements_ = getElements(orb, "keplerian")
+       CALL NULLIFY(orb)
+       tisserands_parameter(i) = elements_(1)/elements(1) + &
+            2.0_bp*SQRT(elements(1)/elements_(1)*(1.0_bp-elements(2)**2)) * &
+            COS(elements(3)-elements_(3))
+    END DO
+    DEALLOCATE(planeph)
+    CALL NULLIFY(t)
+
+  END FUNCTION getTisserandsParameters_Orb
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the Jacobi constants, C, for this orbit wrt the 8
+  !! planets, Pluto, and the Moon.
+  !!
+  !! Returns error.
+  !!
+  FUNCTION getJacobiConstants_Orb(this) RESULT(jacobi_constant)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in) :: this
+    REAL(bp), DIMENSION(10) :: jacobi_constant 
+
+    TYPE (Orbit) :: orb
+    TYPE (Time) :: t
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(6) :: elements, elements_, coordinates, &
+         coordinates_
+    REAL(bp) :: mjd_tt, d, mass_ratio
+    INTEGER :: i
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / getJacobiConstants", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    elements = getElements(this,"keplerian")
+    coordinates = getElements(this,"cartesian","ecliptic")
+    t = getTime(this)
+    mjd_tt = getMJD(t, "TT")
+    planeph => JPL_ephemeris(mjd_tt, -10, 11, error)
+
+    DO i=1,SIZE(planeph,dim=1)
+       CALL NEW(orb, planeph(i,1:6), "cartesian", "equatorial", t) 
+       IF (error) THEN
+          RETURN
+       END IF
+       !elements_ = getElements(orb, "keplerian")
+       coordinates_ = getElements(orb,"cartesian","ecliptic")
+       d = SQRT(SUM(coordinates_(1:3)**2))
+       mass_ratio = planetary_masses(i) / (1.0_bp+planetary_masses(i))
+       CALL NULLIFY(orb)
+       jacobi_constant(i) = -1.0_bp/(2.0_bp*elements(1)) - &
+            SQRT(elements(1)*(1.0_bp-elements(2)**2)) * &
+            COS(elements(3)-elements_(3)) - mass_ratio * &
+            (d/SQRT(SUM((coordinates_(1:3)-coordinates(1:3))**2)) - &
+            d/SQRT(SUM(coordinates(1:3)**2)))
+    END DO
+    DEALLOCATE(planeph)
+    CALL NULLIFY(t)
+
+  END FUNCTION getJacobiConstants_Orb
 
 
 

@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2009-10-22
+!! @version 2011-08-08
 !!
 MODULE Base_cl
 
@@ -85,15 +85,13 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: rad_asec = rad_amin/60.0_bp        !! Radians per arcsecond.
   REAL(bp), PARAMETER :: km_au    = 1.4959787066e8_bp       !! Kilometres per astronomical unit.
   REAL(bp), PARAMETER :: m_au     = 1.4959787066e11_bp      !! Metres per astronomical unit.
-  REAL(bp), PARAMETER :: day_year = 365.256_bp              !! Days per sidereal year.
+  REAL(bp), PARAMETER :: day_year = 365.256363004_bp        !! Days per sidereal year (J2000.0).
   REAL(bp), PARAMETER :: hour_day = 24.0_bp                 !! Hours per day.
   REAL(bp), PARAMETER :: min_day  = hour_day*60.0_bp        !! Minutes per day.
   REAL(bp), PARAMETER :: sec_day  = min_day*60.0_bp         !! Seconds per day.
   REAL(bp), PARAMETER :: sec_year = sec_day*day_year        !! Seconds per year.
-  REAL(bp), PARAMETER :: kg_solar = 1.98892e30_bp           !! Kilograms per solar mass.  
-  REAL(bp), PARAMETER :: ggc      = 0.01720209895_bp        !! Gaussian gravitational constant (AU^(3/2) day^-1 M_Sun^(-1/2)).
-  REAL(bp), PARAMETER :: mu       = ggc**2                  !! Constant of gravitation (AU^3 day^-2 M_Sun^-1).
-  REAL(bp), PARAMETER :: mu_earth = 8.887692691e-10_bp      !! in SI: 398600.4415e9_bp (IAU94)
+  REAL(bp), PARAMETER :: kg_solar = 1.9892e30_bp            !! Kilograms per solar mass (IAU 1976).  
+  ! ggc and mu (= ggc**2) have been deprecated, use array 'planetary_mu' in modules/planetary_data.f90
   REAL(bp), PARAMETER :: sol      = 173.14463272_bp         !! Speed of light (AU/d).
   !REAL(bp), PARAMETER :: eps = 23.439280833_bp*rad_deg     !! Obliquity of ecliptic (J2000.0) 
   !!                                                           Gaia 2006 (84381.41100asec).
@@ -103,7 +101,7 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: r_earth  = 6378.140_bp/km_au       !! Earth equatorial radius (not mean!).
   REAL(bp), PARAMETER :: smamax   = 500.0_bp                !! Maximum for semimajor axis (AU).
   REAL(bp), PARAMETER :: rmoon    = 2.57e-3_bp              !! Earth-Moon mean distance (AU).
-  !  REAL(bp), PARAMETER :: tol      = 1.e-10_bp               !! Basic tolerance.
+  REAL(bp), PARAMETER :: kgm3_smau3 = (km_au)**3/kg_solar   !! density conversion
   INTEGER, PARAMETER :: FNAME_LEN = 512
   INTEGER, PARAMETER :: DIR_LEN = 256
   INTEGER, PARAMETER :: OBS_RECORD_LEN = 256
@@ -114,7 +112,6 @@ MODULE Base_cl
   INTEGER, PARAMETER :: DESIGNATION_LEN = 16
   INTEGER, PARAMETER :: OBSY_CODE_LEN = 4
   CHARACTER(len=FNAME_LEN) :: OORB_DATA_DIR
-
 
   CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = "de405.dat"
   ! OBS CODES
