@@ -105,7 +105,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2009-11-10
+!! @version 2011-08-08
 !!
 MODULE linal
 
@@ -133,45 +133,45 @@ MODULE linal
   INTERFACE diagonal_multiplication
      MODULE PROCEDURE diagonal_multiplication_vec_r8
      MODULE PROCEDURE diagonal_multiplication_sca_r8
-  END INTERFACE
+  END INTERFACE diagonal_multiplication
 
   INTERFACE identity_matrix
      MODULE PROCEDURE identity_matrix_r8
-  END INTERFACE
+  END INTERFACE identity_matrix
 
   INTERFACE LU_factor
      MODULE PROCEDURE LU_factor_r8
      MODULE PROCEDURE LU_factor_r16
-  END INTERFACE
+  END INTERFACE LU_factor
 
   INTERFACE LU_solve
      MODULE PROCEDURE LU_solve_r8
      MODULE PROCEDURE LU_solve_r16
-  END INTERFACE
+  END INTERFACE LU_solve
 
   INTERFACE matrix_print
      MODULE PROCEDURE matrix_print_r8
      MODULE PROCEDURE matrix_print_r16
-  END INTERFACE
+  END INTERFACE matrix_print
 
   INTERFACE matinv
      MODULE PROCEDURE matinv_r8
      MODULE PROCEDURE matinv_r16
-  END INTERFACE
+  END INTERFACE matinv
 
   INTERFACE outer_product
      MODULE PROCEDURE outer_product_r4
      MODULE PROCEDURE outer_product_r8
      MODULE PROCEDURE outer_product_r16
-  END INTERFACE
+  END INTERFACE outer_product
 
   INTERFACE triple_product
      MODULE PROCEDURE triple_product_r8
-  END INTERFACE
+  END INTERFACE triple_product
 
   INTERFACE cross_product
      MODULE PROCEDURE cross_product_r8
-  END INTERFACE
+  END INTERFACE cross_product
 
 CONTAINS
 
@@ -181,11 +181,11 @@ CONTAINS
   !!
   !! Cholesky decomposition.
   !!
-  !! Given an N × N positive-definite symmetric matrix a, this routine
+  !! Given an N x N positive-definite symmetric matrix 'a', this routine
   !! constructs its Cholesky decomposition, A = L · Transpose(L) . On
-  !! input, only the upper triangle of a need be given; it is not
+  !! input, only the upper triangle of 'a' needs to be given; it is not
   !! modified. The Cholesky factor L is returned in the lower triangle
-  !! of a, except for its diagonal elements, which are returned in p,
+  !! of 'a', except for its diagonal elements, which are returned in 'p',
   !! a vector of length N.
   !!
   SUBROUTINE cholesky_decomposition(a, p, error)
@@ -206,7 +206,7 @@ CONTAINS
     END IF
     DO i=1,n
        summ = a(i,i) - DOT_PRODUCT(a(i,1:i-1),a(i,1:i-1))
-       IF (summ <= 0.0) THEN 
+       IF (summ <= 0.0_rprec8) THEN 
           ! a, WITH rounding errors, is not positive definite
           error = " -> linal : cholesky_decomposition : Matrix is not positive definite." // &
                TRIM(error)
@@ -406,12 +406,7 @@ CONTAINS
           END IF
           RETURN
        END IF
-       !tresh = MERGE((0.2_rprec8*sm)/(n**2), 0.0_rprec8, i < 4)
-       IF (i < 4) THEN
-          tresh = (0.2_rprec8*sm)/(n**2)
-       ELSE
-          tresh = 0.0_rprec8
-       END IF
+       tresh = MERGE((0.2_rprec8*sm)/(n**2), 0.0_rprec8, i < 4)
        DO ip=1,n-1
           DO iq=ip+1,n
              g = 100.0_rprec8*ABS(aa(ip,iq))
