@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2010-03-02
+!! @version 2011-08-08
 !!
 MODULE planetary_data
 
@@ -80,9 +80,10 @@ MODULE planetary_data
        "Pluto                  ", &
        "Moon                   ", &
        "Sun                    ", &
-       "solar-system barycenter", &
-       "Earth-Moon barycenter  " /)
+       "solar-system_barycenter", &
+       "Earth-Moon_barycenter  " /)
 
+  ! Unit: AU
   REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_radii = (/ &
        1.63037e-5_rprec8, &   !!  (1) Mercury,
        4.04551e-5_rprec8, &   !!  (2) Venus,
@@ -102,27 +103,29 @@ MODULE planetary_data
        1.74802e-6_rprec8, &   !! (16) Pallas,
        1.67449e-6_rprec8  /)  !! (17) Vesta
 
-  ! Data from http://ssd.jpl.nasa.gov/
+  ! Data from http://ssd.jpl.nasa.gov/ 
+  ! Unit: M_sol
   REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_masses = (/ &
-       1.0_rprec8/6023600, &                     !!  (1) Mercury,
-       1.0_rprec8/408523.71, &                   !!  (2) Venus,
-       1.0_rprec8/(328900.56*(1+0.012300034)), & !!  (3) Earth, 
-       1.0_rprec8/3098708, &                     !!  (4) Mars,
-       1.0_rprec8/1047.3486, &                   !!  (5) Jupiter,
-       1.0_rprec8/3497.898, &                    !!  (6) Saturn,
-       1.0_rprec8/22902.98, &                    !!  (7) Uranus,
-       1.0_rprec8/19412.24, &                    !!  (8) Neptune,
-       1.0_rprec8/1.35e8, &                      !!  (9) Pluto,
-       1.0_rprec8/(328900.56*(1+81.30059)), &    !! (10) Moon,
-       1.0_rprec8, &                             !! (11) Sun,
-       0.0_rprec8, &                             !! (12) solar system barycenter,
-       1.0_rprec8/328900.56, &                   !! (13) Earth-Moon barycenter,
-       0.0_rprec8, &                             !! (14) Asteroid,
-       1.0_rprec8/2099880378.8, &                !! (15) Ceres,   GM=63.2
-       1.0_rprec8/9280590205.59, &               !! (16) Pallas,  GM=14.3
-       1.0_rprec8/7455755052.81  /)              !! (17) Vesta    GM=17.8
+       1.0_rprec8/6023600.0_rprec8, &                                      !!  (1) Mercury,
+       1.0_rprec8/408523.71_rprec8, &                                      !!  (2) Venus,
+       1.0_rprec8/(328900.56_rprec8*(1.0_rprec8+0.012300033739_rprec8)), & !!  (3) Earth, 
+       1.0_rprec8/3098708.0_rprec8, &                                      !!  (4) Mars,
+       1.0_rprec8/1047.3486_rprec8, &                                      !!  (5) Jupiter,
+       1.0_rprec8/3497.898_rprec8, &                                       !!  (6) Saturn,
+       1.0_rprec8/22902.98_rprec8, &                                       !!  (7) Uranus,
+       1.0_rprec8/19412.24_rprec8, &                                       !!  (8) Neptune,
+       1.0_rprec8/1.35e8_rprec8, &                                         !!  (9) Pluto,
+       1.0_rprec8/(328900.56_rprec8*(1.0_rprec8+81.30059_rprec8)), &       !! (10) Moon,
+       1.0_rprec8, &                                                       !! (11) Sun,
+       0.0_rprec8, &                                                       !! (12) solar system barycenter,
+       1.0_rprec8/328900.56_rprec8, &                                      !! (13) Earth-Moon barycenter,
+       0.0_rprec8, &                                                       !! (14) Asteroid,
+       1.0_rprec8/2099880378.8_rprec8, &                                   !! (15) Ceres,   GM=63.2
+       1.0_rprec8/9280590205.59_rprec8, &                                  !! (16) Pallas,  GM=14.3
+       1.0_rprec8/7455755052.81_rprec8  /)                                 !! (17) Vesta    GM=17.8
 
   ! Data from http://nssdc.gsfc.nasa.gov/planetary/planetfact.html
+  ! Unit: M_sol AU^(-3)
   REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_densities = (/ &
        5427.0_rprec8*kgm3_smau3, &               !!  (1) Mercury,
        5243.0_rprec8*kgm3_smau3, &               !!  (2) Venus,
@@ -142,7 +145,8 @@ MODULE planetary_data
        0.0_rprec8, &                             !! (16) Pallas,
        0.0_rprec8  /)                            !! (17) Vesta
 
-  ! Constants of gravitation (G*M, AU^3/day^2).
+  ! Constants of gravitation (G*M)
+  ! Unit: AU^3 day^(-2)
   REAL(rprec8), DIMENSION(14), PARAMETER, PUBLIC :: planetary_mu  = (/ &
        0.0_rprec8, &                             !!  (1) Mercury,
        0.0_rprec8, &                             !!  (2) Venus,
@@ -159,17 +163,17 @@ MODULE planetary_data
        0.0_rprec8, &                             !! (13) Earth-Moon barycenter,
        0.0_rprec8 /)                             !! (14) Asteroid
 
-  CHARACTER(len=6), DIMENSION(14,3)     :: ttl
-  CHARACTER(len=6), DIMENSION(400)      :: cnam
+  CHARACTER(len=6), DIMENSION(14,3)         :: ttl
+  CHARACTER(len=6), DIMENSION(400)          :: cnam
   REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: buf
   REAL(rprec8), DIMENSION(400)              :: cval
   REAL(rprec8), DIMENSION(3)                :: ss
   REAL(rprec8)                              :: au, emrat
-  INTEGER, DIMENSION(3,13)              :: ipt
-  INTEGER                               :: numde, ncon, rec_size, eph_size
-  LOGICAL                               :: first = .TRUE.
-  LOGICAL                               :: kilometres = .FALSE.
-  LOGICAL                               :: barycenter = .TRUE.
+  INTEGER, DIMENSION(3,13)                  :: ipt
+  INTEGER                                   :: numde, ncon, rec_size, eph_size
+  LOGICAL                                   :: first = .TRUE.
+  LOGICAL                                   :: kilometres = .FALSE.
+  LOGICAL                                   :: barycenter = .TRUE.
 
   PUBLIC :: JPL_ephemeris_init
   PUBLIC :: JPL_ephemeris
@@ -180,7 +184,7 @@ MODULE planetary_data
      MODULE PROCEDURE JPL_ephemeris_perturbers_r8
      MODULE PROCEDURE JPL_ephemeris_r16
      MODULE PROCEDURE JPL_ephemeris_perturbers_r16
-  END INTERFACE
+  END INTERFACE JPL_ephemeris
 
 CONTAINS
 
@@ -439,7 +443,7 @@ CONTAINS
   !! Known errors: 
   !! 
   !!  ntarget  ncenter
-  !!    13       11
+  !!    13       11        (note that 11 13 works?!?)
   !!    -9       11
   !!    -9       12
   !!
@@ -458,6 +462,8 @@ CONTAINS
     INTEGER, DIMENSION(12)        :: list
     INTEGER                       :: i, k, err
     LOGICAL                       :: tmp_barycenter
+
+    celements = 0.0_rprec8
 
     IF (first) THEN
        CALL JPL_ephemeris_init(error)
@@ -512,8 +518,7 @@ CONTAINS
        END IF
     END IF
 
-    ! MG: I do not understand this but it seems to produce both
-    ! barycentric and heliocentric output correctly...
+    ! Force barycentric output from states()
     tmp_barycenter = barycenter
     barycenter = .TRUE.
 
@@ -525,10 +530,18 @@ CONTAINS
           ELSE IF (i == 2) THEN
              k = ncenter
           END IF
-          IF (k <= 10) list(k)  = 2 ! If k:th planet wanted, k:th is needed 
-          IF (k == 3)  list(10) = 2 ! If Earth wanted, Moon is needed
-          IF (k == 10) list(3)  = 2 ! If Moon wanted, Earth is needed
-          IF (k == 13) list(3)  = 2 ! If barycentric Earth-Moon wanted, Earth is needed
+          IF (k <= 10) THEN
+             list(k)  = 2 ! If k:th planet wanted, k:th is needed 
+          END IF
+          IF (k == 3) THEN
+             list(10) = 2 ! If Earth wanted, Moon is needed
+          END IF
+          IF (k == 10) THEN
+             list(3)  = 2 ! If Moon wanted, Earth is needed
+          END IF
+          IF (k == 13) THEN
+             list(3)  = 2 ! If barycentric Earth-Moon wanted, Earth is needed
+          END IF
        END DO
     ELSE IF (ntarget == -9 .OR. ntarget == -10) THEN
        list(1:10) = 2
@@ -604,6 +617,7 @@ CONTAINS
        DO i=1,9
           JPL_ephemeris_r8(i,1:6) = celements(i,1:6)
        END DO
+       !JPL_ephemeris_r8(3,1:6) = celements(13,1:6)
     ELSE IF (ntarget == -10) THEN ! separate Earth and Moon
        ALLOCATE(JPL_ephemeris_r8(10,6), stat=err)
        IF (err /= 0) THEN
@@ -767,8 +781,7 @@ CONTAINS
     END IF
     list = 0
 
-    ! MG: I do not understand this but it seems to produce both
-    ! barycentric and heliocentric output correctly...
+    ! Force barycentric output from states()
     tmp_barycenter = barycenter
     barycenter = .TRUE.
 
