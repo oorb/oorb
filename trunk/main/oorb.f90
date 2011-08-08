@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2011-01-26
+!! @version 2011-08-08
 !!
 PROGRAM oorb
 
@@ -186,6 +186,9 @@ PROGRAM oorb
        rchi2_arr_in, &
        reg_apr_arr_in, &
        real_arr
+  REAL(bp), DIMENSION(10) :: &
+       tisserands_parameters,  &
+       jacobi_constants
   REAL(bp), DIMENSION(6) :: &
        comp_coord, &
        coordinates, &
@@ -301,7 +304,7 @@ PROGRAM oorb
   info_verb = 1
   gnuplot_scripts_dir = "."
   obs_stdev_arr_prm = -1.0_bp
-  observation_format_out = "mpc3"
+  observation_format_out = "des"
   obsy_code = "500"
   dyn_model = " "
   integrator = " "
@@ -1163,7 +1166,10 @@ PROGRAM oorb
 !!$        ! End requirement
 !!$        ! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
         IF (LEN_TRIM(str_arr(2)) /= 0) THEN
-           CALL encodeMPC3Designation(str_arr(2))
+           !! 9-char alphanumeric encoded designation
+           !CALL encodeMPC3Designation(str_arr(2))
+           !! 7-char alphanumeric encoded designation (current MPC format)
+           CALL encodeMPCDesignation(str_arr(2))
            IF (error) THEN
               CALL errorMessage("oorb / astorbtoorb", &
                    "TRACE BACK (10)",1)
@@ -1193,7 +1199,22 @@ PROGRAM oorb
         id(1:LEN(id)) = " "
         IF (LEN_TRIM(str_arr(1)) /= 0) THEN
            id = TRIM(ADJUSTL(str_arr(1)))
-           DO WHILE (LEN_TRIM(id) < 7)
+           !! 7-char numeric number
+           !DO WHILE (LEN_TRIM(id) < 7)
+           !   id = '0' // TRIM(id)
+           !END DO
+           !! 5-char alphanumeric number (current MPC format)
+           IF (LEN_TRIM(id) == 6) THEN
+              CALL toInt(id(1:2), i, error)
+              id(2:5) = id(3:6)
+              id(6:6) = " "
+              id(1:1) = mpc_conv_table(i)
+           ELSE IF (LEN_TRIM(id) > 6) THEN
+              CALL errorMessage("oorb / astorbtoorb", &
+                   "Number (" // TRIM(id) // ") too large -> cannot encode.",1)
+              STOP             
+           END IF
+           DO WHILE (LEN_TRIM(id) < 5)
               id = '0' // TRIM(id)
            END DO
         ELSE
@@ -4824,7 +4845,9 @@ PROGRAM oorb
         CALL rotateToEcliptic(ccoord)
         coordinates = getCoordinates(ccoord)
         CALL NULLIFY(ccoord)
-        WRITE(stdout,"(A,6(1X,E25.18))") TRIM(planetary_locations(i)), coordinates
+        WRITE(stdout,"(A,9(1X,E25.18))") TRIM(planetary_locations(i)), &
+             coordinates, 2400000.5_bp+mjd_tt, planetary_masses(i), &
+             planetary_densities(i)/kgm3_smau3/1000.0_bp
      END DO
      DEALLOCATE(planeph)
 
@@ -4837,8 +4860,33 @@ PROGRAM oorb
      !write(stdout,"(A,6(1X,F20.15))") trim(planetary_locations(13)), coordinates
      !deallocate(planeph)
 
+  CASE ("tisserand_parameters")
 
-  CASE("apoapsis_distance")
+     ! Compute Tisserand's parameter(s) for input orbit(s)
+     IF (ALLOCATED(storb_arr_in)) THEN
+        WRITE(stdout,*) "--task=tisserand_parameters is not yet implemented for orbit PDFs."
+     ELSE
+        DO i=1,SIZE(orb_arr_in)
+           tisserands_parameters = getTisserandsParameters(orb_arr_in(i))
+           WRITE(stdout,*) TRIM(id_arr_in(i)), tisserands_parameters 
+        END DO
+     END IF
+
+
+  CASE ("jacobi_constants")
+
+     ! Compute Jacobi constants for input orbit(s)
+     IF (ALLOCATED(storb_arr_in)) THEN
+        WRITE(stdout,*) "--task=jacobi_constants is not yet implemented for orbit PDFs."
+     ELSE
+        DO i=1,SIZE(orb_arr_in)
+           jacobi_constants = getJacobiConstants(orb_arr_in(i))
+           WRITE(stdout,"(A,10(1X,F10.5))") TRIM(id_arr_in(i)), jacobi_constants
+        END DO
+     END IF
+
+
+  CASE ("apoapsis_distance")
 
      ! Compute apoapsis distance(s) for input orbit(s)
      IF (ALLOCATED(storb_arr_in)) THEN
@@ -4861,7 +4909,7 @@ PROGRAM oorb
      END IF
 
 
-  CASE("periapsis_distance")
+  CASE ("periapsis_distance")
 
      ! Compute periapsis distance(s) for input orbit(s)
      IF (ALLOCATED(storb_arr_in)) THEN
