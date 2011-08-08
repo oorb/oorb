@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-02-14
+!! @version 2011-08-08
 !!  
 MODULE StochasticOrbit_cl
 
@@ -53,6 +53,8 @@ MODULE StochasticOrbit_cl
   !! setParameters!
   !! E.g., 50.0 corresponds to probability mass (1 - 4.7e-9).  
   !! E.g., 30.0 corresponds to probability mass (1 - ?).
+  !! E.g., 20.1 corresponds to probability mass 0.9973 which
+  !!  corresponds to the 1D 3-sigma confidence limits
   REAL(bp), PARAMETER, PRIVATE :: dchi2       = 30.0_bp    
   !! Maximum end value for histogram.
   REAL(bp), PARAMETER, PRIVATE :: histo_end   = 0.3_bp     
@@ -1270,6 +1272,8 @@ CONTAINS
          residuals3, &
          partials_arr, &
          information_matrix_obs
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         stdev_arr_measur
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
          jacobian_arr, &
          obs_coords, &
@@ -1280,17 +1284,21 @@ CONTAINS
          rchi2_arr, &
          cosdec0
     REAL(bp), DIMENSION(6,6) :: &
-         cov, &
          A, &
+         cov, &
+         eigenvectors, &
          information_matrix_elem, &
-         jacobian_matrix
+         jacobian_matrix, &
+         sqrt_eigenvalues
     REAL(bp), DIMENSION(6) :: &
          elements_nominal, &
          ran, &
          deviates, &
          mean, &
+         eigenvalues, &
          elements, &
          comp_coord, &
+         p, &
          stdev
     REAL(bp) :: &
          sma, &
@@ -1312,9 +1320,17 @@ CONTAINS
          iorb, &
          err, &
          nobs, &
-         nfailed
+         nfailed, &
+         nrotation
     LOGICAL, DIMENSION(:,:), POINTER :: &
-         mask_arr
+         mask_arr, &
+         mask_measur
+
+    ! Relative bound for probability density:
+    pdf_relative_bound = EXP(-0.5_bp*this%dchi2_prm)
+    iorb = 0
+    itrial = 0
+    mean = 0.0_bp
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -1360,12 +1376,17 @@ CONTAINS
        RETURN
     END IF
 
-
     ! Observations
     information_matrix_obs => getBlockDiagInformationMatrix(this%obss)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / covarianceSampling", &
             "TRACE BACK (30)", 1)
+       RETURN
+    END IF
+    stdev_arr_measur => getStandardDeviations(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / covarianceSampling", &
+            "TRACE BACK (31)", 1)
        RETURN
     END IF
     obs_scoords => getObservationSCoords(this%obss)
@@ -1380,7 +1401,7 @@ CONTAINS
          failed_flag(11), reg_apriori_arr(this%cos_norb_prm), &
          pdf_arr(this%cos_norb_prm), rchi2_arr(this%cos_norb_prm), &
          jacobian_arr(this%cos_norb_prm,3), obs_coords(nobs,6), &
-         mask_arr(nobs,6), stat=err)
+         mask_arr(nobs,6), mask_measur(nobs,6), stat=err)
     DO i=1,nobs
        obs_coords(i,:) = getCoordinates(obs_scoords(i))
        IF (error) THEN
@@ -1396,6 +1417,7 @@ CONTAINS
             "TRACE BACK (45)",1)
        RETURN
     END IF
+    failed_flag = 0
 
     ! ML PDF value
     CALL getEphemerides(orb_nominal, obsy_ccoords, comp_scoords, &
@@ -1409,7 +1431,7 @@ CONTAINS
     DO i=1,nobs
        partials_arr(2,:,i) = partials_arr(2,:,i)*cosdec0(i)
     END DO
-    ! Residuals and chi2 for the global fit:
+    ! Residuals for the input orbit:
     DO i=1,nobs
        comp_coord = getCoordinates(comp_scoords(i))
        IF (error) THEN
@@ -1438,8 +1460,22 @@ CONTAINS
                "computed pos.", comp_coord(1:3)
        END IF
     END DO
-    ! Compute chi2:
-    chi2 = chi_square(residuals2, information_matrix_obs, this%obs_masks_prm, errstr)
+
+    ! Observation mask
+    mask_measur = this%obs_masks_prm
+    ! Outlier rejection
+    IF (this%outlier_rejection_prm) THEN
+       DO i=1,nobs
+          IF (ANY(ABS(residuals2(i,2:3)) > &
+               this%outlier_multiplier_prm*stdev_arr_measur(i,2:3))) THEN
+             mask_measur(i,:) = .FALSE.
+          END IF
+       END DO
+    END IF
+
+    ! Reference chi2 from the input orbit which is assumed to be the
+    ! maximum-likelihood orbit:
+    chi2 = chi_square(residuals2, information_matrix_obs, mask_measur, errstr)
     IF (LEN_TRIM(errstr) /= 0) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / covarianceSampling", &
@@ -1481,7 +1517,7 @@ CONTAINS
     ELSE
        apriori = 1.0_bp
     END IF
-    pdf_ml_global_ls = apriori*EXP(-0.5_bp*(chi2 - COUNT(this%obs_masks_prm)))
+    pdf_ml_global_ls = apriori*EXP(-0.5_bp*(chi2 - COUNT(mask_measur)))
     ! If initial estimate for maximum likelihood pdf remains
     ! undetermined (indicated by a negative value), set it equal to
     ! the pdf computed for the global least squares:
@@ -1489,48 +1525,107 @@ CONTAINS
        this%pdf_ml_prm = pdf_ml_global_ls
     END IF
 
-    ! From Devroye: "Non-Uniform Random Variate Generation", 1986,
-    ! chapter 11
     IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,1X,A)") &
+            "StochasticOrbit / covarianceSampling:", &
+            "Orbital-elemnt covariance matrix:"
+       CALL matrix_print(cov,stdout,errstr)
        WRITE(stdout,"(2X,2(A,1X),E12.4)") &
             "StochasticOrbit / covarianceSampling:", &
             "Condition number for orbital-element covariance matrix:", cond_nr(cov, errstr)
     END IF
+
     A = 0.0_bp
     DO i=1,6
-       DO j=1,i
-          IF (j == 1) THEN
-             A(i,1) = cov(i,1)/SQRT(cov(1,1))
-          ELSE IF (i == j) THEN
-             IF (cov(i,i) - SUM(A(i,1:i-1)**2) < -1E-7_bp) THEN
-                CALL toString(i, str1, error)
-                CALL toString(cov(i,i) - SUM(A(i,1:i-1)**2), str2, error, frmt=efrmt)
-                error = .TRUE.
-                CALL errorMessage("StochasticOrbit / covarianceSampling", &
-                     "Square of element (" // TRIM(str1) // "," // TRIM(str1) // &
-                     ") of Devroye's matrix A is negative (" // TRIM(str2) // ").", 1)
-                RETURN
-             END IF
-             A(i,i) = SQRT(ABS(cov(i,i) - SUM(A(i,1:i-1)**2)))
-          ELSE IF (j < i) THEN
-             A(i,j) = (cov(i,j) - SUM(A(i,1:j-1)*A(j,1:j-1)))/A(j,j)
-          END IF
-       END DO
+       A(i,i:6) = cov(i,i:6)
     END DO
+    CALL cholesky_decomposition(A, p, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / covarianceSampling:", &
+            "Cholesky decomposition unsuccessful:", 1)
+       WRITE(stderr,"(A)") TRIM(errstr)
+       RETURN
+    END IF
+    DO i=1,6
+       A(i,i) = p(i)
+    END DO
+
+!!$    cov = cov*1.0e10_bp
+!!$    ! Solve U and LAMBDA from SIGMA = U LAMBDA transpose(U)
+!!$    CALL eigen_decomposition_jacobi(cov, eigenvalues, &
+!!$         eigenvectors, nrotation, errstr)
+!!$    IF (LEN_TRIM(errstr) /= 0) THEN
+!!$       error = .TRUE.
+!!$       CALL errorMessage("StochasticOrbit / covarianceSampling:", &
+!!$            "Eigen decomposition unsuccessful:", 1)
+!!$       write(stderr,"(A)") trim(errstr)
+!!$       RETURN
+!!$    END IF
+!!$    IF (info_verb >= 2) THEN
+!!$       WRITE(stdout,"(2X,A,1X,A)") &
+!!$            "StochasticOrbit / covarianceSampling:", &
+!!$            "Eigenvectors:"
+!!$       CALL matrix_print(eigenvectors,stdout,errstr)
+!!$       WRITE(stdout,"(2X,A,1X,A)") &
+!!$            "StochasticOrbit / covarianceSampling:", &
+!!$            "Eigenvalues:"
+!!$       CALL vector_print(eigenvalues,stdout,.false.,errstr)
+!!$    end IF
+!!$    sqrt_eigenvalues = 0.0_bp
+!!$    ! sqrt(LAMBDA) is needed:
+!!$    DO i=1,6
+!!$       sqrt_eigenvalues(i,i) = SQRT(eigenvalues(i))
+!!$    END DO
+!!$    ! A = U sqrt(LAMBDA)
+!!$    A = MATMUL(eigenvectors, sqrt_eigenvalues)/1.0e10_bp
+
+!!$    ! From Devroye: "Non-Uniform Random Variate Generation", 1986,
+!!$    ! chapter 11
+!!$    A = 0.0_bp
+!!$    DO i=1,6
+!!$       DO j=1,i
+!!$          IF (j == 1) THEN
+!!$             A(i,1) = cov(i,1)/SQRT(cov(1,1))
+!!$          ELSE IF (i == j) THEN
+!!$             IF (cov(i,i) - SUM(A(i,1:i-1)**2) < -1E-7_bp) THEN
+!!$                CALL toString(i, str1, error)
+!!$                CALL toString(cov(i,i) - SUM(A(i,1:i-1)**2), str2, error, frmt=efrmt)
+!!$                error = .TRUE.
+!!$                CALL errorMessage("StochasticOrbit / covarianceSampling", &
+!!$                     "Square of element (" // TRIM(str1) // "," // TRIM(str1) // &
+!!$                     ") of Devroye's matrix A is negative (" // TRIM(str2) // ").", 1)
+!!$                RETURN
+!!$             END IF
+!!$             A(i,i) = SQRT(ABS(cov(i,i) - SUM(A(i,1:i-1)**2)))
+!!$          ELSE IF (j < i) THEN
+!!$             A(i,j) = (cov(i,j) - SUM(A(i,1:j-1)*A(j,1:j-1)))/A(j,j)
+!!$          END IF
+!!$       END DO
+!!$    END DO
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A,1X,A)") &
             "StochasticOrbit / covarianceSampling:", &
-            "Devroye's A matrix:"
+            "A matrix:"
        CALL matrix_print(A,stdout,errstr)
-    END IF
-
-    ! Relative bound for probability density:
-    pdf_relative_bound = EXP(-0.5_bp*this%dchi2_prm)
-    failed_flag = 0
-    iorb = 0
-    itrial = 0
-    mean = 0.0_bp
-    IF (info_verb >= 2) THEN
+       IF (this%element_type_prm == "keplerian") THEN
+          WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Element uncertainty:", stdev(1:2), stdev(3:6)/rad_deg
+       ELSE
+          WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Element uncertainty:", stdev(1:6)
+       END IF
+       DO i=1,6
+          ran = 0.0_bp
+          ran(i) = -1.0_bp
+          WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") "StochasticOrbit / covarianceSampling:", &
+               "1-sigma deviates", this%cos_nsigma_prm*MATMUL(A,ran) + mean
+          ran(i) = 1.0_bp
+          WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") "StochasticOrbit / covarianceSampling:", &
+               "1-sigma deviates", this%cos_nsigma_prm*MATMUL(A,ran) + mean
+       END DO
        IF (this%element_type_prm == "keplerian") THEN
           WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
                "StochasticOrbit / covarianceSampling:", &
@@ -1540,12 +1635,11 @@ CONTAINS
                "StochasticOrbit / covarianceSampling:", &
                "Nominal elements:", elements_nominal(1:6)
        END IF
-    END IF
-    IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A,1X,A)") &
             "StochasticOrbit / covarianceSampling:", &
             "Starting sampling."
     END IF
+
     DO WHILE (iorb < this%cos_norb_prm .AND. itrial < this%cos_ntrial_prm)
 
        itrial = itrial + 1
@@ -1595,6 +1689,9 @@ CONTAINS
              CALL randomNumber(ran)
              ran = 2.0_bp*ran - 1.0_bp
           END IF
+          WRITE(stdout,"(2X,A,1X,A19,6(1X,F15.10))") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Random numbers:", ran
           deviates = this%cos_nsigma_prm*MATMUL(A,ran) + mean
           ! New coordinates = old coordinates + deviates:
           elements = elements_nominal + deviates
@@ -1612,10 +1709,6 @@ CONTAINS
                      "StochasticOrbit / covarianceSampling:", &
                      "Deviates:", deviates(1:6)          
              END IF
-          END IF
-          IF (ANY(ABS(deviates) > this%cos_nsigma_prm*stdev)) THEN
-             WRITE(stdout,*) this%cos_gaussian_prm, ": ", ABS(deviates) > this%cos_nsigma_prm*stdev
-             !stop
           END IF
           CALL NULLIFY(orb)
           CALL NEW(orb, elements, this%element_type_prm, frame, t0)
@@ -1846,7 +1939,7 @@ CONTAINS
 !!$       END IF
 
        ! Compute chi2:
-       chi2 = chi_square(residuals3(iorb+1,:,:), information_matrix_obs, this%obs_masks_prm, errstr)
+       chi2 = chi_square(residuals3(iorb+1,:,:), information_matrix_obs, mask_measur, errstr)
        IF (LEN_TRIM(errstr) /= 0) THEN
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / covarianceSampling", &
@@ -1891,7 +1984,7 @@ CONTAINS
 
        ! Probability density function (note that the '- nobs' term
        ! is there for practical reasons):
-       pdf_val = apriori*EXP(-0.5_bp*(chi2 - COUNT(this%obs_masks_prm)))
+       pdf_val = apriori*EXP(-0.5_bp*(chi2 - COUNT(mask_measur)))
        IF (info_verb >= 2) THEN
           WRITE(stdout,"(2X,A,1X,A)") &
                "StochasticOrbit / covarianceSampling:", &
@@ -2212,14 +2305,18 @@ CONTAINS
     CALL NULLIFY(orb_nominal)
 
     DEALLOCATE(orb_arr, failed_flag, pdf_arr, &
-         information_matrix_obs, jacobian_arr, residuals3, stat=err)
-
+         information_matrix_obs, jacobian_arr, residuals3, &
+         stdev_arr_measur, mask_measur, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        DEALLOCATE(orb_arr, stat=err)
        DEALLOCATE(pdf_arr, stat=err)
        DEALLOCATE(failed_flag, stat=err)
        DEALLOCATE(information_matrix_obs, stat=err)
+       DEALLOCATE(jacobian_arr, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(stdev_arr_measur, stat=err)
+       DEALLOCATE(mask_measur, stat=err)
        CALL errorMessage("StochasticOrbit / covarianceSampling", &
             "Could not deallocate memory (30).", 1)
        RETURN       
@@ -7291,8 +7388,9 @@ CONTAINS
 
        DO j=1,this%ls_niter_minor_prm
           IF (info_verb >= 2) THEN
-             WRITE(stdout,"(2X,A)") "Call to 'LevenbergMarquardt_private' from " // &
-                  "loop in 'levenbergMarquardt_SO'."
+             WRITE(stdout,"(2X,I0,A,I0,A)") j, "th minor and ", i, &
+                  "th major call to 'LevenbergMarquardt_private'" // &
+                  " from loop in 'levenbergMarquardt_SO'."
           END IF
           CALL LevenbergMarquardt_private
           IF (error) THEN
@@ -7312,10 +7410,7 @@ CONTAINS
           END IF
           IF (ABS(rchi2 - rchi2_previous) < this%ls_rchi2_diff_tresh_prm .AND. &
                rchi2 <= rchi2_previous) THEN
-             !             rchi2_previous = rchi2
              EXIT
-             !          ELSE
-             !             rchi2_previous = rchi2
           END IF
        END DO
 
@@ -7329,7 +7424,7 @@ CONTAINS
              END IF
           END DO
           rchi2_old = rchi2
-       ELSE IF (.NOT.this%outlier_rejection_prm) THEN
+       ELSE ! IF (.NOT.this%outlier_rejection_prm) THEN
           EXIT
        END IF
 
