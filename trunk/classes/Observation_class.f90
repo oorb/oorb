@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2010-03-26
+!! @version 2011-08-17
 !!  
 MODULE Observation_cl
 
@@ -88,96 +88,96 @@ MODULE Observation_cl
 
   INTERFACE NEW
      MODULE PROCEDURE NEW_Obs
-  END INTERFACE
+  END INTERFACE NEW
 
   INTERFACE NULLIFY
      MODULE PROCEDURE NULLIFY_Obs
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   INTERFACE copy
      MODULE PROCEDURE copy_Obs
-  END INTERFACE
+  END INTERFACE copy
 
   INTERFACE exist
      MODULE PROCEDURE exist_Obs
-  END INTERFACE
+  END INTERFACE exist
 
   INTERFACE reallocate
      MODULE PROCEDURE reallocate_a1_Obs
      MODULE PROCEDURE reallocate_a2_Obs
-  END INTERFACE
+  END INTERFACE reallocate
 
   INTERFACE addMultinormalDeviate
      MODULE PROCEDURE addMultinormalDeviate_Obs
-  END INTERFACE
+  END INTERFACE addMultinormalDeviate
 
   INTERFACE addUniformDeviate
      MODULE PROCEDURE addUniformDeviate_Obs
-  END INTERFACE
+  END INTERFACE addUniformDeviate
 
   INTERFACE getDesignation
      MODULE PROCEDURE getDesignation_Obs
-  END INTERFACE
+  END INTERFACE getDesignation
 
   INTERFACE setDesignation
      MODULE PROCEDURE setDesignation_Obs
-  END INTERFACE
+  END INTERFACE setDesignation
 
   INTERFACE equal
      MODULE PROCEDURE equal_Obs
-  END INTERFACE
+  END INTERFACE equal
 
   INTERFACE getDec
      MODULE PROCEDURE getDec_Obs
-  END INTERFACE
+  END INTERFACE getDec
 
   INTERFACE getID
      MODULE PROCEDURE getID_Obs
-  END INTERFACE
+  END INTERFACE getID
 
   INTERFACE getNumber
      MODULE PROCEDURE getNumber_Obs
-  END INTERFACE
+  END INTERFACE getNumber
 
   INTERFACE getRA
      MODULE PROCEDURE getRA_Obs
-  END INTERFACE
+  END INTERFACE getRA
 
   INTERFACE getTime
      MODULE PROCEDURE getTime_Obs
-  END INTERFACE
+  END INTERFACE getTime
 
   INTERFACE getCode
      MODULE PROCEDURE getCode_Obs
-  END INTERFACE
+  END INTERFACE getCode
 
   INTERFACE getCovarianceMatrix
      MODULE PROCEDURE getCovarianceMatrix_Obs
-  END INTERFACE
+  END INTERFACE getCovarianceMatrix
 
   INTERFACE getObservationMask
      MODULE PROCEDURE getObservationMask_Obs
-  END INTERFACE
+  END INTERFACE getObservationMask
 
   INTERFACE getObservatory
      MODULE PROCEDURE getObservatory_Obs
-  END INTERFACE
+  END INTERFACE getObservatory
 
   INTERFACE getObservatoryCCoord
      MODULE PROCEDURE getObservatoryCCoord_Obs
-  END INTERFACE
+  END INTERFACE getObservatoryCCoord
 
   INTERFACE getObservatoryCode
      MODULE PROCEDURE getObservatoryCode_Obs
-  END INTERFACE
+  END INTERFACE getObservatoryCode
 
   INTERFACE getStandardDeviations
      MODULE PROCEDURE getStandardDeviations_Obs
-  END INTERFACE
+  END INTERFACE getStandardDeviations
 
   INTERFACE setNumber
      MODULE PROCEDURE setNumber_Obs
-  END INTERFACE
+  END INTERFACE setNumber
 
 CONTAINS
 
@@ -521,11 +521,13 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Adds multinormal deviates to the observation. The mean
-  !! relative to the original coordinates and the (optional)
-  !! covariance matrix should be given in radians for the angular
-  !! space coordinates, AUs for distance, radians per day for angular
-  !! velocities and AUs per day for line-of-sight velocity.
+  !! Adds multinormal deviates to the observation. The mean relative
+  !! to the original coordinates and the (optional) covariance matrix
+  !! should be given in radians for the angular space coordinates, AUs
+  !! for distance, radians per day for angular velocities and AUs per
+  !! day for line-of-sight velocity. Note that the covariance matrix
+  !! for the observational uncertainties is not correctly updated if
+  !! the original observation has a non-zero covariance matrix.
   !!
   !! Returns error.
   !!
@@ -562,10 +564,11 @@ CONTAINS
   !! Adds uniform deviates to the observation. The center relative to
   !! the original coordinates and the absolute values of the boundary
   !! values ((i,1)=center, (i,2)=abs(boundary), position i=1:3 and
-  !! velocity i=4:6) should be given in radians for the angular
-  !! space coordinates, AUs for distance, radians per day for
-  !! angular velocities and AUs per day for line-of-sight
-  !! velocity.
+  !! velocity i=4:6) should be given in radians for the angular space
+  !! coordinates, AUs for distance, radians per day for angular
+  !! velocities and AUs per day for line-of-sight velocity. Note that
+  !! the covariance matrix for the observational uncertainties is not
+  !! updated.
   !!
   !! Returns error.
   !!
@@ -582,9 +585,6 @@ CONTAINS
        RETURN
     END IF
 
-    ! define covariance matrix
-    STOP "covariance matrix in addUniformDeviate_Obs undefined"
-    this%covariance = 0.0_bp
     CALL addUniformDeviate(this%obs_scoord, center_and_absbound)
     IF (error) THEN
        CALL errorMessage("Observation / addUniformDeviate", &

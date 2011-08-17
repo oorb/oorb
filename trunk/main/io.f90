@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2010-01-26
+!! @version 2011-08-17
 !!
 MODULE io
 
@@ -117,7 +117,7 @@ CONTAINS
     CHARACTER(len=DESIGNATION_LEN) :: id
     CHARACTER(len=64) :: str, str1, str2
     REAL(bp), DIMENSION(:,:,:), POINTER :: residuals_
-    REAL(bp), DIMENSION(:,:), POINTER :: res_accept_prm
+    REAL(bp), DIMENSION(:,:), POINTER :: res_accept_prm, stdevs
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: observed_coords, &
          computed_coords
     REAL(bp) :: day, xsize, ysize
@@ -147,7 +147,6 @@ CONTAINS
     ELSE
        compute_ = .FALSE.
     END IF
-
     IF (.NOT. compute_) THEN
        residuals_ => getResidualDistribution(storb)
        IF (error) THEN
@@ -297,8 +296,19 @@ CONTAINS
     CALL getParameters(storb, res_accept=res_accept_prm)
     IF (error) THEN
        CALL errorMessage("io / makeResidualStamps", &
-            "TRACE BACK (65)", 1)
-       RETURN
+            "Will use a default stamp size instead (+-5-sigma).", 1)
+       error = .FALSE.
+       stdevs => getStandardDeviations(obss)
+       IF (error) THEN
+          CALL errorMessage("io / makeResidualStamps", &
+               "TRACE BACK (65)", 1)
+          RETURN
+       END IF
+       ALLOCATE(res_accept_prm(SIZE(stdevs,dim=1),6))
+       DO i=1,SIZE(stdevs,dim=1)
+          res_accept_prm(i,:) = 5.0_bp*stdevs(i,:)
+       END DO
+       DEALLOCATE(stdevs)
     END IF
     obs_masks => getObservationMasks(storb)
     IF (error) THEN
@@ -535,7 +545,7 @@ CONTAINS
        apriori_apoapsis_max, apriori_rho_min, apriori_rho_max, &
        sor_type, sor_2point_method, sor_2point_method_sw, sor_norb, &
        sor_ntrial, sor_norb_sw, sor_ntrial_sw, sor_niter, &
-       sor_random_obs, sor_rho_init, sor_genwin_multiplier, &
+       sor_random_obs, sor_rho_init, generat_multiplier, &
        sor_genwin_offset, sor_rho_gauss, sor_rho_init2, &
        sor_rho_gauss2, sor_iterate_bounds, &
        vov_type, vov_norb, vov_ntrial, vov_niter, vov_norb_iter, &
@@ -543,7 +553,8 @@ CONTAINS
        ls_type, ls_element_mask, ls_correction_factor, ls_rchi2_acceptable, &
        ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
        cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
-       smplx_tol, smplx_niter, &
+       smplx_tol, smplx_niter, smplx_force, smplx_similarity_tol, &
+       os_norb, os_ntrial, os_sampling_type, generat_gaussian_deviates, & 
        pp_H_estimation, pp_G, pp_G_unc, &
        eph_lt_correction, eph_dt_since_last_obs, eph_obsy_code, &
        eph_date, &
@@ -585,11 +596,12 @@ CONTAINS
     REAL(bp), INTENT(inout), OPTIONAL :: &
          accwin_multiplier, &
          outlier_multiplier, &
-         sor_genwin_multiplier, &
+         generat_multiplier, &
          ls_correction_factor, &
          ls_rchi2_acceptable, &
          cos_nsigma, &
          smplx_tol, &
+         smplx_similarity_tol, &
          integration_step, &
          integration_step_init, &
          pdf_ml, &
@@ -625,7 +637,10 @@ CONTAINS
          ls_niter_minor, &
          cos_norb, &
          cos_ntrial, &
-         smplx_niter
+         smplx_niter, &
+         os_norb, &
+         os_ntrial, &
+         os_sampling_type
     LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: &
          eph_lt_correction, &
          perturbers
@@ -646,6 +661,8 @@ CONTAINS
          sor_random_obs, &
          sor_rho_gauss, sor_rho_gauss2, &
          cos_gaussian, &
+         smplx_force, &
+         generat_gaussian_deviates, &
          write_residuals, &
          pp_H_estimation
 
@@ -705,11 +722,21 @@ CONTAINS
           END IF
        CASE ("plot.results")
           IF (PRESENT(plot_results)) THEN
-             plot_results = .TRUE.
+             READ(par_val, *, iostat=err) plot_results
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (23).", 1)
+             END IF
           END IF
        CASE ("plot.open")
           IF (PRESENT(plot_open)) THEN
-             plot_open = .TRUE.
+             READ(par_val, *, iostat=err) plot_open
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (23).", 1)
+             END IF
           END IF
        CASE ("element_type_out")
           IF (PRESENT(element_type_out)) THEN
@@ -815,6 +842,19 @@ CONTAINS
        CASE ("outlier.multiplier")
           IF (PRESENT(outlier_multiplier)) THEN
              CALL toReal(TRIM(par_val), outlier_multiplier, error)
+          END IF
+       CASE ("generation.multiplier")
+          IF (PRESENT(generat_multiplier)) THEN
+             CALL toReal(TRIM(par_val), generat_multiplier, error)
+          END IF
+       CASE ("generation.gaussian_deviates")
+          IF (PRESENT(generat_gaussian_deviates)) THEN
+             READ(par_val, *, iostat=err) generat_gaussian_deviates
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (23).", 1)
+             END IF
           END IF
        CASE ("accwin.multiplier")
           IF (PRESENT(accwin_multiplier)) THEN
@@ -1230,10 +1270,6 @@ CONTAINS
           IF (PRESENT(sor_rho_init)) THEN
              CALL toReal(TRIM(par_val), sor_rho_init(4), error)
           END IF
-       CASE ("sor.genwin.multiplier")
-          IF (PRESENT(sor_genwin_multiplier)) THEN
-             CALL toReal(TRIM(par_val), sor_genwin_multiplier, error)
-          END IF
        CASE ("sor.genwin.offset")
           IF (PRESENT(sor_genwin_offset)) THEN
              indx1 = 1
@@ -1434,6 +1470,34 @@ CONTAINS
        CASE ("smplx.niter")
           IF (PRESENT(smplx_niter)) THEN
              CALL toInt(TRIM(par_val), smplx_niter, error)
+          END IF
+       CASE ("smplx.force")
+          IF (PRESENT(smplx_force)) THEN
+             READ(par_val, *, iostat=err) smplx_force
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (22).", 1)
+             END IF
+          END IF
+       CASE ("smplx.similarity.tol")
+          IF (PRESENT(smplx_similarity_tol)) THEN
+             CALL toReal(TRIM(par_val), smplx_similarity_tol, error)
+          END IF
+
+
+          ! OBSERVATION SAMPLING PARAMETERS:
+       CASE ("os.norb")
+          IF (PRESENT(os_norb)) THEN
+             CALL toInt(TRIM(par_val), os_norb, error)
+          END IF
+       CASE ("os.ntrial")
+          IF (PRESENT(os_ntrial)) THEN
+             CALL toInt(TRIM(par_val), os_ntrial, error)
+          END IF
+       CASE ("os.sampling_type")
+          IF (PRESENT(os_sampling_type)) THEN
+             CALL toInt(TRIM(par_val), os_sampling_type, error)
           END IF
 
 
@@ -1836,10 +1900,12 @@ CONTAINS
        ! a
        CALL toReal(line(93:103), elements(1), error)
        elements(3:6) = elements(3:6)*rad_deg
+       elements(4:6) = MODULO(elements(4:6),two_pi)
        CALL NEW(orb_arr(norb), elements, "keplerian", "ecliptic", epoch)
        IF (error) THEN
           CALL errorMessage("io / readMPCOrbitFile", &
-               "TRACE BACK (15)", 1)
+               "TRACE BACK (15):", 1)
+          WRITE(stderr,"(A)") TRIM(line)
           RETURN
        END IF
        CALL NULLIFY(epoch)
@@ -3937,7 +4003,7 @@ CONTAINS
          sor_rho_cmp 
     REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: &
-         sor_generat_multiplier_prm, accept_multiplier_prm, obsarc, &
+         generat_multiplier_prm, accept_multiplier_prm, obsarc, &
          prob_mass, pdf_ml_prm, apriori_a_min_prm, apriori_a_max_prm, &
          apriori_periapsis_min_prm, apriori_periapsis_max_prm, &
          apriori_apoapsis_min_prm, apriori_apoapsis_max_prm, &
@@ -4048,7 +4114,7 @@ CONTAINS
          sor_rho1_l=sor_rho_prm(1,1), sor_rho1_u=sor_rho_prm(1,2), &
          sor_rho2_l=sor_rho_prm(2,1), sor_rho2_u=sor_rho_prm(2,2), &
          sor_random_obs_selection=sor_random_obs_prm, & 
-         sor_generat_multiplier = sor_generat_multiplier_prm, &
+         generat_multiplier = generat_multiplier_prm, &
          sor_deviates = sor_deviates_prm)
     IF (error) THEN
        error = .TRUE.
@@ -4330,7 +4396,7 @@ CONTAINS
             ADJUSTR(str2(1:14)), &
             sor_rho_prm(1,1:2), &
             sor_rho_prm(2,1:2), &
-            sor_generat_multiplier_prm, &
+            generat_multiplier_prm, &
             sor_deviates_prm(sor_pair_arr_prm(1,1),2:3,1),&
             sor_deviates_prm(sor_pair_arr_prm(1,1),2:3,2),&
             sor_deviates_prm(sor_pair_arr_prm(1,2),2:3,1),&
