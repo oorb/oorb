@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2010-09-18
+!! @version 2011-08-17
 !!  
 MODULE Observations_cl
 
@@ -80,8 +80,8 @@ MODULE Observations_cl
   PRIVATE :: NULLIFY_Obss
   PRIVATE :: copy_Obss
   PRIVATE :: exist_Obss
-  PRIVATE :: addMultinormalDeviate_Obss
-  PRIVATE :: addUniformDeviate_Obss
+  PRIVATE :: addMultinormalDeviates_Obss
+  PRIVATE :: addUniformDeviates_Obss
   PRIVATE :: addition_Obss
   PRIVATE :: setDesignation_Obss
   PRIVATE :: clean_Obss
@@ -142,14 +142,14 @@ MODULE Observations_cl
   END INTERFACE exist
 
   !! Adds Gaussian noise to the observations. 
-  INTERFACE addMultinormalDeviate
-     MODULE PROCEDURE addMultinormalDeviate_Obss
-  END INTERFACE addMultinormalDeviate
+  INTERFACE addMultinormalDeviates
+     MODULE PROCEDURE addMultinormalDeviates_Obss
+  END INTERFACE addMultinormalDeviates
 
   !! Adds uniform noise to the observations. 
-  INTERFACE addUniformDeviate
-     MODULE PROCEDURE addUniformDeviate_Obss
-  END INTERFACE addUniformDeviate
+  INTERFACE addUniformDeviates
+     MODULE PROCEDURE addUniformDeviates_Obss
+  END INTERFACE addUniformDeviates
 
   !! Returns MJDs in UTC for all observations in this object.
   INTERFACE getDates
@@ -668,58 +668,77 @@ CONTAINS
   !!
   !! Adds Gaussian deviates to the observations, optionally using a
   !! mask. The new center relative to the original coordinates and the
-  !! standard deviations should be given in radians for the angular
+  !! covariance matrices should be given in radians for the angular
   !! space coordinates, AUs for distance, radians per day for angular
   !! velocities and AUs per day for line-of-sight velocity. If mask is
   !! present, apply only for observations for which mask is true.
   !!
   !! Returns error.
   !!
-  SUBROUTINE addMultinormalDeviate_Obss(this, mean, covariance, mask)
+  SUBROUTINE addMultinormalDeviates_Obss(this, mean_arr, covariance_arr, mask_arr)
 
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout)          :: this
-    REAL(bp), DIMENSION(6), INTENT(in)          :: mean
-    REAL(bp), DIMENSION(6,6), INTENT(in)        :: covariance
-    LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: mask
-    LOGICAL, DIMENSION(:), ALLOCATABLE          :: mask_
+    REAL(bp), DIMENSION(:,:), INTENT(in)        :: mean_arr
+    REAL(bp), DIMENSION(:,:,:), INTENT(in)      :: covariance_arr
+    LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: mask_arr
+    LOGICAL, DIMENSION(:), ALLOCATABLE          :: mask_arr_
     INTEGER                                     :: i, err
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
-       CALL errorMessage("Observations / addMultinormalDeviate", &
+       CALL errorMessage("Observations / addMultinormalDeviates", &
             "Object has not been initialized.", 1)
        RETURN       
     END IF
 
-    ALLOCATE(mask_(SIZE(this%obs_arr)), stat=err)
+    IF (SIZE(this%obs_arr) /= SIZE(mean_arr,dim=1)) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / addMultinormalDeviates", &
+            "Number of observations and length of mean_arr are not compatible.", 1)
+       RETURN
+    END IF
+    IF (SIZE(this%obs_arr) /= SIZE(covariance_arr,dim=1)) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / addMultinormalDeviates", &
+            "Number of observations and length of covariance_arr are not compatible.", 1)
+       RETURN
+    END IF
+
+    ALLOCATE(mask_arr_(SIZE(this%obs_arr)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("Observations / addMultinormalDeviate", &
             "Could not allocate memory.", 1)
-       DEALLOCATE(mask_, stat=err)
+       DEALLOCATE(mask_arr_, stat=err)
        RETURN
     END IF
 
-    IF (PRESENT(mask)) THEN
-       mask_ = mask 
+    IF (PRESENT(mask_arr)) THEN
+       IF (SIZE(this%obs_arr) /= SIZE(mask_arr,dim=1)) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / addMultinormalDeviates", &
+               "Number of observations and length of mask_arr are not compatible.", 1)
+          RETURN
+       END IF
+       mask_arr_ = mask_arr 
     ELSE 
-       mask_(:) = .TRUE.
+       mask_arr_(:) = .TRUE.
     END IF
 
     DO i=1,SIZE(this%obs_arr)
-       IF (mask_(i)) THEN
-          CALL addMultinormalDeviate(this%obs_arr(this%ind(i)), mean, covariance)
+       IF (mask_arr_(i)) THEN
+          CALL addMultinormalDeviate(this%obs_arr(this%ind(i)), mean_arr(i,:), covariance_arr(i,:,:))
           IF (error) THEN
              CALL errorMessage("Observations / addMultinormalDeviate", &
                   "TRACE BACK", 1)
-             DEALLOCATE(mask_, stat=err)
+             DEALLOCATE(mask_arr_, stat=err)
              RETURN
           END IF
        END IF
     END DO
 
-    DEALLOCATE(mask_, stat=err)
+    DEALLOCATE(mask_arr_, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("Observations / addMultinormalDeviate", &
@@ -727,7 +746,7 @@ CONTAINS
        RETURN
     END IF
 
-  END SUBROUTINE addMultinormalDeviate_Obss
+  END SUBROUTINE addMultinormalDeviates_Obss
 
 
 
@@ -735,67 +754,79 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Adds uniform deviates to the observations, optionally using a
+  !! Adds uniform deviates to the observations (i), optionally using a
   !! mask. The center relative to the original state and the absolute
-  !! values of the boundary values ((i,1)=center, (i,2)=abs(boundary),
-  !! position i=1:3 and velocity i=4:6) should be given in radians
-  !! for the angular space coordinates, AUs for distance, radians
-  !! per day for angular velocities and AUs per day for line-of-sight
-  !! velocity.
+  !! values of the boundary values ((i,j,1)=center,
+  !! (i,j,2)=abs(boundary), position j=1:3 and velocity j=4:6) should
+  !! be given in radians for the angular space coordinates, AUs for
+  !! distance, radians per day for angular velocities and AUs per day
+  !! for line-of-sight velocity.
   !!
   !! Returns error.
   !!
-  SUBROUTINE addUniformDeviate_Obss(this, center_and_absbound, mask)
+  SUBROUTINE addUniformDeviates_Obss(this, center_and_absbound_arr, mask_arr)
 
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout)          :: this
-    REAL(bp), DIMENSION(:,:), INTENT(in)        :: center_and_absbound
-    LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: mask
-    LOGICAL, DIMENSION(:), ALLOCATABLE          :: mask_
+    REAL(bp), DIMENSION(:,:,:), INTENT(in)      :: center_and_absbound_arr
+    LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: mask_arr
+    LOGICAL, DIMENSION(:), ALLOCATABLE          :: mask_arr_
     INTEGER                                     :: i, err
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
-       CALL errorMessage("Observations / addUniformDeviate", &
+       CALL errorMessage("Observations / addUniformDeviates", &
             "Object has not been initialized.", 1)
        RETURN       
     END IF
+    IF (SIZE(this%obs_arr) /= SIZE(center_and_absbound_arr,dim=1)) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / addUniformDeviates", &
+            "Number of observations and length of center_and_absbound_arr are not compatible.", 1)
+       RETURN
+    END IF
 
-    ALLOCATE(mask_(SIZE(this%obs_arr)), stat=err)
+    ALLOCATE(mask_arr_(SIZE(this%obs_arr)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("Observations / addUniformDeviate", &
+       CALL errorMessage("Observations / addUniformDeviates", &
             "Could not allocate memory.", 1)
        RETURN
     END IF
 
-    IF (PRESENT(mask)) THEN
-       mask_ = mask 
+    IF (PRESENT(mask_arr)) THEN
+       IF (SIZE(this%obs_arr) /= SIZE(mask_arr,dim=1)) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / addMultinormalDeviates", &
+               "Number of observations and length of mask_arr are not compatible.", 1)
+          RETURN
+       END IF
+       mask_arr_ = mask_arr 
     ELSE 
-       mask_(:) = .TRUE.
+       mask_arr_(:) = .TRUE.
     END IF
 
     DO i=1,SIZE(this%obs_arr)
-       IF (mask_(i)) THEN
-          CALL addUniformDeviate(this%obs_arr(this%ind(i)), center_and_absbound)
+       IF (mask_arr_(i)) THEN
+          CALL addUniformDeviate(this%obs_arr(this%ind(i)), center_and_absbound_arr(i,:,:))
           IF (error) THEN
-             CALL errorMessage("Observations / addUniformDeviate", &
+             CALL errorMessage("Observations / addUniformDeviates", &
                   "TRACE BACK", 1)
-             DEALLOCATE(mask_, stat=err)
+             DEALLOCATE(mask_arr_, stat=err)
              RETURN       
           END IF
        END IF
     END DO
 
-    DEALLOCATE(mask_, stat=err)
+    DEALLOCATE(mask_arr_, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("Observations / addUniformDeviate", &
+       CALL errorMessage("Observations / addUniformDeviates", &
             "Could not deallocate memory.", 1)
        RETURN
     END IF
 
-  END SUBROUTINE addUniformDeviate_Obss
+  END SUBROUTINE addUniformDeviates_Obss
 
 
 
@@ -3450,12 +3481,12 @@ CONTAINS
           END SELECT
 
           designation = line1(6:12)
-          CALL MPCDesToMPC3Des(designation)
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (50)", 1)
-             RETURN
-          END IF
+!!$          CALL MPCDesToMPC3Des(designation)
+!!$          IF (error) THEN
+!!$             CALL errorMessage("Observations / readObservationFile", &
+!!$                  "TRACE BACK (50)", 1)
+!!$             RETURN
+!!$          END IF
 
           ! Create observation object:
           CALL NULLIFY(this%obs_arr(i))

@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2011-08-08
+!! @version 2011-08-17
 !!
 PROGRAM oorb
 
@@ -169,6 +169,7 @@ PROGRAM oorb
        ephem_, &
        hist, &
        jac_arr_in, &
+       mean_arr, &
        temp_arr
   REAL(bp), DIMENSION(6,6) :: &
        corr, &
@@ -237,8 +238,9 @@ PROGRAM oorb
        output_interval, &
        pdf_ml_init, periapsis_distance, peak, pp_G, pp_G_unc, &
        ra, &
-       sec, smplx_tol, solar_elongation, solar_elon_min, solar_elon_max, &
-       solar_alt, solar_alt_max, solelon_max, solelon_min, sor_genwin_multiplier, stdev, &
+       sec, smplx_tol, smplx_similarity_tol, &
+       solar_elongation, solar_elon_min, solar_elon_max, &
+       solar_alt, solar_alt_max, solelon_max, solelon_min, generat_multiplier, stdev, &
        step, sun_moon_r2, sunlat, sunlon, &
        timespan, tlat, tlon, toclat, toclon, tsclat, tsclon
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
@@ -263,6 +265,7 @@ PROGRAM oorb
        min, minstep, &
        month, month0, month1, &
        ncenter, nhist, nobj, nobs, norb, noutlier, nstep, &
+       os_norb, os_ntrial, os_sampling_type, &
        smplx_niter, &
        sor_niter, sor_norb, sor_norb_sw, sor_ntrial, sor_ntrial_sw, &
        sor_type_prm, &
@@ -280,6 +283,7 @@ PROGRAM oorb
        cos_gaussian, &
        first, &
        gaussian_rho, &
+       generat_gaussian_deviates, &
        mjd_epoch, &
        outlier_rejection_prm, &
        plot_open, &
@@ -321,11 +325,12 @@ PROGRAM oorb
   pp_G = 99.9_bp
   pp_G_unc = 99.9_bp
   mjd_epoch = .TRUE.
+  write_residuals = .TRUE.
 
   IF (get_cl_option("--version",.FALSE.)) THEN
      WRITE(stdout,"(A)") ""
-     WRITE(stdout,"(A)") "OpenOrb v1.0.0"
-     WRITE(stdout,"(A)") "Copyright 2010 Mikael Granvik, Jenni Virtanen, Karri Muinonen,"
+     WRITE(stdout,"(A)") "OpenOrb v1.0.1"
+     WRITE(stdout,"(A)") "Copyright 2011 Mikael Granvik, Jenni Virtanen, Karri Muinonen,"
      WRITE(stdout,"(A)") "               Teemu Laakso, Dagmara Oszkiewicz"
      WRITE(stdout,"(A)") ""
      WRITE(stdout,"(A)") "OpenOrb comes with NO WARRANTY, to the extent permitted by law."
@@ -1381,7 +1386,7 @@ PROGRAM oorb
      sor_ntrial_sw = -1
      sor_niter = -1
      sor_rho_init = HUGE(sor_rho_init)
-     sor_genwin_multiplier = -1.0_bp
+     generat_multiplier = -1.0_bp
      sor_genwin_offset = -1.0_bp
      sor_iterate_bounds = .TRUE.
      accwin_multiplier = -1.0_bp
@@ -1404,7 +1409,7 @@ PROGRAM oorb
           sor_norb=sor_norb, sor_norb_sw=sor_norb_sw, &
           sor_ntrial=sor_ntrial, sor_ntrial_sw=sor_ntrial_sw, &
           sor_niter=sor_niter, sor_rho_init=sor_rho_init, &
-          sor_genwin_multiplier=sor_genwin_multiplier, &
+          generat_multiplier=generat_multiplier, &
           sor_genwin_offset=sor_genwin_offset, &
           sor_iterate_bounds=sor_iterate_bounds, &
           accwin_multiplier=accwin_multiplier, &
@@ -1565,7 +1570,7 @@ PROGRAM oorb
              sor_iterate_bounds=sor_iterate_bounds, &
              sor_random_obs_selection=.FALSE., &
              gaussian_pdf=gaussian_rho, &
-             sor_generat_multiplier=sor_genwin_multiplier, &
+             generat_multiplier=generat_multiplier, &
              sor_generat_offset=sor_genwin_offset)
         IF (error) THEN
            CALL errorMessage("oorb / ranging", &
@@ -2298,13 +2303,13 @@ PROGRAM oorb
            ! WRITE ORBITS
            orb_arr_cmp => getSampleOrbits(storb)
            IF (error) THEN
-              CALL errorMessage("oorb / ranging ", &
+              CALL errorMessage("oorb / simplex ", &
                    "TRACE BACK (175)", 1)
               STOP
            END IF
            rchi2_arr_cmp => getReducedChi2Distribution(storb)
            IF (error) THEN
-              CALL errorMessage("oorb / ranging ", &
+              CALL errorMessage("oorb / simplex ", &
                    "TRACE BACK (185)", 1)
               STOP
            END IF
@@ -2312,7 +2317,7 @@ PROGRAM oorb
               CALL NEW(out_file, TRIM(id) // ".orb")
               CALL OPEN(out_file)
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
+                 CALL errorMessage("oorb / simplex", &
                       "TRACE BACK (200)", 1)
                  STOP
               END IF
@@ -2330,12 +2335,12 @@ PROGRAM oorb
                       G=HG_arr_in(j,3), &
                       mjd=mjd_epoch)
               ELSE IF (orbit_format_out == "des") THEN
-                 CALL errorMessage("oorb / ranging ", &
-                      "DES format not yet supported for Ranging output.", 1)
+                 CALL errorMessage("oorb / simplex ", &
+                      "DES format not yet supported for Simplex output.", 1)
                  STOP                 
               END IF
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging ", &
+                 CALL errorMessage("oorb / simplex ", &
                       "TRACE BACK (205)", 1)
                  STOP
               END IF
@@ -2352,13 +2357,13 @@ PROGRAM oorb
               CALL setPositionAppend(out_file)
               CALL OPEN(out_file)
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
+                 CALL errorMessage("oorb / simplex", &
                       "TRACE BACK (225)", 1)
                  STOP
               END IF
               CALL writeResiduals(storb, obss_sep(i), getUnit(out_file), compute=.TRUE.)
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
+                 CALL errorMessage("oorb / simplex", &
                       "TRACE BACK (230)", 1)
                  STOP
               END IF
@@ -2391,6 +2396,587 @@ PROGRAM oorb
         STOP
      END IF
 
+
+
+
+  CASE ("observation_sampling")
+
+     ! Orbit inversion using a combination of MCMC sampling in
+     ! observation space and optimization by simplex
+
+     ALLOCATE(orb_arr_(7))
+
+     CALL NULLIFY(epoch)
+     CALL readConfigurationFile(conf_file, &
+          t0=epoch, &
+          dyn_model_init=dyn_model_init, &
+          integrator_init=integrator_init, &
+          integration_step_init=integration_step_init, &
+          generat_multiplier=generat_multiplier, &
+          generat_gaussian_deviates=generat_gaussian_deviates, &
+          smplx_niter=smplx_niter, &
+          smplx_similarity_tol=smplx_similarity_tol, &
+          os_norb=os_norb, &
+          os_ntrial=os_ntrial, &
+          os_sampling_type=os_sampling_type)
+     IF (error) THEN
+        CALL errorMessage("oorb / observation_sampling", &
+             "TRACE BACK (5)", 1)
+        STOP
+     END IF
+
+     obss_sep => getSeparatedSets(obss_in)
+     IF (error) THEN
+        CALL errorMessage("oorb / observation_sampling", &
+             "TRACE BACK (20)", 1)
+        STOP
+     END IF
+     CALL NULLIFY(obss_in)
+     ! Print header before printing first orbit:
+     first = .TRUE.
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "TRACE BACK (25)", 1)
+           STOP
+        END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
+                ". observation set (", TRIM(id), ")."
+        END IF
+        nobs = getNrOfObservations(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "TRACE BACK (30)", 1)
+           STOP
+        END IF
+        IF (nobs < 4) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "Too few observations:", 1)
+           WRITE(stderr,*) "ID: ", TRIM(id), "  and number of observations: ", nobs
+           CYCLE
+        END IF
+        norb = 0
+        IF (ALLOCATED(storb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                    orb_arr => getSampleOrbits(storb_arr_in(j))
+                    IF (error) THEN
+                       CALL errorMessage("oorb / observation_sampling", &
+                            "TRACE BACK (35)", 1)
+                       STOP
+                    END IF
+                    norb = SIZE(orb_arr)
+                    EXIT
+                 ELSE
+                    ALLOCATE(orb_arr(1))
+                    orb_arr(1) = getNominalOrbit(storb_arr_in(j))
+                    IF (error) THEN
+                       CALL errorMessage("oorb / observation_sampling", &
+                            "TRACE BACK (35)", 1)
+                       STOP
+                    END IF
+                    norb = 1
+                    EXIT                    
+                 END IF
+              END IF
+           END DO
+           IF (norb == 0) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "Initial orbit not available.", 1)
+              STOP
+           END IF
+        ELSE IF (ASSOCIATED(orb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 norb = norb + 1
+                 IF (.NOT.ASSOCIATED(orb_arr)) THEN
+                    orb_arr => reallocate(orb_arr,2*norb)
+                 ELSE IF (SIZE(orb_arr) < norb) THEN
+                    orb_arr => reallocate(orb_arr,2*norb)
+                 END IF
+                 orb_arr(norb) = copy(orb_arr_in(j))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / observation_sampling", &
+                         "TRACE BACK (35)", 1)
+                    STOP
+                 END IF
+              END IF
+           END DO
+           IF (norb == 0) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "Initial orbit not available.", 1)
+              STOP
+           ELSE
+              orb_arr => reallocate(orb_arr,norb)
+           END IF
+        END IF
+        dt = getObservationalTimespan(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "TRACE BACK (40)", 1)
+           STOP
+        END IF
+        IF (.NOT.exist(epoch)) THEN
+           CALL NULLIFY(t)
+           obs = getObservation(obss_sep(i),1)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (45)", 1)
+              STOP
+           END IF
+           t = getTime(obs)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (50)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obs)
+           mjd = getMJD(t, "tt")
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (65)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(t)
+           mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
+           CALL NEW(t, mjd, "tt")   
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (70)", 1)
+              STOP
+           END IF
+        ELSE
+           CALL NULLIFY(t)
+           t = copy(epoch)
+        END IF
+        CALL NEW(storb, obss_sep(i))        
+        IF (error) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "TRACE BACK (75)", 1)
+           STOP
+        END IF
+        CALL setParameters(storb, &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step, &
+             outlier_rejection=outlier_rejection_prm, &
+             outlier_multiplier=outlier_multiplier_prm, &
+             generat_multiplier=generat_multiplier, &
+             generat_gaussian_deviates=generat_gaussian_deviates, &
+             t_inv=t, &
+             element_type=element_type_comp_prm, &
+             smplx_niter=smplx_niter, &
+             smplx_force=.FALSE., &
+             smplx_similarity_tol=smplx_similarity_tol, &
+             os_norb=os_norb, &
+             os_ntrial=os_ntrial, &
+             os_sampling_type=os_sampling_type)
+        IF (error) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "TRACE BACK (80)", 1)
+           STOP
+        END IF
+        DO k=1,SIZE(orb_arr)
+           CALL setParameters(orb_arr(k), &
+                dyn_model=dyn_model_init, &
+                perturbers=perturbers, &
+                integrator=integrator_init, &
+                integration_step=integration_step_init)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (85)", 1)
+              STOP
+           END IF
+           CALL propagate(orb_arr(k), t)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (90)", 1)
+              STOP
+           END IF
+           CALL setParameters(orb_arr(k), &
+                dyn_model=dyn_model, &
+                perturbers=perturbers, &
+                integrator=integrator, &
+                integration_step=integration_step)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (95)", 1)
+              STOP
+           END IF
+        END DO
+        CALL observationSampling(storb, orb_arr)
+        IF (error) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "Observation_sampling failed:", 1)
+           IF (err_verb >= 1) THEN
+              WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
+                   " and number of observations: ", nobs
+           END IF
+           error  = .FALSE.
+           CALL NEW(out_file, "problematic_observation_sets" // "." // &
+                TRIM(observation_format_out))
+           CALL setPositionAppend(out_file)
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (115)", 1)
+              STOP
+           END IF
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out))
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (120)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (125)", 1)
+              STOP
+           END IF
+        ELSE
+           obs_masks => getObservationMasks(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (130)", 1)
+              STOP
+           END IF
+           noutlier = 0
+           DO j=1,SIZE(obs_masks,dim=1)
+              IF (ALL(.NOT.obs_masks(j,:))) THEN
+                 noutlier = noutlier + 1
+              END IF
+           END DO
+           IF (noutlier > SIZE(obs_masks,dim=1)/5) THEN
+              ! In case of too many outliers (>20% of obs), throw the
+              ! observation set in a separate bin:
+              CALL NEW(out_file, "observation_sets_with_many_outliers." // TRIM(observation_format_out))
+              CALL setPositionAppend(out_file)
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (145)", 1)
+                 STOP
+              END IF
+              WRITE(getUnit(out_file),"(1X)")
+              WRITE(getUnit(out_file),"(A,I0,A)",advance="no") "# ", &
+                   noutlier, " outliers: "
+              DO j=1,SIZE(obs_masks,dim=1)
+                 IF (ALL(.NOT.obs_masks(j,:))) THEN
+                    WRITE(getUnit(out_file),"(A)",advance="no") "*"
+                 ELSE
+                    WRITE(getUnit(out_file),"(A)",advance="no") "-"
+                 END IF
+              END DO
+              WRITE(getUnit(out_file),"(1X)")
+              CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                   TRIM(observation_format_out))
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (150)", 1)
+                 STOP
+              END IF
+              CALL NULLIFY(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (155)", 1)
+                 STOP
+              END IF
+              CYCLE
+           END IF
+           DEALLOCATE(obs_masks, stat=err)
+
+           HG_arr_in => reallocate(HG_arr_in, os_norb, 4)
+           IF (pp_H_estimation) THEN
+              CALL NEW(physparam, storb)
+              IF (pp_G > 99.0_bp) THEN
+                 CALL estimateHAndG(physparam, obss_sep(i))
+              ELSE
+                 CALL estimateHAndG(physparam, obss_sep(i), &
+                      input_G=pp_G, input_delta_G=pp_G_unc)
+              END IF
+              HG_arr_in(i,1:2) = getH0(physparam)
+              HG_arr_in(i,3:4) = getG(physparam)
+              CALL NULLIFY(physparam)
+           ELSE
+              DO j=2,os_norb
+                 HG_arr_in(j,1:4) = HG_arr_in(1,1:4)
+              END DO
+           END IF
+
+           CALL NEW(out_file, TRIM(out_fname) // ".os")
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (160)", 1)
+              STOP
+           END IF
+           CALL setPositionAppend(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (165)", 1)
+              STOP
+           END IF
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (170)", 1)
+              STOP
+           END IF
+
+           ! WRITE OBSERVATIONS:
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out)) 
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "TRACE BACK (175)", 1)
+              WRITE(getUnit(out_file),"(A)") &
+                   "Could not write observations for object " // TRIM(id) 
+              error = .FALSE.
+           END IF
+           WRITE(getUnit(out_file),"(A)") "#"
+
+           CALL NULLIFY(out_file)
+
+           ! WRITE ORBITS
+           orb_arr_cmp => getSampleOrbits(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling ", &
+                   "TRACE BACK (175)", 1)
+              STOP
+           END IF
+           rchi2_arr_cmp => getReducedChi2Distribution(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling ", &
+                   "TRACE BACK (185)", 1)
+              STOP
+           END IF
+           IF (separately) THEN
+              CALL NEW(out_file, TRIM(id) // ".orb")
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (200)", 1)
+                 STOP
+              END IF
+              lu_orb_out = getUnit(out_file)
+           END IF
+           DO j=1,SIZE(orb_arr_cmp,dim=1)
+              IF (orbit_format_out == "orb") THEN
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                      print_header=j==1, &
+                      element_type_out=element_type_out_prm, &
+                      id=id, &
+                      orb=orb_arr_cmp(j), &
+                      rchi2=rchi2_arr_cmp(j), &
+                      H=HG_arr_in(j,1), &
+                      G=HG_arr_in(j,3), &
+                      mjd=mjd_epoch)
+              ELSE IF (orbit_format_out == "des") THEN
+                 CALL errorMessage("oorb / observation_sampling ", &
+                      "DES format not yet supported for observation_sampling output.", 1)
+                 STOP                 
+              END IF
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling ", &
+                      "TRACE BACK (205)", 1)
+                 STOP
+              END IF
+           END DO
+           IF (separately) THEN
+              CALL NULLIFY(out_file)
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(id) // ".orb")
+              END IF
+           END IF
+           ! WRITE RESIDUALS
+           IF (write_residuals) THEN
+              CALL NEW(out_file, TRIM(out_fname) // ".res")
+              CALL setPositionAppend(out_file)
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (225)", 1)
+                 STOP
+              END IF
+              CALL writeResiduals(storb, obss_sep(i), getUnit(out_file), compute=.TRUE.)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (230)", 1)
+                 STOP
+              END IF
+              CALL NULLIFY(out_file)
+           END IF
+
+           IF (plot_results) THEN
+              CALL toString(dt, str, error, frmt="(F10.2)")
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling ", &
+                      "TRACE BACK (235)", 1)
+                 STOP
+              END IF
+              str = TRIM(id) // "_"// TRIM(str)
+              CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
+                   "_os_residual_stamps.eps", compute=.TRUE.)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (240)", 1)
+                 STOP
+              END IF
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(str) // "_os_residual_stamps.eps")
+              END IF
+              IF (plot_open) THEN
+                 CALL system("gv " // TRIM(str) // "_os_residual_stamps.eps* &")
+              END IF
+              ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
+              IF (err /= 0) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "Could not allocate memory (3).", 1)
+                 STOP
+              END IF
+              CALL NEW(tmp_file, TRIM(str)// "_os_orbits.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling ", &
+                      "TRACE BACK (250)", 1)
+                 STOP
+              END IF
+              pdf_arr_cmp => getPDFValues(storb)
+              DO j=1,SIZE(orb_arr_cmp,dim=1)
+                 IF (element_type_comp_prm == "cartesian") THEN
+                    CALL rotateToEcliptic(orb_arr_cmp(j))
+                 END IF
+                 elements_arr(j,1:6) = getElements(orb_arr_cmp(j), element_type_comp_prm)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / observation_sampling", &
+                         "TRACE BACK (255)", 1)
+                    STOP
+                 END IF
+                 IF (element_type_comp_prm == "keplerian") THEN
+                    elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
+                 END IF
+                 elements_arr(j,7) = pdf_arr_cmp(j)
+                 t = getTime(orb_arr_cmp(j))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / observation_sampling ", &
+                         "TRACE BACK (260)", 1)
+                    STOP
+                 END IF
+                 WRITE(getUnit(tmp_file),"(7(E23.15,1X),A)") &
+                      elements_arr(j,1:6), &
+                      pdf_arr_cmp(j), &
+                      getCalendarDateString(t,"tdt")
+                 IF (error) THEN
+                    CALL errorMessage("oorb / observation_sampling ", &
+                         "TRACE BACK (265)", 1)
+                    STOP
+                 END IF
+                 CALL NULLIFY(t)
+              END DO
+              CALL NULLIFY(tmp_file)
+              CALL NEW(tmp_file, TRIM(str) // &
+                   "_os_sample_standard_deviations.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling ", &
+                      "TRACE BACK (275)", 1)
+                 STOP
+              END IF
+              WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                   advance="no") &
+                   getObservationalTimespan(obss_sep(i))
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling ", &
+                      "TRACE BACK (280)", 1)
+                 STOP
+              END IF
+              DO j=1,6
+                 CALL moments(elements_arr(:,j), &
+                      pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                 IF (LEN_TRIM(errstr) /= 0) THEN
+                    CALL errorMessage("oorb / observation_sampling", &
+                         "Could not compute moments. " // TRIM(errstr), 1)
+                    STOP
+                 END IF
+                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                      advance="no") stdev
+              END DO
+              WRITE(getUnit(tmp_file),*)
+              CALL NULLIFY(tmp_file)
+              DEALLOCATE(elements_arr, stat=err)
+              IF (err /= 0) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "Could not deallocate memory (5).", 1)
+                 STOP
+              END IF
+              ! Make plot using gnuplot:
+              CALL system("cp " // TRIM(str) // &
+                   "_os_orbits.out sor_orbits.out")
+              IF (element_type_comp_prm == "cartesian") THEN
+                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_car.gp")
+              ELSE
+                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
+              END IF
+              CALL system("cp sor_results.eps " // TRIM(str) // &
+                   "_os_" // TRIM(element_type_comp_prm) // &
+                   "_results.eps")
+              CALL system("rm -f sor_orbits.out sor_results.eps " // & 
+                   TRIM(str) // "_os_orbits.out " // TRIM(str) // &
+                   "_os_sample_standard_deviations.out")
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(str) // "_os_" // &
+                      TRIM(element_type_comp_prm) // "_results.eps")
+              END IF
+              IF (plot_open) THEN
+                 CALL system("gv " // TRIM(str) // "_os_" // &
+                      TRIM(element_type_comp_prm) // &
+                      "_results.eps* &")
+              END IF
+           END IF
+           DO j=1,SIZE(orb_arr_cmp)
+              CALL NULLIFY(orb_arr_cmp(j))
+           END DO
+           DEALLOCATE(orb_arr_cmp, stat=err)
+           DEALLOCATE(pdf_arr_cmp, stat=err)
+           DEALLOCATE(rchi2_arr_cmp, stat=err)
+           IF (err /= 0) THEN
+              CALL errorMessage("oorb / observation_sampling", &
+                   "Could not deallocate memory (10).", 1)
+              STOP
+           END IF
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(3(1X,A))") "Object", &
+                   TRIM(id), "successfully processed."
+           END IF
+        END IF
+        DEALLOCATE(orb_arr, stat=err)
+        IF (err /= 0) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "Could not deallocate memory (10)", 1)
+           STOP
+        END IF
+        CALL NULLIFY(storb)
+        CALL NULLIFY(orb)
+        IF (info_verb > 2) THEN
+           WRITE(stdout,*)
+           WRITE(stdout,*)
+        END IF
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep, orb_arr_, stat=err)
+     IF (err /= 0) THEN
+        CALL errorMessage("oorb / observation_sampling", &
+             "Could not deallocate memory (15)", 1)
+        STOP
+     END IF
+
+
+
   CASE ("lsl")
 
      ! Orbital inversion using least squares with linearized
@@ -2415,7 +3001,7 @@ PROGRAM oorb
           sor_ntrial_sw=sor_ntrial_sw, &
           sor_niter=sor_niter, &
           sor_rho_init=sor_rho_init, &
-          sor_genwin_multiplier=sor_genwin_multiplier, &
+          generat_multiplier=generat_multiplier, &
           accwin_multiplier=accwin_multiplier)
      IF (error) THEN
         CALL errorMessage("oorb / lsl", &
@@ -6143,6 +6729,33 @@ PROGRAM oorb
      END DO
      DEALLOCATE(observers, obs_arr)
 
+
+  CASE ("add_noise")
+
+     obss_sep => getSeparatedSets(obss_in)
+     IF (error) THEN
+        CALL errorMessage("oorb / add_noise", &
+             "TRACE BACK (10)", 1)
+        STOP
+     END IF
+     CALL NULLIFY(obss_in)
+     mean = 0.0_bp
+     cov = 0.0_bp
+     cov(2,2) = (1.0_bp*rad_asec)**2
+     cov(3,3) = (1.0_bp*rad_asec)**2
+     DO i=1,SIZE(obss_sep)
+        ALLOCATE(mean_arr(getNrOfObservations(obss_sep(i)),6), &
+             cov_arr(getNrOfObservations(obss_sep(i)),6,6))
+        DO j=1,SIZE(mean_arr,dim=1)
+           mean_arr(j,:) = mean
+           cov_arr(j,:,:) = cov
+        END DO
+        CALL addMultinormalDeviates(obss_sep(i), mean_arr, cov_arr)
+        CALL writeObservationFile(obss_sep(i), stdout, "des")
+        CALL NULLIFY(obss_sep(i))
+        DEALLOCATE(mean_arr, cov_arr)
+     END DO
+     DEALLOCATE(obss_sep)
 
 
   CASE default
