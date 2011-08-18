@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2011-08-17
+!! @version 2011-08-18
 !!
 PROGRAM oorb
 
@@ -2406,6 +2406,7 @@ PROGRAM oorb
 
      ALLOCATE(orb_arr_(7))
 
+     accwin_multiplier = -1.0_bp
      CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
@@ -2414,6 +2415,7 @@ PROGRAM oorb
           integration_step_init=integration_step_init, &
           generat_multiplier=generat_multiplier, &
           generat_gaussian_deviates=generat_gaussian_deviates, &
+          accwin_multiplier=accwin_multiplier, &
           smplx_niter=smplx_niter, &
           smplx_similarity_tol=smplx_similarity_tol, &
           os_norb=os_norb, &
@@ -2450,12 +2452,6 @@ PROGRAM oorb
            CALL errorMessage("oorb / observation_sampling", &
                 "TRACE BACK (30)", 1)
            STOP
-        END IF
-        IF (nobs < 4) THEN
-           CALL errorMessage("oorb / observation_sampling", &
-                "Too few observations:", 1)
-           WRITE(stderr,*) "ID: ", TRIM(id), "  and number of observations: ", nobs
-           CYCLE
         END IF
         norb = 0
         IF (ALLOCATED(storb_arr_in)) THEN
@@ -2567,6 +2563,7 @@ PROGRAM oorb
              outlier_multiplier=outlier_multiplier_prm, &
              generat_multiplier=generat_multiplier, &
              generat_gaussian_deviates=generat_gaussian_deviates, &
+             accept_multiplier=accwin_multiplier, &
              t_inv=t, &
              element_type=element_type_comp_prm, &
              smplx_niter=smplx_niter, &
