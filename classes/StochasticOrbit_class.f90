@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-08-17
+!! @version 2011-08-18
 !!  
 MODULE StochasticOrbit_cl
 
@@ -5942,7 +5942,7 @@ CONTAINS
          this%pdf_arr_cmp(this%os_norb_prm))
     iorb = 0
     pdv_previous = 1
-    DO i=1,this%os_ntrial_prm
+    DO i=0,this%os_ntrial_prm
 
        ! Make working copy of the original observations and
        ! configuration for orbit inversion:
@@ -5957,20 +5957,22 @@ CONTAINS
           RETURN
        END IF
 
-       ! Add noise to original observations:
-       IF (this%generat_gaussian_deviates_prm) THEN
-          CALL addMultinormalDeviates(storb%obss, mean_arr, this%generat_multiplier_prm**2 * cov_mat_obs)
-       ELSE
-          CALL addUniformDeviates(storb%obss, center_and_absbound_arr)
-       END IF
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / " // &
-               "observationSampling", &
-               "TRACE BACK (70)", 1)
-          DEALLOCATE(cov_mat_obs, stat=err)
-          DEALLOCATE(center_and_absbound_arr, stat=err)
-          DEALLOCATE(obs_masks_, stat=err)
-          RETURN
+       IF (.NOT.first) THEN
+          ! Add noise to original observations:
+          IF (this%generat_gaussian_deviates_prm) THEN
+             CALL addMultinormalDeviates(storb%obss, mean_arr, this%generat_multiplier_prm**2 * cov_mat_obs)
+          ELSE
+             CALL addUniformDeviates(storb%obss, center_and_absbound_arr)
+          END IF
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / " // &
+                  "observationSampling", &
+                  "TRACE BACK (70)", 1)
+             DEALLOCATE(cov_mat_obs, stat=err)
+             DEALLOCATE(center_and_absbound_arr, stat=err)
+             DEALLOCATE(obs_masks_, stat=err)
+             RETURN
+          END IF
        END IF
 
        ! Make a working copy of the set of initial orbits
@@ -6011,15 +6013,21 @@ CONTAINS
        ! Compute probability density value
        pdv = EXP(-0.5_bp*rchi2)
 
+       ! If this is the first trial then the observations were the
+       ! nominal ones and the computations were done only to set up
+       ! the variables used in the MCMC comparison
+       IF (first) THEN
+          pdv_previous = pdv
+          first = .FALSE.
+          CYCLE
+       END IF
+
        ! Compute the pdv ratio between the previous accepted orbit and
        ! the current trial orbit and use the MCMC criterion to decide
        ! whether the trial orbit should be accepted or rejected
        a_r = pdv/MAX(TINY(a_r),pdv_previous)
        accept = .FALSE.
-       IF (first) THEN
-          accept = .TRUE.
-          first = .FALSE.
-       ELSE IF (a_r > 1.0_bp) THEN
+       IF (a_r > 1.0_bp) THEN
           accept = .TRUE.
        ELSE
           CALL randomNumber(ran)
