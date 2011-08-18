@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2011-08-17
+!! @version 2011-08-18
 !!  
 MODULE Observations_cl
 
@@ -4331,9 +4331,9 @@ CONTAINS
        jd = 2456000.5_bp
        CALL NEW(t0, jd-2400000.5_bp, "tdt")
        DO i=1,norb
-          READ(getUnit(orbfile),*,iostat=err) element_arr(i,:)
+          READ(getUnit(orbfile),*,iostat=err) element_arr(i,:), str
           IF (err /= 0) THEN
-             WRITE(*,*) element_arr(i,:)
+             WRITE(*,*) element_arr(i,:), str
              STOP
           END IF
        END DO
@@ -4490,11 +4490,11 @@ CONTAINS
           ! As a temporary solution, generate positions based on given
           ! orbital elements, while the dynamical model is uncertain:
           DO j=1,norb
-             IF (ABS(REAL(nr,bp) - element_arr(j,1)) < EPSILON(element_arr(1,1))) THEN
+             IF (nr == NINT(element_arr(j,1))) THEN
                 EXIT
              END IF
           END DO
-          CALL NEW(orb, element_arr(nr,2:7), "keplerian", "ecliptic", t0)!, keplerian=.TRUE.)
+          CALL NEW(orb, element_arr(j,2:7), "keplerian", "ecliptic", t0)
           ! Generate n-body observations:
           !CALL setPropagationParameters(orb, dyn_model="n-body", &
           !     integrator="gauss-radau", integration_step=1.0_bp)
