@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-08-18
+!! @version 2011-08-22
 !!  
 MODULE StochasticOrbit_cl
 
@@ -106,7 +106,7 @@ MODULE StochasticOrbit_cl
      REAL(bp), DIMENSION(:,:), POINTER   :: rms_arr_cmp            => NULL()
      REAL(bp), DIMENSION(:,:), POINTER   :: res_accept_prm         => NULL()
      REAL(bp), DIMENSION(:,:), POINTER   :: jac_arr_cmp            => NULL()
-     REAL(bp), DIMENSION(:), POINTER     :: rchi2_arr_cmp      => NULL()
+     REAL(bp), DIMENSION(:), POINTER     :: rchi2_arr_cmp          => NULL()
      REAL(bp), DIMENSION(:), POINTER     :: pdf_arr_cmp            => NULL()
      REAL(bp), DIMENSION(:), POINTER     :: reg_apr_arr_cmp        => NULL()
      REAL(bp)                            :: pdf_ml_init_prm        = -1.0_bp
@@ -115,6 +115,7 @@ MODULE StochasticOrbit_cl
      REAL(bp)                            :: pdf_ml_cmp             = -1.0_bp
      REAL(bp)                            :: accept_multiplier_prm  = -1.0_bp
      REAL(bp)                            :: outlier_multiplier_prm = -1.0_bp
+     INTEGER, DIMENSION(:), POINTER      :: repetition_arr_cmp     => NULL()
      LOGICAL, DIMENSION(:,:), POINTER    :: obs_masks_prm          => NULL()
      LOGICAL                             :: outlier_rejection_prm  = .FALSE.
      LOGICAL                             :: regularization_prm     = .TRUE.
@@ -126,18 +127,18 @@ MODULE StochasticOrbit_cl
      REAL(bp)                            :: generat_multiplier_prm = -1.0_bp
 
      ! Bayesian informative apriori assumptions
-     REAL(bp)                            :: apriori_a_max_prm                    = 500.0
-     REAL(bp)                            :: apriori_a_min_prm                    = planetary_radii(11)
-     REAL(bp)                            :: apriori_periapsis_max_prm           = -1.0_bp
-     REAL(bp)                            :: apriori_periapsis_min_prm           = -1.0_bp
-     REAL(bp)                            :: apriori_apoapsis_max_prm             = -1.0_bp
-     REAL(bp)                            :: apriori_apoapsis_min_prm             = -1.0_bp
-     REAL(bp)                            :: apriori_rho_max_prm                  = 200.0_bp
-     REAL(bp)                            :: apriori_rho_min_prm                  = 0.0_bp
+     REAL(bp)                            :: apriori_a_max_prm             = 500.0
+     REAL(bp)                            :: apriori_a_min_prm             = planetary_radii(11)
+     REAL(bp)                            :: apriori_periapsis_max_prm     = -1.0_bp
+     REAL(bp)                            :: apriori_periapsis_min_prm     = -1.0_bp
+     REAL(bp)                            :: apriori_apoapsis_max_prm      = -1.0_bp
+     REAL(bp)                            :: apriori_apoapsis_min_prm      = -1.0_bp
+     REAL(bp)                            :: apriori_rho_max_prm           = 200.0_bp
+     REAL(bp)                            :: apriori_rho_min_prm           = 0.0_bp
      REAL(bp)                            :: apriori_hcentric_dist_max_prm = 200.0_bp
      REAL(bp)                            :: apriori_hcentric_dist_min_prm = planetary_radii(11)
-     REAL(bp)                            :: apriori_velocity_max_prm             = 0.12_bp
-     LOGICAL                             :: informative_apriori_prm              = .TRUE.
+     REAL(bp)                            :: apriori_velocity_max_prm      = 0.12_bp
+     LOGICAL                             :: informative_apriori_prm       = .TRUE.
 
      ! Parameters for propagation:
      CHARACTER(len=DYN_MODEL_LEN)        :: dyn_model_prm        = "2-body"
@@ -631,6 +632,9 @@ CONTAINS
     IF (ASSOCIATED(this%jac_arr_cmp)) THEN
        DEALLOCATE(this%jac_arr_cmp, stat=err)
     END IF
+    IF (ASSOCIATED(this%repetition_arr_cmp)) THEN
+       DEALLOCATE(this%repetition_arr_cmp, stat=err)
+    END IF
     IF (ASSOCIATED(this%obs_masks_prm)) THEN
        DEALLOCATE(this%obs_masks_prm, stat=err)
     END IF
@@ -847,6 +851,16 @@ CONTAINS
           RETURN
        END IF
        copy_SO%jac_arr_cmp = this%jac_arr_cmp
+    END IF
+    IF (ASSOCIATED(this%repetition_arr_cmp)) THEN
+       ALLOCATE(copy_SO%repetition_arr_cmp(norb), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / copy", &
+               "Could not allocate pointer (46).", 1)
+          RETURN
+       END IF
+       copy_SO%repetition_arr_cmp = this%repetition_arr_cmp
     END IF
     IF (ASSOCIATED(this%obs_masks_prm)) THEN
        ALLOCATE(copy_SO%obs_masks_prm(nobs,6), stat=err)
@@ -5054,7 +5068,7 @@ CONTAINS
   !! Returns error.
   !!
   SUBROUTINE getResults_SO(this,&
-       reg_apr_arr, jac_arr, &
+       reg_apr_arr, jac_arr, repetition_arr_cmp, &
        sor_norb_cmp, sor_ntrial_cmp,& 
        sor_rho_cmp, sor_niter_cmp, &
        sor_rho_arr_cmp, sor_rho_histo_cmp, &
@@ -5067,6 +5081,7 @@ CONTAINS
     REAL(bp), DIMENSION(:,:), POINTER, OPTIONAL     :: &
          jac_arr
     REAL(bp), DIMENSION(:), POINTER, OPTIONAL       :: reg_apr_arr
+    INTEGER, DIMENSION(:), POINTER, OPTIONAL       :: repetition_arr_cmp
     REAL(bp), DIMENSION(:,:), POINTER, OPTIONAL     :: sor_rho_arr_cmp
     REAL(bp), DIMENSION(2,2), INTENT(out), OPTIONAL :: &
          sor_rho_cmp
@@ -5121,6 +5136,23 @@ CONTAINS
           error = .TRUE.
           CALL errorMessage("StochasticOrbit / getResults", &
                "Jacobians not available.", 1)
+          RETURN
+       END IF
+    END IF
+    IF (PRESENT(repetition_arr_cmp)) THEN
+       IF (ASSOCIATED(this%repetition_arr_cmp)) THEN
+          ALLOCATE(repetition_arr_cmp(SIZE(this%repetition_arr_cmp)), stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / getResults", &
+                  "Could not allocate memory.", 1)
+             RETURN
+          END IF
+          repetition_arr_cmp = this%repetition_arr_cmp
+       ELSE
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / getResults", &
+               "Repetition array not available.", 1)
           RETURN
        END IF
     END IF
@@ -5937,9 +5969,14 @@ CONTAINS
     IF (ASSOCIATED(this%pdf_arr_cmp)) THEN
        DEALLOCATE(this%pdf_arr_cmp)
     END IF
+    IF (ASSOCIATED(this%repetition_arr_cmp)) THEN
+       DEALLOCATE(this%repetition_arr_cmp)
+    END IF
     ALLOCATE(this%orb_arr_cmp(this%os_norb_prm), &
          this%rchi2_arr_cmp(this%os_norb_prm), &
-         this%pdf_arr_cmp(this%os_norb_prm))
+         this%pdf_arr_cmp(this%os_norb_prm), &
+         this%repetition_arr_cmp(this%os_norb_prm))
+    this%repetition_arr_cmp = 0
     iorb = 0
     pdv_previous = 1
     DO i=0,this%os_ntrial_prm
@@ -6104,6 +6141,9 @@ CONTAINS
           this%pdf_arr_cmp(iorb) = pdv
           pdv_previous = pdv
        END IF
+       IF (iorb /= 0) THEN
+          this%repetition_arr_cmp(iorb) = this%repetition_arr_cmp(iorb) + 1
+       END IF
 
        ! Delete working copies
        CALL NULLIFY(storb)
@@ -6121,6 +6161,7 @@ CONTAINS
     this%orb_arr_cmp => reallocate(this%orb_arr_cmp, iorb)
     this%rchi2_arr_cmp => reallocate(this%rchi2_arr_cmp, iorb)
     this%pdf_arr_cmp => reallocate(this%pdf_arr_cmp, iorb)
+    this%repetition_arr_cmp => reallocate(this%repetition_arr_cmp, iorb)
 
     DEALLOCATE(mean_arr, stat=err)
     DEALLOCATE(cov_mat_obs, stat=err)

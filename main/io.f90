@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2011-08-17
+!! @version 2011-08-22
 !!
 MODULE io
 
@@ -2770,7 +2770,7 @@ CONTAINS
   SUBROUTINE writeOpenOrbOrbitFile(lu, print_header, element_type_out, &
        id, orb, element_type_pdf, cov, pdf, rchi2, reg_apr, &
        jac_sph_inv, jac_car_kep, jac_equ_kep, H, G, rho1, rho2, &
-       rms, npdf, mjd)
+       rms, npdf, mjd, repetitions)
 
     IMPLICIT NONE
     INTEGER, INTENT(in) :: lu
@@ -2783,6 +2783,7 @@ CONTAINS
     REAL(bp), INTENT(in), OPTIONAL :: pdf, rchi2, reg_apr, &
          jac_sph_inv, jac_car_kep, jac_equ_kep, H, G, rho1, rho2, &
          rms, npdf
+    INTEGER, INTENT(in), OPTIONAL :: repetitions
     LOGICAL, INTENT(in), OPTIONAL :: mjd
 
     TYPE (Time) :: t
@@ -2800,15 +2801,18 @@ CONTAINS
        header(3)(indx:indx+16) = "#  designation  "
        header(4)(indx:indx+16) = "#-----0001-----<"
        indx = indx + 16
-!!$       header(1)(17:32) = "   Periapsis    "
-!!$       header(2)(17:32) = "   Distance q   "
-!!$       header(3)(17:32) = "      [AU]      "
-!!$       header(4)(17:32) = ">-----0002-----<"
-       IF (element_type_out == "keplerian") THEN
-          header(1)(indx:indx+22) = "   Semimajor axis a   "
-          header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "         [AU]         "
-          header(4)(indx:indx+22) = ">--------0002--------<"
+       IF (element_type_out == "keplerian" .OR. element_type_out == "cometary") THEN
+          IF (element_type_out == "keplerian") THEN
+             header(1)(indx:indx+22) = "   Semimajor axis a   "
+             header(2)(indx:indx+22) = "                      "
+             header(3)(indx:indx+22) = "         [AU]         "
+             header(4)(indx:indx+22) = ">--------0002--------<"
+          ELSE ! cometary
+             header(1)(indx:indx+22) = " Periapsis distance q "
+             header(2)(indx:indx+22) = "                      "
+             header(3)(indx:indx+22) = "         [AU]         "
+             header(4)(indx:indx+22) = ">--------0075--------<"
+          END IF
           indx = indx + 22
           header(1)(indx:indx+22) = "    Eccentricity e    "
           header(2)(indx:indx+22) = "                      "
@@ -2830,10 +2834,17 @@ CONTAINS
           header(3)(indx:indx+22) = "         [deg]        "
           header(4)(indx:indx+22) = ">--------0006--------<"
           indx = indx + 22
-          header(1)(indx:indx+22) = "     Mean Anomaly M   "
-          header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "         [deg]        "
-          header(4)(indx:indx+22) = ">--------0007--------<"
+          IF (element_type_out == "keplerian") THEN
+             header(1)(indx:indx+22) = "     Mean Anomaly M   "
+             header(2)(indx:indx+22) = "                      "
+             header(3)(indx:indx+22) = "         [deg]        "
+             header(4)(indx:indx+22) = ">--------0007--------<"
+          ELSE ! cometary
+             header(1)(indx:indx+22) = " Time of periapsis t0 "
+             header(2)(indx:indx+22) = "                      "
+             header(3)(indx:indx+22) = "         [MJD]        "
+             header(4)(indx:indx+22) = ">--------0076--------<"             
+          END IF
           indx = indx + 22
        ELSE IF (element_type_out == "cartesian") THEN
           header(1)(indx:indx+22) = "      Ecliptic x      "
@@ -3205,6 +3216,13 @@ CONTAINS
           header(4)(indx:indx+19) = ">-------0073------<"
           indx = indx + 19
        END IF
+       IF (PRESENT(repetitions)) THEN
+          header(1)(indx:indx+12) = " Repeated "
+          header(2)(indx:indx+12) = "  in MCMC "
+          header(3)(indx:indx+12) = " sampling "
+          header(4)(indx:indx+12) = ">--0077--<"
+          indx = indx + 10
+       END IF
 
        WRITE(lu, "(A)", iostat=err) TRIM(header(1))
        WRITE(lu, "(A)", iostat=err) TRIM(header(2))
@@ -3217,10 +3235,10 @@ CONTAINS
             "TRACE BACK (5)", 1)
        RETURN
     END IF
-!!$    ! a -> q
-!!$    elements(1) = elements(1)*abs(1-elements(2))
     IF (element_type_out == "keplerian") THEN
        elements(3:6) = elements(3:6)/rad_deg
+    ELSE IF (element_type_out == "cometary") THEN
+       elements(3:5) = elements(3:5)/rad_deg
     ELSE IF (element_type_out == "delaunay") THEN
        elements(1:3) = elements(1:3)/rad_deg
     ELSE IF (element_type_out == "poincare") THEN
@@ -3432,7 +3450,7 @@ CONTAINS
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("io / writeOpenOrbOrbitFile", &
-               "Write error (60).", 1)
+               "Write error (65).", 1)
           RETURN
        END IF
     END IF
@@ -3441,7 +3459,16 @@ CONTAINS
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("io / writeOpenOrbOrbitFile", &
-               "Write error (60).", 1)
+               "Write error (70).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (PRESENT(repetitions)) THEN
+       WRITE(lu, "(1X,I9)", advance="no", iostat=err) repetitions
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / writeOpenOrbOrbitFile", &
+               "Write error (75).", 1)
           RETURN
        END IF
     END IF
