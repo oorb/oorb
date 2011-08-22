@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2011-08-18
+!! @version 2011-08-22
 !!
 PROGRAM oorb
 
@@ -243,6 +243,8 @@ PROGRAM oorb
        solar_alt, solar_alt_max, solelon_max, solelon_min, generat_multiplier, stdev, &
        step, sun_moon_r2, sunlat, sunlon, &
        timespan, tlat, tlon, toclat, toclon, tsclat, tsclon
+  INTEGER, DIMENSION(:), POINTER :: &
+       repetition_arr_cmp
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
        indx_arr, &
        int_arr
@@ -2697,8 +2699,18 @@ PROGRAM oorb
                  CALL estimateHAndG(physparam, obss_sep(i), &
                       input_G=pp_G, input_delta_G=pp_G_unc)
               END IF
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (156)", 1)
+                 STOP
+              END IF
               HG_arr_in(i,1:2) = getH0(physparam)
               HG_arr_in(i,3:4) = getG(physparam)
+              IF (error) THEN
+                 CALL errorMessage("oorb / observation_sampling", &
+                      "TRACE BACK (157)", 1)
+                 STOP
+              END IF
               CALL NULLIFY(physparam)
            ELSE
               DO j=2,os_norb
@@ -2752,6 +2764,12 @@ PROGRAM oorb
                    "TRACE BACK (185)", 1)
               STOP
            END IF
+           CALL getResults(storb, repetition_arr_cmp=repetition_arr_cmp)
+           IF (error) THEN
+              CALL errorMessage("oorb / observation_sampling ", &
+                   "TRACE BACK (186)", 1)
+              STOP
+           END IF
            IF (separately) THEN
               CALL NEW(out_file, TRIM(id) // ".orb")
               CALL OPEN(out_file)
@@ -2772,7 +2790,8 @@ PROGRAM oorb
                       rchi2=rchi2_arr_cmp(j), &
                       H=HG_arr_in(j,1), &
                       G=HG_arr_in(j,3), &
-                      mjd=mjd_epoch)
+                      mjd=mjd_epoch, &
+                      repetitions=repetition_arr_cmp(j))
               ELSE IF (orbit_format_out == "des") THEN
                  CALL errorMessage("oorb / observation_sampling ", &
                       "DES format not yet supported for observation_sampling output.", 1)
@@ -2941,6 +2960,7 @@ PROGRAM oorb
            DEALLOCATE(orb_arr_cmp, stat=err)
            DEALLOCATE(pdf_arr_cmp, stat=err)
            DEALLOCATE(rchi2_arr_cmp, stat=err)
+           DEALLOCATE(repetition_arr_cmp, stat=err)           
            IF (err /= 0) THEN
               CALL errorMessage("oorb / observation_sampling", &
                    "Could not deallocate memory (10).", 1)
