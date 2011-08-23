@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2011-08-22
+!! @version 2011-08-23
 !!
 MODULE io
 
@@ -537,8 +537,8 @@ CONTAINS
        dyn_model, perturbers, integrator, integration_step, relativity, &
        dyn_model_init, integrator_init, integration_step_init, &
        accwin_multiplier, &
-       uniform_pdf, regularized_pdf, &
-       pdf_ml, & 
+       dchi2_filtering, regularized_pdf, &
+       chi2_min, & 
        outlier_rejection, outlier_multiplier, &
        apriori_a_min, apriori_a_max, apriori_periapsis_min, &
        apriori_periapsis_max, apriori_apoapsis_min, &
@@ -604,7 +604,7 @@ CONTAINS
          smplx_similarity_tol, &
          integration_step, &
          integration_step_init, &
-         pdf_ml, &
+         chi2_min, &
          apriori_a_min, &
          apriori_a_max, &
          apriori_periapsis_min, &
@@ -654,7 +654,7 @@ CONTAINS
          plot_open, &
          multiple_ids, &
          relativity, &
-         uniform_pdf, &
+         dchi2_filtering, &
          regularized_pdf, &
          masked_obs, &
          outlier_rejection, &
@@ -1156,21 +1156,36 @@ CONTAINS
 
 
           ! STATISTICAL PARAMETERS
-       CASE ("uni.pdf")
-          IF (PRESENT(uniform_pdf)) THEN
-             uniform_pdf = .TRUE.
+       CASE ("dchi2_filtering")
+          IF (PRESENT(dchi2_filtering)) THEN
+             READ(par_val, *, iostat=err) dchi2_filtering
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (21).", 1)
+             END IF
           END IF
        CASE ("reg.pdf")
           IF (PRESENT(regularized_pdf)) THEN
-             regularized_pdf = .TRUE.
+             READ(par_val, *, iostat=err) regularized_pdf
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (21).", 1)
+             END IF
           END IF
        CASE ("obs.mask")
           IF (PRESENT(masked_obs)) THEN
-             masked_obs = .TRUE.
+             READ(par_val, *, iostat=err) masked_obs
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (21).", 1)
+             END IF
           END IF
-       CASE ("pdf.init")
-          IF (PRESENT(pdf_ml)) THEN
-             CALL toReal(par_val, pdf_ml, error)
+       CASE ("chi2_min.init")
+          IF (PRESENT(chi2_min)) THEN
+             CALL toReal(par_val, chi2_min, error)
           END IF
 
 
@@ -2045,6 +2060,14 @@ CONTAINS
          INDEX(header(4),"-0007-") /= 0) THEN
        element_type_in = "keplerian"
        elements(3:6) = elements(3:6)*rad_deg
+    ELSE IF (INDEX(header(4),"-0075-") /= 0 .AND. &
+         INDEX(header(4),"-0003-") /= 0 .AND. &
+         INDEX(header(4),"-0004-") /= 0 .AND. &
+         INDEX(header(4),"-0005-") /= 0 .AND. &
+         INDEX(header(4),"-0006-") /= 0 .AND. &
+         INDEX(header(4),"-0076-") /= 0) THEN
+       element_type_in = "cometary"
+       elements(3:5) = elements(3:5)*rad_deg
     ELSE IF (INDEX(header(4),"-0039-") /= 0 .AND. &
          INDEX(header(4),"-0040-") /= 0 .AND. &
          INDEX(header(4),"-0041-") /= 0 .AND. &
@@ -4031,7 +4054,7 @@ CONTAINS
     REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: &
          generat_multiplier_prm, accept_multiplier_prm, obsarc, &
-         prob_mass, pdf_ml_prm, apriori_a_min_prm, apriori_a_max_prm, &
+         dchi2, chi2_min_prm, apriori_a_min_prm, apriori_a_max_prm, &
          apriori_periapsis_min_prm, apriori_periapsis_max_prm, &
          apriori_apoapsis_min_prm, apriori_apoapsis_max_prm, &
          apriori_rho_min_prm, apriori_rho_max_prm
@@ -4046,7 +4069,7 @@ CONTAINS
          nobs, i, k, err, indx_ml, nra, ndec
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask_arr
-    LOGICAL :: impact_, sor_random_obs_prm, regularization_prm, uniform_pdf_prm
+    LOGICAL :: impact_, sor_random_obs_prm, regularization_prm, dchi2_filtering_prm
 
     IF (.NOT. exist(storb)) THEN
        error = .TRUE.
@@ -4123,11 +4146,11 @@ CONTAINS
     CALL getParameters(storb, &
          dyn_model=dyn_model_prm, integrator=integrator, &
          element_type = element_type_prm, &
-         uniform_pdf = uniform_pdf_prm, regularized_pdf = regularization_prm, &
+         dchi2_filtering = dchi2_filtering_prm, regularized_pdf = regularization_prm, &
          accept_multiplier = accept_multiplier_prm, &
          res_accept = res_accept_prm, &
-         pdf_ml_prm = pdf_ml_prm, &
-         prob_mass = prob_mass, &
+         chi2_min_prm = chi2_min_prm, &
+         dchi2_prm = dchi2, &
          apriori_a_min = apriori_a_min_prm, &
          apriori_a_max = apriori_a_max_prm, &
          apriori_periapsis_min = apriori_periapsis_min_prm, &
@@ -4289,7 +4312,7 @@ CONTAINS
             TRIM(sor_2point_method), &
             TRIM(dyn_model_prm), &
             regularization_prm, &
-            uniform_pdf_prm
+            dchi2_filtering_prm
 
 
        frmt = "('#',3X,'BAYESIAN A PRIORI INFORMATION'/" // &
@@ -4329,20 +4352,16 @@ CONTAINS
          "'#',3X,'  sigma multiplier               = ',E14.4/" // &
          "'#',3X,'  window for 1st R.A.            = ',E14.4,3X,'arcsec'/" // &
          "'#',3X,'  window for 1st Dec.            = ',E14.4,3X,'arcsec'/" // &
-         "'#',3X,'Acceptance, PDF                  ',3X,/" // &
-         "'#',3X,'  reference ML value             = ',E14.4/" // &
-         "'#',3X,'  chi-square difference          = ',E14.4/" // &
-         "'#',3X,'  corresponding relative bound   = ',E14.4/" // &
-         "'#',3X,'  Delta dchi-square              = ',E14.4/" // &
+         "'#',3X,'Acceptance, chi2                   ',3X,/" // &
+         "'#',3X,'  reference value                = ',E14.4/" // &
+         "'#',3X,'  chi2 difference                = ',E14.4/" // &
          "'#')"
     WRITE(lu,TRIM(frmt)) & 
          MINVAL(obs_stdev_arr(:,2:3),dim=1), &
          accept_multiplier_prm, &
          res_accept_prm(1,2:3)/rad_asec,&
-         pdf_ml_prm, &
-         prob_mass, &
-         EXP(-0.5_bp*prob_mass), &
-         ABS(2.0_bp*LOG(pdf_arr_cmp(indx_ml)/pdf_ml_prm))
+         chi2_min_prm, &
+         dchi2
 
     IF (impact_) THEN
 
@@ -4496,7 +4515,7 @@ CONTAINS
     REAL(bp), DIMENSION(6) :: elements, elem_stdevs
     REAL(bp) :: &
          accept_multiplier_prm, obsarc, &
-         prob_mass, pdf_ml_prm
+         dchi2, chi2_min_prm
     INTEGER :: & 
          vov_norb_cmp, vov_ntrial_cmp, &
          vov_norb_prm, vov_ntrial_prm, vov_nmap_prm 
@@ -4507,7 +4526,7 @@ CONTAINS
          vov_scaling_ready_cmp
     LOGICAL, DIMENSION(6) :: &
          vov_mapping_mask_prm
-    LOGICAL :: regularization_prm, uniform_pdf_prm
+    LOGICAL :: regularization_prm, dchi2_filtering_prm
     CHARACTER(len=ELEMENT_TYPE_LEN) :: &
          element_type_prm
     CHARACTER(len=DYN_MODEL_LEN) :: &    
@@ -4558,11 +4577,11 @@ CONTAINS
 
     CALL getParameters(storb, dyn_model=dyn_model_prm, integrator=integrator, &
          element_type = element_type_prm, &
-         uniform_pdf = uniform_pdf_prm, regularized_pdf = regularization_prm, &
+         dchi2_filtering = dchi2_filtering_prm, regularized_pdf = regularization_prm, &
          accept_multiplier = accept_multiplier_prm, &
          res_accept = res_accept_prm, &
-         pdf_ml_prm = pdf_ml_prm, &
-         prob_mass = prob_mass, &
+         chi2_min_prm = chi2_min_prm, &
+         dchi2_prm = dchi2, &
          vov_norb = vov_norb_prm, vov_ntrial = vov_ntrial_prm, &
          vov_nmap = vov_nmap_prm, vov_scaling = vov_scaling_prm, &
          vov_mapping_mask=vov_mapping_mask_prm)
@@ -4647,7 +4666,7 @@ CONTAINS
 
     WRITE(lu,220) element_type_prm, &
          TRIM(dyn_model_prm), &
-         regularization_prm, uniform_pdf_prm
+         regularization_prm, dchi2_filtering_prm
 220 FORMAT("#",3X,"COMPUTATIONAL PARAMETERS"/&
          "#",3X,"Element set      = ",A/ &
          "#",3X,"Dynamical model  = ",A/ &
@@ -4668,7 +4687,7 @@ CONTAINS
     WRITE(lu,300) & 
          MINVAL(stdevs(:,2:3),dim=1),&
          accept_multiplier_prm,res_accept_prm(1,2:3)/rad_asec,&
-         pdf_ml_prm,prob_mass,EXP(-0.5_bp*prob_mass)
+         chi2_min_prm,dchi2
 
 300 FORMAT(&
          "#",3X,"R.A.*cos Dec. std        (min)   = ",E14.4,3X,"arcsec"/ &
@@ -4677,10 +4696,9 @@ CONTAINS
          "#",3X,"  sigma multiplier               = ",E14.4/ &
          "#",3X,"  window for 1st R.A.            = ",E14.4,3X,"arcsec"/ &
          "#",3X,"  window for 1st Dec.            = ",E14.4,3X,"arcsec"/ &
-         "#",3X,"Acceptance, PDF                  ",3X,/&
-         "#",3X,"  reference ML value             = ",E14.4/ &
-         "#",3X,"  chi-square difference          = ",E14.4/ &
-         "#",3X,"  corresponding relative bound   = ",E14.4)
+         "#",3X,"Acceptance, chi2                   ",3X,/&
+         "#",3X,"  reference value                = ",E14.4/ &
+         "#",3X,"  chi-square difference          = ",E14.4)
 
     WRITE(lu,"(A)") "#"
 
