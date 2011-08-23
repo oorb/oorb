@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-08-22
+!! @version 2011-08-23
 !!  
 MODULE StochasticOrbit_cl
 
@@ -45,10 +45,6 @@ MODULE StochasticOrbit_cl
   USE statistics
 
   IMPLICIT NONE
-  !! (Initial) maximum probability density value.
-  !! Note: case-dependent, you should try different values
-  !!       by changing SO%pdf_ml_init_prm.
-  REAL(bp), PARAMETER, PRIVATE :: pdf_ml_init  = 50.0_bp
   !! Default bound for equivalent chi2-difference. Change it through
   !! setParameters!
   !! E.g., 50.0 corresponds to probability mass (1 - 4.7e-9).  
@@ -109,10 +105,10 @@ MODULE StochasticOrbit_cl
      REAL(bp), DIMENSION(:), POINTER     :: rchi2_arr_cmp          => NULL()
      REAL(bp), DIMENSION(:), POINTER     :: pdf_arr_cmp            => NULL()
      REAL(bp), DIMENSION(:), POINTER     :: reg_apr_arr_cmp        => NULL()
-     REAL(bp)                            :: pdf_ml_init_prm        = -1.0_bp
+     REAL(bp)                            :: chi2_min_init_prm      = -1.0_bp
      REAL(bp)                            :: dchi2_prm              = dchi2
-     REAL(bp)                            :: pdf_ml_prm             = -1.0_bp
-     REAL(bp)                            :: pdf_ml_cmp             = -1.0_bp
+     REAL(bp)                            :: chi2_min_prm           = -1.0_bp
+     REAL(bp)                            :: chi2_min_cmp           = -1.0_bp
      REAL(bp)                            :: accept_multiplier_prm  = -1.0_bp
      REAL(bp)                            :: outlier_multiplier_prm = -1.0_bp
      INTEGER, DIMENSION(:), POINTER      :: repetition_arr_cmp     => NULL()
@@ -122,7 +118,7 @@ MODULE StochasticOrbit_cl
      LOGICAL                             :: jacobians_prm          = .TRUE.
      LOGICAL                             :: multiple_obj_prm       = .FALSE.
      LOGICAL                             :: is_initialized_prm     = .FALSE.
-     LOGICAL                             :: uniform_pdf_prm        = .FALSE.
+     LOGICAL                             :: dchi2_filtering_prm        = .TRUE.
      LOGICAL                             :: generat_gaussian_deviates_prm = .TRUE.
      REAL(bp)                            :: generat_multiplier_prm = -1.0_bp
 
@@ -638,9 +634,9 @@ CONTAINS
     IF (ASSOCIATED(this%obs_masks_prm)) THEN
        DEALLOCATE(this%obs_masks_prm, stat=err)
     END IF
-    this%pdf_ml_prm = -1.0_bp
-    this%pdf_ml_init_prm = -1.0_bp
-    this%pdf_ml_cmp = -1.0_bp
+    this%chi2_min_init_prm = -1.0_bp
+    this%chi2_min_prm = -1.0_bp
+    this%dchi2_prm = dchi2
     this%accept_multiplier_prm = -1.0_bp
     this%outlier_rejection_prm = .FALSE.
     this%regularization_prm = .TRUE.
@@ -694,7 +690,7 @@ CONTAINS
     this%sor_rho_histo_cmp = 1
     this%sor_random_obs_prm = .FALSE.
     this%sor_gaussian_pdf_prm = .FALSE.
-    this%uniform_pdf_prm = .FALSE.
+    this%dchi2_filtering_prm = .TRUE.
 
     ! Parameters for VoV:
     IF (ASSOCIATED(this%vov_map_cmp)) THEN
@@ -872,9 +868,9 @@ CONTAINS
        END IF
        copy_SO%obs_masks_prm = this%obs_masks_prm
     END IF
-    copy_SO%pdf_ml_init_prm = this%pdf_ml_init_prm
-    copy_SO%pdf_ml_prm = this%pdf_ml_prm
-    copy_SO%pdf_ml_cmp = this%pdf_ml_cmp
+    copy_SO%chi2_min_init_prm = this%chi2_min_init_prm
+    copy_SO%chi2_min_prm = this%chi2_min_prm
+    copy_SO%dchi2_prm = this%dchi2_prm
     copy_SO%accept_multiplier_prm = this%accept_multiplier_prm
     copy_SO%outlier_rejection_prm = this%outlier_rejection_prm
     copy_SO%regularization_prm = this%regularization_prm
@@ -966,7 +962,7 @@ CONTAINS
     copy_SO%sor_rho_histo_cmp = this%sor_rho_histo_cmp
     copy_SO%sor_random_obs_prm = this%sor_random_obs_prm
     copy_SO%sor_gaussian_pdf_prm = this%sor_gaussian_pdf_prm
-    copy_SO%uniform_pdf_prm = this%uniform_pdf_prm
+    copy_SO%dchi2_filtering_prm = this%dchi2_filtering_prm
 
     ! VoV parameters
     IF (ASSOCIATED(this%vov_map_cmp)) THEN
@@ -1041,14 +1037,10 @@ CONTAINS
   !! range intervals are iterated until they correspond to an unbiased 
   !! phase space region of possible orbits.
   !!
-  !! Output: Probability density function for Cartesian position and
-  !!         velocity at specified epoch in two-body approximation.
-  !!
-  !!
   !! Returns error.
   !!
   !! @author  JV, MG
-  !! @version 2009-08-04
+  !! @version 2011-08-22
   !!
   SUBROUTINE autoStatisticalRanging(this)
 
@@ -1056,10 +1048,11 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(inout) :: this
 
     REAL(bp), DIMENSION(2,2) :: rho_bounds_
-    REAL(bp) :: ddchi2, & ! difference to the given dchi2 limit
-         pdf_ml_final, pdf_ml_
+    REAL(bp) :: dchi2, & 
+         ddchi2, & ! difference to the given dchi2 limit
+         chi2_min_final, chi2_min_
     INTEGER :: niter_, norb_prm 
-    LOGICAL :: uniform_pdf_prm
+    LOGICAL :: dchi2_filtering_prm
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -1070,7 +1063,7 @@ CONTAINS
 
     this%sor_niter_cmp = 0
     norb_prm = this%sor_norb_prm
-    uniform_pdf_prm = this%uniform_pdf_prm    
+    dchi2_filtering_prm = this%dchi2_filtering_prm    
 
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A)") "***************"
@@ -1080,7 +1073,7 @@ CONTAINS
 
     ! Force 10 orbits and uniform pdf in the first step
     this%sor_norb_prm = 10
-    this%uniform_pdf_prm = .TRUE.
+    this%dchi2_filtering_prm = .FALSE.
     CALL statisticalRanging(this)
     IF (error .OR. this%sor_norb_cmp <= 1) THEN
        CALL errorMessage("StochasticOrbit / autoStatisticalRanging", &
@@ -1111,7 +1104,7 @@ CONTAINS
     CALL updateRanging(this, automatic=.TRUE.)
 
     ! Return to user-defined pdf mode 
-    this%uniform_pdf_prm = uniform_pdf_prm
+    this%dchi2_filtering_prm = dchi2_filtering_prm
 
     ! Additional iteration, if requested nr of orbits very large
     IF (norb_prm/this%sor_norb_prm >= 50) THEN
@@ -1145,7 +1138,7 @@ CONTAINS
     this%sor_norb_prm  = norb_prm
     this%sor_rho_histo_cmp = 1
     ddchi2             = 10.0_bp
-    DO WHILE (this%sor_rho_histo_cmp > 0 .OR. ddchi2 > 2.0_bp)
+    DO WHILE (this%sor_rho_histo_cmp > 0 .OR. (this%dchi2_filtering_prm .AND. ddchi2 > 2.0_bp))
 
        IF (this%sor_niter_cmp >= (this%sor_niter_prm + niter_)) THEN
           EXIT
@@ -1157,6 +1150,8 @@ CONTAINS
                "Subsequent iteration failed.", 1)
           RETURN
        END IF
+       dchi2 = MAXVAL(this%rchi2_arr_cmp) - MINVAL(this%rchi2_arr_cmp)
+       ddchi2 = ABS(dchi2 - this%dchi2_prm)
 
        this%sor_niter_cmp = this%sor_niter_cmp + 1
        IF (this%sor_norb_cmp < this%sor_norb_prm .AND. err_verb >= 2) THEN
@@ -1165,22 +1160,20 @@ CONTAINS
           WRITE(stderr,"(1X)")
        END IF
 
-       pdf_ml_final = MAXVAL(this%pdf_arr_cmp)
-       ddchi2 = ABS(2.0_bp*LOG(pdf_ml_final/this%pdf_ml_prm))
-
-       pdf_ml_ = this%pdf_ml_prm
+       chi2_min_ = this%chi2_min_prm
        rho_bounds_ = this%sor_rho_prm
        CALL updateRanging(this, automatic = .TRUE.)
        IF (info_verb >= 2) THEN
-          WRITE(stdout,"(2X,A,I0,A,F10.5)") "Histogram flag = ", &
-               this%sor_rho_histo_cmp,", d(dchi2) = ", ddchi2
+          WRITE(stdout,"(2X,A,I0,2(A,F10.5))") "Rho histogram flag = ", &
+               this%sor_rho_histo_cmp,", dchi2 = ", dchi2, &
+               ", d(dchi2) = ", ddchi2
           WRITE(stdout,"(1X)")
        END IF
 
     END DO
     ! Save the last _used_ rho bounds
     this%sor_rho_prm = rho_bounds_
-    this%pdf_ml_prm = pdf_ml_
+    this%chi2_min_prm = chi2_min_
 
   END SUBROUTINE autoStatisticalRanging
 
@@ -1337,10 +1330,10 @@ CONTAINS
     REAL(bp) :: &
          sma, &
          apriori, &
-         pdf_ml_global_ls, &
+         chi2_min_global_ls, &
          chi2, &
+         dchi2, &
          pdf_val, &
-         pdf_relative_bound, &
          obs_, &
          q, &
          comp_
@@ -1360,8 +1353,6 @@ CONTAINS
          mask_arr, &
          mask_measur
 
-    ! Relative bound for probability density:
-    pdf_relative_bound = EXP(-0.5_bp*this%dchi2_prm)
     iorb = 0
     itrial = 0
     mean = 0.0_bp
@@ -1551,12 +1542,12 @@ CONTAINS
     ELSE
        apriori = 1.0_bp
     END IF
-    pdf_ml_global_ls = apriori*EXP(-0.5_bp*(chi2 - COUNT(mask_measur)))
-    ! If initial estimate for maximum likelihood pdf remains
-    ! undetermined (indicated by a negative value), set it equal to
-    ! the pdf computed for the global least squares:
-    IF (this%pdf_ml_prm < 0.0_bp) THEN
-       this%pdf_ml_prm = pdf_ml_global_ls
+    chi2_min_global_ls = chi2
+    ! If initial estimate for chi2 corresponding to maximum likelihood
+    ! solution remains undetermined (indicated by a negative value),
+    ! set it equal to the chi2 computed for the global least squares:
+    IF (this%chi2_min_prm < 0.0_bp) THEN
+       this%chi2_min_prm = chi2_min_global_ls
     END IF
 
     IF (info_verb >= 2) THEN
@@ -1985,6 +1976,30 @@ CONTAINS
                "StochasticOrbit / covarianceSampling:", &
                "Negative chi2 (", chi2, ") at trial ", itrial
        END IF
+       dchi2 = chi2 - this%chi2_min_prm
+       IF (this%dchi2_filtering_prm .AND. &
+            dchi2 > this%dchi2_prm) THEN
+          ! chi2 filtering is used and dchi2 is too large.
+          failed_flag(11) = failed_flag(11) + 1
+          IF (info_verb >= 5) THEN
+             WRITE(stdout,"(2X,A,1X,A,1X,E10.5)") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Failed (dchi2 too large)", dchi2
+          END IF
+          CALL NULLIFY(orb)
+          DEALLOCATE(comp_scoords, partials_arr, stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             DEALLOCATE(comp_scoords, stat=err)
+             DEALLOCATE(partials_arr, stat=err)
+             CALL errorMessage("StochasticOrbit / covarianceSampling", &
+                  "Could not deallocate memory (5)", 1)
+             RETURN
+          END IF
+          CYCLE
+       END IF
+
+
        ! Jeffrey's apriori:
        ! Monitor the matrix inversion?
        IF (this%regularization_prm) THEN
@@ -2016,76 +2031,13 @@ CONTAINS
           apriori = 1.0_bp
        END IF
 
-       ! Probability density function (note that the '- nobs' term
-       ! is there for practical reasons):
-       pdf_val = apriori*EXP(-0.5_bp*(chi2 - COUNT(mask_measur)))
-       IF (info_verb >= 2) THEN
-          WRITE(stdout,"(2X,A,1X,A)") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Sample information matrix:"
-          CALL matrix_print(information_matrix_elem,stdout,errstr)
-          WRITE(stdout,"(2X,A,1X,A,1X,2"//TRIM(efrmt)//")") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Sample chi2, rchi2:", chi2, chi2-SUM(n0(1:6))
-          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Sample apriori:", apriori
-          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Sample pdf:", pdf_val
-          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
-               "StochasticOrbit / covarianceSampling:", &
-               "ML pdf:", this%pdf_ml_prm
-          WRITE(stdout,"(2X,A,1X,A,L1)") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Uniform sampling: ", this%uniform_pdf_prm 
-          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Sample PDF / ML PDF:", pdf_val / this%pdf_ml_prm
-          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Relative bound for pdf:", pdf_relative_bound        
-       END IF
-       IF (.NOT.this%uniform_pdf_prm .AND. &
-            pdf_val / this%pdf_ml_prm < pdf_relative_bound) THEN
-          ! The PDF is used and its value is not acceptable.
-          failed_flag(11) = failed_flag(11) + 1
-          IF (info_verb >= 5) THEN
-             WRITE(stdout,"(2X,A,1X,A,1X,E10.5)") &
-                  "StochasticOrbit / covarianceSampling:", &
-                  "Failed (PDF value not acceptable)", pdf_val
-          END IF
-          CALL NULLIFY(orb)
-          DEALLOCATE(comp_scoords, partials_arr, stat=err)
-          IF (err /= 0) THEN
-             error = .TRUE.
-             DEALLOCATE(comp_scoords, stat=err)
-             DEALLOCATE(partials_arr, stat=err)
-             CALL errorMessage("StochasticOrbit / covarianceSampling", &
-                  "Could not deallocate memory (5)", 1)
-             RETURN
-          END IF
-          CYCLE
-       END IF
-
+       ! This trial orbit fulfills all criteria so add it to the pile
+       ! of (accepted) sample orbits
        iorb = iorb + 1
-       IF (info_verb >= 2) THEN
-          WRITE(stdout,"(2X,A,1X,A,I0,1X,A)") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Orbit #", iorb, "accepted."
-       END IF
        orb_arr(iorb) = copy(orb)
        reg_apriori_arr(iorb) = apriori
-       pdf_arr(iorb) = pdf_val
-!!$       if (this%pdf_ml_prm < pdf_val) then
-!!$          this%pdf_ml_prm = pdf_val
-!!$       end if
+       pdf_arr(iorb) = apriori*EXP(-0.5_bp*(chi2 - COUNT(mask_measur)))
        rchi2_arr(iorb) = chi2 - SUM(n0(1:6))
-       ! P.d.f.:
-       ! - exponential part
-       ! - a priori p.d.f. for invariance (optionally)
-       ! ***************************** debiasing_factor_arr ****************************
-
        IF (this%jacobians_prm) THEN
           ! Determinant of Jacobian between topocentric spherical
           ! coordinates of the first and the last observation and
@@ -2138,8 +2090,7 @@ CONTAINS
                   "Chi2 new: ", chi2
              WRITE(stdout,"(2X,A,1X,A,3(1X,F10.5))") &
                   "StochasticOrbit / covarianceSampling:", &
-                  "PDF values:", pdf_val, &
-                  pdf_val/this%pdf_ml_prm, pdf_relative_bound
+                  "dchi2:", chi2 - this%chi2_min_prm
           END IF
        ELSE
           jacobian_arr(iorb,:) = -1.0_bp
@@ -2161,6 +2112,31 @@ CONTAINS
           CALL errorMessage("StochasticOrbit / covarianceSampling", &
                "Could not deallocate memory (15).", 1)
           RETURN
+       END IF
+
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A,I0,1X,A)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Orbit #", iorb, "accepted."
+          WRITE(stdout,"(2X,A,1X,A)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample information matrix:"
+          CALL matrix_print(information_matrix_elem,stdout,errstr)
+          WRITE(stdout,"(2X,A,1X,A,1X,2"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample chi2, rchi2:", chi2, chi2-SUM(n0(1:6))
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample apriori:", apriori
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Sample pdf:", pdf_arr(iorb)
+          WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
+               "StochasticOrbit / covarianceSampling:", &
+               "dchi2:", dchi2
+          WRITE(stdout,"(2X,A,1X,A,L1)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "dchi2 filtering: ", this%dchi2_filtering_prm 
        END IF
 
     END DO
@@ -3984,13 +3960,14 @@ CONTAINS
        element_type, &
        multiple_objects, &
        outlier_rejection, &
-       uniform_pdf, regularized_pdf, &
+       dchi2_filtering, regularized_pdf, &
        accept_multiplier, &
        outlier_multiplier, &
        res_accept, &
        gaussian_pdf, &
-       pdf_ml_init_prm, &
-       pdf_ml_prm, &
+       chi2_min_init_prm, &
+       chi2_min_prm, &
+       dchi2_prm, &
        prob_mass, &
        apriori_a_max, apriori_a_min, apriori_periapsis_max, apriori_periapsis_min, &
        apriori_apoapsis_max, apriori_apoapsis_min, apriori_rho_max, apriori_rho_min, &
@@ -4030,8 +4007,9 @@ CONTAINS
          integration_step, &
          accept_multiplier, &
          outlier_multiplier, &
-         pdf_ml_init_prm, &
-         pdf_ml_prm, &
+         chi2_min_init_prm, &
+         chi2_min_prm, &
+         dchi2_prm, &
          apriori_a_max, &
          apriori_a_min, &
          apriori_periapsis_max, &
@@ -4075,7 +4053,7 @@ CONTAINS
     LOGICAL, INTENT(out), OPTIONAL :: &
          multiple_objects, &
          regularized_pdf, &
-         uniform_pdf, &
+         dchi2_filtering, &
          sor_random_obs_selection, &
          gaussian_pdf, &
          outlier_rejection, &
@@ -4124,8 +4102,8 @@ CONTAINS
     IF (PRESENT(outlier_multiplier)) THEN
        outlier_multiplier = this%outlier_multiplier_prm 
     END IF
-    IF (PRESENT(uniform_pdf)) THEN
-       uniform_pdf = this%uniform_pdf_prm 
+    IF (PRESENT(dchi2_filtering)) THEN
+       dchi2_filtering = this%dchi2_filtering_prm 
     END IF
     IF (PRESENT(regularized_pdf)) THEN
        regularized_pdf = this%regularization_prm 
@@ -4151,11 +4129,14 @@ CONTAINS
           RETURN
        END IF
     END IF
-    IF (PRESENT(pdf_ml_init_prm)) THEN
-       pdf_ml_init_prm = this%pdf_ml_init_prm 
+    IF (PRESENT(chi2_min_init_prm)) THEN
+       chi2_min_init_prm = this%chi2_min_init_prm 
     END IF
-    IF (PRESENT(pdf_ml_prm)) THEN
-       pdf_ml_prm = this%pdf_ml_prm 
+    IF (PRESENT(chi2_min_prm)) THEN
+       chi2_min_prm = this%chi2_min_prm 
+    END IF
+    IF (PRESENT(dchi2_prm)) THEN
+       dchi2_prm = this%dchi2_prm 
     END IF
     IF (PRESENT(prob_mass)) THEN
        ! prob_mass = getProbabilityMass(this%dchi2_prm)
@@ -8778,9 +8759,9 @@ CONTAINS
        dyn_model, perturbers, integration_step, integrator, &
        finite_diff, &
        t_inv, element_type, multiple_objects, outlier_rejection, &
-       uniform_pdf, regularized_pdf, jacobians_pdf, &
+       dchi2_filtering, regularized_pdf, jacobians_pdf, &
        accept_multiplier, outlier_multiplier, &
-       gaussian_pdf, pdf_ml, &
+       gaussian_pdf, chi2_min, chi2_min_init, dchi2, &
        apriori_a_max, apriori_a_min, apriori_periapsis_max, apriori_periapsis_min, &
        apriori_apoapsis_max, apriori_apoapsis_min, apriori_rho_max, apriori_rho_min, &
        sor_norb, sor_norb_sw, sor_ntrial, sor_ntrial_sw, &
@@ -8816,7 +8797,9 @@ CONTAINS
          integration_step, &
          accept_multiplier, &
          outlier_multiplier, &
-         pdf_ml, &
+         chi2_min, &
+         chi2_min_init, &
+         dchi2, &
          apriori_a_max, &
          apriori_a_min, &
          apriori_periapsis_max, &
@@ -8864,7 +8847,7 @@ CONTAINS
     LOGICAL, INTENT(in), OPTIONAL :: &
          multiple_objects, &
          regularized_pdf, &
-         uniform_pdf, &
+         dchi2_filtering, &
          jacobians_pdf, &
          sor_random_obs_selection, &
          gaussian_pdf, &
@@ -9032,8 +9015,8 @@ CONTAINS
        END IF
        this%outlier_multiplier_prm = outlier_multiplier
     END IF
-    IF (PRESENT(uniform_pdf)) THEN
-       this%uniform_pdf_prm = uniform_pdf
+    IF (PRESENT(dchi2_filtering)) THEN
+       this%dchi2_filtering_prm = dchi2_filtering
     END IF
     IF (PRESENT(regularized_pdf)) THEN
        this%regularization_prm = regularized_pdf
@@ -9057,8 +9040,14 @@ CONTAINS
           CALL setAcceptanceWindow(this)          
        END IF
     END IF
-    IF (PRESENT(pdf_ml)) THEN
-       this%pdf_ml_init_prm = pdf_ml
+    IF (PRESENT(chi2_min)) THEN
+       this%chi2_min_prm = chi2_min
+    END IF
+    IF (PRESENT(chi2_min_init)) THEN
+       this%chi2_min_init_prm = chi2_min_init
+    END IF
+    IF (PRESENT(dchi2)) THEN
+       this%dchi2_prm = dchi2
     END IF
     IF (PRESENT(apriori_a_max)) THEN
        this%apriori_a_max_prm = apriori_a_max
@@ -10322,8 +10311,8 @@ CONTAINS
     REAL(bp), DIMENSION(3)                               :: position1, &
          position2, acc, r_ra_dec
     REAL(bp)                                             :: pdf_val, &
-         pdf_relative_bound, apriori, jac_sph_inv, rho_comp1, rho_comp2, tdt, &
-         rho_mid, a, ran, tmp, chi2, integration_step, &
+         apriori, jac_sph_inv, rho_comp1, rho_comp2, tdt, &
+         rho_mid, a, ran, tmp, chi2, dchi2, integration_step, &
          trials_per_orb, jac_car_kep, jac_equ_kep, obs_arc, &
          rang, distance, q, ftol
     INTEGER, DIMENSION(:,:), POINTER                     :: obs_pair_arr
@@ -10395,12 +10384,12 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%pdf_ml_prm < 0.0_bp) THEN
+    IF (this%chi2_min_prm < 0.0_bp) THEN
        first = .TRUE.
-       IF (this%pdf_ml_init_prm <= 0.0_bp) THEN
-          this%pdf_ml_prm = pdf_ml_init
+       IF (this%chi2_min_init_prm <= 0.0_bp) THEN
+          this%chi2_min_prm = REAL(COUNT(this%obs_masks_prm),bp)
        ELSE
-          this%pdf_ml_prm = this%pdf_ml_init_prm
+          this%chi2_min_prm = this%chi2_min_init_prm
        END IF
     ELSE
        first = .FALSE.
@@ -10542,9 +10531,6 @@ CONTAINS
        RETURN
     END IF
 
-    ! Relative bound for probability density:
-    pdf_relative_bound = EXP(-0.5_bp*this%dchi2_prm)
-
     ! Observation number counter (observation mask must be up-to-date!), 
     ! construct cosine array:
     DO i=1,6
@@ -10608,8 +10594,8 @@ CONTAINS
     END IF
 
     IF (info_verb >= 1) THEN
-       IF (this%uniform_pdf_prm) THEN
-          WRITE(stdout,"(2X,A)") "WARNING: NOT using PDF in acceptance!"
+       IF (.NOT.this%dchi2_filtering_prm) THEN
+          WRITE(stdout,"(2X,A)") "WARNING: NOT using dchi2 in acceptance!"
        END IF
        IF (.NOT.this%regularization_prm) THEN
           WRITE(stdout,"(2X,A)") "WARNING: REGULARIZATION is OFF!"
@@ -10652,15 +10638,15 @@ CONTAINS
        END DO
        WRITE(stdout,"(2X,A,A,A)") "PDF evaluated in ", &
             TRIM(this%element_type_prm)," elements"
-       IF (this%uniform_pdf_prm) THEN
-          WRITE(stdout,"(2X,A)") "NOT using PDF in acceptance!"
+       IF (.NOT.this%dchi2_filtering_prm) THEN
+          WRITE(stdout,"(2X,A)") "NOT using dchi2 in acceptance!"
        ENDIF
        IF (.NOT. this%regularization_prm) WRITE(stdout,"(2X,A)",advance="no") "NOT"
        WRITE(stdout,"(2X,A,L2)") "Using regularization by Jeffreys"
        WRITE(stdout,"(2X,A,A)") "Epoch                   : ", &
             TRIM(getCalendarDateString(this%t_inv_prm,"tdt"))
-       WRITE(stdout,'(2X,A,E10.4)') "Initial PDF maximum     : ", &
-            this%pdf_ml_prm
+       WRITE(stdout,'(2X,A,E10.4)') "Initial minimum chi2     : ", &
+            this%chi2_min_prm
        WRITE(stdout,"(2X,A,A,A)") "Using ",TRIM(dyn_model)," dynamical model"
        WRITE(stdout,"(2X,A,A,A)") "Using ", &
             TRIM(this%sor_2point_method_prm), " method"
@@ -11756,6 +11742,19 @@ CONTAINS
              RETURN          
           END IF
 
+          ! Compute dchi2 wrt best fit orbit
+          dchi2 = chi2 - this%chi2_min_prm
+          IF (this%dchi2_filtering_prm .AND. &
+               dchi2 > this%dchi2_prm) THEN
+             ! The dchi2 is used and its value is not acceptable.
+             failed_flag(7) = failed_flag(7) + 1
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,"(2X,A,1X,E10.5)") &
+                     "Failed (dchi2 too large)", dchi2
+             END IF
+             CYCLE sor_orb_acc
+          END IF
+
           ! Jeffrey's apriori:
           ! Monitor the matrix inversion?
           IF (this%regularization_prm) THEN
@@ -11900,11 +11899,6 @@ CONTAINS
              elements = getElements(orb_arr(i), "keplerian")
              jac_equ_kep = 0.5_bp*elements(2) * &
                   SIN(0.5_bp*elements(3)) / COS(0.5_bp*elements(3))**3
-             IF (info_verb >= 5) THEN
-                WRITE(stdout,"(2X,A,F15.12)") "Chi2 new: ", chi2
-                WRITE(stdout,"(2X,A,3(1X,F10.5))") "PDF values:", pdf_val, &
-                     pdf_val/this%pdf_ml_prm, pdf_relative_bound
-             END IF
           ELSE
              jac_sph_inv = 1.0_bp
              jac_car_kep = 1.0_bp
@@ -11914,17 +11908,6 @@ CONTAINS
           ! Probability density function (note that the '- nobs' term
           ! is there for practical reasons):
           pdf_val = apriori*EXP(-0.5_bp*(chi2 - COUNT(this%obs_masks_prm)))/jac_sph_inv
-
-          IF (.NOT.this%uniform_pdf_prm .AND. &
-               pdf_val / this%pdf_ml_prm < pdf_relative_bound) THEN
-             ! The PDF is used and its value is not acceptable.
-             failed_flag(7) = failed_flag(7) + 1
-             IF (info_verb >= 5) THEN
-                WRITE(stdout,"(2X,A,1X,E10.5)") &
-                     "Failed (PDF value not acceptable)", pdf_val
-             END IF
-             CYCLE sor_orb_acc
-          END IF
 
           ! Update metrics for computational accuracy:
           rho_comp1 = getDistance(scoords(i,obs_pair_arr(i,1)))
@@ -11988,8 +11971,9 @@ CONTAINS
           ! - determinant of jacobian between Equinoctial and Keplerian
           !   elements:
           jacobians(iorb,3) = jac_equ_kep
-          ! Nonlinear reduced chi2 (= chi2/(number of measurements))
-          rchi2_arr(iorb) = chi2/REAL(COUNT(this%obs_masks_prm),bp)
+          ! Nonlinear "reduced chi2" 
+          ! (note that usually rchi2 = chi2/(number of measurements - number of fitted parameters))
+          rchi2_arr(iorb) = chi2 - REAL(COUNT(this%obs_masks_prm),bp)
 
           n0_ = n0
           WHERE (n0_ == 0)
@@ -12214,19 +12198,20 @@ CONTAINS
           RETURN
        END IF
 
+       i = MAXLOC(this%pdf_arr_cmp,dim=1)
+       CALL NULLIFY(this%orb_ml_cmp)
+       this%orb_ml_cmp        = copy(this%orb_arr_cmp(i)) 
        DO i=1, this%sor_norb_cmp
           this%orb_arr_cmp(i) = copy(orb_arr_(i))
        END DO
        this%pdf_arr_cmp       = pdf_arr(1:iorb)
-       i = MAXLOC(this%pdf_arr_cmp,dim=1)
-       CALL NULLIFY(this%orb_ml_cmp)
-       this%orb_ml_cmp        = copy(this%orb_arr_cmp(i)) 
        this%reg_apr_arr_cmp   = reg_apriori_arr(1:iorb)
        this%jac_arr_cmp       = jacobians(1:iorb,1:3)
-       this%rchi2_arr_cmp = rchi2_arr(1:iorb)
+       this%rchi2_arr_cmp     = rchi2_arr(1:iorb)
        this%rms_arr_cmp       = rms(1:iorb,:)
        this%sor_rho_arr_cmp   = rho_distribution(1:iorb,:)
        this%res_arr_cmp       = residuals(1:iorb,:,:)
+       this%chi2_min_cmp      = MINVAL(rchi2_arr(1:iorb)) + REAL(COUNT(this%obs_masks_prm),bp)
        IF (this%sor_random_obs_prm) THEN
           ALLOCATE(this%sor_pair_histo_prm(SIZE(this%sor_pair_arr_prm,1)), stat=err)
           IF (err /= 0) THEN
@@ -12341,8 +12326,8 @@ CONTAINS
     END IF
 
     IF (info_verb >= 2) THEN
-       WRITE(stdout,"(2X,A,2(1X,E10.4))") "Init/max pdf values    :", &
-            this%pdf_ml_prm, MAXVAL(this%pdf_arr_cmp)
+       WRITE(stdout,"(2X,A,2(1X,E10.4))") "Initial - final minimum chi2 values    :", &
+            this%chi2_min_prm - this%chi2_min_cmp
        WRITE(stdout,"(2X,A,4(1X,E10.4))") "Min/max rhos, @ end    :" , &
             this%sor_rho_cmp(1,1:2), this%sor_rho_cmp(2,1:2)
        acc(2:3) = acc(2:3)/rad_asec
@@ -12376,7 +12361,7 @@ CONTAINS
     TYPE (StochasticOrbit)                    :: storb
     CHARACTER(len=4)                          :: str1, str2
     REAL(bp), DIMENSION(4)                    :: rho
-    REAL(bp)                                  :: pdf_ml_, pdf_ml_final, ddchi2
+    REAL(bp)                                  :: chi2_min_, chi2_min_final, ddchi2
     INTEGER(ibp)                              :: nobs, nobs_max_, err, &
          i, j, k
 
@@ -12471,7 +12456,7 @@ CONTAINS
             element_type=this%element_type_prm, &
             multiple_objects=this%multiple_obj_prm, &
             outlier_rejection=this%outlier_rejection_prm, &
-            uniform_pdf=this%uniform_pdf_prm, &
+            dchi2_filtering=this%dchi2_filtering_prm, &
             regularized_pdf=this%regularization_prm, &
             jacobians_pdf=this%jacobians_prm, &
             accept_multiplier=this%accept_multiplier_prm, &
@@ -12508,7 +12493,7 @@ CONTAINS
           IF (info_verb >= 2) THEN
              WRITE(stdout,"(2X,A,1X,I0,A,I0)") "Nr of observations     :", i, "/", nobs
           END IF
-          storb%pdf_ml_prm = pdf_ml_
+          storb%chi2_min_prm = chi2_min_
           CALL statisticalRanging(storb)
        END IF
        IF (error) THEN
@@ -12555,7 +12540,7 @@ CONTAINS
              CALL NULLIFY(storb)
              RETURN
           END IF
-          pdf_ml_ = MAXVAL(storb%pdf_arr_cmp)
+          chi2_min_ = storb%chi2_min_cmp
        END IF
     END DO
     DEALLOCATE(obs_arr, stat=err)
@@ -12574,7 +12559,8 @@ CONTAINS
     IF (nobs == nobs_max_) THEN
        ddchi2 = 10.0_bp
        DO WHILE (this%sor_niter_cmp < this%sor_niter_prm .AND. &
-            (this%sor_rho_histo_cmp > 0 .OR. ddchi2 > 2.0_bp .OR. &
+            (this%sor_rho_histo_cmp > 0 .OR. &
+            (this%dchi2_filtering_prm .AND. ddchi2 > 2.0_bp) .OR. &
             this%sor_norb_cmp < this%sor_norb_prm))
           CALL setParameters(this, &
                sor_rho1_l=rho(1), &
@@ -12590,7 +12576,7 @@ CONTAINS
           IF (info_verb >= 2) THEN
              WRITE(stdout,"(2X,A,1X,I0)") "Nr of observations     :", i
           END IF
-          this%pdf_ml_prm = pdf_ml_
+          this%chi2_min_prm = chi2_min_
           CALL statisticalRanging(this)
           IF (error) THEN
              CALL errorMessage("StochasticOrbit / stepwiseRanging", &
@@ -12604,8 +12590,7 @@ CONTAINS
                   " Number of sample orbits too small: ", this%sor_norb_cmp
              WRITE(stderr,"(1X)")
           END IF
-          pdf_ml_final = MAXVAL(this%pdf_arr_cmp)
-          ddchi2  = ABS(2.0_bp*LOG(pdf_ml_final/this%pdf_ml_prm))
+          ddchi2  = MAXVAL(this%rchi2_arr_cmp) - MINVAL(this%rchi2_arr_cmp) - this%dchi2_prm
           IF (info_verb >= 2) THEN
              WRITE(stdout,"(2X,A,1X,F12.4)") "Delta dchi2            :", &
                   ddchi2
@@ -12624,10 +12609,8 @@ CONTAINS
              CALL NULLIFY(storb)
              RETURN
           END IF
-          pdf_ml_ = MAX(MAXVAL(this%pdf_arr_cmp),this%pdf_ml_prm)
+          chi2_min_ = MIN(this%chi2_min_cmp,this%chi2_min_prm)
        END DO
-       !WRITE(stderr,*) this%sor_norb_cmp
-       !WRITE(stderr,*) this%sor_ntrial_cmp
     ELSE
        CALL NULLIFY(this)
        this = copy(storb)
@@ -13260,11 +13243,12 @@ CONTAINS
   !! Updates the StochasticOrbit between subsequent calls
   !! of statistical ranging.
   !!
-  !! Output: - New range bounds, currently from the 3-sigma cutoff values 
-  !!           of the range probability density.
-  !!         - Maximum probability density value
-  !!         - Optional outlier detection: recognizes outlier observations
-  !!           and optionally flags them (obs_masks -> .false.).
+  !! Updates: 
+  !!      - range bounds, currently from the 3-sigma cutoff values 
+  !!         of the range probability density.
+  !!      - Minimum chi2
+  !!      - Optional outlier detection: recognizes outlier observations
+  !!         and optionally flags them (obs_masks -> .false.).
   !!
   !!
   !! Returns error.
@@ -13351,8 +13335,8 @@ CONTAINS
        END DO
     END IF
 
-    ! Update maximum probability density value and generating windows
-    this%pdf_ml_prm = MAXVAL(this%pdf_arr_cmp)
+    ! Update minimum chi2 value and generating windows
+    this%chi2_min_prm = this%chi2_min_cmp
 
     ! Recognize outlier observations
     IF (this%outlier_multiplier_prm > 0.0_bp) THEN

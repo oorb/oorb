@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2011-08-22
+!! @version 2011-08-23
 !!
 PROGRAM oorb
 
@@ -236,7 +236,7 @@ PROGRAM oorb
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
        output_interval, &
-       pdf_ml_init, periapsis_distance, peak, pp_G, pp_G_unc, &
+       chi2_min_init, periapsis_distance, peak, pp_G, pp_G_unc, &
        ra, &
        sec, smplx_tol, smplx_similarity_tol, &
        solar_elongation, solar_elon_min, solar_elon_max, &
@@ -295,7 +295,7 @@ PROGRAM oorb
        random_obs, &
        regularized, &
        separately, separately_, & !! Output orbit(s)/ephemerides/etc separately for each object
-       uniform, &
+       dchi2_filtering, &
        write_residuals
 
   ! Defaults:
@@ -1394,9 +1394,9 @@ PROGRAM oorb
      accwin_multiplier = -1.0_bp
      gaussian_rho = .FALSE.
      regularized = .FALSE.
-     uniform = .FALSE.
+     dchi2_filtering = .FALSE.
      write_residuals = .FALSE.
-     pdf_ml_init = -1.0_bp
+     chi2_min_init = -1.0_bp
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
           apriori_a_max=apriori_a_max, &
@@ -1415,11 +1415,10 @@ PROGRAM oorb
           sor_genwin_offset=sor_genwin_offset, &
           sor_iterate_bounds=sor_iterate_bounds, &
           accwin_multiplier=accwin_multiplier, &
-          uniform_pdf=uniform, regularized_pdf=regularized, &
+          dchi2_filtering=dchi2_filtering, regularized_pdf=regularized, &
           sor_random_obs=random_obs, sor_rho_gauss=gaussian_rho, &
           write_residuals=write_residuals, &
-          pdf_ml=pdf_ml_init)
-
+          chi2_min=chi2_min_init)
      IF (error) THEN
         CALL errorMessage("oorb / ranging", &
              "TRACE BACK (5)", 1)
@@ -1502,7 +1501,6 @@ PROGRAM oorb
                       "TRACE BACK (34)", 1)
                  STOP
               END IF
-              pdf_ml_init = MAXVAL(pdf_arr_in)
               DEALLOCATE(pdf_arr_in)
            END IF
         END IF
@@ -1555,8 +1553,8 @@ PROGRAM oorb
              t_inv=t, &
              element_type=element_type_comp_prm, &
              regularized_pdf = regularized, &
-             uniform_pdf = uniform, &
-             pdf_ml=pdf_ml_init, &
+             dchi2_filtering = dchi2_filtering, &
+             chi2_min=chi2_min_init, &
              accept_multiplier=accwin_multiplier, &
              apriori_a_max=apriori_a_max, apriori_a_min=apriori_a_min, &
              apriori_periapsis_max=apriori_periapsis_max, &
