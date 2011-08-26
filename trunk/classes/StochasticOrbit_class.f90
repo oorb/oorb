@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-08-23
+!! @version 2011-08-26
 !!  
 MODULE StochasticOrbit_cl
 
@@ -2653,9 +2653,6 @@ CONTAINS
           RETURN
        END IF
     END IF
-    !    do i=1,size(residuals,dim=1)
-    !       write(*,*) "residuals:", residuals(i,1:6)
-    !    end do
 
     DEALLOCATE(residuals, information_matrix, stat=err)
     IF (err /= 0) THEN
@@ -2666,7 +2663,6 @@ CONTAINS
        DEALLOCATE(information_matrix, stat=err)
        RETURN
     END IF
-
 
   END FUNCTION getChi2_this_orb
 
@@ -5673,9 +5669,9 @@ CONTAINS
     TYPE (StochasticOrbit) :: storb
     TYPE (Observations) :: obss
     TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: scoord_arr
-    TYPE (SphericalCoordinates) :: scoord
-    TYPE (Time) :: t, t_
-    TYPE (Orbit), DIMENSION(7) :: orb_arr_tmp, orb_arr_init
+    TYPE (Time) :: t
+    TYPE (Orbit), DIMENSION(:), ALLOCATABLE :: orb_arr_init
+    TYPE (Orbit), DIMENSION(7) :: orb_arr_tmp
     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
     CHARACTER(len=FRAME_LEN) :: frame
     CHARACTER(len=DYN_MODEL_LEN) :: dyn_model, dyn_model_
@@ -5687,7 +5683,7 @@ CONTAINS
     REAL(bp), DIMENSION(6) :: elements, elements_, coordinates, coordinates_
     REAL(bp) :: sigma_multiplier_rms, orb_integration_step, a_r, &
          pdv, chi2, rchi2, ran, pdv_previous
-    INTEGER :: i, j, k, err, nobs, err_verb_, iorb
+    INTEGER :: i, j, k, err, nobs, err_verb_, iorb, ipreli
     LOGICAL, DIMENSION(:,:), ALLOCATABLE :: obs_masks_
     LOGICAL :: first, accept
 
@@ -5802,6 +5798,7 @@ CONTAINS
        RETURN
     END IF
     obs_masks_ = this%obs_masks_prm
+
     ! Orbital information
     ! Inversion epoch is equal to epoch of first preliminary orbit:
     t = getTime(orb_arr(1))
@@ -5843,28 +5840,13 @@ CONTAINS
             "The element type string contains forbidden characters.", 1)
        RETURN
     END IF
-    DO i=1,MIN(7,SIZE(orb_arr))
-       orb_arr_tmp(i) = copy(orb_arr(i))
-       SELECT CASE (TRIM(element_type))
-       CASE ("cartesian")
-          CALL toCartesian(orb_arr_tmp(i), frame=frame)
-       CASE ("keplerian")
-          CALL toKeplerian(orb_arr_tmp(i))
-       CASE default
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / observationSampling", &
-               "Can not use elements of type: " // TRIM(element_type), 1)
-          RETURN
-       END SELECT
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / " // &
-               "observationSampling", &
-               "TRACE BACK (40)", 1)
-          RETURN
-       END IF
-    END DO
-    IF (SIZE(orb_arr) < 7) THEN
-       elements = getElements(orb_arr_tmp(1), element_type, frame=frame)
+    ALLOCATE(orb_arr_init(MAX(7,SIZE(orb_arr))))
+    IF (SIZE(orb_arr) >= 7) THEN
+       DO i=1,SIZE(orb_arr)
+          orb_arr_init(i) = copy(orb_arr(i))
+       END DO
+    ELSE
+       elements = getElements(orb_arr(1), element_type, frame=frame)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / " // &
                "observationSampling", &
@@ -5873,11 +5855,11 @@ CONTAINS
           DEALLOCATE(obs_masks_, stat=err)
           RETURN
        END IF
-       orb_arr_init(1) = copy(orb_arr_tmp(1))
-       DO j=1,6
+       orb_arr_init(1) = copy(orb_arr(1))
+       DO i=1,6
           elements_ = elements
-          elements_(j) = 1.1_bp*elements_(j)
-          CALL NEW(orb_arr_init(j+1), elements_, element_type, frame, t)
+          elements_(i) = 1.01_bp*elements_(i)
+          CALL NEW(orb_arr_init(i+1), elements_, element_type, frame, t)
           IF (error) THEN
              CALL errorMessage("StochasticOrbit / " // &
                   "observationSampling", &
@@ -5887,8 +5869,8 @@ CONTAINS
              RETURN
           END IF
        END DO
-       DO j=1,7
-          CALL setParameters(orb_arr_init(j), &
+       DO i=1,7
+          CALL setParameters(orb_arr_init(i), &
                dyn_model=this%dyn_model_prm, &
                perturbers=this%perturbers_prm, &
                integration_step=this%integration_step_prm, &
@@ -5903,38 +5885,25 @@ CONTAINS
              RETURN
           END IF
        END DO
-       ! Output orbital elements if needed:
-       IF (info_verb >= 4) THEN
-          t_ = getTime(orb_arr_tmp(1))
-          WRITE(stdout,"(2X,A,I0,A)") "Initial elements, residuals, and rms:"
-          str = getCalendarDateString(t_, "TT")
-          SELECT CASE (element_type)
-          CASE ("keplerian")
-             WRITE(stdout,"(2X,A,6(1X,F20.13),1X,A)") "Kep: ", &
-                  elements(1:2), elements(3:6)/rad_deg, &
-                  TRIM(str)
-          CASE ("cartesian")
-             WRITE(stdout,'(2X,A,6(1X,F20.13),1X,A)') "Car: ", &
-                  elements(1:6),TRIM(str)
-          END SELECT
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / " // &
-                  "observationSampling", &
-                  "TRACE BACK (60)", 1)
-             DEALLOCATE(cov_mat_obs, stat=err)
-             DEALLOCATE(center_and_absbound_arr, stat=err)
-             DEALLOCATE(obs_masks_, stat=err)
-             RETURN
-          END IF
-          CALL NULLIFY(t_)
-       END IF
-    ELSE
-       DO i=1,7
-          orb_arr_init(i) = copy(orb_arr_tmp(i))
-       END DO
     END IF
-    DO i=1,7
-       CALL NULLIFY(orb_arr_tmp(i))
+    DO i=1,SIZE(orb_arr_init)
+       SELECT CASE (TRIM(element_type))
+       CASE ("cartesian")
+          CALL toCartesian(orb_arr_init(i), frame=frame)
+       CASE ("keplerian")
+          CALL toKeplerian(orb_arr_init(i))
+       CASE default
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / observationSampling", &
+               "Can not use elements of type: " // TRIM(element_type), 1)
+          RETURN
+       END SELECT
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / " // &
+               "observationSampling", &
+               "TRACE BACK (40)", 1)
+          RETURN
+       END IF
     END DO
 
     first = .TRUE.
@@ -5994,9 +5963,13 @@ CONTAINS
        END IF
 
        ! Make a working copy of the set of initial orbits
+       IF (ipreli+7 > SIZE(orb_arr_init)) THEN
+          ipreli = 0
+       END IF
        DO j=1,7
-          orb_arr_tmp(j) = copy(orb_arr_init(j))
+          orb_arr_tmp(j) = copy(orb_arr_init(ipreli+j))
        END DO
+       ipreli = ipreli + 7
 
        ! Run simplex on the set of modified observations
        CALL simplexOrbits(storb, orb_arr_tmp)
@@ -6144,6 +6117,10 @@ CONTAINS
     this%pdf_arr_cmp => reallocate(this%pdf_arr_cmp, iorb)
     this%repetition_arr_cmp => reallocate(this%repetition_arr_cmp, iorb)
 
+    DO i=1,7
+       CALL NULLIFY(orb_arr_init(i))
+    END DO
+    DEALLOCATE(orb_arr_init, stat=err)
     DEALLOCATE(mean_arr, stat=err)
     DEALLOCATE(cov_mat_obs, stat=err)
     DEALLOCATE(center_and_absbound_arr, stat=err)
@@ -9855,7 +9832,7 @@ CONTAINS
     REAL(bp), DIMENSION(7,6) :: p, p_init
     REAL(bp), DIMENSION(7) :: y
     REAL(bp), DIMENSION(6) :: psum, p_best
-    REAL(bp) :: y_best, rchi2_denom
+    REAL(bp) :: y_best
     INTEGER(ibp) :: ihi, ilo, ndim ! Global variables (within this subroutine).  
     INTEGER :: err, i
 
@@ -9887,9 +9864,6 @@ CONTAINS
        DEALLOCATE(this%rchi2_arr_cmp, stat=err)
     END IF
 
-    ! Denominator for reduced chi2:
-    rchi2_denom = 1.0_bp/REAL(COUNT(this%obs_masks_prm)-6,bp)
-
     frame = getFrame(orb_arr(1))
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / simplexOrbits", &
@@ -9911,7 +9885,7 @@ CONTAINS
           RETURN
        END IF
        p_init(i,1:6) = p(i,1:6)
-       y(i) = getChi2(this, orb_arr(i))*rchi2_denom
+       y(i) = getChi2(this, orb_arr(i))
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / simplexOrbits", &
                "TRACE BACK (20)", 1)
@@ -9966,7 +9940,7 @@ CONTAINS
                "TRACE BACK (45)", 1)
           RETURN
        END IF
-       this%rchi2_arr_cmp(i) = y(i)
+       this%rchi2_arr_cmp(i) = y(i) - REAL(COUNT(this%obs_masks_prm),bp)
     END DO
     this%orb_ml_cmp = copy(this%orb_arr_cmp(1))
 
@@ -10018,7 +9992,7 @@ CONTAINS
                        perturbers=this%perturbers_prm, &
                        integrator=this%integrator_prm, &
                        integration_step=this%integration_step_prm)
-                  y(i) = getChi2(this, orb_arr(i))*rchi2_denom
+                  y(i) = getChi2(this, orb_arr(i))
                END DO
                IF (error) THEN
                   CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
@@ -10176,7 +10150,7 @@ CONTAINS
                              "TRACE BACK (45)", 1)
                         RETURN
                      END IF
-                     y(i) = getChi2(this, orb)*rchi2_denom
+                     y(i) = getChi2(this, orb)
                      IF (error) THEN
                         CALL errorMessage("StochasticOrbit / simplexOrbits / simplex_private", &
                              "TRACE BACK (50)", 1)
@@ -10248,7 +10222,7 @@ CONTAINS
               "TRACE BACK (45)", 1)
          RETURN
       END IF
-      ytry = getChi2(this, orb)*rchi2_denom
+      ytry = getChi2(this, orb)
       IF (error) THEN
          CALL errorMessage("StochasticOrbit / simplexOrbits / simtry", &
               "TRACE BACK (60)", 1)
