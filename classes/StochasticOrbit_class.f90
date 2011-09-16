@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-08-26
+!! @version 2011-09-16
 !!  
 MODULE StochasticOrbit_cl
 
@@ -6128,6 +6128,2886 @@ CONTAINS
 
 
   END SUBROUTINE observationSampling
+
+
+
+
+  SUBROUTINE autoVolumeOfVariation(this, preliminary_orbit)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout) :: this
+    TYPE (Orbit), INTENT(in)              :: preliminary_orbit
+    TYPE (Orbit) :: orb
+    CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
+    CHARACTER(len=64) :: frmt = "(2X,A,1X,6(F7.3,1X))"
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE:: element_arr, histo
+    REAL(bp), DIMENSION(:), ALLOCATABLE::  elem_data
+    REAL(bp), DIMENSION(6,2) :: scaling_cmp
+    REAL(bp), DIMENSION(6) :: elements_1, elements_2
+    REAL(bp) :: dchi2, ddchi2, xmin, xmax, mean1, stdev1, &
+         tmp, mean2, stdev2
+    INTEGER, DIMENSION(2) :: scaling
+    INTEGER :: i, j, k, l, err, iiter, indx, norb, norb_final, &
+         ntrial_final, imap_zero, nmax, nbin, &
+         ibin_zero, imap, max_indx, nmap, scalar
+    LOGICAL, DIMENSION(:), ALLOCATABLE :: mask1, mask2, mask3
+    LOGICAL, DIMENSION(6,2) :: scaling_ready
+
+    ! For automated volumeOfVariation:
+    ! I) Iterate to find the unbiased interval(s) of variation for the mapping parameter(s)
+    !    (iterate scaling parameter for all parameters?)
+    !    1) Check for unpopulated mapping bins, increase mapping interval (in practise, psc1)
+    !       if necessary and repeat, at maximum niter_max (=5?) times
+    !    2) Use a smaller number of sample orbits (i.e., 500) in the iteration of
+    !       the mapping interval?
+    ! II) Iterate the maximum point of the rigorous p.d.f. until convergence
+    !     (as in Ranging: d(dchi2)=abs(2.e0_bp*log(pdf_ml_final/pdf_ml)) < 2.0)
+    !     Note: should inform the user if the global ls-solution does not correspond
+    !           to the maximum point!
+
+    iiter = -1
+
+    orb = copy(preliminary_orbit)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
+
+    norb_final = this%vov_norb_prm
+    ntrial_final = this%vov_ntrial_prm
+    CALL setParameters(this, &
+         vov_norb=this%vov_norb_iter_prm, &
+         vov_ntrial=this%vov_ntrial_iter_prm)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+
+    ! Find mapping element:
+    DO i=1,6
+       IF (this%vov_mapping_mask_prm(i)) THEN
+          indx = i
+          EXIT
+       END IF
+    END DO
+    ! Initialize scaling factors:
+    scaling_cmp = this%vov_scaling_prm
+
+    ddchi2 = HUGE(ddchi2)
+    scaling_ready = .FALSE.
+    DO
+
+       iiter = iiter + 1
+       this%vov_niter_cmp = iiter
+
+       IF ((ALL(scaling_ready) .AND. &
+            norb >= this%vov_norb_iter_prm .AND. & 
+            ddchi2 < 2.0_bp) .OR. iiter == this%vov_niter_prm) THEN
+          CALL setParameters(this, &
+               vov_norb=norb_final, &
+               vov_ntrial=ntrial_final)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+                  "TRACE BACK (15)", 1)
+             RETURN
+          END IF
+          IF (info_verb >= 2) THEN
+             WRITE(stdout,"(2X)")
+             WRITE(stdout,"(2X,A)")       "===================="
+             WRITE(stdout,"(2X,A,1X,I0)") "STARTING FINAL ROUND"
+             WRITE(stdout,"(2X,A)")       "===================="
+             WRITE(stdout,"(2X)")
+          END IF
+       ELSE
+          IF (info_verb >= 2) THEN
+             WRITE(stdout,"(2X)")
+             WRITE(stdout,"(2X,A)")       "===================="
+             WRITE(stdout,"(2X,A,1X,I0)") "STARTING ITERATION",iiter
+             WRITE(stdout,"(2X,A)")       "===================="
+             WRITE(stdout,"(2X)")
+          END IF
+       END IF
+
+       ! Starting from the 2nd iteration:
+       IF (iiter > 0) THEN
+          ! Use iterated scaling parameters
+          this%vov_scaling_prm = scaling_cmp
+          CALL NULLIFY(orb)
+          ! Use existing ml orbit as preliminary orbit
+          max_indx = MINLOC(this%rchi2_arr_cmp,dim=1)
+          this%chi2_min_prm = MIN(this%chi2_min_prm,this%chi2_min_cmp)
+          orb = copy(this%orb_arr_cmp(max_indx))
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+                  "TRACE BACK (20)", 1)
+             RETURN
+          END IF
+          ! Remove nominal orbit
+          CALL NULLIFY(this%orb_ml_cmp)
+          IF (ASSOCIATED(this%cov_ml_cmp)) THEN
+             DEALLOCATE(this%cov_ml_cmp, stat=err)
+             IF (err /= 0) THEN
+                CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+                     "Could not deallocate memory ()", 1)
+                RETURN
+             END IF
+          END IF
+       END IF
+
+       CALL volumeOfVariation(this, orb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "TRACE BACK (25)", 1)
+          RETURN       
+       END IF
+       norb = SIZE(this%orb_arr_cmp,dim=1)
+       IF ((ALL(scaling_ready) .AND. norb >= norb_final) &
+            .OR. iiter == this%vov_niter_prm) THEN
+          CALL NULLIFY(orb)
+          EXIT
+       END IF
+       dchi2 = MAXVAL(this%rchi2_arr_cmp) - MINVAL(this%rchi2_arr_cmp)
+       ddchi2 = ABS(dchi2 - this%dchi2_prm)
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,F10.4)") "Delta dchi2: ", ddchi2
+       END IF
+       ALLOCATE(element_arr(norb,6), elem_data(norb), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "Could not allocate memory (5).", 1)
+          RETURN       
+       END IF
+
+       DO i=1,norb
+          element_arr(i,1:6) = getElements(this%orb_arr_cmp(i), this%element_type_prm)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+                  "TRACE BACK (30)", 1)
+             RETURN       
+          END IF
+       END DO
+
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A)") "------------"
+          WRITE(stdout,"(2X,A)") "UPDATING ..."
+          WRITE(stdout,"(2X,A)") "------------"       
+       END IF
+
+       scaling_cmp = this%vov_scaling_cmp
+       imap_zero = NINT(this%vov_nmap_prm*this%vov_scaling_cmp(indx,1) / &
+            SUM(this%vov_scaling_cmp(indx,:)))
+
+       ! Histogram for mapping parameter
+       xmin = MINVAL(this%vov_map_cmp(:,indx))
+       xmax = MAXVAL(this%vov_map_cmp(:,indx))
+       nmax = norb
+       nbin = this%vov_nmap_prm
+       ibin_zero = imap_zero
+       IF (nbin > 1000) THEN
+          nbin = 101
+          ! Not true if unsymmetric scaling parameters
+          ibin_zero = 51
+       END IF
+       ALLOCATE(histo(nbin,2), mask1(nbin), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "Could not allocate memory (10).", 1)
+          RETURN       
+       END IF
+       histo = 0.0_bp
+       elem_data = element_arr(:,indx)
+       CALL histogram(elem_data(1:nmax), histo, xmin_in=xmin, xmax_in=xmax)
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,I0,A)") "Mapping element (", indx, "):"
+          WRITE(stdout,"(2X,A,2(F15.7,1X))") "Histo min/max:", xmin, xmax
+          WRITE(stdout,"(2X,A,2(F15.7,1X))") "Data min/max: ", &
+               MINVAL(elem_data(1:nmax)), &
+               MAXVAL(elem_data(1:nmax))
+       END IF
+
+       ! Assume Gaussian statistics and adjust the scaling parameter to 
+       ! cover the 3-sigma range: 
+       CALL moments(elem_data(1:nmax), mean=mean1, std_dev=stdev1, &
+            error=errstr)
+       IF (LEN_TRIM(errstr) > 0) THEN
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "Computation of moments failed: " // TRIM(errstr), 1)
+          RETURN
+       END IF
+       tmp = 3.0_bp*stdev1/(this%vov_scaling_cmp(indx,1)*this%vov_map_cmp(1,6+indx))
+       scaling_cmp(indx,1:2) = REAL(CEILING(tmp*this%vov_scaling_cmp(indx,1:2)),bp)
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,2(1X,F15.7))") "3-sigma_pdf vs. n-sigma_ls:", &
+               3.0_bp*stdev1, &
+               (this%vov_scaling_cmp(indx,1)*this%vov_map_cmp(1,6+indx))
+       END IF
+
+       ! Assume that scaling is ok, and check 
+       ! whether this assumption holds:
+       scaling_ready = .TRUE.
+       ! Empty bins in the mapping parameter direction:
+       mask1 = .FALSE.
+       WHERE (histo(:,2) < 1.0_bp)
+          mask1 = .TRUE.
+       END WHERE
+       IF (ANY(.NOT.mask1(1:CEILING(0.05_bp*nbin)))) THEN
+          scaling_ready(indx,1:2) = .FALSE.
+       ELSE IF (ANY(.NOT.mask1(nbin+1-CEILING(0.05_bp*nbin):nbin))) THEN
+          scaling_ready(indx,1:2) = .FALSE.
+       END IF
+       DEALLOCATE(histo, mask1, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "Could not deallocate memory (5).", 1)
+          RETURN       
+       END IF
+
+       nbin = 20
+       nmap = SIZE(this%vov_map_cmp, dim=1)
+       ALLOCATE(histo(nbin,2), mask1(norb), mask2(nbin), mask3(nbin), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "Could not allocate memory (15).", 1)
+          RETURN       
+       END IF
+       DO i=1,6
+          IF (i == indx) THEN
+             CYCLE
+          END IF
+          scaling = 0.0_bp
+          mask3 = .FALSE.
+          DO j=1,nmap
+             ! Select all points around a specific
+             ! mapping point:
+             mask1 = .FALSE.
+             IF (j == 1) THEN
+                xmin = this%vov_map_cmp(j,indx)
+             ELSE
+                xmin = 0.5_bp * (this%vov_map_cmp(j,indx) + &
+                     this%vov_map_cmp(j-1,indx))
+             END IF
+             IF (j == nmap) THEN
+                xmax = this%vov_map_cmp(j,indx)
+             ELSE
+                xmax = 0.5_bp * (this%vov_map_cmp(j,indx) + &
+                     this%vov_map_cmp(j+1,indx))
+             END IF
+             WHERE(element_arr(:,indx) < xmax .AND. element_arr(:,indx) >= xmin)
+                mask1 = .TRUE.
+             END WHERE
+             elem_data(1:COUNT(mask1)) = PACK(element_arr(:,i), mask1)
+             xmin = this%vov_map_cmp(j,i) - &
+                  this%vov_scaling_cmp(i,1)*this%vov_map_cmp(j,6+i)
+             xmax = this%vov_map_cmp(j,i) + &
+                  this%vov_scaling_cmp(i,2)*this%vov_map_cmp(j,6+i)
+             histo = 0.0_bp
+             CALL histogram(elem_data(1:COUNT(mask1)), histo, &
+                  xmin_in=xmin, xmax_in=xmax)
+             ! Which bins corresponding to this particular mapping
+             ! element value do have solutions?
+             mask2 = .TRUE.
+             WHERE(histo(:,2) < 1.0_bp)
+                mask2 = .FALSE.
+             END WHERE
+             ! Which bins covering the entire mapping space do have
+             ! solutions?
+             WHERE (mask2)
+                mask3 = .TRUE.
+             END WHERE
+             IF (ANY(mask3(1:CEILING(0.1_bp*nbin))) .OR. &
+                  ANY(mask3(nbin+1-CEILING(0.1_bp*nbin):nbin))) THEN
+                ! The current interval needs to be widened
+                EXIT
+             END IF
+             ! Find min and max of the topical orbital element
+             ! around the mapping point (if orbits exist!):
+             IF (COUNT(mask1) /= 0) THEN
+                xmin = MINVAL(element_arr(:,i), mask1)
+                xmax = MAXVAL(element_arr(:,i), mask1)
+                ! Compare with used sampling intervals and find
+                ! the smallest integer scaling factor that accepts all
+                ! sample orbits from the previous round:
+                scalar = CEILING(ABS((xmin - this%vov_map_cmp(j,i))/this%vov_map_cmp(j,6+i)))
+                IF (COUNT(mask1) /= 0 .AND. scalar > scaling(1)) THEN 
+                   scaling(1) = scalar
+                   IF (info_verb >= 3) THEN
+                      WRITE(stdout,"(2X,2(A,1X,I0,1X))") &
+                           "Lower scaling factor for element", i, &
+                           "is", scaling(1)
+                   END IF
+                END IF
+                scalar = CEILING(ABS((xmax - this%vov_map_cmp(j,i))/this%vov_map_cmp(j,6+i)))
+                IF (COUNT(mask1) /= 0 .AND. scalar > scaling(2)) THEN 
+                   scaling(2) = scalar
+                   IF (info_verb >= 3) THEN
+                      WRITE(stdout,"(2X,2(A,1X,I0,1X))") &
+                           "Upper scaling factor for element", i, &
+                           "is", scaling(2)
+                   END IF
+                END IF
+             END IF
+          END DO
+          IF (info_verb >= 2) THEN
+             !WRITE(stdout,"(2X,A,1X,I0)")    "Nr of empty bins      =", &
+             !     COUNT(mask1)
+             WRITE(stdout,*) " Are first n bins empty for element ", i, &
+                  "? ", .NOT.mask3(1:CEILING(0.1_bp*nbin))
+             WRITE(stdout,*) " Are last n bins empty for element  ", i, &
+                  "? ", .NOT.mask3(nbin+1-CEILING(0.1_bp*nbin):nbin)
+          END IF
+          IF (ANY(mask3(1:CEILING(0.1_bp*nbin))) .OR. &
+               ANY(mask3(nbin+1-CEILING(0.1_bp*nbin):nbin))) THEN
+             ! Lower end of the sampling region is too small -> 
+             ! increase scaling parameter value by at most 50% or
+             ! at least one unit:
+             scaling_cmp(i,1) = scaling_cmp(i,1) + &
+                  MAX(1.0_bp,REAL(FLOOR(0.3_bp*scaling_cmp(i,1)),bp))
+             scaling_ready(i,1) = .FALSE.
+             ! Upper end of the sampling region is too small -> 
+             ! increase scaling parameter value by at most 50% or
+             ! at least one unit:
+             scaling_cmp(i,2) = scaling_cmp(i,2) + &
+                  MAX(1.0_bp,REAL(FLOOR(0.3_bp*scaling_cmp(i,2)),bp))
+             scaling_ready(i,2) = .FALSE.
+          END IF
+          IF (.NOT.ANY(mask3(1:CEILING(0.1_bp*nbin))) .AND. &
+               CEILING(1.2*scaling(1)) < NINT(scaling_cmp(i,1))) THEN
+             ! Sampling region may be unnecessary wide in the lower end -> 
+             ! optimize scaling parameters:
+             scaling_cmp(i,1) = CEILING(1.2*scaling(1))
+          END IF
+          IF (.NOT.ANY(mask3(nbin+1-CEILING(0.1_bp*nbin):nbin)) .AND. &
+               CEILING(1.2*scaling(2)) < NINT(scaling_cmp(i,2))) THEN
+             ! Sampling region may be unnecessary wide in the upper end -> 
+             ! optimize scaling parameters:
+             scaling_cmp(i,2) = CEILING(1.2*scaling(2))
+          END IF
+       END DO
+
+       DEALLOCATE(element_arr, elem_data, mask1, mask2, mask3, &
+            histo, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "Could not deallocate memory (15).", 1)
+          RETURN       
+       END IF
+
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,TRIM(frmt)) "Adjusted scaling parameters (lo):", &
+               scaling_cmp(:,1)
+          WRITE(stdout,TRIM(frmt)) "Adjusted scaling parameters (up):", &
+               scaling_cmp(:,2)
+          WRITE(stdout,"(2X,A,6(1X,L1))") "Scaling ready?", &
+               scaling_ready(:,1)
+          WRITE(stdout,"(2X,A,6(1X,L1))") "Scaling ready?", &
+               scaling_ready(:,2)
+       END IF
+
+    END DO
+
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "... ITERATIONS READY"       
+       WRITE(stdout,TRIM(frmt)) "Final scaling parameters (lo):", &
+            this%vov_scaling_cmp(:,1)
+       WRITE(stdout,TRIM(frmt)) "Final scaling parameters (up):", &
+            this%vov_scaling_cmp(:,2)
+    END IF
+
+    this%vov_scaling_ready_cmp = scaling_ready
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,6(1X,L1))") "Scaling ready?", scaling_ready(:,1)
+       WRITE(stdout,"(2X,A,6(1X,L1))") "Scaling ready?", scaling_ready(:,2)
+       dchi2 = MAXVAL(this%rchi2_arr_cmp) - MINVAL(this%rchi2_arr_cmp)
+       ddchi2 = ABS(dchi2 - this%dchi2_prm)
+       WRITE(stdout,"(2X,A,F10.4)") "Delta dchi2: ", ddchi2
+       element_type = "keplerian"
+       elements_1 = getElements(this%orb_ml_cmp, element_type)
+       elements_1(3:6) = elements_1(3:6)/rad_deg
+       elements_2 = getElements(this%orb_arr_cmp(indx), element_type)
+       elements_2(3:6) = elements_2(3:6)/rad_deg
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+               "TRACE BACK (50)", 1)
+          error = .FALSE.
+          element_type = "cartesian"
+          elements_1 = getElements(this%orb_ml_cmp, element_type)
+          elements_2 = getElements(this%orb_arr_cmp(indx), element_type)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / autoVolumeOfVariation", &
+                  "TRACE BACK (55)", 1)
+             RETURN
+          END IF
+       END IF
+       WRITE(stdout,"(2X,A)") "Global least-squares solution in " // &
+            TRIM(element_type) // " orbital elements:"
+       WRITE(stdout,"(2X,6(F15.10,1X))") elements_1
+       WRITE(stdout,"(2X,A)") "Maximum likelihood solution in " // &
+            TRIM(element_type) // " orbital elements:"
+       WRITE(stdout,"(2X,6(F15.10,1X))") elements_2
+    END IF
+
+  END SUBROUTINE autoVolumeOfVariation
+
+
+
+
+
+
+
+  SUBROUTINE volumeOfVariation(this, preliminary_orbit)
+
+    ! VoV parameters: vov_nmap, vov_norb, vov_ntrial, vov_niter_max
+    !                 vov_scaling_parameters(6), vov_automatic
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout) :: this
+    TYPE (Orbit), INTENT(in)              :: preliminary_orbit
+    TYPE (Time) :: &
+         t0, &
+         t
+    TYPE (Orbit), DIMENSION(:), POINTER :: &
+         orb_arr
+    TYPE (Orbit), DIMENSION(this%vov_norb_prm) :: &
+         orb_accepted
+    TYPE (Orbit) :: &
+         orb, &
+         orb_global, &
+         orb_local
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: &
+         comp_scoords
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+         obs_scoords
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoords
+    CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
+    CHARACTER(len=FRAME_LEN) :: frame
+    CHARACTER(len=DYN_MODEL_LEN) :: &
+         storb_dyn_model, &
+         orb_dyn_model
+    CHARACTER(len=INTEGRATOR_LEN) :: &
+         storb_integrator, &
+         orb_integrator
+    CHARACTER(len=64) :: &
+         frmt = "(F20.15,1X)", &
+         efrmt = "(E10.4,1X)"
+    CHARACTER(len=64) :: &
+         str
+    REAL(bp), DIMENSION(:,:,:,:), POINTER :: &
+         partials4
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         residuals3, &
+         information_matrix_obs
+    REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: &
+         principal_axes
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         residuals2
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         obs_coords, &
+         jac_arr, &
+         rms_arr
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: &
+         debiasing_factor_map, &
+         debiasing_factor_arr, &
+         reg_apriori_arr, &
+         rchi2_arr, &
+         pdf_arr, &
+         cosdec0, &
+                                !chi2_local, &
+         diff
+    REAL(bp), DIMENSION(this%vov_nmap_prm,6) :: &
+         elements_local_arr
+    REAL(bp), DIMENSION(6,6) :: &
+         covariance_global, &
+         partial_covariance_global, &
+         covariance_local, &
+         information_matrix_global, &
+         information_matrix_local, &
+         correlation_matrix, &
+         partial_inverse_stdev_global, &
+         eigenvectors, jacobian_matrix
+    REAL(bp), DIMENSION(6) :: &
+         stdev_global, &
+         partial_stdev_global, &
+         elements_global, &
+         elements_local, &
+         elements, &
+         partial_eigenvalues_global, &
+         eigenvalues, &
+         comp_coord, &
+         storb_finite_diff, &
+         orb_finite_diff, &
+         ran_arr, &
+         upper_limit, &
+         lower_limit, &
+         diff_elem
+    REAL(bp) :: &
+         apriori, &
+         chi2_ml_global_ls, &
+         partial_product_global, &
+         product_local, &
+         mapping_interval, &
+         mapping_point, &
+         chi2, &
+         dchi2, &
+         pdf, &
+         variation, &
+         storb_integration_step, &
+         orb_integration_step,&
+         jac_car_kep, jac_equ_kep, sma, tmp, &
+         obs_, comp_
+    INTEGER, DIMENSION(:), ALLOCATABLE :: &
+         failed_flag, &
+         imap_arr
+    INTEGER, DIMENSION(6) :: &
+         n0, n0_, &
+         ind_arr
+    INTEGER :: &
+         i, &
+         j, &
+         k, &
+         imap, &
+         jmap, &
+         itrial, &
+         iorb, &
+         mmap, &
+         indx, &
+         nrot, &
+         err, &
+         nobs, &
+         nset, &
+         nfailed, &
+         norb, &
+         naccepted, &
+         ielem, &
+         iobs, &
+         imulti, &
+         isigma, &
+         imap_zero, &
+         ires, &
+         ipdf, &
+         info_verb_, &
+         err_verb_
+    LOGICAL, DIMENSION(:,:), POINTER :: &
+         mask_arr2
+    LOGICAL, DIMENSION(6) :: &
+         element_mask
+    LOGICAL :: &
+         parameters_agree, outlier_rejection_
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+    IF (.NOT.exist(preliminary_orbit)) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Preliminary orbit has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    nobs = getNrOfObservations(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
+    IF (nobs < 2) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Less than two observations available.", 1)
+       RETURN
+    END IF
+    IF (.NOT.ASSOCIATED(this%res_accept_prm)) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Window for accepted residuals not set.", 1)
+       RETURN
+    END IF
+    IF (this%vov_norb_prm < 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Required number of sample orbits not set.", 1)
+       RETURN
+    END IF
+    CALL comparePropagationParameters(this, preliminary_orbit, &
+         parameters_agree=parameters_agree)
+    IF (error .OR. .NOT.parameters_agree) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (1)", 1)
+       RETURN
+    END IF
+
+    IF (MOD(this%vov_nmap_prm,2) == 0) THEN
+       mmap = this%vov_nmap_prm/2
+       this%vov_nmap_prm = this%vov_nmap_prm + 1
+    ELSE
+       mmap = (this%vov_nmap_prm-1)/2
+    END IF
+    nobs = getNrOfObservations(this%obss)
+    ALLOCATE( &
+         principal_axes(this%vov_nmap_prm,6,6), &
+         debiasing_factor_arr(this%vov_norb_prm), &
+         debiasing_factor_map(this%vov_nmap_prm), &
+         obs_coords(nobs,6), &
+         cosdec0(nobs), &
+         residuals3(this%vov_norb_prm,nobs,6), &
+         mask_arr2(nobs,6), &
+         failed_flag(8), &
+         reg_apriori_arr(this%vov_norb_prm), &
+         pdf_arr(this%vov_norb_prm), &
+         rchi2_arr(this%vov_norb_prm), &
+         jac_arr(this%vov_norb_prm,3), &
+         rms_arr(this%vov_norb_prm,6), &
+                                !chi2_local(this%vov_nmap_prm), &
+         diff(this%vov_nmap_prm), &
+         stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Could not allocate memory (5).", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       RETURN
+    END IF
+
+    ! Set type of mapping elements:
+    IF (LEN_TRIM(this%element_type_prm) == 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Element type missing.", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       RETURN
+    ELSE       
+       element_type = this%element_type_prm
+    END IF
+
+    obs_scoords => getObservationSCoords(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (45)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       RETURN
+    END IF
+    DO i=1,nobs
+       obs_coords(i,:) = getCoordinates(obs_scoords(i))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (50)",1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          RETURN
+       END IF
+       cosdec0(i) = COS(obs_coords(i,3))
+    END DO
+    obsy_ccoords => getObservatoryCCoords(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (55)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       RETURN
+    END IF
+    IF (this%chi2_min_prm < 0.0_bp) THEN
+       !       first = .TRUE.
+       IF (this%chi2_min_init_prm <= 0.0_bp) THEN
+          this%chi2_min_prm = REAL(COUNT(this%obs_masks_prm),bp)
+       ELSE
+          this%chi2_min_prm = this%chi2_min_init_prm
+       END IF
+       !    ELSE
+       !       first = .FALSE.
+    END IF
+
+    orb = copy(preliminary_orbit)
+    frame = getFrame(orb)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (70)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb)
+       RETURN
+    END IF
+    IF (element_type == "keplerian") THEN
+       CALL toKeplerian(orb)
+    ELSE IF (element_type == "cartesian") THEN
+       CALL toCartesian(orb, frame=frame)
+    ELSE
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Cannot recognize element type: " // TRIM(element_type), 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb)
+       RETURN       
+    END IF
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (60)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb)
+       RETURN
+    END IF
+    ! Epoch is bound to the epoch of the preliminary orbit
+    t0 = getTime(orb)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (65)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+
+    !!
+    !! 1) INTERVAL FOR MAPPING PARAMETER VIA GLOBAL LEAST-SQUARES:
+    !!
+
+    ! Check number of mapping parameters; only one allowed for now!
+    IF (COUNT(this%vov_mapping_mask_prm) /= 1) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Too many or no mapping parameters chosen.", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    ! Mapping index
+    DO i=1,6
+       IF (this%vov_mapping_mask_prm(i)) THEN
+          indx = i
+          EXIT
+       END IF
+    END DO
+
+    ! Only do least squares if (nominal) ml orbit and covariance matrix 
+    ! do not yet exist
+    IF (.NOT. exist(this%orb_ml_cmp) .AND. .NOT. ASSOCIATED(this%cov_ml_cmp)) THEN
+       info_verb_ = info_verb
+       IF (this%vov_niter_cmp > 0) THEN
+          info_verb = info_verb - 1
+       END IF
+       CALL levenbergMarquardt(this, orb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "Global least-squares solution not found.", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          CALL NULLIFY(orb)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       IF (info_verb == 1 .AND. info_verb_ == 2) THEN
+          t = getTime(this%orb_ml_cmp)
+          str = getCalendarDateString(t, 'TDT')
+          CALL NULLIFY(t)
+          elements = getElements(this%orb_ml_cmp, "keplerian")
+          IF (error) THEN
+             error = .FALSE.
+             elements = getElements(orb, "cartesian", frame="ecliptic")
+             WRITE(stdout,"(2X,A)") "Cartesian ecliptic elements resulting " // &
+                  "from global least squares:"
+             WRITE(stdout,"(2X,6(1X,F20.13),1X,A)") elements, &
+                  TRIM(str)
+          ELSE
+             WRITE(stdout,"(2X,A)") "Keplerian elements resulting " // &
+                  "from global least squares:"
+             WRITE(stdout,"(2X,6(1X,F20.13),1X,A)") elements(1:2), &
+                  elements(3:6)/rad_deg, TRIM(str)
+          END IF
+       END IF
+       info_verb = info_verb_
+    END IF
+    CALL NULLIFY(orb)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (90)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    ! LS orbit
+    orb_global = getNominalOrbit(this)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (95)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    ! Orbital elements at the specified epoch:
+    elements_global = getElements(orb_global, element_type)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (100)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    ! Correlation/Standard deviation matrix:
+    covariance_global = getCovarianceMatrix(this, element_type, frame)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (105)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    DO i=1,6
+       stdev_global(i) = SQRT(covariance_global(i,i))
+    END DO
+    ! Maximum likelihood point
+    information_matrix_global = matinv(covariance_global, errstr, "Cholesky")
+    IF (LEN_TRIM(errstr) > 0) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Error in matrix inversion: " // TRIM(errstr), 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    IF (this%regularization_prm) THEN
+       ! Jeffrey's apriori
+       apriori = SQRT(ABS(determinant(information_matrix_global, errstr)))
+       IF (LEN_TRIM(errstr) > 0) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "Error in computation of determinant: " // TRIM(errstr), 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+    ELSE
+       apriori = 1.0_bp
+    END IF
+    ! Residuals for the global fit:
+    residuals2 => getResiduals(this, orb_global)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (130)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    information_matrix_obs => getBlockDiagInformationMatrix(this%obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (135)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    DO i=1,6
+       n0(i) = COUNT(this%obs_masks_prm(:,i))
+    END DO
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,6(1X,I0))") "Nr of included observations:", n0
+    END IF
+
+    ! Chi2 for the global fit
+    chi2_ml_global_ls = chi_square(residuals2, information_matrix_obs, this%obs_masks_prm, errstr)
+    IF (LEN_TRIM(errstr) > 0) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Computation of chi2 for the global solution failed: " // TRIM(errstr), 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+
+    ! 
+    ! S :: stdev (diagonal) matrix
+    ! S^(-1) :: inverse stdev (diagonal) matrix
+    ! 5x5 global covariance matrix:
+    information_matrix_global(indx,:) = 0.0_bp
+    information_matrix_global(:,indx) = 0.0_bp
+    information_matrix_global(indx,indx) = 1.0_bp
+    partial_covariance_global = matinv(information_matrix_global, errstr, "Cholesky")
+    IF (LEN_TRIM(errstr) > 0) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Error in inversion of partial global information matrix: " // TRIM(errstr), 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    partial_stdev_global = 0.0_bp
+    partial_inverse_stdev_global = 0.0_bp
+    DO i=1,6
+       IF (this%vov_mapping_mask_prm(i)) THEN
+          CYCLE
+       ELSE
+          partial_stdev_global(i) = SQRT(partial_covariance_global(i,i))
+          partial_inverse_stdev_global(i,i) = 1.0_bp/partial_stdev_global(i)
+       END IF
+    END DO
+    ! C = S^(-1) Sigma S^(-1)
+    correlation_matrix = MATMUL(MATMUL(partial_inverse_stdev_global, &
+         partial_covariance_global), partial_inverse_stdev_global)
+    ! 
+    CALL eigen_decomposition_jacobi(correlation_matrix, &
+         partial_eigenvalues_global, eigenvectors, nrot, errstr)
+    IF (LEN_TRIM(errstr) > 0) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Error in eigen decomposition: " // TRIM(errstr), 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    partial_product_global = 1.0_bp
+    DO i=1,6
+       IF (this%vov_mapping_mask_prm(i)) THEN
+          CYCLE
+       END IF
+       IF (partial_eigenvalues_global(i) < 0.0_bp) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "Negative global eigenvalue:", 1)
+          IF (err_verb >= 1) THEN
+             WRITE(0,"(E15.7)") partial_eigenvalues_global
+          END IF
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       partial_product_global = partial_product_global*ABS(partial_eigenvalues_global(i))
+    END DO
+
+    ! If initial estimate for chi2 corresponding to maximum likelihood
+    ! solution remains unknown (indicated by a negative value), set it
+    ! equal to the chi2 computed for the global least squares
+    ! solution:
+    IF (this%chi2_min_prm < 0.0_bp) THEN
+       this%chi2_min_prm = chi2_ml_global_ls
+    END IF
+    IF (this%vov_niter_cmp < 1 .AND. info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "Global orbital elements " // &
+            "(element type=" // TRIM(element_type) // &
+            " and frame=" // TRIM(getFrame(orb_global)) // "):"
+       t = getTime(orb_global)
+       str = getCalendarDateString(t,"tdt")
+       IF (element_type == "keplerian") THEN
+          WRITE(stdout,"(2X,6"//TRIM(frmt)//",A,2X,2(A,1X))") &
+               elements_global(1:2), elements_global(3:6)/rad_deg, &
+               TRIM(str), TRIM(element_type), TRIM(getFrame(orb_global))
+       ELSE
+          WRITE(stdout,"(2X,6"//TRIM(frmt)//",A,2X,2(A,1X))") &
+               elements_global, TRIM(str), TRIM(element_type), &
+               TRIM(getFrame(orb_global))
+       END IF
+       CALL NULLIFY(t)
+       WRITE(stdout,"(2X,A)") "Global standard deviations:"
+       WRITE(stdout, "(2X)", advance="no")
+       DO i=1,6
+          IF (element_type == "keplerian" .AND. i>=3) THEN
+             WRITE(stdout, TRIM(frmt),advance="no") &
+                  SQRT(covariance_global(i,i))/rad_deg
+          ELSE
+             WRITE(stdout,TRIM(frmt),advance="no") &
+                  SQRT(covariance_global(i,i))
+          END IF
+       END DO
+       WRITE(stdout,*)
+       WRITE(stdout,"(2X,A)") "Global correlation:"
+       CALL matrix_print(correlation_matrix, stdout, errstr, frmt=frmt)
+       WRITE(stdout,"(2X,A)") "Global 5x5 eigenvalues:"
+       WRITE(stdout,"(2X,6"//TRIM(frmt)//")") partial_eigenvalues_global
+       WRITE(stdout,"(2X,A)") "Global 5x5 eigenvectors:"
+       CALL matrix_print(eigenvectors, stdout, errstr, frmt=frmt)
+       WRITE(stdout,"(2X,A,1X,3(E10.4,1X))") "Global apriori:", apriori
+       WRITE(stdout,"(2X,A,1X,3(E10.4,1X))") "Global chi2:", chi2
+       WRITE(stdout,*)
+    END IF
+
+    ! -----------------------------------
+    ! Precomputed map:
+    ! Map plausible semimajor axis region
+    ! -----------------------------------
+    ! Note: 1) number of mapping points, nmap, used is an input
+    !          parameter (case-dependent)
+    !          (nmap => vov_nmap, typically 101 or 1001)
+    !       2) mapping could be made asymmetric with respect to 
+    !          the global solution, i.e., different psc1 for
+    !          decreasing/increasing loop below
+    !          (psc1 => vov_scaling_parameter(1))
+
+    ! Save initial element mask:
+    element_mask = this%ls_elem_mask_prm
+
+    ! Save initial outlier rejection, do not use it here
+    outlier_rejection_ = this%outlier_rejection_prm
+    CALL setParameters(this, outlier_rejection=.FALSE.)
+
+    ! Adjust scaling parameter for Keplerian elements if needed
+    ! (requirements: a>0 and 0<e<1):
+    IF (element_type == "keplerian") THEN
+       IF (elements_global(1) - &
+            this%vov_scaling_prm(1,1)*stdev_global(1) < &
+            planetary_radii(11)) THEN
+          WRITE(stderr,*) "Problem in semimajor axis interval:",elements_global(1) - &
+               this%vov_scaling_prm(1,1)*stdev_global(1)
+          this%vov_scaling_prm(1,1) = (elements_global(1) - &
+               planetary_radii(11))/stdev_global(1)
+       END IF
+       IF (elements_global(2) - &
+            this%vov_scaling_prm(2,1)*stdev_global(2) <= &
+            0.0_bp) THEN
+          PRINT*,"Problem in eccentricity interval:",elements_global(2) - &
+               this%vov_scaling_prm(2,1)*stdev_global(2)
+          this%vov_scaling_prm(2,1) = (elements_global(2) - &
+               EPSILON(elements_global(2)))/stdev_global(2)
+       END IF
+       IF (elements_global(2) + &
+            this%vov_scaling_prm(2,2)*stdev_global(2) >= &
+            1.0_bp) THEN
+          PRINT*,"Problem in eccentricity interval:",elements_global(2) + &
+               this%vov_scaling_prm(2,2)*stdev_global(2)
+          this%vov_scaling_prm(2,2) = (1.0_bp - &
+               EPSILON(elements_global(2) - elements_global(2))) / &
+               stdev_global(2)
+       END IF
+    END IF
+
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "STARTING MAPPING ..."
+       WRITE(stdout,"(2X,A,1X,6(F7.3,1X))") "Scaling parameters (lo):", this%vov_scaling_prm(:,1)
+       WRITE(stdout,"(2X,A,1X,6(F7.3,1X))") "Scaling parameters (hi):", this%vov_scaling_prm(:,2)
+    END IF
+
+
+    !!
+    !! 2) LOCAL MAPS VIA LOCAL LEAST SQUARES
+    !!
+    !!
+    imap_zero = NINT(this%vov_nmap_prm*this%vov_scaling_prm(indx,1) / &
+         SUM(this%vov_scaling_prm(indx,:)))
+    mapping_interval = SUM(this%vov_scaling_prm(indx,:))*stdev_global(indx)
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A,1X,I0)") "Central mapping element:", imap_zero
+       WRITE(stdout,"(2X,A,1X,F10.6)") "Mapping interval:", mapping_interval
+    END IF
+    ! Elements used for local least squares solutions:
+    CALL setParameters(this, ls_element_mask=.NOT.this%vov_mapping_mask_prm)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (230)", 1)
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    ! Mapping parameters lower or equal to midpoint (<= global ls)
+    DO imap=imap_zero,1,-1
+       IF (imap == imap_zero) THEN
+          ! First local solution -> start from the global solution:
+          elements_local = elements_global
+       ELSE
+          ! Start from the nearest local solution:
+          elements_local = elements_local_arr(imap+1,1:6)
+       END IF
+       elements_local(indx) = elements_global(indx) + &
+            REAL(imap-imap_zero,bp)/(this%vov_nmap_prm-imap_zero) * &
+            this%vov_scaling_prm(indx,1)*stdev_global(indx)
+       CALL NEW(orb_local, elements_local, element_type, frame, t0)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (235)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       CALL setParameters(orb_local, &
+            dyn_model=this%dyn_model_prm, &
+            perturbers=this%perturbers_prm, &
+            integration_step=this%integration_step_prm, &
+            integrator=this%integrator_prm)
+       !, &
+       !finite_diff=this%finite_diff_prm)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (245)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       ! Local least-squares fits:
+       info_verb_ = info_verb
+       IF (this%vov_niter_cmp > 0) THEN
+          info_verb = info_verb - 1
+       END IF
+       CALL levenbergMarquardt(this, orb_local)
+       info_verb = info_verb_
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (250)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       CALL NULLIFY(orb_local)
+       orb_local = copy(this%orb_ml_cmp)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (255)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       elements_local_arr(imap,1:6) = getElements(orb_local, element_type)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (260)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       ! 6x6 correlation matrix where elements on the lines
+       ! corresponding to the mapping parameter are zero and the
+       ! diagonal element is 1:
+       covariance_local = getCovarianceMatrix(this, element_type, frame)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (265)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       ! C = S^(-1) Sigma S^(-1)
+       correlation_matrix = MATMUL(MATMUL(partial_inverse_stdev_global, &
+            covariance_local), partial_inverse_stdev_global)
+       ! Find eigenvalues and eigenvectors:
+       CALL eigen_decomposition_jacobi(correlation_matrix, &
+            eigenvalues, eigenvectors, nrot, errstr)
+       IF (LEN_TRIM(errstr) > 0) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "Eigen decomposition failed: " // TRIM(errstr), 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       DO i=1,6
+          principal_axes(imap,1:6,i) = SQRT(eigenvalues(i))*partial_stdev_global(1:6)*eigenvectors(1:6,i)
+       END DO
+       product_local = 1.0_bp
+       DO i=1,6
+          IF (this%vov_mapping_mask_prm(i)) THEN
+             CYCLE
+          END IF
+          IF (eigenvalues(i) < 0.0_bp) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "Negative local eigenvalue:", 1)
+             IF (err_verb >= 1) THEN
+                WRITE(stderr,"(6(E15.7,1X))") eigenvalues
+             END IF
+          END IF
+          product_local = product_local*ABS(eigenvalues(i))
+       END DO
+       debiasing_factor_map(imap) = SQRT(product_local/partial_product_global)
+       CALL NULLIFY(orb_local)
+       IF (info_verb >= 2) THEN
+          IF (MOD(imap-1,100) == 0) THEN
+             WRITE(stdout,"(2X,I0,1X,A)") imap_zero-imap, "local least squares computed..."
+          END IF
+!!$          IF (MOD(imap,100) == 0) THEN
+!!$             WRITE(stdout,*) imap
+!!$          END IF
+       END IF
+    END DO
+
+    ! Mapping parameters larger than midpoint (> global ls)
+    DO imap=imap_zero+1,this%vov_nmap_prm
+       ! Start from the nearest local solution:
+       elements_local = elements_local_arr(imap-1,1:6)
+       elements_local(indx) = elements_global(indx) + &
+            REAL(imap-imap_zero,bp)/(this%vov_nmap_prm-imap_zero) * &
+            this%vov_scaling_prm(indx,2)*stdev_global(indx)
+       CALL NEW(orb_local, elements_local, element_type, frame, t0)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (235)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       CALL setParameters(orb_local, &
+            perturbers=this%perturbers_prm, &
+            dyn_model=this%dyn_model_prm, &
+            integration_step=this%integration_step_prm, &
+            integrator=this%integrator_prm)
+       !, &
+       !finite_diff=this%finite_diff_prm)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (245)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       ! Local least-squares fits:
+       info_verb_ = info_verb
+       IF (this%vov_niter_cmp > 0) THEN
+          info_verb = info_verb - 1
+       END IF
+       CALL levenbergMarquardt(this, orb_local)
+       info_verb = info_verb_
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (250)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       CALL NULLIFY(orb_local)
+       orb_local = copy(this%orb_ml_cmp)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (255)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       elements_local_arr(imap,1:6) = getElements(orb_local, element_type)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (260)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       ! 6x6 correlation matrix where elements on the lines
+       ! corresponding to the mapping parameter are zero and the
+       ! diagonal element is 1:
+       covariance_local = getCovarianceMatrix(this, element_type, frame)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (265)", 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       ! C = S^(-1) Sigma S^(-1)
+       correlation_matrix = MATMUL(MATMUL(partial_inverse_stdev_global, &
+            covariance_local), partial_inverse_stdev_global)
+       ! Find eigenvalues and eigenvectors:
+       CALL eigen_decomposition_jacobi(correlation_matrix, &
+            eigenvalues, eigenvectors, nrot, errstr)
+       IF (LEN_TRIM(errstr) > 0) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "Eigen decomposition failed: " // TRIM(errstr), 1)
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+       DO i=1,6
+          principal_axes(imap,1:6,i) = SQRT(eigenvalues(i))*partial_stdev_global(1:6)*eigenvectors(1:6,i)
+       END DO
+       product_local = 1.0_bp
+       DO i=1,6
+          IF (this%vov_mapping_mask_prm(i)) THEN
+             CYCLE
+          END IF
+          IF (eigenvalues(i) < 0.0_bp) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "Negative local eigenvalue:", 1)
+             IF (err_verb >= 1) THEN
+                WRITE(stderr,"(6(E15.7,1X))") eigenvalues
+             END IF
+          END IF
+          product_local = product_local*ABS(eigenvalues(i))
+       END DO
+       debiasing_factor_map(imap) = SQRT(product_local/partial_product_global)
+       CALL NULLIFY(orb_local)
+       IF (info_verb >= 2) THEN
+          IF (MOD(imap,100) == 0) THEN
+             WRITE(stdout,"(2X,I0,1X,A)") imap, "local least squares computed..."
+          END IF
+       END IF
+    END DO
+
+    !PRINT*,' Mapping done.'
+
+    !!
+    !! 3) MONTE CARLO SIMULATION USING MAPPED INTERVALS
+    !!
+    CALL setParameters(this, outlier_rejection=outlier_rejection_)
+
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "STARTING MONTE CARLO SAMPLING ..."
+    END IF
+    failed_flag = 0
+    iorb = 0
+    itrial = 0
+    norb = this%vov_norb_prm
+    IF (norb > norb_simult_max) THEN
+       norb = norb_simult_max
+    END IF
+    ires = 0 ; ipdf = 0
+    vov_main: DO WHILE (iorb < this%vov_norb_prm .AND. itrial < this%vov_ntrial_prm)
+
+       itrial = itrial + norb
+       naccepted = 0
+       IF (.NOT.ASSOCIATED(orb_arr)) THEN
+          ALLOCATE(orb_arr(norb), imap_arr(norb), stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "Could not allocate memory (10).", 1)
+             DO i=1,SIZE(orb_arr)
+                CALL NULLIFY(orb_arr(i))
+             END DO
+             DEALLOCATE(principal_axes, stat=err)
+             DEALLOCATE(debiasing_factor_arr, stat=err)
+             DEALLOCATE(debiasing_factor_map, stat=err)
+             DEALLOCATE(obs_coords, stat=err)
+             DEALLOCATE(cosdec0, stat=err)
+             DEALLOCATE(residuals3, stat=err)
+             DEALLOCATE(mask_arr2, stat=err)
+             DEALLOCATE(failed_flag, stat=err)
+             DEALLOCATE(reg_apriori_arr, stat=err)
+             DEALLOCATE(pdf_arr, stat=err)
+             DEALLOCATE(jac_arr, stat=err)
+             DEALLOCATE(rchi2_arr, stat=err)
+             DEALLOCATE(rms_arr, stat=err)
+             DEALLOCATE(diff, stat=err)
+             DEALLOCATE(obs_scoords, stat=err)
+             DEALLOCATE(obsy_ccoords, stat=err)
+             DEALLOCATE(residuals2, stat=err)
+             DEALLOCATE(information_matrix_obs, stat=err)
+             DEALLOCATE(orb_arr, stat=err)
+             DEALLOCATE(imap_arr, stat=err)
+             CALL NULLIFY(orb_global)
+             CALL NULLIFY(orb_local)
+             CALL NULLIFY(t0)
+             RETURN
+          END IF
+       END IF
+
+       !!
+       !! 4) ORBIT GENERATION
+       !! 
+
+       ! Uniform sampling for the mapping parameter over the predefined mapping inteval:
+
+       ! NOTES:
+       ! 1) Currently we use directly the precomputed map, that is, we choose the closest 
+       !    mapping point of the local maximum-p.d.f.'s points and use the corresponding 
+       !    local intervals of variation. Should this be done with interpolation as stated 
+       !    in Muinonen et al.?
+       i = 0
+       DO
+
+          CALL randomNumber(ran_arr)
+          ! Generate random point along the mapping axis:
+          mapping_point = elements_local_arr(1,indx) + &
+               ran_arr(indx) * mapping_interval
+          ! Find mapping point closest to the random point:
+          imap = NINT(1+ABS(mapping_point - elements_local_arr(1,indx)) / &
+               (mapping_interval/(this%vov_nmap_prm-1)))
+          ! Uniform sampling for the remaining parameters using the (not
+          ! interpolated!) precomputed map:
+          DO ielem=1,6
+             IF (this%vov_mapping_mask_prm(ielem)) THEN
+                ! Use the generated mapping point
+                elements(ielem) = mapping_point
+             ELSE
+                ! Use 5x5 covariances of the nearest mapping point
+                variation = this%vov_scaling_prm(ielem,1) * &
+                     SUM((2.0_bp*ran_arr - 1.0_bp)*principal_axes(imap,ielem,:))
+                elements(ielem) = elements_local_arr(imap,ielem) + variation 
+             END IF
+          END DO
+          IF (element_type == "keplerian") THEN
+             IF (elements(2) < 0.0_bp .OR. elements(2) > 1.0_bp) THEN
+                ! Eccentricity out of bounds (or should non-elliptic orbits be accepted?).
+                itrial = itrial + 1
+                failed_flag(1) = failed_flag(1) + 1
+                WRITE(*,*) "ran", ran_arr
+                CYCLE
+             END IF
+             IF (elements(3) < 0.0_bp .OR. elements(2) > two_pi) THEN
+                ! Inclination not defined.
+                itrial = itrial + 1
+                failed_flag(2) = failed_flag(2) + 1
+                WRITE(*,*) "ran", ran_arr
+                CYCLE
+             END IF
+             ! 0 <= angle < 2pi :
+             elements(4:6) = MODULO(elements(4:6), two_pi)
+          END IF
+          i = i + 1
+          CALL NULLIFY(orb_arr(i))
+          CALL NEW(orb_arr(i), elements, element_type, frame, t0)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "TRACE BACK (315)", 1)
+             error = .FALSE.
+             CALL NULLIFY(orb_arr(i))
+             itrial = itrial + 1
+             i = i - 1
+             CYCLE
+          END IF
+          CALL setParameters(orb_arr(i), &
+               perturbers=this%perturbers_prm, &
+               dyn_model=this%dyn_model_prm, &
+               integration_step=this%integration_step_prm, &
+               integrator=this%integrator_prm)
+          !, &
+          !finite_diff=this%finite_diff_prm)
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "TRACE BACK (325)", 1)
+             DO i=1,SIZE(orb_arr)
+                CALL NULLIFY(orb_arr(i))
+             END DO
+             DEALLOCATE(principal_axes, stat=err)
+             DEALLOCATE(debiasing_factor_arr, stat=err)
+             DEALLOCATE(debiasing_factor_map, stat=err)
+             DEALLOCATE(obs_coords, stat=err)
+             DEALLOCATE(cosdec0, stat=err)
+             DEALLOCATE(residuals3, stat=err)
+             DEALLOCATE(mask_arr2, stat=err)
+             DEALLOCATE(failed_flag, stat=err)
+             DEALLOCATE(reg_apriori_arr, stat=err)
+             DEALLOCATE(pdf_arr, stat=err)
+             DEALLOCATE(jac_arr, stat=err)
+             DEALLOCATE(rchi2_arr, stat=err)
+             DEALLOCATE(rms_arr, stat=err)
+             DEALLOCATE(diff, stat=err)
+             DEALLOCATE(obs_scoords, stat=err)
+             DEALLOCATE(obsy_ccoords, stat=err)
+             DEALLOCATE(residuals2, stat=err)
+             DEALLOCATE(information_matrix_obs, stat=err)
+             DEALLOCATE(orb_arr, stat=err)
+             DEALLOCATE(imap_arr, stat=err)
+             CALL NULLIFY(orb_global)
+             CALL NULLIFY(orb_local)
+             CALL NULLIFY(t0)
+             RETURN
+          END IF
+          imap_arr(i) = imap
+          IF (i == norb) THEN
+             EXIT
+          END IF
+       END DO
+
+       IF (ASSOCIATED(comp_scoords)) THEN
+          DEALLOCATE(comp_scoords)
+       END IF
+       NULLIFY(comp_scoords)
+       IF (ASSOCIATED(partials4)) THEN
+          DEALLOCATE(partials4)
+       END IF
+       NULLIFY(partials4)
+
+       !!
+       !! 5) ACCEPTANCE / REJECTION OF GENERATED ORBIT
+       !!
+       CALL getEphemerides(orb_arr, obsy_ccoords, comp_scoords, &
+            partials_arr=partials4)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (330)",1)
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(imap_arr, stat=err)
+          DEALLOCATE(comp_scoords, stat=err)
+          DEALLOCATE(partials4, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+
+       DO i=1,norb
+          IF (.NOT. boundOrbit(orb_arr(i), this%apriori_a_max_prm, sma)) THEN
+             IF (err_verb >= 2) THEN
+                WRITE(stderr,*) " PROBLEM: Unbound orbit!", sma
+                CYCLE
+             END IF
+          END IF
+          DO iobs=1,nobs
+             ! Multiply RA partials with cosine of observed declination:
+             partials4(i,2,:,iobs) = partials4(i,2,:,iobs)*cosdec0(iobs)
+             ! Sky-plane residuals and chi-squares:
+             comp_coord = getCoordinates(comp_scoords(i,iobs))
+             IF (error) THEN
+                CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                     "TRACE BACK (335)",1)
+                DO j=1,SIZE(orb_arr)
+                   CALL NULLIFY(orb_arr(j))
+                END DO
+                DEALLOCATE(principal_axes, stat=err)
+                DEALLOCATE(debiasing_factor_arr, stat=err)
+                DEALLOCATE(debiasing_factor_map, stat=err)
+                DEALLOCATE(obs_coords, stat=err)
+                DEALLOCATE(cosdec0, stat=err)
+                DEALLOCATE(residuals3, stat=err)
+                DEALLOCATE(mask_arr2, stat=err)
+                DEALLOCATE(failed_flag, stat=err)
+                DEALLOCATE(reg_apriori_arr, stat=err)
+                DEALLOCATE(pdf_arr, stat=err)
+                DEALLOCATE(jac_arr, stat=err)
+                DEALLOCATE(rchi2_arr, stat=err)
+                DEALLOCATE(rms_arr, stat=err)
+                DEALLOCATE(diff, stat=err)
+                DEALLOCATE(obs_scoords, stat=err)
+                DEALLOCATE(obsy_ccoords, stat=err)
+                DEALLOCATE(residuals2, stat=err)
+                DEALLOCATE(information_matrix_obs, stat=err)
+                DEALLOCATE(orb_arr, stat=err)
+                DEALLOCATE(imap_arr, stat=err)
+                DEALLOCATE(comp_scoords, stat=err)
+                DEALLOCATE(partials4, stat=err)
+                RETURN
+             END IF
+             residuals3(iorb+1,iobs,1:6) = obs_coords(iobs,1:6) - comp_coord(1:6)
+             residuals3(iorb+1,iobs,2) = residuals3(iorb+1,iobs,2) * cosdec0(iobs)
+             IF (ABS(residuals3(iorb+1,iobs,2)) > pi) THEN
+                obs_ = obs_coords(iobs,2)
+                comp_ = comp_coord(2)
+                IF (obs_ < comp_) THEN
+                   obs_ = obs_ + two_pi
+                ELSE
+                   comp_ = comp_ + two_pi
+                END IF
+                residuals3(iorb+1,iobs,2) = (obs_ - comp_) * cosdec0(iobs)
+             END IF
+             IF (info_verb >= 4) THEN
+                WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "  observed pos.", obs_coords(iobs,1:3)
+                WRITE(stdout,"(2X,A,3"//TRIM(frmt)//")") "  computed pos.", comp_coord(1:3)
+             END IF
+          END DO
+          mask_arr2 = .FALSE.
+          WHERE (this%obs_masks_prm .AND. ABS(residuals3(iorb+1,:,:)) > this%res_accept_prm)
+             mask_arr2 = .TRUE.
+          END WHERE
+          IF (info_verb >= 4) THEN
+             DO iobs=1,nobs
+                WRITE(stdout,"(2X,A,2"//TRIM(frmt)//")") "  O-C residuals (RA, Dec):", &
+                     residuals3(iorb+1,iobs,2:3)/rad_asec
+             END DO
+             WRITE(stdout,"(2X,A,I0,A,I0)") &
+                  " No of omitted obs/included obs: ", &
+                  COUNT(mask_arr2),"/",n0(2)
+          END IF
+          IF (COUNT(mask_arr2) > 0) THEN
+             ! Residuals are too large for at least one observation.
+             failed_flag(3) = failed_flag(3) + 1
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,"(2X,A)") &
+                     " Failed (residuals are too large)"
+             END IF
+             elements = getElements(orb_arr(i),element_type)
+             IF (elements(indx) < elements_global(indx)) THEN
+                ires = ires + 1
+             END IF
+             CYCLE
+          END IF
+
+          ! Compute chi2:
+          chi2 = chi_square(residuals3(iorb+1,:,:), information_matrix_obs, this%obs_masks_prm, errstr)
+          IF (LEN_TRIM(errstr) > 0) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "Computation of chi2 for a sampled orbit failed: " // TRIM(errstr), 1)
+             DO j=1,SIZE(orb_arr)
+                CALL NULLIFY(orb_arr(j))
+             END DO
+             DEALLOCATE(principal_axes, stat=err)
+             DEALLOCATE(debiasing_factor_arr, stat=err)
+             DEALLOCATE(debiasing_factor_map, stat=err)
+             DEALLOCATE(obs_coords, stat=err)
+             DEALLOCATE(cosdec0, stat=err)
+             DEALLOCATE(residuals3, stat=err)
+             DEALLOCATE(mask_arr2, stat=err)
+             DEALLOCATE(failed_flag, stat=err)
+             DEALLOCATE(reg_apriori_arr, stat=err)
+             DEALLOCATE(pdf_arr, stat=err)
+             DEALLOCATE(jac_arr, stat=err)
+             DEALLOCATE(rchi2_arr, stat=err)
+             DEALLOCATE(rms_arr, stat=err)
+             DEALLOCATE(diff, stat=err)
+             DEALLOCATE(obs_scoords, stat=err)
+             DEALLOCATE(obsy_ccoords, stat=err)
+             DEALLOCATE(residuals2, stat=err)
+             DEALLOCATE(information_matrix_obs, stat=err)
+             DEALLOCATE(orb_arr, stat=err)
+             DEALLOCATE(imap_arr, stat=err)
+             DEALLOCATE(comp_scoords, stat=err)
+             DEALLOCATE(partials4, stat=err)
+             CALL NULLIFY(orb_global)
+             CALL NULLIFY(orb_local)
+             CALL NULLIFY(t0)
+             RETURN
+          END IF
+
+          ! Compute dchi2 wrt best fit orbit
+          dchi2 = chi2 - this%chi2_min_prm
+          IF (this%dchi2_filtering_prm .AND. &
+               dchi2 > this%dchi2_prm) THEN
+             ! The dchi2 is used and its value is not acceptable.
+             failed_flag(4) = failed_flag(4) + 1
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,"(2X,A)") &
+                     "Failed (Delta chi2 value not acceptable)"
+             END IF
+             elements = getElements(orb_arr(i),element_type)
+             IF (elements(indx) < elements_global(indx)) THEN
+                ipdf = ipdf + 1
+             END IF
+             CYCLE
+          END IF
+
+          ! Sigma_elements^(-1) = A^T Sigma_obs^(-1) A, where A is the
+          ! partial derivatives matrix of ephemerides wrt elements:
+          information_matrix_local(:,:) = 0.0_bp
+          DO j=1,nobs
+             information_matrix_local = information_matrix_local + &
+                  MATMUL(MATMUL(TRANSPOSE(partials4(i,1:6,1:6,j)), &
+                  information_matrix_obs(j,1:6,1:6)), &
+                  partials4(i,1:6,1:6,j))
+          END DO
+          IF (this%regularization_prm) THEN
+             ! Jeffrey's apriori:
+             apriori = SQRT(ABS(determinant(information_matrix_local, errstr)))
+             IF (LEN_TRIM(errstr) > 0) THEN
+                CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                     "Computation of determinant for local information matrix failed: " //TRIM(errstr), 1)
+                DO j=1,SIZE(orb_arr)
+                   CALL NULLIFY(orb_arr(j))
+                END DO
+                DEALLOCATE(principal_axes, stat=err)
+                DEALLOCATE(debiasing_factor_arr, stat=err)
+                DEALLOCATE(debiasing_factor_map, stat=err)
+                DEALLOCATE(obs_coords, stat=err)
+                DEALLOCATE(cosdec0, stat=err)
+                DEALLOCATE(residuals3, stat=err)
+                DEALLOCATE(mask_arr2, stat=err)
+                DEALLOCATE(failed_flag, stat=err)
+                DEALLOCATE(reg_apriori_arr, stat=err)
+                DEALLOCATE(pdf_arr, stat=err)
+                DEALLOCATE(jac_arr, stat=err)
+                DEALLOCATE(rchi2_arr, stat=err)
+                DEALLOCATE(rms_arr, stat=err)
+                DEALLOCATE(diff, stat=err)
+                DEALLOCATE(obs_scoords, stat=err)
+                DEALLOCATE(obsy_ccoords, stat=err)
+                DEALLOCATE(residuals2, stat=err)
+                DEALLOCATE(information_matrix_obs, stat=err)
+                DEALLOCATE(orb_arr, stat=err)
+                DEALLOCATE(imap_arr, stat=err)
+                DEALLOCATE(comp_scoords, stat=err)
+                DEALLOCATE(partials4, stat=err)
+                CALL NULLIFY(orb_global)
+                CALL NULLIFY(orb_local)
+                CALL NULLIFY(t0)
+                RETURN
+             END IF
+          ELSE
+             apriori = 1.0_bp
+          END IF
+          ! Probability density function:
+          pdf = apriori*EXP(-0.5_bp*(chi2 - SUM(n0(1:6))))*debiasing_factor_map(imap_arr(i))
+          IF (info_verb >= 3) THEN
+             WRITE(stdout,"(2X,A)") "Sample information matrix:"
+             CALL matrix_print(information_matrix_local, stdout, errstr)
+             WRITE(stdout,"(2X,A,1X,2"//TRIM(frmt)//")") "Sample chi2:", chi2, chi2-SUM(n0(1:6))
+             WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample apriori:", apriori
+             WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample pdf:", pdf
+             WRITE(stdout,*)
+          END IF
+
+          ! Jaocobians between different elements
+          CALL partialsCartesianWrtKeplerian(orb_arr(i), jacobian_matrix, "equatorial")
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "TRACE BACK (356) ",4)
+             RETURN
+          ELSE
+             jac_car_kep = ABS(determinant(jacobian_matrix, errstr))
+             IF (LEN_TRIM(errstr) > 0) THEN
+                CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                     "Computation of determinant for local " // &
+                     "jacobian matrix failed: " // TRIM(errstr), 1)
+                DO j=1,SIZE(orb_arr)
+                   CALL NULLIFY(orb_arr(j))
+                END DO
+                DEALLOCATE(principal_axes, stat=err)
+                DEALLOCATE(debiasing_factor_arr, stat=err)
+                DEALLOCATE(debiasing_factor_map, stat=err)
+                DEALLOCATE(obs_coords, stat=err)
+                DEALLOCATE(cosdec0, stat=err)
+                DEALLOCATE(residuals3, stat=err)
+                DEALLOCATE(mask_arr2, stat=err)
+                DEALLOCATE(failed_flag, stat=err)
+                DEALLOCATE(reg_apriori_arr, stat=err)
+                DEALLOCATE(pdf_arr, stat=err)
+                DEALLOCATE(jac_arr, stat=err)
+                DEALLOCATE(rchi2_arr, stat=err)
+                DEALLOCATE(rms_arr, stat=err)
+                DEALLOCATE(diff, stat=err)
+                DEALLOCATE(obs_scoords, stat=err)
+                DEALLOCATE(obsy_ccoords, stat=err)
+                DEALLOCATE(residuals2, stat=err)
+                DEALLOCATE(information_matrix_obs, stat=err)
+                DEALLOCATE(orb_arr, stat=err)
+                DEALLOCATE(imap_arr, stat=err)
+                DEALLOCATE(comp_scoords, stat=err)
+                DEALLOCATE(partials4, stat=err)
+                CALL NULLIFY(orb_global)
+                CALL NULLIFY(orb_local)
+                CALL NULLIFY(t0)
+                RETURN
+             END IF
+          END IF
+          elements = getElements(orb_arr(i), "keplerian")
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "TRACE BACK (357) ",4)
+             !error = .FALSE.
+             !jac_equ_kep = -1.0_bp
+             RETURN
+          ELSE
+             jac_equ_kep = 0.5_bp*elements(2)*SIN(0.5_bp*elements(3)) / &
+                  COS(0.5_bp*elements(3))**3
+          END IF
+          !err_verb = err_verb_
+          naccepted = naccepted + 1
+          iorb = iorb + 1
+          orb_accepted(iorb) = copy(orb_arr(i))
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "TRACE BACK (355)", 1)
+             DO j=1,SIZE(orb_arr)
+                CALL NULLIFY(orb_arr(j))
+             END DO
+             DEALLOCATE(principal_axes, stat=err)
+             DEALLOCATE(debiasing_factor_arr, stat=err)
+             DEALLOCATE(debiasing_factor_map, stat=err)
+             DEALLOCATE(obs_coords, stat=err)
+             DEALLOCATE(cosdec0, stat=err)
+             DEALLOCATE(residuals3, stat=err)
+             DEALLOCATE(mask_arr2, stat=err)
+             DEALLOCATE(failed_flag, stat=err)
+             DEALLOCATE(reg_apriori_arr, stat=err)
+             DEALLOCATE(pdf_arr, stat=err)
+             DEALLOCATE(jac_arr, stat=err)
+             DEALLOCATE(rchi2_arr, stat=err)
+             DEALLOCATE(rms_arr, stat=err)
+             DEALLOCATE(diff, stat=err)
+             DEALLOCATE(obs_scoords, stat=err)
+             DEALLOCATE(obsy_ccoords, stat=err)
+             DEALLOCATE(residuals2, stat=err)
+             DEALLOCATE(information_matrix_obs, stat=err)
+             DEALLOCATE(orb_arr, stat=err)
+             DEALLOCATE(imap_arr, stat=err)
+             DEALLOCATE(comp_scoords, stat=err)
+             DEALLOCATE(partials4, stat=err)
+             CALL NULLIFY(orb_global)
+             CALL NULLIFY(orb_local)
+             CALL NULLIFY(t0)
+             RETURN
+          END IF
+
+          reg_apriori_arr(iorb) = apriori
+          pdf_arr(iorb) = pdf
+          debiasing_factor_arr(iorb) = debiasing_factor_map(imap_arr(i))
+          rchi2_arr(iorb) = chi2 - SUM(n0(1:6))
+          jac_arr(iorb,1) = -1.0_bp
+          jac_arr(iorb,2) = jac_car_kep
+          jac_arr(iorb,3) = jac_equ_kep
+          n0_ = n0
+          WHERE (n0_ == 0)
+             n0_ = 1
+          END WHERE
+          rms_arr(iorb,:) = SQRT(SUM(residuals3(iorb,:,:)**2.0_bp,dim=1,mask=this%obs_masks_prm)/n0_)
+          ! P.d.f.:
+          ! - exponential part
+          ! - a priori p.d.f. for invariance (optionally)
+          IF (iorb == this%vov_norb_prm) THEN
+             itrial = itrial - (norb - i)
+             EXIT
+          END IF
+       END DO
+
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,2(I0,1X))") "Nr of accepted orbits and trials: ",naccepted,norb
+       ENDIF
+       IF (naccepted == 0) THEN
+          norb = norb*100
+       ELSE
+          norb = NINT((this%vov_norb_prm - iorb)*(1.2_bp*norb/naccepted))
+       END IF
+       IF (norb > norb_simult_max) THEN
+          norb = norb_simult_max
+       END IF
+       IF (norb /= SIZE(orb_arr,dim=1)) THEN
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, imap_arr, stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+                  "Could not deallocate memory (10).", 1)
+             DEALLOCATE(principal_axes, stat=err)
+             DEALLOCATE(debiasing_factor_arr, stat=err)
+             DEALLOCATE(debiasing_factor_map, stat=err)
+             DEALLOCATE(obs_coords, stat=err)
+             DEALLOCATE(cosdec0, stat=err)
+             DEALLOCATE(residuals3, stat=err)
+             DEALLOCATE(mask_arr2, stat=err)
+             DEALLOCATE(failed_flag, stat=err)
+             DEALLOCATE(reg_apriori_arr, stat=err)
+             DEALLOCATE(pdf_arr, stat=err)
+             DEALLOCATE(jac_arr, stat=err)
+             DEALLOCATE(rchi2_arr, stat=err)
+             DEALLOCATE(rms_arr, stat=err)
+             DEALLOCATE(diff, stat=err)
+             DEALLOCATE(obs_scoords, stat=err)
+             DEALLOCATE(obsy_ccoords, stat=err)
+             DEALLOCATE(residuals2, stat=err)
+             DEALLOCATE(information_matrix_obs, stat=err)
+             DEALLOCATE(orb_arr, stat=err)
+             DEALLOCATE(imap_arr, stat=err)
+             DEALLOCATE(comp_scoords, stat=err)
+             DEALLOCATE(partials4, stat=err)
+             CALL NULLIFY(orb_global)
+             CALL NULLIFY(orb_local)
+             CALL NULLIFY(t0)
+             RETURN
+          END IF
+       END IF
+       DEALLOCATE(comp_scoords, partials4, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "Could not deallocate memory (15).", 1)
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(imap_arr, stat=err)
+          DEALLOCATE(comp_scoords, stat=err)
+          DEALLOCATE(partials4, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+
+    END DO vov_main
+
+    this%vov_ntrial_cmp = itrial
+    this%vov_norb_cmp = iorb
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "Final number of orbits and the required trials:"
+       WRITE(stdout,"(2X,2(I0,2X))") iorb, itrial
+       WRITE(stdout,*) " Total failure percentage (1), and failure " // &
+            "due to (2) eccentricity, (3) inclination, " // &
+            "(4) residuals, and (5) pdf:"
+       nfailed = SUM(failed_flag)
+       nfailed = MAX(1,nfailed)
+       WRITE(stdout,"(2X,5"//TRIM(frmt)//")") &
+            100.0_lp*REAL(SUM(failed_flag),lp)/itrial, &
+            100.0_lp*REAL(failed_flag(1),lp)/nfailed, &
+            100.0_lp*REAL(failed_flag(2),lp)/nfailed, &
+            100.0_lp*REAL(failed_flag(3),lp)/nfailed, &
+            100.0_lp*REAL(failed_flag(4),lp)/nfailed
+    END IF
+
+    IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+       DO i=1,SIZE(this%orb_arr_cmp)
+          CALL NULLIFY(this%orb_arr_cmp(i))
+       END DO
+       DEALLOCATE(this%orb_arr_cmp, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "Could not deallocate memory (20).", 1)
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(orb_arr, stat=err)
+          DEALLOCATE(imap_arr, stat=err)
+          DEALLOCATE(comp_scoords, stat=err)
+          DEALLOCATE(partials4, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN       
+       END IF
+    END IF
+    ALLOCATE(this%orb_arr_cmp(iorb), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "Could not allocate memory (15).", 1)
+       DO i=1,SIZE(orb_arr)
+          CALL NULLIFY(orb_arr(i))
+       END DO
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       DEALLOCATE(orb_arr, stat=err)
+       DEALLOCATE(imap_arr, stat=err)
+       DEALLOCATE(comp_scoords, stat=err)
+       DEALLOCATE(partials4, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(orb_local)
+       CALL NULLIFY(t0)
+       RETURN       
+    END IF
+    IF (iorb == 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "No sample orbit found.", 1)
+       DO i=1,SIZE(orb_arr)
+          CALL NULLIFY(orb_arr(i))
+       END DO
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       DEALLOCATE(orb_arr, stat=err)
+       DEALLOCATE(imap_arr, stat=err)
+       DEALLOCATE(comp_scoords, stat=err)
+       DEALLOCATE(partials4, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(orb_local)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+
+    ! Output: sample orbits, mapping orbits and local intervals of variation (for plotting)
+    DO i=1,iorb
+       this%orb_arr_cmp(i) = copy(orb_accepted(i))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+               "TRACE BACK (365)", 1)
+          IF (ASSOCIATED(orb_arr)) THEN
+             DO j=1,SIZE(orb_arr)
+                CALL NULLIFY(orb_arr(j))
+             END DO
+             DEALLOCATE(orb_arr, stat=err)
+          END IF
+          DEALLOCATE(principal_axes, stat=err)
+          DEALLOCATE(debiasing_factor_arr, stat=err)
+          DEALLOCATE(debiasing_factor_map, stat=err)
+          DEALLOCATE(obs_coords, stat=err)
+          DEALLOCATE(cosdec0, stat=err)
+          DEALLOCATE(residuals3, stat=err)
+          DEALLOCATE(mask_arr2, stat=err)
+          DEALLOCATE(failed_flag, stat=err)
+          DEALLOCATE(reg_apriori_arr, stat=err)
+          DEALLOCATE(pdf_arr, stat=err)
+          DEALLOCATE(jac_arr, stat=err)
+          DEALLOCATE(rchi2_arr, stat=err)
+          DEALLOCATE(rms_arr, stat=err)
+          DEALLOCATE(diff, stat=err)
+          DEALLOCATE(obs_scoords, stat=err)
+          DEALLOCATE(obsy_ccoords, stat=err)
+          DEALLOCATE(residuals2, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(imap_arr, stat=err)
+          DEALLOCATE(comp_scoords, stat=err)
+          DEALLOCATE(partials4, stat=err)
+          CALL NULLIFY(orb_global)
+          CALL NULLIFY(orb_local)
+          CALL NULLIFY(t0)
+          RETURN
+       END IF
+    END DO
+    CALL propagate(this%orb_arr_cmp, t0)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (370)", 1)
+       IF (ASSOCIATED(orb_arr)) THEN
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, stat=err)
+       END IF
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       DEALLOCATE(imap_arr, stat=err)
+       DEALLOCATE(comp_scoords, stat=err)
+       DEALLOCATE(partials4, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(orb_local)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    ! Maximum likelihood point:
+    CALL NULLIFY(this%orb_ml_cmp)
+    this%orb_ml_cmp = copy(orb_global)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / volumeOfVariation", &
+            "TRACE BACK (375)", 1)
+       IF (ASSOCIATED(orb_arr)) THEN
+          DO i=1,SIZE(orb_arr)
+             CALL NULLIFY(orb_arr(i))
+          END DO
+          DEALLOCATE(orb_arr, stat=err)
+       END IF
+       DEALLOCATE(principal_axes, stat=err)
+       DEALLOCATE(debiasing_factor_arr, stat=err)
+       DEALLOCATE(debiasing_factor_map, stat=err)
+       DEALLOCATE(obs_coords, stat=err)
+       DEALLOCATE(cosdec0, stat=err)
+       DEALLOCATE(residuals3, stat=err)
+       DEALLOCATE(mask_arr2, stat=err)
+       DEALLOCATE(failed_flag, stat=err)
+       DEALLOCATE(reg_apriori_arr, stat=err)
+       DEALLOCATE(pdf_arr, stat=err)
+       DEALLOCATE(jac_arr, stat=err)
+       DEALLOCATE(rchi2_arr, stat=err)
+       DEALLOCATE(rms_arr, stat=err)
+       DEALLOCATE(diff, stat=err)
+       DEALLOCATE(obs_scoords, stat=err)
+       DEALLOCATE(obsy_ccoords, stat=err)
+       DEALLOCATE(residuals2, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       DEALLOCATE(imap_arr, stat=err)
+       DEALLOCATE(comp_scoords, stat=err)
+       DEALLOCATE(partials4, stat=err)
+       CALL NULLIFY(orb_global)
+       CALL NULLIFY(orb_local)
+       CALL NULLIFY(t0)
+       RETURN
+    END IF
+    CALL NULLIFY(orb_global)
+    IF (.NOT.ASSOCIATED(this%cov_ml_cmp)) THEN
+       ALLOCATE(this%cov_ml_cmp(6,6), stat=err)
+    END IF
+    this%cov_ml_cmp = covariance_global
+    this%cov_type_prm = this%element_type_prm
+    this%ls_elem_mask_prm = element_mask
+    IF (ASSOCIATED(this%pdf_arr_cmp)) THEN
+       DEALLOCATE(this%pdf_arr_cmp, stat=err)
+    END IF
+    ALLOCATE(this%pdf_arr_cmp(iorb), stat=err)
+    this%pdf_arr_cmp = pdf_arr(1:iorb)
+    IF (ASSOCIATED(this%reg_apr_arr_cmp)) THEN
+       DEALLOCATE(this%reg_apr_arr_cmp, stat=err)
+    END IF
+    ALLOCATE(this%reg_apr_arr_cmp(iorb), stat=err)
+    this%reg_apr_arr_cmp = reg_apriori_arr(1:iorb)
+    IF (ASSOCIATED(this%jac_arr_cmp)) THEN
+       DEALLOCATE(this%jac_arr_cmp, stat=err)
+    END IF
+    ALLOCATE(this%jac_arr_cmp(iorb,3), stat=err)
+    this%jac_arr_cmp = jac_arr(1:iorb,1:3)
+    IF (ASSOCIATED(this%rchi2_arr_cmp)) THEN
+       DEALLOCATE(this%rchi2_arr_cmp, stat=err)
+    END IF
+    ALLOCATE(this%rchi2_arr_cmp(iorb), stat=err)
+    this%rchi2_arr_cmp = rchi2_arr(1:iorb)
+    this%chi2_min_cmp = MINVAL(this%rchi2_arr_cmp) + SUM(n0(1:6))
+    IF (ASSOCIATED(this%rms_arr_cmp)) THEN
+       DEALLOCATE(this%rms_arr_cmp, stat=err)
+    END IF
+    ALLOCATE(this%rms_arr_cmp(iorb,6), stat=err)
+    this%rms_arr_cmp = rms_arr(1:iorb,1:6)
+    IF (ASSOCIATED(this%vov_map_cmp)) THEN
+       DEALLOCATE(this%vov_map_cmp, stat=err)
+    END IF
+    ALLOCATE(this%vov_map_cmp(this%vov_nmap_prm,12), stat=err)
+    DO i=1,this%vov_nmap_prm
+       this%vov_map_cmp(i,1:6) = elements_local_arr(i,1:6)
+       DO j=1,6
+          this%vov_map_cmp(i,6+j) = 0.0_bp
+          IF (j == indx) THEN
+             this%vov_map_cmp(i,6+j) = stdev_global(j)
+             CYCLE
+          END IF
+
+          DO k=1,6
+             IF (principal_axes(i,j,k) > 0.0_bp) THEN
+                this%vov_map_cmp(i,6+j) = this%vov_map_cmp(i,6+j) + principal_axes(i,j,k)
+             ELSE
+                this%vov_map_cmp(i,6+j) = this%vov_map_cmp(i,6+j) - principal_axes(i,j,k)                
+             END IF
+          END DO
+       END DO
+    END DO
+    this%vov_scaling_cmp = this%vov_scaling_prm
+
+    IF (ASSOCIATED(orb_arr)) THEN
+       DO i=1,SIZE(orb_arr)
+          CALL NULLIFY(orb_arr(i))
+       END DO
+       DEALLOCATE(orb_arr, stat=err)
+    END IF
+    DO i=1,SIZE(orb_accepted)
+       CALL NULLIFY(orb_accepted(i))
+    END DO
+    DEALLOCATE(principal_axes, stat=err)
+    DEALLOCATE(debiasing_factor_arr, stat=err)
+    DEALLOCATE(debiasing_factor_map, stat=err)
+    DEALLOCATE(obs_coords, stat=err)
+    DEALLOCATE(cosdec0, stat=err)
+    DEALLOCATE(residuals3, stat=err)
+    DEALLOCATE(mask_arr2, stat=err)
+    DEALLOCATE(failed_flag, stat=err)
+    DEALLOCATE(reg_apriori_arr, stat=err)
+    DEALLOCATE(pdf_arr, stat=err)
+    DEALLOCATE(jac_arr, stat=err)
+    DEALLOCATE(rchi2_arr, stat=err)
+    DEALLOCATE(rms_arr, stat=err)
+    DEALLOCATE(diff, stat=err)
+    DEALLOCATE(obs_scoords, stat=err)
+    DEALLOCATE(obsy_ccoords, stat=err)
+    DEALLOCATE(residuals2, stat=err)
+    DEALLOCATE(information_matrix_obs, stat=err)
+    DEALLOCATE(imap_arr, stat=err)
+    DEALLOCATE(comp_scoords, stat=err)
+    DEALLOCATE(partials4, stat=err)
+
+  END SUBROUTINE volumeOfVariation
+
 
 
 
