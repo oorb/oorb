@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -105,7 +105,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2011-08-08
+!! @version 2011-10-13
 !!
 MODULE linal
 
@@ -362,7 +362,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: aa
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: b, z
     REAL(rprec8) :: c, g, h, s, sm, t, tau, theta, tresh
-    INTEGER :: i, ip, iq, n, err
+    INTEGER :: i, j, ip, iq, n, err
     LOGICAL, DIMENSION(:,:), ALLOCATABLE :: upper_triangle
 
     n = SIZE(a,dim=1)
@@ -392,9 +392,9 @@ CONTAINS
     d(:) = b(:)
     z(:) = 0.0_rprec8
     nrot = 0
-    DO i=1, 50
+    DO i=1, 100
        sm = SUM(ABS(aa), mask=upper_triangle)
-       IF(sm == 0.0_rprec8) THEN
+       IF (sm == 0.0_rprec8) THEN
           DEALLOCATE(aa, b, z, upper_triangle, stat=err)
           IF (err /= 0) THEN
              error = " -> linal : eigen_decomposition_jacobi : Could not deallocate memory (1)." // &
@@ -404,6 +404,8 @@ CONTAINS
              DEALLOCATE(z, stat=err)
              DEALLOCATE(upper_triangle, stat=err)
           END IF
+          ! Make sure that the eigenvalues are non-negative:
+          d = ABS(d)
           RETURN
        END IF
        tresh = MERGE((0.2_rprec8*sm)/(n**2), 0.0_rprec8, i < 4)

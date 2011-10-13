@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2011-09-16
+!! @version 2011-10-13
 !!
 PROGRAM oorb
 
@@ -126,7 +126,8 @@ PROGRAM oorb
        orb_in_fname, &                                              !! Path to input orbit file (incl. fname).
        orb_out_fname, &                                             !! Path to output orbit file (incl. fname).
        out_fname, &                                                 !! Path to generic output file (incl. fname).
-       tmp_fname
+       tmp_fname, &
+       line
   CHARACTER(len=ELEMENT_TYPE_LEN) :: &
        element_type_comp_prm, &                                     !! Element type to be used in computations.
        element_type_in, &                                           !! Element type of input orbit(s).
@@ -165,7 +166,8 @@ PROGRAM oorb
        pdfs_arr, &
        periapsis_distance_pdf, &
        planeph, &
-       vov_map
+       vov_map, &
+       vomcmc_map
   REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
        elements_arr, &
        ephem_, &
@@ -178,7 +180,9 @@ PROGRAM oorb
        cov
   REAL(bp), DIMENSION(6,2) :: &
        vov_scaling_cmp, &
-       vov_scaling_prm
+       vov_scaling_prm, &
+       vomcmc_scaling_cmp, &
+       vomcmc_scaling_prm
   REAL(bp), DIMENSION(2,2) :: &
        sor_rho_cmp
   REAL(bp), DIMENSION(:), POINTER :: &
@@ -233,7 +237,7 @@ PROGRAM oorb
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, &
        cos_nsigma, cos_obj_phase, &
-       day0, day1, dDelta, ddec, dec, dra, dt, dt_, dt_fulfill_night, &
+       day0, day1, dDelta, ddec, dec, dra, dt, dt_, dt_fulfill_night, dchi2_max, &
        ephemeris_r2, &
        hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
        i_min, i_max, integration_step, integration_step_init, &
@@ -263,6 +267,7 @@ PROGRAM oorb
        i, &
        iday, &
        indx, indx_max, indx_min, &
+       iorb, &
        istep, &
        j, &
        k, &
@@ -282,6 +287,8 @@ PROGRAM oorb
        sor_type_prm, &
        vov_type, vov_type_prm, vov_norb, vov_ntrial, vov_niter, &
        vov_norb_iter, vov_ntrial_iter, vov_nmap, &
+       vomcmc_type, vomcmc_type_prm, vomcmc_norb, vomcmc_ntrial, vomcmc_niter, &
+       vomcmc_norb_iter, vomcmc_ntrial_iter, vomcmc_nmap, &
        year, year0, year1
   LOGICAL, DIMENSION(:,:), POINTER :: &
        obs_masks
@@ -289,7 +296,8 @@ PROGRAM oorb
        perturbers
   LOGICAL, DIMENSION(6) :: &
        ls_element_mask, &
-       vov_mapping_mask
+       vov_mapping_mask, &
+       vomcmc_mapping_mask
   LOGICAL, DIMENSION(4) :: &
        sor_iterate_bounds
   LOGICAL :: &
@@ -307,7 +315,7 @@ PROGRAM oorb
        random_obs, &
        regularized, &
        separately, separately_, & !! Output orbit(s)/ephemerides/etc separately for each object
-       dchi2_filtering, &
+       dchi2_rejection, &
        write_residuals
 
   ! Defaults:
@@ -395,6 +403,8 @@ PROGRAM oorb
        orbit_format_out=orbit_format_out, &
        outlier_rejection=outlier_rejection_prm, &
        outlier_multiplier=outlier_multiplier_prm, &
+       dchi2_rejection=dchi2_rejection, &
+       dchi2_max=dchi2_max, &
        plot_open=plot_open, &
        plot_results=plot_results, &
        dyn_model=dyn_model, &
@@ -1149,13 +1159,26 @@ PROGRAM oorb
           'F12.8,1X,I4,2I2.2,1X,F7.2,1X,F8.2,1X,I4,2I2,' // &
           '3(1X,F7.2,1X,I4,2I2))'
      i = 0
+     iorb = 0
      ALLOCATE(str_arr(6), real_arr(5), int_arr(23))
      str_arr(1)(1:LEN(str_arr(1))) = " "
      str_arr(2)(1:LEN(str_arr(2))) = " "
      DO
+        line(:) = " "
         str_arr(1)(1:6) = " "
         str_arr(2)(1:18) = " "
-        READ(getUnit(orb_in_file),TRIM(frmt),iostat=err) &
+        iorb = iorb + 1
+        READ(getUnit(orb_in_file),"(A)",iostat=err) line
+        IF (err > 0) THEN
+           CALL errorMessage("oorb / astorbtoorb", &
+                'Error while reading line:',1)
+           WRITE(stderr,"(I0)") iorb
+           STOP
+        ELSE IF (err < 0) THEN
+           ! Input file read.
+           EXIT
+        END IF
+        READ(line,TRIM(frmt),iostat=err) &
              str_arr(1)(1:6), str_arr(2)(1:18), str_arr(3)(1:15), &
              H_value, G_value, str_arr(4)(1:4), str_arr(5)(1:5), &
              str_arr(6)(1:4), int_arr(1:8), year, month, iday, &
@@ -1164,11 +1187,16 @@ PROGRAM oorb
              real_arr(4), int_arr(18:20), real_arr(5), int_arr(21:23)
         IF (err > 0) THEN
            CALL errorMessage("oorb / astorbtoorb", &
-                'Error while reading line from file.',1)
+                'Error while converting line:',1)
+           WRITE(stderr,"(I0)") iorb
            STOP
-        ELSE IF (err < 0) THEN
-           ! Input file read.
-           EXIT
+        END IF
+        READ(line(43:47),*,iostat=err) H_value
+        IF (err > 0) THEN
+           CALL errorMessage("oorb / astorbtoorb", &
+                'Error while converting H str to real on line:',1)
+           WRITE(stderr,"(I0)") iorb
+           STOP
         END IF
 !!$        ! vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 !!$        ! Discard some orbits depending on the following requirement:
@@ -1178,7 +1206,7 @@ PROGRAM oorb
 !!$             elements(1)*(1.0_bp-elements(2)) < 1.3_bp .OR. &
 !!$             elements(1) > 4.5_bp .OR. &
 !!$                                !elements(3) > 60.0_bp .OR. &
-!!$                                !H_value > 15.5_bp
+!!$             H_value > 15.5_bp) then
 !!$             int_arr(9) >= 2008) THEN
 !!$           CYCLE
 !!$        END IF
@@ -1243,7 +1271,7 @@ PROGRAM oorb
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id, orb, H_value, 1, 6, &
-                -1.0_bp, "OPENORB")
+                REAL(int_arr(7),bp), "OPENORB")
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
@@ -1309,7 +1337,7 @@ PROGRAM oorb
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                -1.0_bp, "OPENORB")
+                arc_arr(i), "OPENORB")
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
@@ -1406,7 +1434,6 @@ PROGRAM oorb
      accwin_multiplier = -1.0_bp
      gaussian_rho = .FALSE.
      regularized = .FALSE.
-     dchi2_filtering = .FALSE.
      write_residuals = .FALSE.
      chi2_min_init = -1.0_bp
      CALL readConfigurationFile(conf_file, &
@@ -1427,7 +1454,7 @@ PROGRAM oorb
           sor_genwin_offset=sor_genwin_offset, &
           sor_iterate_bounds=sor_iterate_bounds, &
           accwin_multiplier=accwin_multiplier, &
-          dchi2_filtering=dchi2_filtering, regularized_pdf=regularized, &
+          regularized_pdf=regularized, &
           sor_random_obs=random_obs, sor_rho_gauss=gaussian_rho, &
           write_residuals=write_residuals, &
           chi2_min=chi2_min_init)
@@ -1565,7 +1592,8 @@ PROGRAM oorb
              t_inv=t, &
              element_type=element_type_comp_prm, &
              regularized_pdf = regularized, &
-             dchi2_filtering = dchi2_filtering, &
+             dchi2_rejection = dchi2_rejection, &
+             dchi2_max = dchi2_max, &
              chi2_min=chi2_min_init, &
              accept_multiplier=accwin_multiplier, &
              apriori_a_max=apriori_a_max, apriori_a_min=apriori_a_min, &
@@ -3690,6 +3718,682 @@ PROGRAM oorb
      IF (err /= 0) THEN
         CALL errorMessage("oorb / vov", &
              "Could not deallocate memory (20)", 1)
+        STOP
+     END IF
+
+  CASE ("vomcmc")
+
+     ! Orbit inversion using the virtual-observation MCMC sampling.
+
+     CALL readConfigurationFile(conf_file, &
+          t0=epoch, &
+          dyn_model=dyn_model, &
+          perturbers=perturbers, &
+          integrator=integrator, &
+          integration_step=integration_step, &
+          dyn_model_init=dyn_model_init, &
+          integrator_init=integrator_init, &
+          integration_step_init=integration_step_init, &
+          ls_correction_factor=ls_correction_factor, &
+          ls_element_mask=ls_element_mask, &
+          ls_rchi2_acceptable=ls_rchi2_acceptable, &
+          vomcmc_type=vomcmc_type_prm, &
+          vomcmc_norb=vomcmc_norb, &
+          vomcmc_ntrial=vomcmc_ntrial, &
+          vomcmc_niter=vomcmc_niter, &
+          vomcmc_norb_iter=vomcmc_norb_iter, &
+          vomcmc_ntrial_iter=vomcmc_ntrial_iter, &
+          vomcmc_nmap=vomcmc_nmap, &
+          vomcmc_mapping_mask=vomcmc_mapping_mask, &
+          vomcmc_scaling=vomcmc_scaling_prm, &
+          accwin_multiplier=accwin_multiplier, &
+          generat_multiplier=generat_multiplier, &
+          generat_gaussian_deviates=generat_gaussian_deviates, &
+          os_norb=os_norb, &
+          os_ntrial=os_ntrial, &
+          os_sampling_type=os_sampling_type, &
+          smplx_niter=smplx_niter, &
+          smplx_similarity_tol=smplx_similarity_tol)
+     IF (error) THEN
+        CALL errorMessage("oorb / vomcmc", &
+             "TRACE BACK (2)", 1)
+        STOP
+     END IF
+
+     obss_sep => getSeparatedSets(obss_in)
+     IF (error) THEN
+        CALL errorMessage("oorb / vomcmc", &
+             "TRACE BACK (25)", 1)
+        STOP
+     END IF
+     CALL NULLIFY(obss_in)
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (30)", 1)
+           STOP
+        END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
+                ". observation set (", TRIM(id), ")"
+        END IF
+        norb = 0
+        IF (ALLOCATED(storb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                    orb_arr => getSampleOrbits(storb_arr_in(j))
+                    IF (error) THEN
+                       CALL errorMessage("oorb / vomcmc", &
+                            "TRACE BACK (35)", 1)
+                       STOP
+                    END IF
+                    norb = SIZE(orb_arr)
+                    EXIT
+                 ELSE
+                    ALLOCATE(orb_arr(1))
+                    orb_arr(1) = getNominalOrbit(storb_arr_in(j))
+                    IF (error) THEN
+                       CALL errorMessage("oorb / vomcmc", &
+                            "TRACE BACK (35)", 1)
+                       STOP
+                    END IF
+                    norb = 1
+                    EXIT                    
+                 END IF
+              END IF
+           END DO
+           IF (norb == 0) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "Initial orbit not available.", 1)
+              STOP
+           END IF
+        ELSE IF (ASSOCIATED(orb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 norb = norb + 1
+                 IF (.NOT.ASSOCIATED(orb_arr)) THEN
+                    orb_arr => reallocate(orb_arr,2*norb)
+                 ELSE IF (SIZE(orb_arr) < norb) THEN
+                    orb_arr => reallocate(orb_arr,2*norb)
+                 END IF
+                 orb_arr(norb) = copy(orb_arr_in(j))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / vomcmc", &
+                         "TRACE BACK (35)", 1)
+                    STOP
+                 END IF
+              END IF
+           END DO
+           IF (norb == 0) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "Initial orbit not available.", 1)
+              STOP
+           ELSE
+              orb_arr => reallocate(orb_arr,norb)
+           END IF
+        END IF
+        dt = getObservationalTimespan(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (40)", 1)
+           STOP
+        END IF
+        IF (.NOT.exist(epoch)) THEN
+           CALL NULLIFY(t)
+           obs = getObservation(obss_sep(i),1)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (45)", 1)
+              STOP
+           END IF
+           t = getTime(obs)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (50)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obs)
+           mjd = getMJD(t, "tt")
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (65)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(t)
+           mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
+           CALL NEW(t, mjd, "tt")   
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (70)", 1)
+              STOP
+           END IF
+        ELSE
+           CALL NULLIFY(t)
+           t = copy(epoch)
+        END IF
+        CALL propagate(orb_arr, t)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (65)", 1)
+           STOP
+        END IF
+        DO k=1,norb
+           CALL setParameters(orb_arr(k), &
+                dyn_model=dyn_model, &
+                perturbers=perturbers, &
+                integrator=integrator, &
+                integration_step=integration_step)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (35)", 1)
+              STOP
+           END IF
+        END DO
+        CALL NEW(storb, obss_sep(i))        
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (70)", 1)
+           STOP
+        END IF
+        CALL setParameters(storb, &
+             t_inv=t, &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step, &
+             dchi2_rejection = dchi2_rejection, &
+             dchi2_max = dchi2_max, &
+             outlier_rejection=outlier_rejection_prm, &
+             outlier_multiplier=outlier_multiplier_prm, &
+             element_type=element_type_comp_prm, &
+             accept_multiplier=accwin_multiplier, &
+             vomcmc_norb=vomcmc_norb, &
+             vomcmc_ntrial=vomcmc_ntrial, &
+             vomcmc_niter=vomcmc_niter, &
+             vomcmc_norb_iter=vomcmc_norb_iter, &
+             vomcmc_ntrial_iter=vomcmc_ntrial_iter, &
+             vomcmc_nmap=vomcmc_nmap, &
+             vomcmc_mapping_mask=vomcmc_mapping_mask, &
+             vomcmc_scaling=vomcmc_scaling_prm, &
+             generat_multiplier=generat_multiplier, &
+             generat_gaussian_deviates=generat_gaussian_deviates, &
+             os_norb=os_norb, &
+             os_ntrial=os_ntrial, &
+             os_sampling_type=os_sampling_type, &
+             smplx_niter=smplx_niter, &
+             smplx_force=.FALSE., &
+             smplx_similarity_tol=smplx_similarity_tol)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (75)", 1)
+           STOP
+        END IF
+        SELECT CASE (vomcmc_type_prm)
+        CASE (1)
+           CALL virtualObservationMCMC(storb, orb_arr)
+        CASE (2)
+           CALL virtualObservationMCMC(storb, orb_arr)
+        CASE default
+           CALL errorMessage("oorb / vomcmc", &
+                "Unknown type of Vomcmc:", 1)
+           IF (err_verb >= 1) THEN
+              WRITE(stderr,"(2X,I0)") vomcmc_type_prm
+           END IF
+           STOP
+        END SELECT
+        IF (error .OR. getNrOfSampleOrbits(storb) < INT(0.5*vomcmc_norb)) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (80)", 1)
+           error  = .FALSE.
+           CALL NEW(out_file, "problematic_observation_sets." // &
+                TRIM(observation_format_out))
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (85)", 1)
+              STOP
+           END IF
+           CALL setPositionAppend(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (90)", 1)
+              STOP
+           END IF
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (95)", 1)
+              STOP
+           END IF
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out))
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (100)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (105)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(storb)
+           CYCLE
+        END IF
+        ! In case of too many outliers and the 2-b
+        ! approximation, throw the observation set in a separate
+        ! bin:
+        IF (dyn_model == "2-body") THEN
+           obs_masks => getObservationMasks(storb)
+           noutlier = 0
+           DO l=1,SIZE(obs_masks,dim=1)
+              IF (ALL(.NOT.obs_masks(l,:))) THEN
+                 noutlier = noutlier + 1
+              END IF
+           END DO
+           IF (noutlier > 0) THEN
+              CALL NEW(out_file, "outliers." // TRIM(observation_format_out))
+              IF (error) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "TRACE BACK (85)", 1)
+                 STOP
+              END IF
+              CALL setPositionAppend(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "TRACE BACK (90)", 1)
+                 STOP
+              END IF
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "TRACE BACK (95)", 1)
+                 STOP
+              END IF
+              WRITE(getUnit(out_file),"(1X)")
+              WRITE(getUnit(out_file),"(A,I0,A)",advance="no") "# ", &
+                   noutlier, " outliers: "
+              DO l=1,SIZE(obs_masks,dim=1)
+                 IF (ALL(.NOT.obs_masks(l,:))) THEN
+                    WRITE(getUnit(out_file),"(A)",advance="no") "*"
+                 ELSE
+                    WRITE(getUnit(out_file),"(A)",advance="no") "-"
+                 END IF
+              END DO
+              WRITE(getUnit(out_file),"(1X)")
+              CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                   TRIM(observation_format_out))
+              IF (error) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "TRACE BACK (100)", 1)
+                 STOP
+              END IF
+              CALL NULLIFY(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "TRACE BACK (105)", 1)
+                 STOP
+              END IF
+           END IF
+           DEALLOCATE(obs_masks, stat=err)
+           IF (err /= 0) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "Could not deallocate memory (5)", 1)
+              STOP
+           END IF
+        END IF
+        CALL NEW(out_file, TRIM(id) // ".vomcmc")
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (115)", 1)
+           STOP
+        END IF
+        CALL OPEN(out_file)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+        ! WRITE OBSERVATIONS:
+        CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+             TRIM(observation_format_out)) 
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (85)", 1)
+           STOP
+        END IF
+        WRITE(getUnit(out_file),"(A)") "#"
+        CALL writeVOMCMCResults(storb, obss_sep(i), getUnit(out_file))
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK ()", 1)
+           STOP
+        END IF
+        CALL NULLIFY(out_file)
+        ! WRITE SAMPLE ORBITS TO OUTPUT FILE
+        orb_arr_cmp => getSampleOrbits(storb)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (120)", 1)
+           STOP
+        END IF
+        pdf_arr_cmp => getPDFValues(storb)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (125)", 1)
+           STOP
+        END IF
+        rchi2_arr_cmp => getReducedChi2Distribution(storb)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (130)", 1)
+           STOP
+        END IF
+        CALL getResults(storb, repetition_arr_cmp=repetition_arr_cmp)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (135)", 1)
+           STOP
+        END IF
+        CALL NEW(orb_out_file, TRIM(id) // ".orb")
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (15)", 1)
+           STOP
+        END IF
+        CALL OPEN(orb_out_file)
+        IF (error) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "TRACE BACK (20)", 1)
+           STOP
+        END IF
+        DO l=1,SIZE(orb_arr_cmp,dim=1)
+           CALL writeOpenOrbOrbitFile(getUnit(orb_out_file), &
+                print_header=l==1.AND.i==1, &
+                element_type_out=element_type_out_prm, &
+                id=id, &
+                orb=orb_arr_cmp(l), &
+                element_type_pdf=element_type_comp_prm, &
+                pdf=pdf_arr_cmp(l), &
+                rchi2=rchi2_arr_cmp(l), &
+                repetitions=repetition_arr_cmp(l))
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (140)", 1)
+              STOP
+           END IF
+        END DO
+        CALL NULLIFY(orb_out_file)
+        IF (plot_results) THEN
+           CALL toString(dt, str, error, frmt="(F10.2)")
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (145)", 1)
+              STOP
+           END IF
+           str = TRIM(id) // "_"// TRIM(str)
+           CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
+                "_vomcmc_residual_stamps.ps",  compute=.TRUE.)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (142)", 1)
+              STOP
+           END IF
+           IF (plot_open) THEN
+              CALL system("gv " // TRIM(str) // "_vomcmc_residual_stamps.ps &")
+           END IF
+           CALL getResults(storb, &
+                vomcmc_map_cmp=vomcmc_map, &
+                vomcmc_scaling_cmp=vomcmc_scaling_cmp)
+           !vomcmc_mapping_mask_prm=vomcmc_mapping_mask)
+           CALL getParameters(storb, &
+                vomcmc_mapping_mask=vomcmc_mapping_mask)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (135)", 1)
+              STOP
+           END IF
+           ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
+           IF (err /= 0) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "Could not allocate memory (10)", 1)
+              STOP
+           END IF
+           CALL NEW(tmp_file, TRIM(str)// "_vomcmc_orbits.out")
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (150)", 1)
+              STOP
+           END IF
+           CALL OPEN(tmp_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (155)", 1)
+              STOP
+           END IF
+           DO l=1,SIZE(orb_arr_cmp,dim=1)
+              IF (element_type_comp_prm == "cartesian") THEN
+                 CALL rotateToEcliptic(orb_arr_cmp(l))
+              END IF
+              elements_arr(l,1:6) = getElements(orb_arr_cmp(l), element_type_comp_prm)
+              IF (error) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "TRACE BACK (160)", 1)
+                 STOP
+              END IF
+              elements_arr(l,7) = pdf_arr_cmp(l)
+              t = getTime(orb_arr_cmp(l))
+              IF (error) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "TRACE BACK (165)", 1)
+                 STOP
+              END IF
+              IF (element_type_comp_prm == "keplerian") THEN
+                 WRITE(getUnit(tmp_file),*) &
+                      elements_arr(l,1:2), &
+                      elements_arr(l,3:6)/rad_deg, &
+                      pdf_arr_cmp(l), &
+                      getCalendarDateString(t,"tdt")
+              ELSE
+                 WRITE(getUnit(tmp_file),*) &
+                      elements_arr(l,1:6), &
+                      pdf_arr_cmp(l), &
+                      getCalendarDateString(t,"tdt")
+              END IF
+              CALL NULLIFY(t)
+           END DO
+           CALL NULLIFY(tmp_file)
+           CALL NULLIFY(orb)
+           orb = getNominalOrbit(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (170)", 1)
+              STOP
+           END IF
+           elements = getElements(orb, element_type_comp_prm)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (175)", 1)
+              STOP
+           END IF
+           t = getTime(orb)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (180)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(orb)
+           CALL NEW(tmp_file, TRIM(str)// "_vomcmc_nominal_orbit.out")
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (185)", 1)
+              STOP
+           END IF
+           CALL OPEN(tmp_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (190)", 1)
+              STOP
+           END IF
+           IF (element_type_comp_prm == "keplerian") THEN
+              WRITE(getUnit(tmp_file),*) elements(1:2), &
+                   elements(3:6)/rad_deg, &
+                   getCalendarDateString(t,"tdt")
+           ELSE
+              WRITE(getUnit(tmp_file),*) elements(1:6), &
+                   getCalendarDateString(t,"tdt")
+           END IF
+           CALL NULLIFY(tmp_file)
+           CALL NULLIFY(t)
+           vomcmc_nmap = SIZE(vomcmc_map,dim=1)
+           CALL NEW(tmp_file, TRIM(str)// "_vomcmc_sampling_grid.out")
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (195)", 1)
+              STOP
+           END IF
+           CALL OPEN(tmp_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (200)", 1)
+              STOP
+           END IF
+           DO l=1,vomcmc_nmap,MAX(1,NINT(vomcmc_nmap/10.0))
+              IF (element_type_comp_prm == "keplerian") THEN
+                 WRITE(getUnit(tmp_file), "(6(F22.15,1X))", &
+                      advance="no") vomcmc_map(l,1:2), &
+                      vomcmc_map(l,3:6)/rad_deg
+              ELSE
+                 WRITE(getUnit(tmp_file), "(6(F22.15,1X))", &
+                      advance="no") vomcmc_map(l,1:6)
+              END IF
+              lower_limit = vomcmc_map(l,1:6) - &
+                   vomcmc_scaling_cmp(:,1)*vomcmc_map(l,7:12)
+              upper_limit = vomcmc_map(l,1:6) + &
+                   vomcmc_scaling_cmp(:,2)*vomcmc_map(l,7:12)
+              DO m=1,6
+                 IF (vomcmc_mapping_mask(m)) THEN
+                    CYCLE
+                 END IF
+                 IF (element_type_comp_prm == "keplerian" .AND. m>=3) THEN
+                    WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                         advance="no") lower_limit(m)/rad_deg
+                    WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                         advance="no") upper_limit(m)/rad_deg
+                 ELSE
+                    WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                         advance="no") lower_limit(m)
+                    WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                         advance="no") upper_limit(m)
+                 END IF
+              END DO
+              WRITE(getUnit(tmp_file),*)
+           END DO
+           CALL NULLIFY(tmp_file)
+           CALL NEW(tmp_file, TRIM(str) // &
+                "_vomcmc_sample_standard_deviations.out")
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (205)", 1)
+              STOP
+           END IF
+           CALL OPEN(tmp_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (210)", 1)
+              STOP
+           END IF
+           WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                advance="no") &
+                getObservationalTimespan(obss_sep(i))
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (215)", 1)
+              STOP
+           END IF
+           DO l=1,6
+              CALL moments(elements_arr(:,l), &
+                   pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+              IF (LEN_TRIM(errstr) /= 0) THEN
+                 CALL errorMessage("oorb / vomcmc", &
+                      "Could not compute moments: " // TRIM(errstr), 1)
+                 STOP
+              END IF
+              IF (element_type_comp_prm == "keplerian" .AND. l>=3) THEN
+                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                      advance="no")  stdev/rad_deg
+              ELSE
+                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                      advance="no") stdev
+              END IF
+           END DO
+           WRITE(getUnit(tmp_file),*)
+           CALL NULLIFY(tmp_file)
+           DEALLOCATE(elements_arr, vomcmc_map, stat=err)
+           IF (err /= 0) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "Could not deallocate memory (10)", 1)
+              STOP
+           END IF
+           ! Make plot using gnuplot:
+           CALL system("cp " // TRIM(str) // &
+                "_vomcmc_sampling_grid.out vomcmc_sampling_grid.out")
+           CALL system("cp " // TRIM(str) // &
+                "_vomcmc_orbits.out vomcmc_orbits.out")
+           CALL system("cp " // TRIM(str) // &
+                "_vomcmc_nominal_orbit.out vomcmc_nominal_orbit.out")
+           IF (element_type_comp_prm == "cartesian") THEN
+              CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/vomcmc_plot_car.gp")
+           ELSE
+              CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/vomcmc_plot_kep.gp")
+           END IF
+           CALL system("cp vomcmc_results.ps " // TRIM(str) // &
+                "_vomcmc_" // TRIM(element_type_comp_prm) // &
+                "_results.ps")
+           CALL system("rm -f vomcmc_sampling_grid.out vomcmc_orbits.out " // &
+                "vomcmc_nominal_orbit.out vomcmc_results.ps")
+!!$           CALL system("rm -f " // TRIM(str) // &
+!!$                "_vomcmc_sampling_grid.out " // TRIM(str) &
+!!$                // "_vomcmc_orbits.out " // TRIM(str) // &
+!!$                "_vomcmc_nominal_orbit.out " // TRIM(str) // &
+!!$                "_vomcmc_sample_standard_deviations.out")
+           IF (plot_open) THEN
+              CALL system("gv " // TRIM(str) // "_vomcmc_" // &
+                   TRIM(element_type_comp_prm) // &
+                   "_results.ps &")
+           END IF
+        END IF
+        DEALLOCATE(orb_arr_cmp, pdf_arr_cmp, rchi2_arr_cmp, &
+             stat=err)
+        IF (err /= 0) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "Could not deallocate memory (15).", 1)
+           STOP
+        END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(3(1X,A))") "Object", &
+                TRIM(id), "successfully processed."
+        END IF
+        DEALLOCATE(orb_arr, stat=err)
+        IF (err /= 0) THEN
+           CALL errorMessage("oorb / vomcmc", &
+                "Could not deallocate memory (20)", 1)
+           STOP
+        END IF
+        CALL NULLIFY(storb)
+        CALL NULLIFY(orb)
+        IF (info_verb > 2) THEN
+           WRITE(stdout,*)
+           WRITE(stdout,*)
+        END IF
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep, stat=err)
+     IF (err /= 0) THEN
+        CALL errorMessage("oorb / vomcmc", &
+             "Could not deallocate memory (25)", 1)
         STOP
      END IF
 
