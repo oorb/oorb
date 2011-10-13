@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2011-08-23
+!! @version 2011-10-13
 !!
 MODULE io
 
@@ -537,8 +537,7 @@ CONTAINS
        dyn_model, perturbers, integrator, integration_step, relativity, &
        dyn_model_init, integrator_init, integration_step_init, &
        accwin_multiplier, &
-       dchi2_filtering, regularized_pdf, &
-       chi2_min, & 
+       dchi2_rejection, dchi2_max, regularized_pdf, chi2_min, & 
        outlier_rejection, outlier_multiplier, &
        apriori_a_min, apriori_a_max, apriori_periapsis_min, &
        apriori_periapsis_max, apriori_apoapsis_min, &
@@ -550,6 +549,8 @@ CONTAINS
        sor_rho_gauss2, sor_iterate_bounds, &
        vov_type, vov_norb, vov_ntrial, vov_niter, vov_norb_iter, &
        vov_ntrial_iter, vov_nmap, vov_mapping_mask, vov_scaling, &
+       vomcmc_type, vomcmc_norb, vomcmc_ntrial, vomcmc_niter, vomcmc_norb_iter, &
+       vomcmc_ntrial_iter, vomcmc_nmap, vomcmc_mapping_mask, vomcmc_scaling, &
        ls_type, ls_element_mask, ls_correction_factor, ls_rchi2_acceptable, &
        ls_niter_major_max, ls_niter_major_min, ls_niter_minor, &
        cos_nsigma, cos_norb, cos_ntrial, cos_gaussian, &
@@ -584,7 +585,8 @@ CONTAINS
          orbit_format_out, &
          planetary_ephemeris_fname
     REAL(bp), DIMENSION(6,2), INTENT(inout), OPTIONAL :: &
-         vov_scaling
+         vov_scaling, &
+         vomcmc_scaling
     REAL(bp), DIMENSION(:), POINTER, OPTIONAL :: &
          eph_dt_since_last_obs
     REAL(bp), DIMENSION(6), INTENT(inout), OPTIONAL :: &
@@ -604,6 +606,7 @@ CONTAINS
          smplx_similarity_tol, &
          integration_step, &
          integration_step_init, &
+         dchi2_max, &
          chi2_min, &
          apriori_a_min, &
          apriori_a_max, &
@@ -631,6 +634,13 @@ CONTAINS
          vov_norb_iter, &
          vov_ntrial_iter, &
          vov_nmap, &
+         vomcmc_type, &
+         vomcmc_norb, &
+         vomcmc_ntrial, &
+         vomcmc_niter, &
+         vomcmc_norb_iter, &
+         vomcmc_ntrial_iter, &
+         vomcmc_nmap, &
          ls_type, &
          ls_niter_major_max, &
          ls_niter_major_min, &
@@ -646,7 +656,8 @@ CONTAINS
          perturbers
     LOGICAL, DIMENSION(6), INTENT(inout), OPTIONAL :: &
          ls_element_mask, &
-         vov_mapping_mask
+         vov_mapping_mask, &
+         vomcmc_mapping_mask
     LOGICAL, DIMENSION(4), INTENT(inout), OPTIONAL :: &
          sor_iterate_bounds
     LOGICAL, INTENT(inout), OPTIONAL :: &
@@ -654,7 +665,7 @@ CONTAINS
          plot_open, &
          multiple_ids, &
          relativity, &
-         dchi2_filtering, &
+         dchi2_rejection, &
          regularized_pdf, &
          masked_obs, &
          outlier_rejection, &
@@ -1156,14 +1167,18 @@ CONTAINS
 
 
           ! STATISTICAL PARAMETERS
-       CASE ("dchi2_filtering")
-          IF (PRESENT(dchi2_filtering)) THEN
-             READ(par_val, *, iostat=err) dchi2_filtering
+       CASE ("dchi2_rejection")
+          IF (PRESENT(dchi2_rejection)) THEN
+             READ(par_val, *, iostat=err) dchi2_rejection
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
                      "Could not read parameter value (21).", 1)
              END IF
+          END IF
+       CASE ("dchi2.max")
+          IF (PRESENT(dchi2_max)) THEN
+             CALL toReal(par_val, dchi2_max, error)
           END IF
        CASE ("reg.pdf")
           IF (PRESENT(regularized_pdf)) THEN
@@ -1408,6 +1423,65 @@ CONTAINS
        CASE ("vov.scaling.hi")
           IF (PRESENT(vov_scaling)) THEN
              READ(par_val, *, iostat=err) vov_scaling(:,2)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (15).", 1)
+             END IF
+          END IF
+
+
+          ! VIRTUAL-OBSERVATION-MCMC PARAMETERS:
+       CASE ("vomcmc.type")
+          IF (PRESENT(vomcmc_type)) THEN
+             CALL toInt(TRIM(par_val), vomcmc_type, error)
+          END IF
+       CASE ("vomcmc.norb")
+          IF (PRESENT(vomcmc_norb)) THEN
+             CALL toInt(TRIM(par_val), vomcmc_norb, error)
+          END IF
+       CASE ("vomcmc.ntrial")
+          IF (PRESENT(vomcmc_ntrial)) THEN
+             CALL toInt(TRIM(par_val), vomcmc_ntrial, error)
+          END IF
+       CASE ("vomcmc.niter")
+          IF (PRESENT(vomcmc_niter)) THEN
+             CALL toInt(TRIM(par_val), vomcmc_niter, error)
+          END IF
+       CASE ("vomcmc.norb_iter")
+          IF (PRESENT(vomcmc_norb_iter)) THEN
+             CALL toInt(TRIM(par_val), vomcmc_norb_iter, error)
+          END IF
+       CASE ("vomcmc.ntrial_iter")
+          IF (PRESENT(vomcmc_ntrial_iter)) THEN
+             CALL toInt(TRIM(par_val), vomcmc_ntrial_iter, error)
+          END IF
+       CASE ("vomcmc.nmap")
+          IF (PRESENT(vomcmc_nmap)) THEN
+             CALL toInt(TRIM(par_val), vomcmc_nmap, error)
+          END IF
+       CASE ("vomcmc.mapping_mask")
+          IF (PRESENT(vomcmc_mapping_mask)) THEN
+             vomcmc_mapping_mask = .TRUE.
+             READ(par_val, *, iostat=err) vomcmc_mapping_mask
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (5).", 1)
+             END IF
+          END IF
+       CASE ("vomcmc.scaling.lo")
+          IF (PRESENT(vomcmc_scaling)) THEN
+             READ(par_val, *, iostat=err) vomcmc_scaling(:,1)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (10).", 1)
+             END IF
+          END IF
+       CASE ("vomcmc.scaling.hi")
+          IF (PRESENT(vomcmc_scaling)) THEN
+             READ(par_val, *, iostat=err) vomcmc_scaling(:,2)
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
@@ -4069,7 +4143,7 @@ CONTAINS
          nobs, i, k, err, indx_ml, nra, ndec
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask_arr
-    LOGICAL :: impact_, sor_random_obs_prm, regularization_prm, dchi2_filtering_prm
+    LOGICAL :: impact_, sor_random_obs_prm, regularization_prm, dchi2_rejection_prm
 
     IF (.NOT. exist(storb)) THEN
        error = .TRUE.
@@ -4146,7 +4220,7 @@ CONTAINS
     CALL getParameters(storb, &
          dyn_model=dyn_model_prm, integrator=integrator, &
          element_type = element_type_prm, &
-         dchi2_filtering = dchi2_filtering_prm, regularized_pdf = regularization_prm, &
+         dchi2_rejection = dchi2_rejection_prm, regularized_pdf = regularization_prm, &
          accept_multiplier = accept_multiplier_prm, &
          res_accept = res_accept_prm, &
          chi2_min_prm = chi2_min_prm, &
@@ -4312,7 +4386,7 @@ CONTAINS
             TRIM(sor_2point_method), &
             TRIM(dyn_model_prm), &
             regularization_prm, &
-            dchi2_filtering_prm
+            dchi2_rejection_prm
 
 
        frmt = "('#',3X,'BAYESIAN A PRIORI INFORMATION'/" // &
@@ -4493,6 +4567,248 @@ CONTAINS
 
 
 
+  SUBROUTINE writeVOMCMCResults(storb, obss, lu)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout) :: storb
+    TYPE (Observations), INTENT(in)       :: obss
+    INTEGER, INTENT(in)                   :: lu
+    TYPE (Orbit), DIMENSION(:), POINTER   :: orb_arr_cmp
+    TYPE (Time) :: t
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         res_arr_cmp
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         res_accept_prm, stdevs, jac_arr_cmp, rms_arr_cmp
+    REAL(bp), DIMENSION(:), POINTER :: &
+         pdf_arr_cmp, reg_apr_arr_cmp, rchi2_arr_cmp
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         res_arr
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: &
+         ellipse_fac
+    REAL(bp), DIMENSION(6,2) :: vomcmc_scaling_prm
+    REAL(bp), DIMENSION(6) :: elements, elem_stdevs
+    REAL(bp) :: &
+         accept_multiplier_prm, obsarc, &
+         dchi2, chi2_min_prm
+    INTEGER :: & 
+         vomcmc_norb_cmp, vomcmc_ntrial_cmp, &
+         vomcmc_norb_prm, vomcmc_ntrial_prm, vomcmc_nmap_prm 
+    INTEGER :: &
+         nobs, i, err, indx_ml, nra, ndec
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    LOGICAL, DIMENSION(6,2) :: &
+         vomcmc_scaling_ready_cmp
+    LOGICAL, DIMENSION(6) :: &
+         vomcmc_mapping_mask_prm
+    LOGICAL :: regularization_prm, dchi2_rejection_prm
+    CHARACTER(len=ELEMENT_TYPE_LEN) :: &
+         element_type_prm
+    CHARACTER(len=DYN_MODEL_LEN) :: &    
+         dyn_model_prm
+    CHARACTER(len=INTEGRATOR_LEN) :: &
+         integrator
+    CHARACTER(len=20) :: str1, str2
+
+    IF (.NOT. exist(storb)) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "StochasticOrbit object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT. exist(obss)) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "Observations object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    WRITE(lu,"(A,3X,A,A)", advance="no") "#", &
+         "VOLUME-OF-VARIATION SAMPLING FOR ", getID(obss)
+
+    nobs = getNumberOfObservations(obss)
+    obsarc = getObservationalTimespan(obss)
+    stdevs => getStandardDeviations(obss)
+    stdevs = stdevs/rad_asec
+    obs_masks => getObservationMasks(storb)
+    IF (error) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "TRACE BACK", 1)
+       RETURN
+    END IF
+
+    nra=COUNT(obs_masks(:,2))
+    ndec=COUNT(obs_masks(:,3))
+
+    WRITE(lu,200) nobs, nra, ndec, obsarc
+200 FORMAT(/"#",3X,"Number of initial observations = ",I14/ &
+         "#",3X,"Number of R.A. included        = ",I14/ &
+         "#",3X,"Number of Dec. included        = ",I14/ &
+         "#",3X,"Observational time arc         = ",F14.4,3X,"days")
+
+    WRITE(lu,"(A)") "#"
+
+    CALL getParameters(storb, dyn_model=dyn_model_prm, integrator=integrator, &
+         element_type = element_type_prm, &
+         vomcmc_norb = vomcmc_norb_prm, vomcmc_ntrial = vomcmc_ntrial_prm, &
+         vomcmc_nmap = vomcmc_nmap_prm, vomcmc_scaling = vomcmc_scaling_prm, &
+         vomcmc_mapping_mask=vomcmc_mapping_mask_prm)
+    IF (error) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "TRACE BACK", 1)
+       RETURN
+    END IF
+
+    orb_arr_cmp => getSampleOrbits(storb)
+    IF (error) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "TRACE BACK", 1)
+       RETURN
+    END IF
+    t = getTime(orb_arr_cmp(1))
+
+    pdf_arr_cmp => getPDFValues(storb)
+    rchi2_arr_cmp => getReducedChi2Distribution(storb)
+    CALL getResults(storb, &
+         vomcmc_norb_cmp=vomcmc_norb_cmp, &
+         vomcmc_ntrial_cmp=vomcmc_ntrial_cmp, &
+         vomcmc_scaling_ready_cmp=vomcmc_scaling_ready_cmp)
+    IF (error) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "TRACE BACK", 1)
+       RETURN
+    END IF
+
+    indx_ml = MAXLOC(pdf_arr_cmp,dim=1)
+
+    elements = getElements(orb_arr_cmp(indx_ml), "cartesian")
+    !elements(3:6) = elements(3:6)/rad_deg
+    str1 = "CAR elements    = "
+    str2 = "CAR stdevs      = "
+
+    elem_stdevs = getStandardDeviations(storb, "cartesian")
+    IF (error) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "TRACE BACK 30", 1)
+       RETURN
+    END IF
+    !elem_stdevs(3:5) = elem_stdevs(3:5)/rad_deg
+
+    WRITE(lu,700) getCalendarDateString(t,"tdt"), getJD(t,"tdt"), &
+         str1(1:18), elements, str2(1:18), elem_stdevs, &
+         pdf_arr_cmp(indx_ml),rchi2_arr_cmp(indx_ml)
+
+700 FORMAT("#",3X,"ORBITAL-ELEMENT PDF" /&
+         "#",3X," Epoch              = ",A," = ",F13.5," TDT"/&
+         "#",3X," Maximum likelihood (ML) orbit" /&
+         "#",3X,"  ",A18,6(F15.10,1X)/&
+         "#",3X,"  ",A18,6(F15.10,1X)/&
+         "#",3X,"  ML value          =",E16.6/ &
+         "#",3X,"  ML 'reduced' chi2 =",E16.6)
+    WRITE(lu,"(A)") "#"
+
+    WRITE(lu,220) element_type_prm, &
+         TRIM(dyn_model_prm)
+220 FORMAT("#",3X,"COMPUTATIONAL PARAMETERS"/&
+         "#",3X,"Element set      = ",A/ &
+         "#",3X,"Dynamical model  = ",A)
+
+    WRITE(lu,"(A)") "#"
+
+    WRITE(lu,250) vomcmc_norb_cmp, vomcmc_norb_prm, vomcmc_ntrial_cmp,&
+         vomcmc_ntrial_prm
+250 FORMAT("#",3X,"Final   number of sample orbits  = ",I14/ &
+         "#",3X,"Initial number of sample orbits  = ",I14/ &
+         "#",3X,"Final   number of trials         = ",I14/ &
+         "#",3X,"Initial number of trials         = ",I14)
+
+    WRITE(lu,"(A)") "#"
+
+    WRITE(lu,400) vomcmc_mapping_mask_prm, &
+         vomcmc_scaling_prm(:,1), &
+         vomcmc_scaling_prm(:,2), &
+         vomcmc_scaling_ready_cmp(:,1), &
+         vomcmc_scaling_ready_cmp(:,2)
+400 FORMAT("#",3X,"Mapping mask         = ",6(3X,L2,1X)/ &
+         "#",3X,"Scaling factors, lower = ",6(F5.1,1X)/ &
+         "#",3X,"                 upper = ",6(F5.1,1X)/ &
+         "#",3X,"Scaling ready,   lower = ",6(L3,3X)/ &
+         "#",3X,"                 upper = ",6(L3,3X))
+
+!!$    ALLOCATE(mask_arr(sor_norb_cmp),res_arr(2,sor_norb_cmp),&
+!!$         ellipse_fac(sor_norb_cmp),stat=err)
+!!$    IF (err /= 0) THEN
+!!$       error = .TRUE.
+!!$       CALL errorMessage("io / writeVOMCMCResults", &
+!!$            "Could not allocate memory.", 1)
+!!$       RETURN       
+!!$    END IF
+!!$
+!!$    DO k=1,2
+!!$       res_arr(1,:) = res_arr_cmp(:,sor_pair_arr_prm(1,k),2)
+!!$       res_arr(2,:) = res_arr_cmp(:,sor_pair_arr_prm(1,k),3)       
+!!$       ellipse_fac = &
+!!$            (res_arr(1,:)/res_accept_prm(sor_pair_arr_prm(1,k),2))**2 + &
+!!$            (res_arr(2,:)/res_accept_prm(sor_pair_arr_prm(1,k),3))**2
+!!$       mask_arr(:) = .FALSE.
+!!$       WHERE (ellipse_fac > 1.0_bp)
+!!$          mask_arr = .TRUE.
+!!$       endwhere
+!!$       npoints(k) = COUNT(mask_arr)
+!!$    END DO
+!!$
+!!$    sor_deviates_prm=sor_deviates_prm/rad_asec
+!!$
+!!$    WRITE(lu,400) ADJUSTR(str1(1:14)), ADJUSTR(str2(1:14)), &
+!!$         sor_generat_multiplier_prm, &
+!!$         sor_deviates_prm(sor_pair_arr_prm(1,1),2:3,1),&
+!!$         sor_deviates_prm(sor_pair_arr_prm(1,1),2:3,2),&
+!!$         sor_deviates_prm(sor_pair_arr_prm(1,2),2:3,1),&
+!!$         sor_deviates_prm(sor_pair_arr_prm(1,2),2:3,2)
+!!$
+!!$400 FORMAT("#",3X,"Generated, R.A. and Dec. "/ &
+!!$         "#",3X,"  Id. number of 1st observation  = ",A14/ &
+!!$         "#",3X,"  Id. number of 2nd observation  = ",A14/ &
+!!$         "#",3X,"  sigma multiplier               = ",E14.4/ &
+!!$         "#",3X,"  window shift for 1st R.A.      = ",E14.4,3X,"arcsec"/ &
+!!$         "#",3X,"                   1st Dec.      = ",E14.4,3X,"arcsec"/ &
+!!$         "#",3X,"  window width for 1st R.A.      = ",E14.4,3X,"arcsec"/ &
+!!$         "#",3X,"                   1st Dec.      = ",E14.4,3X,"arcsec"/ &
+!!$         "#",3X,"  window shift for 2nd R.A.      = ",E14.4,3X,"arcsec"/ &
+!!$         "#",3X,"                   2nd Dec.      = ",E14.4,3X,"arcsec"/ &
+!!$         "#",3X,"  window width for 2nd R.A.      = ",E14.4,3X,"arcsec"/ &
+!!$         "#",3X,"                   2nd Dec.      = ",E14.4,3X,"arcsec")
+!!$    WRITE(lu,"(A)") "#"
+!!$
+!!$    WRITE(lu,550) npoints(1)/REAL(sor_norb_cmp),npoints(2)/REAL(sor_norb_cmp)
+!!$550 FORMAT("#",3X,"Computed, R.A. and Dec. residuals" /&
+!!$         "#",3X,"  Fraction outside ref. ellipse, 1st obs =",E12.4/ &
+!!$         "#",3X,"  Fraction outside ref. ellipse, 2nd obs =",E12.4)
+    DO i=1,SIZE(orb_arr_cmp)
+       CALL NULLIFY(orb_arr_cmp(i))
+    END DO
+    DEALLOCATE(orb_arr_cmp, stat=err)
+    DEALLOCATE(res_arr_cmp, stat=err)
+    DEALLOCATE(rms_arr_cmp, stat=err)
+    DEALLOCATE(res_accept_prm, stat=err)
+    DEALLOCATE(stdevs, stat=err)
+    DEALLOCATE(pdf_arr_cmp, stat=err)
+    DEALLOCATE(obs_masks, stat=err)
+    DEALLOCATE(rchi2_arr_cmp, stat=err)
+    DEALLOCATE(res_arr, stat=err)
+    DEALLOCATE(ellipse_fac, stat=err)
+
+  END SUBROUTINE writeVOMCMCResults
+
+
+
+
+
   SUBROUTINE writeVOVResults(storb, obss, lu)
 
     IMPLICIT NONE
@@ -4526,7 +4842,7 @@ CONTAINS
          vov_scaling_ready_cmp
     LOGICAL, DIMENSION(6) :: &
          vov_mapping_mask_prm
-    LOGICAL :: regularization_prm, dchi2_filtering_prm
+    LOGICAL :: regularization_prm, dchi2_rejection_prm
     CHARACTER(len=ELEMENT_TYPE_LEN) :: &
          element_type_prm
     CHARACTER(len=DYN_MODEL_LEN) :: &    
@@ -4577,7 +4893,7 @@ CONTAINS
 
     CALL getParameters(storb, dyn_model=dyn_model_prm, integrator=integrator, &
          element_type = element_type_prm, &
-         dchi2_filtering = dchi2_filtering_prm, regularized_pdf = regularization_prm, &
+         dchi2_rejection = dchi2_rejection_prm, regularized_pdf = regularization_prm, &
          accept_multiplier = accept_multiplier_prm, &
          res_accept = res_accept_prm, &
          chi2_min_prm = chi2_min_prm, &
@@ -4666,7 +4982,7 @@ CONTAINS
 
     WRITE(lu,220) element_type_prm, &
          TRIM(dyn_model_prm), &
-         regularization_prm, dchi2_filtering_prm
+         regularization_prm, dchi2_rejection_prm
 220 FORMAT("#",3X,"COMPUTATIONAL PARAMETERS"/&
          "#",3X,"Element set      = ",A/ &
          "#",3X,"Dynamical model  = ",A/ &

@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2010-03-02
+!! @version 2011-10-13
 !!
 MODULE statistics
 
@@ -43,16 +43,16 @@ MODULE statistics
 
   INTERFACE chi_square
      MODULE PROCEDURE chi_square_blockdiag
-  END INTERFACE
+  END INTERFACE chi_square
 
   INTERFACE moments
      MODULE PROCEDURE moments_r8
-  END INTERFACE
+  END INTERFACE moments
 
   INTERFACE confidence_limits
      MODULE PROCEDURE confidence_limits_hist_r8
      MODULE PROCEDURE confidence_limits_sample_r8
-  END INTERFACE
+  END INTERFACE confidence_limits
 
 CONTAINS
 
@@ -517,6 +517,42 @@ CONTAINS
 
   END SUBROUTINE confidence_limits_sample_r8
 
+
+
+
+
+  SUBROUTINE population_covariance(indata, covariance, mean, mask)
+
+    IMPLICIT NONE
+    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: indata
+    REAL(rprec8), DIMENSION(:,:), INTENT(out) :: covariance
+    REAL(rprec8), DIMENSION(:), INTENT(out) :: mean
+    LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: mask
+
+    INTEGER :: i, j
+    LOGICAL,DIMENSION(SIZE(indata,dim=2)) :: mask_
+
+    IF (PRESENT(mask)) THEN
+       mask_ = mask
+       covariance = 0.0_rprec8
+    ELSE
+       mask_ = .TRUE.
+    END IF
+
+    DO i=1,SIZE(indata,dim=2)
+       ! Compute mean for variable i
+       mean(i) = SUM(indata(:,i))/SIZE(indata,dim=1)
+       ! Compute elements of covariance matrix from 1,1 to i,i
+       DO j=1,i
+          IF (mask_(i) .AND. mask_(j)) THEN
+             covariance(i,j) = SUM((indata(:,i)-mean(i)) * (indata(:,j)-mean(j))) / &
+                  SIZE(indata,dim=1)
+             covariance(j,i) = covariance(i,j) 
+          END IF
+       END DO
+    END DO
+
+  END SUBROUTINE population_covariance
 
 
 
