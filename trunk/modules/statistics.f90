@@ -26,7 +26,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2011-10-13
+!! @version 2011-11-30
 !!
 MODULE statistics
 
@@ -66,13 +66,13 @@ CONTAINS
   !! @author  MG
   !! @version 2009-10-13
   !!
-  REAL(rprec8) FUNCTION chi_square_blockdiag(residuals, information_matrix, mask, error)
+  REAL(rprec8) FUNCTION chi_square_blockdiag(residuals, information_matrix, mask, errstr)
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(in) :: residuals
     REAL(rprec8), DIMENSION(:,:,:), INTENT(in) :: information_matrix
     LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: mask
-    CHARACTER(len=*), INTENT(inout) :: error
+    CHARACTER(len=*), INTENT(inout) :: errstr
 
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: residuals_
     REAL(rprec8), DIMENSION(1) :: chi_square_blockdiag_
@@ -86,15 +86,15 @@ CONTAINS
     IF (SIZE(information_matrix,dim=1) /= nobs .OR. &
          SIZE(information_matrix,dim=2) /= nmulti .OR. &
          SIZE(information_matrix,dim=3) /= nmulti) THEN
-       error = " -> statistics : chi_square : Shape of input matrices do not conform." // &
-            TRIM(error)
+       errstr = " -> statistics : chi_square : Shape of input matrices do not conform." // &
+            TRIM(errstr)
        RETURN
     END IF
 
     ALLOCATE(residuals_(nobs,nmulti), stat=err)
     IF (err /= 0) THEN
-       error = " -> statistics : chi_square : Could not allocate memory." // &
-            TRIM(error)
+       errstr = " -> statistics : chi_square : Could not allocate memory." // &
+            TRIM(errstr)
        RETURN
     END IF
     residuals_ = residuals
@@ -196,14 +196,14 @@ CONTAINS
   !! Current output: arithmetic mean, standard deviation, skewness,
   !! and kurtosis.
   !!
-  SUBROUTINE moments_r8(indata, pdf, mask, mean, std_dev, skew, kurt, error)
+  SUBROUTINE moments_r8(indata, pdf, mask, mean, std_dev, skew, kurt, errstr)
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:), INTENT(in)           :: indata
     REAL(rprec8), DIMENSION(:), INTENT(in), OPTIONAL :: pdf
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)      :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)              :: mean, std_dev, skew, kurt
-    CHARACTER(len=*), INTENT(inout)                           :: error
+    CHARACTER(len=*), INTENT(inout)                           :: errstr
 
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: pdf_
     REAL(rprec8) :: mean_, std_dev_
@@ -296,7 +296,7 @@ CONTAINS
   !! probability mass.
   !!
   SUBROUTINE confidence_limits_hist_r8(indata, pdf, nhist, &
-       mask, probability_mass, peak, bounds, error)
+       mask, probability_mass, peak, bounds, errstr)
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:), INTENT(in)            :: indata
@@ -306,7 +306,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)       :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)               :: peak
     REAL(rprec8), DIMENSION(2), OPTIONAL, INTENT(out) :: bounds
-    CHARACTER(len=*), INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                            :: errstr
 
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: histo, histo_
     REAL(rprec8) :: probability_mass_
@@ -316,8 +316,8 @@ CONTAINS
     ndata = SIZE(indata)
     ALLOCATE(mask_(ndata), histo(nhist,2), histo_(nhist,2), stat=err)
     IF (err /= 0) THEN
-       error = " -> statistics : confidence_limits : Could not allocate memory." // &
-            TRIM(error)
+       errstr = " -> statistics : confidence_limits : Could not allocate memory." // &
+            TRIM(errstr)
        DEALLOCATE(histo, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -330,8 +330,8 @@ CONTAINS
     END IF
 
     IF (PRESENT(bounds) .AND. .NOT.PRESENT(probability_mass)) THEN
-       error = " -> statistics : confidence_limits : Probability mass not given." // &
-            TRIM(error)
+       errstr = " -> statistics : confidence_limits : Probability mass not given." // &
+            TRIM(errstr)
        DEALLOCATE(histo, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -374,8 +374,8 @@ CONTAINS
 
     DEALLOCATE(histo, histo_, mask_, stat=err)
     IF (err /= 0) THEN
-       error = " -> statistics : confidence_limits : Could not deallocate memory." // &
-            TRIM(error)
+       errstr = " -> statistics : confidence_limits : Could not deallocate memory." // &
+            TRIM(errstr)
        DEALLOCATE(histo, stat=err)
        DEALLOCATE(histo_, stat=err)
        DEALLOCATE(mask_, stat=err)
@@ -396,7 +396,7 @@ CONTAINS
   !! probability mass.
   !!
   SUBROUTINE confidence_limits_sample_r8(indata, pdf, mask, &
-       probability_mass, peak, bounds, error)
+       probability_mass, peak, bounds, errstr)
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:), INTENT(in)            :: indata
@@ -405,7 +405,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)       :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)               :: peak
     REAL(rprec8), DIMENSION(2), OPTIONAL, INTENT(out) :: bounds
-    CHARACTER(len=*), INTENT(inout)                   :: error
+    CHARACTER(len=*), INTENT(inout)                   :: errstr
 
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: pdf_
     REAL(rprec8) :: probability_mass_
@@ -415,14 +415,14 @@ CONTAINS
 
     ndata = SIZE(indata)
     IF (ndata /= SIZE(pdf)) THEN
-       error = " -> statistics : confidence_limits : Size of vectors does not conform." // &
-            TRIM(error)
+       errstr = " -> statistics : confidence_limits : Size of vectors does not conform." // &
+            TRIM(errstr)
        RETURN
     END IF
     ALLOCATE(pdf_(ndata), mask_(ndata), stat=err)
     IF (err /= 0) THEN
-       error = " -> statistics : confidence_limits : Could not allocate memory." // &
-            TRIM(error)
+       errstr = " -> statistics : confidence_limits : Could not allocate memory." // &
+            TRIM(errstr)
        DEALLOCATE(pdf_, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -430,8 +430,8 @@ CONTAINS
     mask_ = .TRUE.
     IF (PRESENT(mask)) THEN
        IF (ndata /= SIZE(mask)) THEN
-          error = " -> statistics : confidence_limits : Size of mask does not conform with data." // &
-               TRIM(error)
+          errstr = " -> statistics : confidence_limits : Size of mask does not conform with data." // &
+               TRIM(errstr)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           RETURN
@@ -447,8 +447,8 @@ CONTAINS
     pdf_ = pdf_/SUM(pdf_)
 
     IF (PRESENT(bounds) .AND. .NOT.PRESENT(probability_mass)) THEN
-       error = " -> statistics : confidence_limits : Probability mass not given." // &
-            TRIM(error)
+       errstr = " -> statistics : confidence_limits : Probability mass not given." // &
+            TRIM(errstr)
        DEALLOCATE(pdf_, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
@@ -462,17 +462,17 @@ CONTAINS
     IF (PRESENT(bounds)) THEN
        ALLOCATE(indx_arr(ndata), stat=err)
        IF (err /= 0) THEN
-          error = " -> statistics : confidence_limits : Caould not allocate memory." // &
-               TRIM(error)
+          errstr = " -> statistics : confidence_limits : Caould not allocate memory." // &
+               TRIM(errstr)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           DEALLOCATE(indx_arr, stat=err)
           RETURN
        END IF
-       CALL quicksort(pdf_, indx_arr, error)
-       IF (LEN_TRIM(error) /= 0) THEN
-          error = " -> statistics : confidence_limits : ." // &
-               TRIM(error)
+       CALL quicksort(pdf_, indx_arr, errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          errstr = " -> statistics : confidence_limits : ." // &
+               TRIM(errstr)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           DEALLOCATE(indx_arr, stat=err)
@@ -497,8 +497,8 @@ CONTAINS
        END DO
        DEALLOCATE(indx_arr, stat=err)
        IF (err /= 0) THEN
-          error = " -> statistics : confidence_limits : Could not deallocate memory (1)." // &
-               TRIM(error)
+          errstr = " -> statistics : confidence_limits : Could not deallocate memory (1)." // &
+               TRIM(errstr)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
           DEALLOCATE(indx_arr, stat=err)
@@ -508,14 +508,75 @@ CONTAINS
 
     DEALLOCATE(pdf_, mask_, stat=err)
     IF (err /= 0) THEN
-       error = " -> statistics : confidence_limits : Could not deallocate memory (2)." // &
-            TRIM(error)
+       errstr = " -> statistics : confidence_limits : Could not deallocate memory (2)." // &
+            TRIM(errstr)
        DEALLOCATE(pdf_, stat=err)
        DEALLOCATE(mask_, stat=err)
        RETURN
     END IF
 
   END SUBROUTINE confidence_limits_sample_r8
+
+
+
+
+
+  SUBROUTINE credible_region(pdf_arr, probability_mass, indx_arr, errstr, repetition_arr)
+
+    IMPLICIT NONE
+    REAL(rprec8), DIMENSION(:), INTENT(in) :: pdf_arr
+    REAL(rprec8), INTENT(in) :: probability_mass
+    INTEGER, DIMENSION(:), INTENT(out) :: indx_arr
+    CHARACTER(len=*), INTENT(inout) :: errstr
+    INTEGER, DIMENSION(:), INTENT(in), OPTIONAL :: repetition_arr
+
+    REAL(rprec8), DIMENSION(:), ALLOCATABLE :: pdf_arr_
+    REAL(rprec8) :: probability_mass_
+    INTEGER :: i, j, irepet, nrepet
+
+    ! Sort the pdf in ascending order:
+    CALL quickSort(pdf_arr, indx_arr, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       errstr = " -> statistics : credible_region : TRACE BACK." // &
+            TRIM(errstr)
+       RETURN
+    END IF
+    ! Start from the largest pdf value
+    i = SIZE(pdf_arr)
+    IF (PRESENT(repetition_arr)) THEN
+       ! MCMC 
+       ! Which number of repetitions corresponds to the wanted
+       ! probability mass?
+       nrepet = CEILING(SUM(repetition_arr)*probability_mass)
+       ! Add distinct sampling points until reaching the desired
+       ! number of (typically non-unique) sample points:
+       irepet = 0
+       DO WHILE (irepet < nrepet)
+          irepet = irepet + repetition_arr(indx_arr(i))
+          i = i - 1
+       END DO
+    ELSE
+       ! MC
+       ALLOCATE(pdf_arr_(SIZE(pdf_arr)))
+       ! Normalize the pdf distribution
+       pdf_arr_ = pdf_arr/SUM(pdf_arr)
+       ! Add sample points until the desired probability mass is
+       ! reached:
+       probability_mass_ = 0.0_rprec8
+       DO WHILE (probability_mass_ < probability_mass)
+          probability_mass_ = probability_mass_ + pdf_arr_(indx_arr(i))
+          i = i - 1
+       END DO
+       DEALLOCATE(pdf_arr_)
+    END IF
+    ! Fill the resulting index array with negative values for the
+    ! sample points that do not fit within the desired probability
+    ! mass:
+    DO j=i,1,-1
+       indx_arr(j) = -1
+    END DO
+
+  END SUBROUTINE credible_region
 
 
 

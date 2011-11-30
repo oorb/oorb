@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2011-10-13
+!! @version 2011-11-30
 !!
 PROGRAM oorb
 
@@ -236,7 +236,7 @@ PROGRAM oorb
        apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, &
-       cos_nsigma, cos_obj_phase, &
+       chi2_min_init, cos_nsigma, cos_obj_phase, &
        day0, day1, dDelta, ddec, dec, dra, dt, dt_, dt_fulfill_night, dchi2_max, &
        ephemeris_r2, &
        hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
@@ -248,7 +248,7 @@ PROGRAM oorb
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
        output_interval, &
-       chi2_min_init, periapsis_distance, peak, pp_G, pp_G_unc, &
+       periapsis_distance, peak, pp_G, pp_G_unc, probability_mass, &
        ra, &
        sec, smplx_tol, smplx_similarity_tol, &
        solar_elongation, solar_elon_min, solar_elon_max, &
@@ -581,9 +581,7 @@ PROGRAM oorb
         DEALLOCATE(indx_arr)
 
         ! Initialize stochasticorbits if uncertainty information available:
-        IF (norb > nobj .AND. &
-             ALL(pdf_arr_in /= -1.0_bp) .AND. &
-             ALL(jac_arr_in /= -1.0_bp)) THEN
+        IF (norb > nobj .AND. ALL(pdf_arr_in /= -1.0_bp)) THEN
            ! Sampled PDF available
            ALLOCATE(storb_arr_in(nobj))
            i = 0
@@ -1918,7 +1916,7 @@ PROGRAM oorb
               END IF
               DO j=1,6
                  CALL moments(elements_arr(:,j), &
-                      pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
                  IF (LEN_TRIM(errstr) /= 0) THEN
                     CALL errorMessage("oorb / ranging", &
                          "Could not compute moments. " // TRIM(errstr), 1)
@@ -2447,6 +2445,7 @@ PROGRAM oorb
      ALLOCATE(orb_arr_(7))
 
      accwin_multiplier = -1.0_bp
+     chi2_min_init = -1.0_bp
      CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
@@ -2460,7 +2459,8 @@ PROGRAM oorb
           smplx_similarity_tol=smplx_similarity_tol, &
           os_norb=os_norb, &
           os_ntrial=os_ntrial, &
-          os_sampling_type=os_sampling_type)
+          os_sampling_type=os_sampling_type, &
+          chi2_min=chi2_min_init)
      IF (error) THEN
         CALL errorMessage("oorb / observation_sampling", &
              "TRACE BACK (5)", 1)
@@ -2601,6 +2601,9 @@ PROGRAM oorb
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
              outlier_multiplier=outlier_multiplier_prm, &
+             dchi2_rejection = dchi2_rejection, &
+             dchi2_max = dchi2_max, &
+             chi2_min=chi2_min_init, &
              generat_multiplier=generat_multiplier, &
              generat_gaussian_deviates=generat_gaussian_deviates, &
              accept_multiplier=accwin_multiplier, &
@@ -2951,7 +2954,7 @@ PROGRAM oorb
               END IF
               DO j=1,6
                  CALL moments(elements_arr(:,j), &
-                      pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
                  IF (LEN_TRIM(errstr) /= 0) THEN
                     CALL errorMessage("oorb / observation_sampling", &
                          "Could not compute moments. " // TRIM(errstr), 1)
@@ -3636,7 +3639,7 @@ PROGRAM oorb
               END IF
               DO l=1,6
                  CALL moments(elements_arr(:,l), &
-                      pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
                  IF (LEN_TRIM(errstr) /= 0) THEN
                     CALL errorMessage("oorb / vov", &
                          "Could not compute moments: " // TRIM(errstr), 1)
@@ -4097,20 +4100,18 @@ PROGRAM oorb
                 "TRACE BACK (135)", 1)
            STOP
         END IF
-        CALL NEW(orb_out_file, TRIM(id) // ".orb")
-        IF (error) THEN
-           CALL errorMessage("oorb / vomcmc", &
-                "TRACE BACK (15)", 1)
-           STOP
-        END IF
-        CALL OPEN(orb_out_file)
-        IF (error) THEN
-           CALL errorMessage("oorb / vomcmc", &
-                "TRACE BACK (20)", 1)
-           STOP
+        IF (separately) THEN
+           CALL NEW(out_file, TRIM(id) // ".orb")
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / vomcmc", &
+                   "TRACE BACK (200)", 1)
+              STOP
+           END IF
+           lu_orb_out = getUnit(out_file)
         END IF
         DO l=1,SIZE(orb_arr_cmp,dim=1)
-           CALL writeOpenOrbOrbitFile(getUnit(orb_out_file), &
+           CALL writeOpenOrbOrbitFile(lu_orb_out, &
                 print_header=l==1.AND.i==1, &
                 element_type_out=element_type_out_prm, &
                 id=id, &
@@ -4125,7 +4126,12 @@ PROGRAM oorb
               STOP
            END IF
         END DO
-        CALL NULLIFY(orb_out_file)
+        IF (separately) THEN
+           CALL NULLIFY(out_file)
+           IF (compress) THEN
+              CALL system("gzip -f " // TRIM(id) // ".orb")
+           END IF
+        END IF
         IF (plot_results) THEN
            CALL toString(dt, str, error, frmt="(F10.2)")
            IF (error) THEN
@@ -4260,7 +4266,7 @@ PROGRAM oorb
                    "TRACE BACK (200)", 1)
               STOP
            END IF
-           DO l=1,vomcmc_nmap,MAX(1,NINT(vomcmc_nmap/10.0))
+           DO l=1,vomcmc_nmap
               IF (element_type_comp_prm == "keplerian") THEN
                  WRITE(getUnit(tmp_file), "(6(F22.15,1X))", &
                       advance="no") vomcmc_map(l,1:2), &
@@ -4315,7 +4321,7 @@ PROGRAM oorb
            END IF
            DO l=1,6
               CALL moments(elements_arr(:,l), &
-                   pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                   pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
               IF (LEN_TRIM(errstr) /= 0) THEN
                  CALL errorMessage("oorb / vomcmc", &
                       "Could not compute moments: " // TRIM(errstr), 1)
@@ -4354,11 +4360,11 @@ PROGRAM oorb
                 "_results.ps")
            CALL system("rm -f vomcmc_sampling_grid.out vomcmc_orbits.out " // &
                 "vomcmc_nominal_orbit.out vomcmc_results.ps")
-!!$           CALL system("rm -f " // TRIM(str) // &
-!!$                "_vomcmc_sampling_grid.out " // TRIM(str) &
-!!$                // "_vomcmc_orbits.out " // TRIM(str) // &
-!!$                "_vomcmc_nominal_orbit.out " // TRIM(str) // &
-!!$                "_vomcmc_sample_standard_deviations.out")
+           CALL system("rm -f " // TRIM(str) // &
+                "_vomcmc_sampling_grid.out " // TRIM(str) &
+                // "_vomcmc_orbits.out " // TRIM(str) // &
+                "_vomcmc_nominal_orbit.out " // TRIM(str) // &
+                "_vomcmc_sample_standard_deviations.out")
            IF (plot_open) THEN
               CALL system("gv " // TRIM(str) // "_vomcmc_" // &
                    TRIM(element_type_comp_prm) // &
@@ -5527,7 +5533,7 @@ PROGRAM oorb
               END IF
               DO j=1,6
                  CALL moments(elements_arr(:,j), &
-                      pdf=pdf_arr_cmp, std_dev=stdev, error=errstr)
+                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
                  IF (LEN_TRIM(errstr) /= 0) THEN
                     CALL errorMessage("oorb / covariance_sampling", &
                          "Could not compute moments. " // TRIM(errstr), 1)
@@ -6145,6 +6151,47 @@ PROGRAM oorb
 
         END DO
 
+     END IF
+
+
+  CASE ("credible_region")
+
+     probability_mass = get_cl_option("--probability_mass=", 0.9973_bp)
+
+     IF (ALLOCATED(storb_arr_in)) THEN
+        ! Input orbits contain uncertainty information.
+
+        first = .TRUE.
+        DO i=1,SIZE(storb_arr_in)
+
+           orb_arr => getSampleOrbits(storb_arr_in(i), probability_mass)
+
+           DO j=1,SIZE(orb_arr)
+              IF (orbit_format_out == "des") THEN
+                 CALL writeDESOrbitFile(lu_orb_out, & 
+                      first, element_type_out_prm, &
+                      id_arr_in(i), orb_arr(j), HG_arr_in(i,1), &
+                      1, 6, -1.0_bp, "OPENORB")
+              ELSE IF (orbit_format_out == "orb") THEN
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                      print_header=first, &
+                      element_type_out=element_type_out_prm, &
+                      id=TRIM(id_arr_in(i)), orb=orb_arr(j), &
+                      H=HG_arr_in(i,1), G=HG_arr_in(i,3), &
+                      mjd=mjd_epoch)
+              END IF
+              first = .FALSE.
+              CALL NULLIFY(orb_arr(j))
+           END DO
+
+           DEALLOCATE(orb_arr)
+
+        END DO
+
+     ELSE
+        CALL errorMessage("oorb / credible_region", &
+             "Cannot compute credible region due to lack of uncertainty information", 1)
+        STOP
      END IF
 
   CASE ("ephemeris")
@@ -7939,7 +7986,7 @@ PROGRAM oorb
            pdf_arr_in => getPDFValues(storb_arr_in(i), "keplerian")
            CALL confidence_limits(elements_arr(:,1), pdf_arr_in, &
                 probability_mass=0.9973_bp, peak=peak, bounds=bounds, &
-                error=errstr)
+                errstr=errstr)
            WRITE(stdout,'(F12.6)') (bounds(2)-bounds(1))/peak
            DEALLOCATE(orb_arr_in, elements_arr, pdf_arr_in)
         ELSE

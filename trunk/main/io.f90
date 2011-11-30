@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2011-10-13
+!! @version 2011-11-30
 !!
 MODULE io
 
@@ -4327,10 +4327,10 @@ CONTAINS
        DO i=1,6
           CALL confidence_limits(elements_arr(:,i), pdf_arr_cmp, &
                probability_mass=0.6827_bp, peak=elements(i), bounds=conf_limits(1,i,:), &
-               error=errstr)
+               errstr=errstr)
           CALL confidence_limits(elements_arr(:,i), pdf_arr_cmp, &
                probability_mass=0.9973_bp, peak=elements(i), bounds=conf_limits(2,i,:), &
-               error=errstr)
+               errstr=errstr)
           IF (LEN_TRIM(errstr) /= 0) THEN
              error = .TRUE.
              CALL errorMessage("io / writeSORResults", &

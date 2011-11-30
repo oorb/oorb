@@ -49,28 +49,28 @@ set xlabel 'x [AU]'
 set ylabel 'z [AU]'
 plot 'vomcmc_orbits.out' using 1:3 pt 7, \
 'vomcmc_nominal_orbit.out' using 1:3 with points pt 3 ps 3.0, \
-'vomcmc_sampling_grid.out' using 1:3:7:10 with yerrorbars lt 1
+'vomcmc_sampling_grid.out' using 1:3:9:10 with yerrorbars lt 1
 set size 0.5,0.33
 set origin 0.0,0.33
 set xlabel 'x [AU]'
 set ylabel 'dx/dt [AU/d]'
 plot 'vomcmc_orbits.out' using 1:4 pt 7, \
 'vomcmc_nominal_orbit.out' using 1:4 with points pt 3 ps 3.0, \
-'vomcmc_sampling_grid.out' using 1:4:7:12 with yerrorbars lt 1
+'vomcmc_sampling_grid.out' using 1:4:11:12 with yerrorbars lt 1
 set size 0.5,0.33
 set origin 0.5,0.33
 set xlabel 'x [AU]'
 set ylabel 'dy/dt [AU/d]'
 plot 'vomcmc_orbits.out' using 1:5 pt 7, \
 'vomcmc_nominal_orbit.out' using 1:5 with points pt 3 ps 3.0, \
-'vomcmc_sampling_grid.out' using 1:5:7:14 with yerrorbars lt 1
+'vomcmc_sampling_grid.out' using 1:5:13:14 with yerrorbars lt 1
 set size 0.5,0.33
 set origin 0.0,0.0
 set xlabel 'x [AU]'
 set ylabel 'dz/dt [AU/d]'
 plot 'vomcmc_orbits.out' using 1:6 pt 7, \
 'vomcmc_nominal_orbit.out' using 1:6 with points pt 3 ps 3.0, \
-'vomcmc_sampling_grid.out' using 1:6:7:16 with yerrorbars lt 1
+'vomcmc_sampling_grid.out' using 1:6:15:16 with yerrorbars lt 1
 set size 0.5,0.33
 set origin 0.5,0.0
 set xlabel 'x [AU]'
