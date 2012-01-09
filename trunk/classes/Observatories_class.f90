@@ -26,7 +26,7 @@
 !! Type and routines for observatories.
 !! 
 !! @author  MG, JV
-!! @version 2010-03-03
+!! @version 2011-01-09
 !!
 MODULE Observatories_cl
 
@@ -62,36 +62,36 @@ MODULE Observatories_cl
   INTERFACE NEW
      MODULE PROCEDURE new_Obsies
      MODULE PROCEDURE new_Obsies_file
-  END INTERFACE
+  END INTERFACE NEW
 
   INTERFACE NULLIFY
      MODULE PROCEDURE nullify_Obsies
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   INTERFACE copy
      MODULE PROCEDURE copy_Obsies
-  END INTERFACE
+  END INTERFACE copy
 
   INTERFACE exist
      MODULE PROCEDURE exist_Obsies
-  END INTERFACE
+  END INTERFACE exist
 
   INTERFACE getPosition
      MODULE PROCEDURE getPosition_Obsies
-  END INTERFACE
+  END INTERFACE getPosition
 
   INTERFACE getName
      MODULE PROCEDURE getName_Obsies
-  END INTERFACE
+  END INTERFACE getName
 
   INTERFACE getObservatory
      MODULE PROCEDURE getObservatory_Obsies
-  END INTERFACE
+  END INTERFACE getObservatory
 
   INTERFACE getObservatoryCCoord
      MODULE PROCEDURE getObservatoryCCoord_code
      MODULE PROCEDURE getObservatoryCCoord_obsy
-  END INTERFACE
+  END INTERFACE getObservatoryCCoord
 
 
 CONTAINS
@@ -326,7 +326,7 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE(Time), INTENT(inout) :: t
-    REAL(bp)                  :: tjm, oblm, dpsi, deps
+    REAL(bp)                  :: mjd_tt, oblm, dpsi, deps
 
     IF (.NOT. exist(t)) THEN
        error = .TRUE.
@@ -335,8 +335,8 @@ CONTAINS
        RETURN
     END IF
 
-    tjm = getMJD(t, "TDT")
-    oblm = meanObliquity(tjm)
+    mjd_tt = getMJD(t, "TT")
+    oblm = meanObliquity(mjd_tt)
     CALL getNutationAngles(t, dpsi, deps)
     IF (error) THEN
        CALL errorMessage("Observatories / equationOfEquinoxes", &
@@ -490,7 +490,7 @@ CONTAINS
     TYPE (Time)                       :: t_
     TYPE (CartesianCoordinates)       :: geocenter_ccoord, geocentric_obs_ccoord
     REAL(bp), DIMENSION(:,:), POINTER :: coordinates
-    REAL(bp)                          :: mjd_tdt
+    REAL(bp)                          :: mjd_tt
     INTEGER                           :: err, indx, i
 
     IF (.NOT. this%is_initialized) THEN
@@ -514,13 +514,13 @@ CONTAINS
        ! with its coordinates given relative to the Earth.
 
        ! Equatorial Cartesian coordinates for the Earth (geocenter):
-       mjd_tdt = getMJD(t_, "tdt")
+       mjd_tt = getMJD(t_, "TT")
        IF (error) THEN
           CALL errorMessage("Observatories / getObservatoryCCoord", &
                "TRACE BACK (5)", 1)
           RETURN
        END IF
-       coordinates => JPL_ephemeris(mjd_tdt, 3, 11, error)
+       coordinates => JPL_ephemeris(mjd_tt, 3, 11, error)
        IF (error) THEN
           CALL errorMessage("Observatories / getObservatoryCCoord", &
                "Could not get planetary ephemeris (5).", 1)
@@ -562,7 +562,7 @@ CONTAINS
        ! We are dealing with a planetocentric observer.
 
        ! Equatorial Cartesian planetocentric coordinates:
-       mjd_tdt = getMJD(t_, "tdt")
+       mjd_tt = getMJD(t_, "TT")
        IF (error) THEN
           CALL errorMessage("Observatories / getObservatoryCCoord", &
                "TRACE BACK (25)", 1)
@@ -580,7 +580,7 @@ CONTAINS
                "Observatory code invalid: " // TRIM(code(indx+1:)), 1)
           RETURN
        END IF
-       coordinates => JPL_ephemeris(mjd_tdt, i, 11, error)
+       coordinates => JPL_ephemeris(mjd_tt, i, 11, error)
        IF (error) THEN
           CALL errorMessage("Observatories / getObservatoryCCoord", &
                "Could not get planetary ephemeris (10).", 1)
@@ -680,6 +680,7 @@ CONTAINS
     TYPE (Observatories), INTENT(in) :: this
     CHARACTER(len=*), INTENT(in)     :: code
     TYPE (Time), INTENT(inout)       :: t
+
     TYPE (CartesianCoordinates)      :: getGeocentricObservatoryCCoord
     TYPE (Time)                      :: t_obs
     ! Diurnal rotation matrix (transformation from body-fixed to
@@ -712,10 +713,8 @@ CONTAINS
     ! Reference system in which the observations are given
     frame_obs = "equatorial"
     refsys_obs = "mean"
-
-    ! J2000.0 
-    epoch_obs = 51544.5_bp
-    CALL NEW(t_obs, epoch_obs, "TDT")
+    epoch_obs = 51544.5_bp ! J2000.0
+    CALL NEW(t_obs, epoch_obs, "TT")
     IF (error) THEN
        CALL errorMessage("Observatories / getGeocentricObservatoryCCoord", &
             "TRACE BACK (5)", 1)
@@ -856,7 +855,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Time), INTENT(inout) :: t0
     REAL(bp),INTENT(out)      :: dpsi, deps
-    REAL(bp) :: tjm, dl, dp, df, dd, dn, t1
+    REAL(bp) :: mjd_tt, dl, dp, df, dd, dn, t1
     REAL(lp) :: l, n, cp, sp, cx, sx, cd, sd, cn, sn, cl, &
          sl, cp2, sp2, cd2, sd2, cn2, sn2, cl2, sl2, ca, &
          sa, cb, sb, cc, sc, cv, sv, ce, se, cf, sf, cg, &
@@ -871,13 +870,13 @@ CONTAINS
        RETURN
     END IF
 
-    tjm = getMJD(t0, "tdt")
+    mjd_tt = getMJD(t0, "TT")
     IF (error) THEN
        CALL errorMessage("Observatories / getNutationAngles", &
             "TRACE BACK", 1)
        RETURN
     END IF
-    t1 = (tjm-51544.5_bp)/36525.0_bp
+    t1 = (mjd_tt-51544.5_bp)/36525.0_bp
     t = REAL(t1,kind=lp)
     t2 = t*t
     t3 = t2*t
@@ -1056,6 +1055,10 @@ CONTAINS
   !!
   !!     Xtrue = RNUT Xmean
   !!
+  !! Use transpose to get from Xtrue to Xmean:
+  !!
+  !!     Xmean = transpose(RNUT) Xtrue
+  !!
   !! Based on f77 routine by Mario Carpino (rnut80.f).
   !!
   !! Returns error.
@@ -1064,10 +1067,10 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(Time), INTENT(inout) :: t
+    TYPE (Time), INTENT(inout) :: t
     REAL(bp), DIMENSION(3,3) :: getNutationMatrix
     REAL(bp), DIMENSION(3,3) :: r1, r2, r3, r23
-    REAL(bp) :: epsm, epst, dpsi, deps, tjm
+    REAL(bp) :: epsm, epst, dpsi, deps, mjd_tt
 
     IF (.NOT. exist(t)) THEN
        error = .TRUE.
@@ -1076,14 +1079,14 @@ CONTAINS
        RETURN
     END IF
 
-    tjm = getMJD(t, "tdt")
+    mjd_tt = getMJD(t, "TT")
     IF (error) THEN
        CALL errorMessage("Observatories / getNutationMatrix", &
             "TRACE BACK (5)", 1)
        RETURN
     END IF
 
-    epsm = meanObliquity(tjm)
+    epsm = meanObliquity(mjd_tt)
     CALL getNutationAngles(t, dpsi, deps)
     IF (error) THEN
        CALL errorMessage("Observatories / getNutationMatrix", &
@@ -1109,24 +1112,26 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Computation of precession matrix.
+  !! Returns precession matrix which transforms equatorial coordinates
+  !! from J2000.0 into mean equatorial coordinates at chosen epoch t:
   !!
-  !!  OUTPUT:   RPREC(3,3)  -   Precession matrix, transforming J2000
-  !!                            equatorial coordinates into mean
-  !!                            equatorial coordinates at epoch TJM
-  !!                            Xtjm = RPREC Xj2000
+  !!     Xepoch = RPREC Xj2000.0
+  !!
+  !! Use transpose to get from Xepoch to Xj2000.0:
+  !!
+  !!     Xj2000.0 = transpose(RPREC) Xepoch
   !!
   !! Based on f77 routine by Mario Carpino (prec.f)
   !!
   !! Returns error.
   !!
-  FUNCTION precessionMatrix(t0)
+  FUNCTION getPrecessionMatrix(t)
 
     IMPLICIT NONE
-    TYPE(Time), INTENT(inout) :: t0
-    REAL(bp), DIMENSION(3,3)  :: precessionMatrix
+    TYPE(Time), INTENT(inout) :: t
+    REAL(bp), DIMENSION(3,3)  :: getPrecessionMatrix
     REAL(bp), DIMENSION(3,3) :: r1, r2, r3, r12
-    REAL(bp) :: tjm, t, zeta, theta, z
+    REAL(bp) :: mjd_tt, cent, zeta, theta, z
     REAL(bp), PARAMETER :: &
                                 ! Calcolo costanti usate (vedi Astronomical Almanac 1987, B18)
                                 ! Linear terms:
@@ -1142,35 +1147,35 @@ CONTAINS
          zddd = 0.0000051_bp * rad_deg, &
          thddd = - 0.0000116_bp * rad_deg
 
-    IF (.NOT. exist(t0)) THEN
+    IF (.NOT. exist(t)) THEN
        error = .TRUE.
-       CALL errorMessage("Observatories / precessionMatrix", &
+       CALL errorMessage("Observatories / getPrecessionMatrix", &
             "Object has not yet been initialized.", 1)
        RETURN
     END IF
 
-    tjm = getMJD(t0, "tdt")
+    mjd_tt = getMJD(t, "TT")
     IF (error) THEN
-       CALL errorMessage("Observatories / precessionMatrix", &
+       CALL errorMessage("Observatories / getPrecessionMatrix", &
             "TRACE BACK", 1)
        RETURN
     END IF
 
     ! Fundamental arguments:
-    t     = ( tjm - 51544.5_bp ) / 36525.0_bp
-    zeta  = ( ( zeddd * t + zedd ) * t + zed ) * t
-    z     = ( (  zddd * t +  zdd ) * t +  zd ) * t
-    theta = ( ( thddd * t + thdd ) * t + thd ) * t
+    cent  = ( mjd_tt - 51544.5_bp ) / 36525.0_bp ! centuries since J2000.0
+    zeta  = ( ( zeddd * cent + zedd ) * cent + zed ) * cent
+    z     = ( (  zddd * cent +  zdd ) * cent +  zd ) * cent
+    theta = ( ( thddd * cent + thdd ) * cent + thd ) * cent
 
-    ! Rotation matrix:
     r3 = rotationMatrix(- zeta, 3)
     r2 = rotationMatrix( theta, 2)
     r1 = rotationMatrix(-    z, 3)
 
+    ! Rotation matrix:
     r12 = MATMUL(r1,r2)
-    precessionMatrix = MATMUL(r12,r3)
+    getPrecessionMatrix = MATMUL(r12,r3)
 
-  END FUNCTION precessionMatrix
+  END FUNCTION getPrecessionMatrix
 
 
 
@@ -1183,13 +1188,11 @@ CONTAINS
   !! different reference systems.
   !!
   !! INPUT:    frame1    -  starting frame ("ecliptical" or "equatorial")
-  !!           rsys1     -  starting reference system ("mean", "true-of-date" or
-  !!                                                   "true-of-epoch")
-  !!           t1        -  starting reference time (mjd, tdt)
+  !!           rsys1     -  starting reference system ("mean" or "true-of-date")
+  !!           t1        -  starting reference time (mjd, tt)
   !!           frame2    -  final frame ("ecliptical" or "equatorial")
-  !!           rsys2     -  final reference system ("mean", "true-of-date" or
-  !!                                                "true-of-epoch")
-  !!           t2        -  final reference time (mjd, tdt)
+  !!           rsys2     -  final reference system ("mean" or "true-of-date")
+  !!           t2        -  final reference time (mjd, tt)
   !!
   !! OUTPUT:   ROT(3,3)  -  rotation matrix giving the transformation from
   !!                        starting to final reference systems:
@@ -1209,7 +1212,7 @@ CONTAINS
     CHARACTER(len=20) :: frame, rsys
     REAL(bp), DIMENSION(3,3) :: rot, r
     REAL(bp), PARAMETER :: eps = 1.0e-6_bp
-    REAL(bp) :: tdt_, tdt1, tdt2, obl
+    REAL(bp) :: tt_, tt1, tt2, obl
 
     IF (frame1 /= "ecliptical" .AND. frame1 /= "equatorial") THEN
        error = .TRUE.
@@ -1218,8 +1221,7 @@ CONTAINS
        RETURN
     END IF
 
-    IF (rsys1 /= "mean" .AND. rsys1 /= "true-of-date" .AND. rsys1 /=  &
-         "true-of-epoch") THEN
+    IF (rsys1 /= "mean" .AND. rsys1 /= "true-of-date") THEN
        error = .TRUE.
        CALL errorMessage("Observatories / precessionAndNutationMatrix", &
             "Unkown starting reference system.", 1)
@@ -1233,8 +1235,7 @@ CONTAINS
        RETURN
     END IF
 
-    IF (rsys2 /= "mean" .AND. rsys2 /= "true-of-date" .AND. rsys2 /=  &
-         "true-of-epoch") THEN
+    IF (rsys2 /= "mean" .AND. rsys2 /= "true-of-date") THEN
        error = .TRUE.
        CALL errorMessage("Observatories / precessionAndNutationMatrix", &
             "Unkown final reference system.", 1)
@@ -1259,34 +1260,41 @@ CONTAINS
     rsys = rsys1
     t_ = copy(t1)
 
-    tdt1 = getMJD(t1, "tdt")
+    tt1 = getMJD(t1, "TT")
     IF (error) THEN
        CALL errorMessage("Observatories / " // &
             "precessionAndNutationMatrix", &
             "TRACE BACK (5)", 1)
        RETURN
     END IF
-    tdt2 = getMJD(t2, "tdt")
+    tt2 = getMJD(t2, "TT")
     IF (error) THEN
        CALL errorMessage("Observatories / " // &
             "precessionAndNutationMatrix", &
             "TRACE BACK (10)", 1)
        RETURN
     END IF
-    tdt_ = tdt1
+    tt_ = tt1
 
     ! Initialization of the rotation matrix (equal to the unit matrix)
     rot = identity_matrix(3)
+
+    IF (info_verb >= 5) THEN
+       CALL matrix_print(rot,stdout,errstr)
+       WRITE(stdout,*)
+    END IF
 
     ! Building of the rotation matrix
     DO
 
        ! Different epochs
-       IF (ABS(tdt_ - tdt2) > eps) THEN
+       IF (ABS(tt_ - tt2) > eps) THEN
 
           IF (frame == "ecliptical") THEN
-             ! Transformation of FRAME (ecliptical --> equatorial)
-             obl = meanObliquity(tdt_)
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,*) "Transformation of FRAME (ecliptical --> equatorial)"
+             END IF
+             obl = meanObliquity(tt_)
              r = rotationMatrix(-obl,1)
              rot = MATMUL(r,rot)
              frame = "equatorial"
@@ -1297,8 +1305,10 @@ CONTAINS
                 RETURN
              END IF
           ELSE IF (frame == "equatorial") THEN
-             IF (rsys(1:8) == "true-of-") THEN
-                ! Transformation of RSYS (True-of-date --> mean)
+             IF (TRIM(rsys) == "true-of-date") THEN
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,*) "Transformation of RSYS (True-of-date --> mean)"
+                END IF
                 r = getNutationMatrix(t_)
                 IF (error) THEN
                    CALL errorMessage("Observatories / " // &
@@ -1309,12 +1319,14 @@ CONTAINS
                 rot = MATMUL(TRANSPOSE(r),rot)
                 rsys = "mean"
              ELSE IF (rsys == "mean") THEN
-                ! Transformation of T (precession)
-                r = precessionMatrix(t_)
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,*) "Transformation of T (precession)"
+                END IF
+                r = getPrecessionMatrix(t_)
                 rot = MATMUL(TRANSPOSE(r),rot)
-                r = precessionMatrix(t2)
+                r = getPrecessionMatrix(t2)
                 rot = MATMUL(r,rot)
-                tdt_ = tdt2
+                tt_ = tt2
                 t_ = copy(t2)
                 IF (error) THEN
                    CALL errorMessage("Observatories / " // &
@@ -1327,10 +1339,12 @@ CONTAINS
           !
           ! Already at the same epoch
           !
-       ELSE IF (rsys(1:8) /= rsys2(1:8)) THEN
+       ELSE IF (TRIM(rsys) /= TRIM(rsys2)) THEN
 
-          IF (rsys(1:8) == "true-of-") THEN
-             ! Transformation of RSYS (True-of-date --> mean)
+          IF (TRIM(rsys) == "true-of-date") THEN
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,*) "Transformation of RSYS (True-of-date --> mean)"
+             END IF
              r = getNutationMatrix(t_)
              IF (error) THEN
                 CALL errorMessage("Observatories / " // &
@@ -1341,8 +1355,10 @@ CONTAINS
              rot = MATMUL(TRANSPOSE(r),rot)
              rsys = "mean"
           ELSE IF (rsys == "mean") THEN
-             ! Transformation of RSYS (Mean --> True-of-date)
-             IF (rsys2(1:8) == "true-of-") THEN
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,*) "Transformation of RSYS (Mean --> True-of-date)"
+             END IF
+             IF (TRIM(rsys2) == "true-of-date") THEN
                 r = getNutationMatrix(t_)
                 IF (error) THEN
                    CALL errorMessage("Observatories / " // &
@@ -1364,15 +1380,19 @@ CONTAINS
        ELSE IF (frame /= frame2) THEN
 
           IF (frame == "ecliptical") THEN
-             ! Transformation of FRAME (ecliptical --> equatorial)
-             obl = meanObliquity(tdt_)
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,*) "Transformation of FRAME (ecliptical --> equatorial)"
+             END IF
+             obl = meanObliquity(tt_)
              r = rotationMatrix(-obl,1)
              rot = MATMUL(r,rot)
              frame = "equatorial"
           ELSE IF (frame == "equatorial") THEN
-             ! Transformation of FRAME (equatorial --> ecliptical)
+             IF (info_verb >= 5) THEN
+                WRITE(stdout,*) "Transformation of FRAME (equatorial --> ecliptical)"
+             END IF
              IF (frame2 == "ecliptical") THEN
-                obl = meanObliquity(tdt_)
+                obl = meanObliquity(tt_)
                 r = rotationMatrix(obl,1)
                 rot = MATMUL(r,rot)
                 frame = "ecliptical"
@@ -1384,8 +1404,16 @@ CONTAINS
                 RETURN
              END IF
           END IF
+
        ELSE
+
           EXIT
+
+       END IF
+
+       IF (info_verb >= 5) THEN
+          CALL matrix_print(rot,stdout,errstr)
+          WRITE(stdout,*)
        END IF
 
     END DO
