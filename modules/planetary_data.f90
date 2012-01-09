@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012   !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2011-08-08
+!! @version 2012-01-09
 !!
 MODULE planetary_data
 
@@ -148,19 +148,20 @@ MODULE planetary_data
   ! Constants of gravitation (G*M)
   ! Unit: AU^3 day^(-2)
   REAL(rprec8), DIMENSION(14), PARAMETER, PUBLIC :: planetary_mu  = (/ &
-       0.0_rprec8, &                             !!  (1) Mercury,
-       0.0_rprec8, &                             !!  (2) Venus,
-       8.887692691e-10_rprec8, &                 !!  (3) Earth, in SI: 398600.4415e9_bp (IAU'94)
-       0.0_rprec8, &                             !!  (4) Mars,
-       0.0_rprec8, &                             !!  (5) Jupiter,
-       0.0_rprec8, &                             !!  (6) Saturn,
-       0.0_rprec8, &                             !!  (7) Uranus,
-       0.0_rprec8, &                             !!  (8) Neptune,
-       0.0_rprec8, &                             !!  (9) Pluto,
-       0.0_rprec8, &                             !! (10) Moon,
-       ggc**2, &                                 !! (11) Sun,
-       0.0_rprec8, &                             !! (12) solar system barycenter,
-       0.0_rprec8, &                             !! (13) Earth-Moon barycenter,
+       ggc**2*planetary_masses(1), &             !!  (1) Mercury,
+       ggc**2*planetary_masses(2), &             !!  (2) Venus,
+                                !8.887692691e-10_rprec8, &                 !!  (3) Earth, in SI: 398600.4415e9_bp (IAU'94)
+       ggc**2*planetary_masses(3), &             !!  (3) Earth,
+       ggc**2*planetary_masses(4), &             !!  (4) Mars,
+       ggc**2*planetary_masses(5), &             !!  (5) Jupiter,
+       ggc**2*planetary_masses(6), &             !!  (6) Saturn,
+       ggc**2*planetary_masses(7), &             !!  (7) Uranus,
+       ggc**2*planetary_masses(8), &             !!  (8) Neptune,
+       ggc**2*planetary_masses(9), &             !!  (9) Pluto,
+       ggc**2*planetary_masses(10), &            !! (10) Moon,
+       ggc**2*planetary_masses(11), &            !! (11) Sun; ggc**2 * 1
+       ggc**2*planetary_masses(12), &            !! (12) solar system barycenter,
+       ggc**2*planetary_masses(13), &            !! (13) Earth-Moon barycenter,
        0.0_rprec8 /)                             !! (14) Asteroid
 
   CHARACTER(len=6), DIMENSION(14,3)         :: ttl
@@ -178,6 +179,7 @@ MODULE planetary_data
   PUBLIC :: JPL_ephemeris_init
   PUBLIC :: JPL_ephemeris
   PUBLIC :: JPL_ephemeris_nullify
+  PUBLIC :: Hill_radius
 
   INTERFACE JPL_ephemeris
      MODULE PROCEDURE JPL_ephemeris_r8
