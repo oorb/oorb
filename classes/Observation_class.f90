@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2011-08-17
+!! @version 2012-02-15
 !!  
 MODULE Observation_cl
 
@@ -935,137 +935,162 @@ CONTAINS
        RETURN
     END IF
 
-    IF (PRESENT(number)) THEN
-       number_ = number
-    ELSE
-       number_ = this%number
-    END IF
-    IF (this%discovery) THEN
-       discovery = "*"
-    ELSE
-       discovery = " "
-    END IF
     t = getTime(this)
-    ! The timescale used by MPC prior to year 1972 is UT1 and since
-    ! then UTC has been used. The maximum difference between UT1 and 
-    ! UTC is 0.9 seconds.
-    CALL getCalendarDate(t, "TT", year, month, day)
     IF (error) THEN
        CALL errorMessage("Observation / getObservationRecords", &
-            "TRACE BACK (5)", 1)
+            "TRACE BACK (1)", 1)
        RETURN       
-    END IF
-    IF (year >= 1972) THEN
-       CALL getCalendarDate(t, "UTC", year, month, day)
-       IF (error) THEN
-          CALL errorMessage("Observation / getObservationRecords", &
-               "TRACE BACK (10)", 1)
-          RETURN
-       END IF
-    ELSE
-       CALL getCalendarDate(t, "UT1", year, month, day)
-       IF (error) THEN
-          CALL errorMessage("Observation / getObservationRecords", &
-               "TRACE BACK (15)", 1)
-          RETURN       
-       END IF
-    END IF
-    CALL toString(month, month_str, error)
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "Could not convert month to string.", 1)
-       WRITE(stderr,*) year, month, day, getMJD(t,"utc")
-       RETURN
-    END IF
-    IF (month < 10) THEN
-       month_str = "0" // TRIM(month_str)
     END IF
     ra = getRA(this)
-    CALL radiansToHMS(ra, h, m, s)
-    IF (ABS(60.0_bp-s) < 0.00001) THEN
-       m = m + 1
-       s = 0.0_bp
-    END IF
-    IF (m == 60) THEN
-       m = 0
-       h = h + 1
-    END IF
-    IF (h == 24) THEN
-       h = 0
+    IF (error) THEN
+       CALL errorMessage("Observation / getObservationRecords", &
+            "TRACE BACK (2)", 1)
+       RETURN       
     END IF
     dec = getDec(this)
-    CALL radiansToDAMAS(ABS(dec), deg, am, as)
-    IF (ABS(60.0_bp-as) < 0.00001) THEN
-       am = am + 1
-       as = 0.0_bp
-    END IF
-    IF (am == 60) THEN
-       am = 0
-       deg = deg + 1
-    END IF
-    IF (dec >= 0.0_bp) THEN
-       sign_dec = "+"
-    ELSE
-       sign_dec = "-"
-    END IF
-    CALL toString(h, h_str, error)
     IF (error) THEN
        CALL errorMessage("Observation / getObservationRecords", &
-            "Conversion error (5).", 1)
-       RETURN       
-    END IF
-    IF (h < 10) h_str = "0" // TRIM(h_str)
-    CALL toString(m, m_str, error)
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "Conversion error (10).", 1)
-       RETURN       
-    END IF
-    IF (m < 10) m_str = "0" // TRIM(m_str)
-    CALL toString(s, s_str, error, frmt="(F6.3)")
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "Conversion error (15).", 1)
-       RETURN       
-    END IF
-    IF (s < 10.0_bp) s_str = "0" // TRIM(s_str)
-    CALL toString(deg, deg_str, error)
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "Conversion error (20).", 1)
-       RETURN       
-    END IF
-    IF (deg < 10) deg_str = "0" // TRIM(deg_str)
-    CALL toString(am, am_str, error)
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "Conversion error (25).", 1)
-       RETURN       
-    END IF
-    IF (am < 10) am_str = "0" // TRIM(am_str)
-    CALL toString(as, as_str, error, frmt="(F5.2)")
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "Conversion error (30).", 1)
-       RETURN       
-    END IF
-    IF (as < 10.0_bp) as_str = "0" // TRIM(as_str)
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "Conversion error (35).", 1)
+            "TRACE BACK (3)", 1)
        RETURN       
     END IF
     obsy_code = getCode(this%obsy)
-    IF (this%mag < 99.0_bp) THEN
-       CALL toString(this%mag, mag_str, error, frmt="(F6.3)")
+    IF (error) THEN
+       CALL errorMessage("Observation / getObservationRecords", &
+            "TRACE BACK (4)", 1)
+       RETURN       
+    END IF
+
+    IF (TRIM(frmt) /= "des") THEN
+
+       IF (PRESENT(number)) THEN
+          number_ = number
+       ELSE
+          number_ = this%number
+       END IF
+       IF (this%discovery) THEN
+          discovery = "*"
+       ELSE
+          discovery = " "
+       END IF
+       ! The timescale used by MPC prior to year 1972 is UT1 and since
+       ! then UTC has been used. The maximum difference between UT1 and 
+       ! UTC is 0.9 seconds.
+       CALL getCalendarDate(t, "TT", year, month, day)
        IF (error) THEN
           CALL errorMessage("Observation / getObservationRecords", &
-               "Conversion error (40).", 1)
+               "TRACE BACK (5)", 1)
+          RETURN       
+       END IF
+       IF (year >= 1972) THEN
+          CALL getCalendarDate(t, "UTC", year, month, day)
+          IF (error) THEN
+             CALL errorMessage("Observation / getObservationRecords", &
+                  "TRACE BACK (10)", 1)
+             RETURN
+          END IF
+       ELSE
+          CALL getCalendarDate(t, "UT1", year, month, day)
+          IF (error) THEN
+             CALL errorMessage("Observation / getObservationRecords", &
+                  "TRACE BACK (15)", 1)
+             RETURN       
+          END IF
+       END IF
+       CALL toString(month, month_str, error)
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Could not convert month to string.", 1)
+          WRITE(stderr,*) year, month, day, getMJD(t,"utc")
           RETURN
        END IF
-       IF (this%mag < 10.0_bp) mag_str = " " // TRIM(mag_str)
-    ELSE
-       mag_str = " "
+       IF (month < 10) THEN
+          month_str = "0" // TRIM(month_str)
+       END IF
+       CALL radiansToHMS(ra, h, m, s)
+       IF (ABS(60.0_bp-s) < 0.00001) THEN
+          m = m + 1
+          s = 0.0_bp
+       END IF
+       IF (m == 60) THEN
+          m = 0
+          h = h + 1
+       END IF
+       IF (h == 24) THEN
+          h = 0
+       END IF
+       CALL radiansToDAMAS(ABS(dec), deg, am, as)
+       IF (ABS(60.0_bp-as) < 0.00001) THEN
+          am = am + 1
+          as = 0.0_bp
+       END IF
+       IF (am == 60) THEN
+          am = 0
+          deg = deg + 1
+       END IF
+       IF (dec >= 0.0_bp) THEN
+          sign_dec = "+"
+       ELSE
+          sign_dec = "-"
+       END IF
+       CALL toString(h, h_str, error)
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Conversion error (5).", 1)
+          RETURN       
+       END IF
+       IF (h < 10) h_str = "0" // TRIM(h_str)
+       CALL toString(m, m_str, error)
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Conversion error (10).", 1)
+          RETURN       
+       END IF
+       IF (m < 10) m_str = "0" // TRIM(m_str)
+       CALL toString(s, s_str, error, frmt="(F6.3)")
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Conversion error (15).", 1)
+          RETURN       
+       END IF
+       IF (s < 10.0_bp) s_str = "0" // TRIM(s_str)
+       CALL toString(deg, deg_str, error)
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Conversion error (20).", 1)
+          RETURN       
+       END IF
+       IF (deg < 10) deg_str = "0" // TRIM(deg_str)
+       CALL toString(am, am_str, error)
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Conversion error (25).", 1)
+          RETURN       
+       END IF
+       IF (am < 10) am_str = "0" // TRIM(am_str)
+       CALL toString(as, as_str, error, frmt="(F5.2)")
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Conversion error (30).", 1)
+          RETURN       
+       END IF
+       IF (as < 10.0_bp) as_str = "0" // TRIM(as_str)
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords", &
+               "Conversion error (35).", 1)
+          RETURN       
+       END IF
+       IF (this%mag < 99.0_bp) THEN
+          CALL toString(this%mag, mag_str, error, frmt="(F6.3)")
+          IF (error) THEN
+             CALL errorMessage("Observation / getObservationRecords", &
+                  "Conversion error (40).", 1)
+             RETURN
+          END IF
+          IF (this%mag < 10.0_bp) mag_str = " " // TRIM(mag_str)
+       ELSE
+          mag_str = " "
+       END IF
+
     END IF
 
     ALLOCATE(records(5))

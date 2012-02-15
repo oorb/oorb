@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2011-11-30
+!! @version 2012-02-15
 !!
 MODULE io
 
@@ -2020,19 +2020,21 @@ CONTAINS
 
   SUBROUTINE readOpenOrbOrbitFile(lu, header, element_type_in, id, orb, &
        element_type_pdf, cov, pdf, rchi2, reg_apr, jac_sph_inv, &
-       jac_car_kep, jac_equ_kep, H, G, rho1, rho2)
+       jac_car_kep, jac_equ_kep, H, G, rho1, rho2, repetitions)
 
     IMPLICIT NONE
     INTEGER, INTENT(in) :: lu
     CHARACTER(len=*), DIMENSION(4), INTENT(inout) :: header
-    CHARACTER(len=*), INTENT(inout) :: element_type_in
-    CHARACTER(len=*), INTENT(inout) :: id
-    TYPE (Orbit), INTENT(inout) :: orb
-    CHARACTER(len=*), INTENT(inout), OPTIONAL :: element_type_pdf
-    REAL(bp), DIMENSION(:,:), INTENT(inout), OPTIONAL :: cov
-    REAL(bp), INTENT(inout), OPTIONAL :: pdf, rchi2, &
+    CHARACTER(len=*), INTENT(out) :: element_type_in
+    CHARACTER(len=*), INTENT(out) :: id
+    TYPE (Orbit), INTENT(out) :: orb
+    CHARACTER(len=*), INTENT(out), OPTIONAL :: element_type_pdf
+    REAL(bp), DIMENSION(:,:), INTENT(out), OPTIONAL :: cov
+    REAL(bp), INTENT(out), OPTIONAL :: pdf, rchi2, &
          reg_apr, jac_sph_inv, jac_car_kep, jac_equ_kep, H, G, &
          rho1, rho2
+    INTEGER, INTENT(out), OPTIONAL :: repetitions
+
     TYPE (Time) :: t
     CHARACTER(len=128) :: str
     REAL(bp), DIMENSION(15) :: correlation
@@ -2514,6 +2516,18 @@ CONTAINS
           rho2 = r
        END IF
     END IF
+    IF (INDEX(header(4),"-0077-") /= 0) THEN
+       READ(lu,"(1X,I9)", advance="no", iostat=err) i
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (155).", 1)
+          RETURN
+       END IF
+       IF (PRESENT(repetitions)) THEN
+          repetitions = i
+       END IF
+    END IF
     READ(lu,"(1X)",iostat=err)
     IF (err /= 0) THEN
        error = .TRUE.
@@ -2815,8 +2829,8 @@ CONTAINS
     ! WRITE REDUCED CHI2:
     CALL getParameters(storb, ls_element_mask=ls_element_mask)
     inform_mat_obs_bd => getBlockDiagInformationMatrix(obss)
-    rchi2 = chi_square(residuals, inform_mat_obs_bd, obs_masks, errstr) / &
-         REAL(COUNT(obs_masks)-COUNT(ls_element_mask),bp)
+    rchi2 = chi_square(residuals, inform_mat_obs_bd, obs_masks, errstr) - &
+         COUNT(obs_masks)
     IF (LEN_TRIM(errstr) /= 0) THEN
        error = .TRUE.
        CALL errorMessage("io / writeNominalSolution", &

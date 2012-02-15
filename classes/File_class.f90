@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012   !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -66,7 +66,7 @@
 !! </pre>
 !!
 !! @author  MG
-!! @version 2008-06-04
+!! @version 2012-01-17
 !! 
 !! @see Observations_class
 !! @see Time_class
@@ -108,42 +108,42 @@ MODULE File_cl
   INTERFACE NEW
      MODULE PROCEDURE new_F_scratch
      MODULE PROCEDURE new_F_name
-  END INTERFACE
+  END INTERFACE NEW
 
   !! Nullifies a File-object, e.g. closes the file.
   INTERFACE NULLIFY
      MODULE PROCEDURE nullify_F
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   !! Makes a copy of a File-object.
   INTERFACE copy
      MODULE PROCEDURE copy_F
-  END INTERFACE
+  END INTERFACE copy
 
   !! Returns the status of the object, i.e. whether
   !! it exists or not.
   INTERFACE exist
      MODULE PROCEDURE exist_F
-  END INTERFACE
+  END INTERFACE exist
 
   !! Writes a formatted or list-directed 
   !! character string to a file.
   INTERFACE writeString
      MODULE PROCEDURE writeString_unformatted
      MODULE PROCEDURE writeString_formatted
-  END INTERFACE
+  END INTERFACE writeString
 
   !! Reads a formatted or list-directed 
   !! character string from a file.
   INTERFACE readString
      MODULE PROCEDURE readString_unformatted
      MODULE PROCEDURE readString_formatted
-  END INTERFACE
+  END INTERFACE readString
 
   !! Returns logical unit of a file object.
   INTERFACE getUnit
      MODULE PROCEDURE getUnit_F
-  END INTERFACE
+  END INTERFACE getUnit
 
 
 
@@ -367,6 +367,93 @@ CONTAINS
     getFileName = TRIM(this%fname)
 
   END FUNCTION getFileName
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Counts the number of columns in a file based on the first row and
+  !! assuming an empty space as the column delimiter. Returns _error_ =
+  !!     - _false_, no errors occur.
+  !!     - _true_, if an error occurs during the procedure.
+  !!
+  !! *Usage*:
+  !!
+  !! type (File) :: myfile
+  !!
+  !! integer :: nr_of_columns
+  !!
+  !! ...
+  !!
+  !! nr_of_columns = getNrOfColumns(myfile, error) 
+  !!
+  INTEGER FUNCTION getNrOfColumns(this)
+
+    IMPLICIT NONE
+    TYPE (File), INTENT(in) :: this
+    CHARACTER(len=4096)     :: line, line_
+    INTEGER                 :: i, err, indx
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("File / getNrOfColumns", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT. this%opened) THEN
+       error = .TRUE.
+       CALL errorMessage("File / getNrOfColumns", &
+            "File has not yet been opened.", 1)
+       RETURN
+    END IF
+
+    REWIND(getUnit(this), iostat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("File / getNrOfColumns", &
+            "Error while rewinding the file.", 1)
+       RETURN
+    END IF
+
+    line = " "
+    READ(getUnit(this), "(A)", iostat=err) line
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("File / getNrOfColumns", &
+            "Error while reading first line of file " // TRIM(this%fname), 1)
+       RETURN
+    END IF
+
+    REWIND(getUnit(this), iostat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("File / getNrOfColumns", &
+            "Error while rewinding the file.", 1)
+       RETURN
+    END IF
+
+    i = 0
+    DO WHILE (LEN_TRIM(line) /= 0)
+       Line_ = " "
+       IF (line(1:1) /= " ") THEN
+          i = i + 1
+          indx = INDEX(line," ")
+          line_ = line(indx:)
+          line = " "
+          line = line_
+       ELSE
+          line_ = line(2:)
+          line = " "
+          line = line_          
+       END IF
+    END DO
+
+    getNrOfColumns = i
+
+  END FUNCTION getNrOfColumns
 
 
 

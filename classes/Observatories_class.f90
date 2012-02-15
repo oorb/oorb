@@ -26,7 +26,7 @@
 !! Type and routines for observatories.
 !! 
 !! @author  MG, JV
-!! @version 2011-01-09
+!! @version 2012-01-09
 !!
 MODULE Observatories_cl
 
