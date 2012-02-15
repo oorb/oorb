@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012   !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2011-08-08
+!! @version 2012-02-15
 !!
 MODULE Orbit_cl
 
@@ -89,7 +89,7 @@ MODULE Orbit_cl
 
   TYPE Orbit
 
-     PRIVATE
+     !     PRIVATE
      TYPE (Time)                         :: t
      CHARACTER(len=FRAME_LEN)            :: frame                = "equatorial"
      CHARACTER(len=ELEMENT_TYPE_LEN)     :: element_type         = "cartesian"
@@ -104,6 +104,10 @@ MODULE Orbit_cl
      REAL(bp), DIMENSION(6)              :: finite_diff_prm      = -1.0_bp
      REAL(bp)                            :: integration_step_prm = 5.0_bp 
      LOGICAL, DIMENSION(10)              :: perturbers_prm       = .FALSE.
+     ! Mass of the asteroid in solar masses (M_sol). A negative value
+     ! indicates that this orbit is integrated as a test particle, ie,
+     ! it has no effect on the orbits of other objects. Default is -1.
+     REAL(bp)                            :: mass_prm             = -1.0_bp
 
   END TYPE Orbit
 
@@ -333,7 +337,7 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE new_Orb_elements(this, elements, element_type, frame, t, central_body)
+  SUBROUTINE new_Orb_elements(this, elements, element_type, frame, t, central_body, mass)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)        :: this
@@ -341,6 +345,8 @@ CONTAINS
     CHARACTER(len=*), INTENT(in)       :: element_type, frame
     TYPE (Time), INTENT(in)            :: t
     INTEGER, INTENT(in), OPTIONAL      :: central_body
+    REAL(bp), INTENT(in), OPTIONAL     :: mass
+
     TYPE (SphericalCoordinates)        :: scoord
     TYPE (CartesianCoordinates)        :: ccoord
     CHARACTER(len=32)                  :: tmp
@@ -375,6 +381,12 @@ CONTAINS
        this%central_body = central_body
     ELSE
        this%central_body = 11
+    END IF
+
+    IF (PRESENT(mass)) THEN
+       this%mass_prm = mass
+    ELSE
+       this%mass_prm = -1.0_bp
     END IF
 
     SELECT CASE (this%element_type)
@@ -1683,6 +1695,7 @@ CONTAINS
     CALL NULLIFY(this%t)
     this%finite_diff_prm = -1.0_bp
     this%frame = ""
+    this%mass_prm = -1.0_bp
     this%dyn_model_prm    = ""
     this%perturbers_prm = .FALSE.
     IF (ASSOCIATED(this%additional_perturbers)) THEN
@@ -1715,6 +1728,7 @@ CONTAINS
     copy_Orb%elements       = this%elements
     copy_Orb%element_type   = this%element_type
     copy_Orb%frame          = this%frame
+    copy_Orb%mass_prm           = this%mass_prm
     copy_Orb%t              = copy(this%t)
     copy_Orb%central_body   = this%central_body
     copy_Orb%dyn_model_prm  = this%dyn_model_prm
@@ -5491,11 +5505,13 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE getParameters_Orb(this, dyn_model, integration_step, &
-       integrator, finite_diff, additional_perturbers)
+  SUBROUTINE getParameters_Orb(this, mass, dyn_model, &
+       integration_step, integrator, finite_diff, &
+       additional_perturbers)
 
     IMPLICIT NONE
     TYPE(Orbit), INTENT(in) :: this
+    REAL(bp), INTENT(out), OPTIONAL :: mass
     CHARACTER(len=DYN_MODEL_LEN), INTENT(out), OPTIONAL :: dyn_model
     REAL(bp), INTENT(out), OPTIONAL :: integration_step
     CHARACTER(len=INTEGRATOR_LEN), INTENT(out), OPTIONAL :: integrator
@@ -5509,6 +5525,10 @@ CONTAINS
        CALL errorMessage("Orbit / getParameters", &
             "Object has not yet been initialized.", 1)
        RETURN
+    END IF
+
+    IF (PRESENT(mass)) THEN
+       mass = this%mass_prm
     END IF
 
     IF (PRESENT(dyn_model)) THEN
@@ -8016,13 +8036,13 @@ CONTAINS
     CHARACTER(len=INTEGRATOR_LEN) :: integrator
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: partials0, jacobian_
     REAL(bp), DIMENSION(:,:), POINTER :: elm_arr
-    REAL(bp), DIMENSION(:), ALLOCATABLE :: addit_masses
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: masses
     REAL(bp), DIMENSION(6,6) :: partials1
     REAL(bp), DIMENSION(0:3) :: stumpff_cs, ffs
     REAL(bp), DIMENSION(3) :: pos, vel
     REAL(bp) :: mjd_tt, mjd_tt0, dt, r0, u, alpha, s, f, g, df, &
          dg, mean_motion, step, mu_, p
-    INTEGER :: i, j, err, nthis, central_body, naddit
+    INTEGER :: i, j, err, nthis, central_body, naddit, nmassive
     LOGICAL :: multiple_t0
 
     nthis = SIZE(this_arr,dim=1)
@@ -8377,7 +8397,7 @@ CONTAINS
           ! Initialize for finite difference technique:
           DO i=1,nthis+naddit
              DO j=1,6
-                ! Change one element at a time by adding and substracting by a finite amount
+                ! Change one element at a time by adding and subtracting by a finite amount
                 elm_arr(:,nthis+naddit+(i-1)*12+j) = elm_arr(:,i)
                 elm_arr(:,nthis+naddit+(i-1)*12+j+6) = elm_arr(:,i)
                 elm_arr(j,nthis+naddit+(i-1)*12+j) = elm_arr(j,nthis+naddit+(i-1)*12+j) + &
@@ -8488,6 +8508,23 @@ CONTAINS
           END IF
        END DO
 
+       IF (info_verb >= 3) THEN
+          WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
+       END IF
+       ALLOCATE(masses(nthis+naddit), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / propagate (multiple)",&
+               "Could not allocate memory (35).", 1)          
+          RETURN
+       END IF
+       DO i=1,nthis
+          masses(i) = this_arr(i)%mass_prm
+       END DO
+       IF (naddit /= 0) THEN
+          masses(nthis+1:nthis+naddit) = this_arr(1)%additional_perturbers(1:naddit,8)
+       END IF
+
        SELECT CASE (integrator)
 
        CASE ("bulirsch-stoer")
@@ -8495,18 +8532,8 @@ CONTAINS
           ! Check whether the additional perturbers share the same epoch
           ! with the orbits to be integrated and integrate them to the
           ! correct epoch if required:
-          IF (naddit /= 0) THEN
-             IF (info_verb >= 3) THEN
-                WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
-             END IF
-             ALLOCATE(addit_masses(naddit), stat=err)
-             IF (err /= 0) THEN
-                error = .TRUE.
-                CALL errorMessage("Orbit / propagate (multiple)",&
-                     "Could not allocate memory (35).", 1)          
-                RETURN
-             END IF
-             addit_masses = this_arr(1)%additional_perturbers(:,8)
+          IF (ASSOCIATED(this_arr(1)%additional_perturbers) .AND. &
+               SIZE(this_arr(1)%additional_perturbers,dim=1) > 0) THEN
              IF (naddit >= 2) THEN
                 DO i=2,naddit
                    IF (ABS(this_arr(1)%additional_perturbers(i-1,7) - &
@@ -8539,7 +8566,7 @@ CONTAINS
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     addit_masses=this_arr(1)%additional_perturbers(:,8), &
+                     masses=this_arr(1)%additional_perturbers(:,8), &
                      info_verb=info_verb)
              END IF
              IF (info_verb >= 3) THEN
@@ -8551,14 +8578,6 @@ CONTAINS
                         i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
                         mjd_tt0, this_arr(1)%additional_perturbers(i,8)
                 END DO
-             END IF
-          ELSE
-             ALLOCATE(addit_masses(0), stat=err)
-             IF (err /= 0) THEN
-                error = .TRUE.
-                CALL errorMessage("Orbit / propagate (multiple)",&
-                     "Could not allocate memory (40).", 1)          
-                RETURN
              END IF
           END IF
 
@@ -8572,14 +8591,14 @@ CONTAINS
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      jacobian=jacobian_, ncenter=central_body, &
-                     encounters=encounters, addit_masses=addit_masses, &
+                     encounters=encounters, masses=masses, &
                      info_verb=info_verb)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      jacobian=jacobian_, ncenter=central_body, &
-                     addit_masses=addit_masses, info_verb=info_verb)
+                     masses=masses, info_verb=info_verb)
              END IF
              DO i=1,nthis+naddit
                 jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
@@ -8594,13 +8613,13 @@ CONTAINS
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
                      encounters=encounters, &
-                     addit_masses=addit_masses, &
+                     masses=masses, &
                      info_verb=info_verb)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, addit_masses=addit_masses, &
+                     ncenter=central_body, masses=masses, &
                      info_verb=info_verb)
              END IF
           END IF
@@ -8623,18 +8642,7 @@ CONTAINS
           ! Check whether the additional perturbers share the same epoch
           ! with the orbits to be integrated and integrate them to the
           ! correct epoch if required:
-          IF (naddit /= 0) THEN
-             IF (info_verb >= 3) THEN
-                WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
-             END IF
-             ALLOCATE(addit_masses(naddit), stat=err)
-             IF (err /= 0) THEN
-                error = .TRUE.
-                CALL errorMessage("Orbit / propagate (multiple)",&
-                     "Could not allocate memory (35).", 1)          
-                RETURN
-             END IF
-             addit_masses = this_arr(1)%additional_perturbers(:,8)
+          IF (ALLOCATED(masses)) THEN
              IF (naddit >= 2) THEN
                 DO i=2,naddit
                    IF (ABS(this_arr(1)%additional_perturbers(i-1,7) - &
@@ -8669,7 +8677,7 @@ CONTAINS
                      2, this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     addit_masses=addit_masses)
+                     masses=masses)
              END IF
              IF (info_verb >= 3) THEN
                 WRITE(stdout,"(2X,A)") &
@@ -8678,16 +8686,8 @@ CONTAINS
                 DO i=1,naddit
                    WRITE(stdout,"(2X,I0,7(1X,F17.9),1X,E10.4)") &
                         i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
-                        mjd_tt0, addit_masses
+                        mjd_tt0, masses
                 END DO
-             END IF
-          ELSE
-             ALLOCATE(addit_masses(0), stat=err)
-             IF (err /= 0) THEN
-                error = .TRUE.
-                CALL errorMessage("Orbit / propagate (multiple)",&
-                     "Could not allocate memory (40).", 1)          
-                RETURN
              END IF
           END IF
 
@@ -8706,14 +8706,14 @@ CONTAINS
                      error, jacobian=jacobian_, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, encounters=encounters, &
-                     addit_masses=addit_masses)
+                     masses=masses)
              ELSE
                 CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
                      error, jacobian=jacobian_, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     addit_masses=addit_masses)
+                     masses=masses)
              END IF
              DO i=1,nthis+naddit
                 jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
@@ -8727,13 +8727,13 @@ CONTAINS
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, encounters=encounters, &
-                     addit_masses=addit_masses)
+                     masses=masses)
              ELSE
                 CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      ncenter=central_body, &
-                     addit_masses=addit_masses)
+                     masses=masses)
              END IF
           END IF
           IF (error) THEN
@@ -9277,6 +9277,7 @@ CONTAINS
   !! Returns error.
   !!
   SUBROUTINE setParameters_Orb(this, &
+       mass, &
        dyn_model, &
        integration_step, &
        integrator, &
@@ -9291,6 +9292,7 @@ CONTAINS
     REAL(bp), DIMENSION(:,:), OPTIONAL           :: additional_perturbers ! (car equ + mjd_tt + mass)
     REAL(bp), DIMENSION(6), INTENT(in), OPTIONAL :: finite_diff
     REAL(bp), INTENT(in), OPTIONAL               :: integration_step
+    REAL(bp), INTENT(in), OPTIONAL               :: mass
     LOGICAL, DIMENSION(10), OPTIONAL             :: perturbers
 
     CHARACTER(len=256) :: str
@@ -9303,6 +9305,9 @@ CONTAINS
        RETURN
     END IF
 
+    IF (PRESENT(mass)) THEN
+       this%mass_prm = mass
+    END IF
     IF (PRESENT(dyn_model)) THEN
        IF (LEN_TRIM(dyn_model) > DYN_MODEL_LEN) THEN
           error = .TRUE.

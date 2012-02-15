@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! @see Observations_class
 !! 
 !! @author  MG
-!! @version 2009-10-20
+!! @version 2012-02-15
 !!
 MODULE SphericalCoordinates_cl
 
@@ -83,64 +83,64 @@ MODULE SphericalCoordinates_cl
      MODULE PROCEDURE new_SC_rad
      MODULE PROCEDURE new_SC_radAndDistance
      MODULE PROCEDURE new_SC_posAndVel
-  END INTERFACE
+  END INTERFACE NEW
 
   INTERFACE NULLIFY
      MODULE PROCEDURE nullify_SC
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   INTERFACE copy
      MODULE PROCEDURE copy_SC
-  END INTERFACE
+  END INTERFACE copy
 
   INTERFACE exist
      MODULE PROCEDURE exist_SC
-  END INTERFACE
+  END INTERFACE exist
 
   INTERFACE addMultinormalDeviate
      MODULE PROCEDURE addMultinormalDeviate_SC
-  END INTERFACE
+  END INTERFACE addMultinormalDeviate
 
   INTERFACE addUniformDeviate
      MODULE PROCEDURE addUniformDeviate_SC
-  END INTERFACE
+  END INTERFACE addUniformDeviate
 
   INTERFACE equal
      MODULE PROCEDURE equal_SC
-  END INTERFACE
+  END INTERFACE equal
 
   INTERFACE getCoordinates
      MODULE PROCEDURE getCoordinates_SC
-  END INTERFACE
+  END INTERFACE getCoordinates
 
   INTERFACE getPosition
      MODULE PROCEDURE getPosition_SC
-  END INTERFACE
+  END INTERFACE getPosition
 
   INTERFACE getVelocity
      MODULE PROCEDURE getVelocity_SC
-  END INTERFACE
+  END INTERFACE getVelocity
 
   INTERFACE getFrame
      MODULE PROCEDURE getFrame_SC
-  END INTERFACE
+  END INTERFACE getFrame
 
   INTERFACE getTime
      MODULE PROCEDURE getTime_SC
-  END INTERFACE
+  END INTERFACE getTime
 
   INTERFACE reallocate
      MODULE PROCEDURE reallocate_SC_1
      MODULE PROCEDURE reallocate_SC_2
-  END INTERFACE
+  END INTERFACE reallocate
 
   INTERFACE rotateToEquatorial
      MODULE PROCEDURE rotateToEquatorial_SC
-  END INTERFACE
+  END INTERFACE rotateToEquatorial
 
   INTERFACE rotateToEcliptic
      MODULE PROCEDURE rotateToEcliptic_SC
-  END INTERFACE
+  END INTERFACE rotateToEcliptic
 
 
 CONTAINS
@@ -546,10 +546,10 @@ CONTAINS
     REAL(bp), DIMENSION(6), INTENT(in)         :: mean
     REAL(bp), DIMENSION(6,6), INTENT(in)       :: covariance
 
-    REAL(bp), DIMENSION(6,6)                   :: eigenvectors, eigenvalues, A, covariance_
-    REAL(bp), DIMENSION(6)                     :: norm, vector, deviates
+    REAL(bp), DIMENSION(6,6)                   :: A, covariance_
+    REAL(bp), DIMENSION(6)                     :: norm, p, deviates
     REAL(bp)                                   :: cosdelta
-    INTEGER                                    :: i, nrotation
+    INTEGER                                    :: i
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -563,9 +563,6 @@ CONTAINS
     ! x      :: multivariate deviate vector
     ! v      :: normally distributed (0,1) random variables
     ! SIGMA  :: covariance matrix
-    ! U      :: eigenvectors as matrix columns
-    ! LAMBDA :: diagonal eigenvalue matrix
-    ! A      :: U sqrt(LAMBDA)
 
     ! sigma RA is larger for a higher declination:
     covariance_ = covariance
@@ -575,30 +572,33 @@ CONTAINS
     END IF
     covariance_(2,:) = covariance_(2,:)/cosdelta
     covariance_(:,2) = covariance_(:,2)/cosdelta
-
-    ! Solve U and LAMBDA from SIGMA = U LAMBDA transpose(U)
-    CALL eigen_decomposition_jacobi(covariance_, vector, &
-         eigenvectors, nrotation, errstr)
-    IF (LEN_TRIM(errstr) /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("SphericalCoordinates / addMultinormalDeviate", &
-            "Eigen decomposition unsuccessful.", 1)
-       RETURN
-    END IF
-    eigenvalues = 0.0_bp
-    ! sqrt(LAMBDA) is needed:
     DO i=1,6
-       eigenvalues(i,i) = SQRT(vector(i))
+       IF (covariance_(i,i) == 0.0_bp) THEN
+          covariance_(i,i) = 1.0_bp
+       END IF
     END DO
 
-    ! A = U sqrt(LAMBDA)
-    A = MATMUL(eigenvectors, eigenvalues)
+    A = 0.0_bp
+    DO i=1,6
+       A(i,i:6) = covariance_(i,i:6)
+    END DO
+    CALL cholesky_decomposition(A, p, errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("SphericalCoordinates / addMultinormalDeviate:", &
+            "Cholesky decomposition unsuccessful:", 1)
+       WRITE(stderr,"(A)") TRIM(errstr)
+       RETURN
+    END IF
+    DO i=1,6
+       A(i,i) = p(i)
+    END DO
 
-    ! x = A v + mean):
+    ! dx = A v + mean:
     CALL randomGaussian(norm)
     deviates = MATMUL(A,norm) + mean
 
-    ! New coordinates = old coordinates + deviates:
+    ! x_new = x_old + dx:
     this%position = this%position + deviates(1:3)
     this%velocity = this%velocity + deviates(4:6)
 

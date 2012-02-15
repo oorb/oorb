@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012   !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM 
-!! @version 2011-11-30
+!! @version 2012-02-15
 !!  
 MODULE StochasticOrbit_cl
 
@@ -66,6 +66,7 @@ MODULE StochasticOrbit_cl
   PRIVATE :: getApoapsisDistance_SO
   PRIVATE :: getEphemerides_SO
   PRIVATE :: getEphemeris_SO
+  PRIVATE :: getID_SO
   PRIVATE :: getCovarianceMatrix_SO
   PRIVATE :: getParameters_SO
   PRIVATE :: getPeriapsisDistance_SO
@@ -95,6 +96,7 @@ MODULE StochasticOrbit_cl
      TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr_cmp            => NULL()
      TYPE (Orbit)                        :: orb_ml_cmp
      TYPE (Observations)                 :: obss
+     CHARACTER(len=DESIGNATION_LEN)      :: id_prm                 = " "
      CHARACTER(len=ELEMENT_TYPE_LEN)     :: cov_type_prm           = " "
      CHARACTER(len=ELEMENT_TYPE_LEN)     :: element_type_prm       = "cartesian"
      REAL(bp), DIMENSION(:,:,:), POINTER :: res_arr_cmp            => NULL()
@@ -276,6 +278,10 @@ MODULE StochasticOrbit_cl
      MODULE PROCEDURE getEphemeris_SO
   END INTERFACE getEphemeris
 
+  INTERFACE getID
+     MODULE PROCEDURE getID_SO
+  END INTERFACE getID
+
   INTERFACE getParameters
      MODULE PROCEDURE getParameters_SO
   END INTERFACE getParameters
@@ -453,7 +459,7 @@ CONTAINS
   !! Returns error.
   !!
   SUBROUTINE new_SO_orb_cov(this, orb, cov, cov_type, &
-       element_type, obss)
+       element_type, obss, id)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout)     :: this
@@ -462,6 +468,7 @@ CONTAINS
     REAL(bp), DIMENSION(6,6), INTENT(in)      :: cov
     CHARACTER(len=*), INTENT(in), OPTIONAL    :: element_type
     TYPE (Observations), INTENT(in), OPTIONAL :: obss
+    CHARACTER(len=*), INTENT(in), OPTIONAL    :: id
     INTEGER                                   :: err
 
     IF (this%is_initialized_prm) THEN
@@ -507,6 +514,9 @@ CONTAINS
           RETURN
        END IF
     END IF
+    IF (PRESENT(id)) THEN
+       this%id_prm = id 
+    END IF
 
   END SUBROUTINE new_SO_orb_cov
 
@@ -519,7 +529,9 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE new_SO_orb_arr(this, orb_arr, pdf_arr, element_type, jac_arr, reg_apr_arr, rchi2_arr)
+
+  SUBROUTINE new_SO_orb_arr(this, orb_arr, pdf_arr, element_type, &
+       jac_arr, reg_apr_arr, rchi2_arr, repetition_arr)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout)          :: this
@@ -529,6 +541,7 @@ CONTAINS
     REAL(bp), DIMENSION(:,:), INTENT(in), OPTIONAL :: jac_arr
     REAL(bp), DIMENSION(:), INTENT(in), OPTIONAL   :: reg_apr_arr
     REAL(bp), DIMENSION(:), INTENT(in), OPTIONAL   :: rchi2_arr
+    INTEGER, DIMENSION(:), INTENT(in), OPTIONAL    :: repetition_arr
 
     INTEGER :: i, err
 
@@ -577,9 +590,7 @@ CONTAINS
                "Could not allocate pointer (15).", 1)
           RETURN
        END IF
-       DO i=1,this%sor_norb_cmp
-          this%rchi2_arr_cmp(i) = rchi2_arr(i)
-       END DO
+       this%rchi2_arr_cmp = rchi2_arr
     END IF
     IF (PRESENT(reg_apr_arr)) THEN
        ALLOCATE(this%reg_apr_arr_cmp(this%sor_norb_cmp), &
@@ -590,9 +601,18 @@ CONTAINS
                "Could not allocate pointer (20).", 1)
           RETURN
        END IF
-       DO i=1,this%sor_norb_cmp
-          this%reg_apr_arr_cmp(i) = reg_apr_arr(i)
-       END DO
+       this%reg_apr_arr_cmp = reg_apr_arr
+    END IF
+    IF (PRESENT(repetition_arr)) THEN
+       ALLOCATE(this%repetition_arr_cmp(this%sor_norb_cmp), &
+            stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / new", &
+               "Could not allocate pointer (25).", 1)
+          RETURN
+       END IF
+       this%repetition_arr_cmp = repetition_arr
     END IF
     this%element_type_prm = element_type
     this%is_initialized_prm = .TRUE.
@@ -3602,6 +3622,19 @@ CONTAINS
 
 
 
+  CHARACTER(len=DESIGNATION_LEN) FUNCTION getID_SO(this)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(in) :: this
+
+    getID_SO = this%id_prm
+
+  END FUNCTION getID_SO
+
+
+
+
+
   !! *Description*:
   !!
   !! Computes an rms value using mean residuals computed using the
@@ -3970,6 +4003,33 @@ CONTAINS
 
 
 
+
+  !! *Description*:
+  !!
+  !!
+  !! Returns error.
+  !!
+  FUNCTION getObservations_SO(this)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(in) :: this
+    TYPE (Observations) :: getObservations_SO
+
+    IF (.NOT. this%is_initialized_prm) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getObservations", &
+            "Object has not been initialized.", 1)
+       RETURN
+    END IF
+
+    getObservations_SO = copy(this%obss)
+
+  END FUNCTION getObservations_SO
+
+
+
+
+
   !! *Description*:
   !!
   !!
@@ -3994,8 +4054,6 @@ CONTAINS
     getObservationPairs = this%sor_pair_arr_prm
 
   END FUNCTION getObservationPairs
-
-
 
 
 
@@ -5100,13 +5158,7 @@ CONTAINS
          COS(observed_coords(1:nobs,3))
     DO i=1,nobs
        IF (ABS(getResiduals_SO_orb(i,2)) > pi) THEN
-          IF (observed_coords(i,2) < computed_coords(i,2)) THEN
-             observed_coords(i,2) = observed_coords(i,2) + two_pi
-          ELSE
-             computed_coords(i,2) = computed_coords(i,2) + two_pi
-          END IF
-          getResiduals_SO_orb(i,2) = (observed_coords(i,2) - &
-               computed_coords(i,2)) * COS(observed_coords(i,3))
+          getResiduals_SO_orb(i,2) = two_pi - getResiduals_SO_orb(i,2)
        END IF
     END DO
     DO i=1,SIZE(observed_scoords)
@@ -5543,15 +5595,17 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  FUNCTION getSampleOrbits(this, probability_mass)
+  FUNCTION getSampleOrbits(this, probability_mass, force_pdf)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in)  :: this
     REAL(bp), INTENT(in), OPTIONAL :: probability_mass
+    LOGICAL, INTENT(in), OPTIONAL :: force_pdf
     TYPE (Orbit), DIMENSION(:), POINTER :: getSampleOrbits
 
     INTEGER, DIMENSION(:), ALLOCATABLE :: indx_arr
-    INTEGER                             :: err, i, j, norb
+    INTEGER :: err, i, j, norb
+    LOGICAL :: force_pdf_
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -5567,9 +5621,15 @@ CONTAINS
        RETURN
     END IF
 
+    IF (PRESENT(force_pdf)) THEN
+       force_pdf_ = force_pdf
+    ELSE
+       force_pdf_ = .FALSE.
+    END IF
+
     IF (PRESENT(probability_mass)) THEN
        ALLOCATE(indx_arr(SIZE(this%pdf_arr_cmp)))
-       IF (ASSOCIATED(this%repetition_arr_cmp)) THEN
+       IF (ASSOCIATED(this%repetition_arr_cmp) .AND. .NOT.force_pdf_) THEN
           CALL credible_region(this%pdf_arr_cmp, probability_mass, indx_arr, errstr, this%repetition_arr_cmp)
        ELSE
           CALL credible_region(this%pdf_arr_cmp, probability_mass, indx_arr, errstr)
@@ -9244,7 +9304,7 @@ CONTAINS
          local_5x5_covariance, &
          local_5x5_correlation, &
          mat
-    REAL(bp), DIMENSION(8) :: &
+    REAL(bp), DIMENSION(3) :: &
          ran_arr
     REAL(bp), DIMENSION(6) :: &
          elements_local, &
@@ -9379,266 +9439,266 @@ CONTAINS
        DO i=1,SIZE(this%orb_arr_cmp)
           orb_arr(i) = copy(this%orb_arr_cmp(i))
        END DO
-       rchi2_arr = this%rchi2_arr_cmp
+       !       rchi2_arr = this%rchi2_arr_cmp
     ELSE
        ALLOCATE(orb_arr(SIZE(orb_arr_in)), rchi2_arr(SIZE(orb_arr_in)))
        DO i=1,SIZE(orb_arr_in)
           orb_arr(i) = copy(orb_arr_in(i))
-          rchi2_arr(i) = getChi2(this, orb_arr(i)) - COUNT(this%obs_masks_prm)
+          !          rchi2_arr(i) = getChi2(this, orb_arr(i)) - COUNT(this%obs_masks_prm)
        END DO
-       this%chi2_min_prm = MINVAL(rchi2_arr) + COUNT(this%obs_masks_prm)
+       !       this%chi2_min_prm = MINVAL(rchi2_arr) + COUNT(this%obs_masks_prm)
     END IF
-    ALLOCATE(elements_arr(SIZE(orb_arr),6), &
-         indx_arr(SIZE(orb_arr)), &
-         mask_arr(SIZE(orb_arr)), &
-         elements_mean(this%vomcmc_nmap_prm,6), &
-         principal_axes(this%vomcmc_nmap_prm,5,5), &
-         sampling_volume_arr(this%vomcmc_nmap_prm))
+    ALLOCATE(elements_arr(SIZE(orb_arr),6))!, &
+    !        indx_arr(SIZE(orb_arr)), &
+    !        mask_arr(SIZE(orb_arr)), &
+    !        elements_mean(this%vomcmc_nmap_prm,6), &
+    !        principal_axes(this%vomcmc_nmap_prm,5,5), &
+    !        sampling_volume_arr(this%vomcmc_nmap_prm))
     DO i=1,SIZE(orb_arr)
        elements_arr(i,:) = getElements(orb_arr(i), this%element_type_prm)
     END DO
-    ! Use one of the first three elements with the largest variability
-    ! as mapping parameter:
-    a_r = TINY(a_r)
-    DO i=1,3
-       IF (MAXVAL(elements_arr(:,i)) - MINVAL(elements_arr(:,i)) > a_r) THEN
-          indx = i
-          a_r = MAXVAL(elements_arr(:,i)) - MINVAL(elements_arr(:,i))
-       END IF
-    END DO
-    mask=.TRUE.
-    mask(indx) = .FALSE.
-    WRITE(stdout,*) "Mapping parameter: ", indx
-    CALL quickSort(elements_arr(:,indx), indx_arr, errstr)
-    IF (LEN_TRIM(errstr) > 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
-            "quickSort failed: " // TRIM(errstr), 1)
-       RETURN
-    END IF
-
-    ! find lower bound for mapping parameter
-    mapping_start = elements_arr(indx_arr(1),indx) - EPSILON(mapping_start)
-    ! find upper bound for mapping parameter
-    mapping_end = elements_arr(indx_arr(SIZE(orb_arr)),indx) + EPSILON(mapping_end)
-    IF (.TRUE.) THEN
-       ! tune mapping start by starting from the smallest mapping
-       ! parameter that has a small enough dchi2 
-       DO i=1,SIZE(rchi2_arr)
-          IF (rchi2_arr(indx_arr(i)) - (this%chi2_min_prm - COUNT(this%obs_masks_prm)) < this%dchi2_prm) THEN
-             !mapping_start = elements_arr(indx_arr(MAX(1,i-1)),indx)
-             mapping_start = elements_arr(indx_arr(MAX(1,i)),indx) - &
-                  10000*EPSILON(mapping_start)
-             EXIT
-          END IF
-       END DO
-       ! tune mapping stop by stopping after the largest mapping
-       ! parameter that has a small enough dchi2
-       DO i=SIZE(rchi2_arr),1,-1
-          IF (rchi2_arr(indx_arr(i)) - (this%chi2_min_prm - COUNT(this%obs_masks_prm)) < this%dchi2_prm) THEN
-             !mapping_end = elements_arr(indx_arr(MIN(SIZE(orb_arr),i+1)),indx)
-             mapping_end = elements_arr(indx_arr(MIN(SIZE(orb_arr),i)),indx) + &
-                  10000*EPSILON(mapping_end)
-             EXIT
-          END IF
-       END DO
-    END IF
-    mapping_resolution = (mapping_end - mapping_start) / this%vomcmc_nmap_prm
-    !    WRITE(stdout,*) mapping_start, mapping_end, mapping_resolution
-
-    !    OPEN(78,file="fort.78")
-
-    ! Local 5D hyperrectangles:
-    DO imap=1, this%vomcmc_nmap_prm
-
-       IF (.TRUE.) THEN ! Fixed bin width, variable sample size
-          ! Select orbits that fall within the boundaries of the local
-          ! bin:
-          mask_arr = .FALSE.
-          WHERE (elements_arr(:,indx) > mapping_start + (imap-1)*mapping_resolution .AND. &
-               elements_arr(:,indx) <= mapping_start + imap*mapping_resolution)
-             mask_arr = .TRUE.
-          END WHERE
-          IF (COUNT(mask_arr) < 10) THEN
-             error = .TRUE.
-             CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
-                  "Too few orbits in bin:", 1)
-             WRITE(stderr,"(A,I0,A,1X,I0,1X,A)") "Bin #", imap, ":", COUNT(mask_arr), "orbits"
-             RETURN
-          END IF
-          ALLOCATE(elements_arr_(COUNT(mask_arr),6))
-          j = 0
-          DO i=1,SIZE(elements_arr,dim=1)
-             IF (mask_arr(i)) THEN
-                j = j + 1
-                elements_arr_(j,:) = elements_arr(i,:)
-             END IF
-          END DO
-          mapping_intervals(imap,1) = mapping_start + (imap-1)*mapping_resolution
-          mapping_intervals(imap,2) = mapping_start + imap*mapping_resolution
-       ELSE ! Variable bin width, fixed sample size
-          ! The last element of the previous subset:
-          i = (imap-1)*FLOOR(1.0_bp*SIZE(elements_arr,dim=1)/this%vomcmc_nmap_prm)
-          ! Allocate temporary container for orbital elements
-          IF (imap /= this%vomcmc_nmap_prm) THEN
-             ALLOCATE(elements_arr_(FLOOR(1.0_bp*SIZE(elements_arr,dim=1)/this%vomcmc_nmap_prm),6))
-          ELSE
-             ALLOCATE(elements_arr_(SIZE(elements_arr,dim=1)-i,6))
-          END IF
-          ! Fill temporary container with orbital elements
-          DO k=1,SIZE(elements_arr_,dim=1)
-             elements_arr_(k,:) = elements_arr(indx_arr(i+k),:)
-          END DO
-          mapping_intervals(imap,1) = elements_arr_(1,indx) 
-          mapping_intervals(imap,2) = elements_arr_(SIZE(elements_arr_,dim=1),indx) 
-       END IF
-       ! Compute local 6D population covariance:
-       CALL population_covariance(elements_arr_, local_covariance, local_mean)
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
-               "TRACE BACK (265)", 1)
-          RETURN
-       END IF
-       DEALLOCATE(elements_arr_)
-       ! Extract the local 5x5 covariance by removing the row and
-       ! column containing the covariances for the mapping parameter
-       DO i=1,6
-          IF (mask(i)) THEN
-             local_5x5_covariance(COUNT(mask(:i)),:) = PACK(local_covariance(i,:), mask)
-          END IF
-       END DO
-       ! Extract sigmas and construct correlation matrix for a more
-       ! robust eigenvalue decomposition
-       local_5x5_correlation = local_5x5_covariance
-       local_sigmas = 0.0_bp
-       inv_local_sigmas = 0.0_bp
-       DO i=1,5
-          local_sigmas(i,i) = SQRT(local_5x5_covariance(i,i))
-          inv_local_sigmas(i,i) = 1.0_bp/local_sigmas(i,i)
-       END DO
-       local_5x5_correlation = MATMUL(MATMUL(inv_local_sigmas,local_5x5_covariance),inv_local_sigmas)
-
-!!$!       write(*,*) 
-!!$!       write(*,*) "local_5x5_correlation:"
-!!$!       call matrix_print(local_5x5_correlation, stdout, errstr)
-!!$!       write(stdout,*)
-!!$!       !stop
-
-       ! Compute eigenvalues and eigenvectors for the local 5D covariance
-       ! matrix:
-       CALL eigen_decomposition_jacobi(local_5x5_correlation, &
-            eigenvalues, eigenvectors, nrot, errstr)
-       IF (LEN_TRIM(errstr) > 0) THEN
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
-               "Eigen decomposition failed: " // TRIM(errstr), 1)
-          RETURN
-       END IF
-!!$!       ! Compute eigenvalues and eigenvectors for the local 5D covariance
-!!$!       ! matrix:
-!!$!       CALL eigen_decomposition_jacobi(local_5x5_covariance, &
-!!$!            eigenvalues, eigenvectors, nrot, errstr)
-!!$!       IF (LEN_TRIM(errstr) > 0) THEN
-!!$!          error = .TRUE.
-!!$!          CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
-!!$!               "Eigen decomposition failed: " // TRIM(errstr), 1)
-!!$!          RETURN
-!!$!       END IF
-
-!!$!       WRITE(stdout,*) "eigendecomposition", imap, nrot
-!!$!       call matrix_print(eigenvectors, stdout, errstr)
-!!$!       write(stdout,*)
-!!$!       do i=1,5
-!!$!          write(stdout,*) sqrt(eigenvalues(i))
-!!$!       end do
-!!$!       write(stdout,*)
-
-       ! Put sigmas back into the eigen solution
-       eigenvectors = MATMUL(MATMUL(TRANSPOSE(local_sigmas),eigenvectors),local_sigmas)
-       DO i=1,5
-          eigenvectors(:,i) = eigenvalues(i)*eigenvectors(:,i)
-          eigenvalues(i) = SQRT(SUM(eigenvectors(:,i)**2))
-          eigenvectors(:,i) = eigenvectors(:,i)/eigenvalues(i)
-       END DO
-
-!!$!       WRITE(stdout,*) "reconstructed eigendecomposition"
-!!$!       call matrix_print(eigenvectors, stdout, errstr)
-!!$!       write(stdout,*)
-!!$!       do i=1,5
-!!$!          write(stdout,*) sqrt(eigenvalues(i))
-!!$!       end do
-!!$!       write(stdout,*)
-
-       ! Mean elements:
-       elements_mean(imap,1:6) = local_mean
-       ! Relative sampling volumes (= lenght of mapping range times volume of 5-parallelotope):
-       mat = TRANSPOSE(eigenvectors)
-       DO i=1,5
-          mat(i,:) = eigenvalues(i)*mat(i,:)
-       END DO
-       sampling_volume_arr(imap) = &
-            (mapping_intervals(imap,2) - mapping_intervals(imap,1)) * &
-            SQRT(ABS(determinant(mat,errstr)))
-       ! Compute sampling maps:
-       DO i=1,5
-          principal_axes(imap,1:5,i) = SQRT(eigenvalues(i))*eigenvectors(1:5,i)
-          !WRITE(78,*) imap, sampling_volume_arr(imap), nrot, i, SQRT(eigenvalues(i)), eigenvectors(1:5,i)
-       END DO
+!!$    ! Use one of the first three elements with the largest variability
+!!$    ! as mapping parameter:
+!!$    a_r = TINY(a_r)
+!!$    DO i=1,3
+!!$       IF (MAXVAL(elements_arr(:,i)) - MINVAL(elements_arr(:,i)) > a_r) THEN
+!!$          indx = i
+!!$          a_r = MAXVAL(elements_arr(:,i)) - MINVAL(elements_arr(:,i))
+!!$       END IF
+!!$    END DO
+!!$    mask=.TRUE.
+!!$    mask(indx) = .FALSE.
+!!$    WRITE(stdout,*) "Mapping parameter: ", indx
+!!$    CALL quickSort(elements_arr(:,indx), indx_arr, errstr)
+!!$    IF (LEN_TRIM(errstr) > 0) THEN
+!!$       error = .TRUE.
+!!$       CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
+!!$            "quickSort failed: " // TRIM(errstr), 1)
+!!$       RETURN
+!!$    END IF
 !!$
-!!$       j = 0
-!!$       do i=1,6
-!!$          if (i /= indx) then
-!!$             j = j + 1
-!!$             element_ranges(j,1) = minval(elements_arr_(:,i))
-!!$             element_ranges(j,2) = maxval(elements_arr_(:,i))
-!!$          end if
-!!$       end do
+!!$    ! find lower bound for mapping parameter
+!!$    mapping_start = elements_arr(indx_arr(1),indx) - EPSILON(mapping_start)
+!!$    ! find upper bound for mapping parameter
+!!$    mapping_end = elements_arr(indx_arr(SIZE(orb_arr)),indx) + EPSILON(mapping_end)
+!!$    IF (.TRUE.) THEN
+!!$       ! tune mapping start by starting from the smallest mapping
+!!$       ! parameter that has a small enough dchi2 
+!!$       DO i=1,SIZE(rchi2_arr)
+!!$          IF (rchi2_arr(indx_arr(i)) - (this%chi2_min_prm - COUNT(this%obs_masks_prm)) < this%dchi2_prm) THEN
+!!$             !mapping_start = elements_arr(indx_arr(MAX(1,i-1)),indx)
+!!$             mapping_start = elements_arr(indx_arr(MAX(1,i)),indx) - &
+!!$                  10000*EPSILON(mapping_start)
+!!$             EXIT
+!!$          END IF
+!!$       END DO
+!!$       ! tune mapping stop by stopping after the largest mapping
+!!$       ! parameter that has a small enough dchi2
+!!$       DO i=SIZE(rchi2_arr),1,-1
+!!$          IF (rchi2_arr(indx_arr(i)) - (this%chi2_min_prm - COUNT(this%obs_masks_prm)) < this%dchi2_prm) THEN
+!!$             !mapping_end = elements_arr(indx_arr(MIN(SIZE(orb_arr),i+1)),indx)
+!!$             mapping_end = elements_arr(indx_arr(MIN(SIZE(orb_arr),i)),indx) + &
+!!$                  10000*EPSILON(mapping_end)
+!!$             EXIT
+!!$          END IF
+!!$       END DO
+!!$    END IF
+!!$    mapping_resolution = (mapping_end - mapping_start) / this%vomcmc_nmap_prm
+!!$    !    WRITE(stdout,*) mapping_start, mapping_end, mapping_resolution
+!!$
+!!$    !    OPEN(78,file="fort.78")
+!!$
+!!$    ! Local 5D hyperrectangles:
+!!$    DO imap=1, this%vomcmc_nmap_prm
+!!$
+!!$       IF (.TRUE.) THEN ! Fixed bin width, variable sample size
+!!$          ! Select orbits that fall within the boundaries of the local
+!!$          ! bin:
+!!$          mask_arr = .FALSE.
+!!$          WHERE (elements_arr(:,indx) > mapping_start + (imap-1)*mapping_resolution .AND. &
+!!$               elements_arr(:,indx) <= mapping_start + imap*mapping_resolution)
+!!$             mask_arr = .TRUE.
+!!$          END WHERE
+!!$          IF (COUNT(mask_arr) < 10) THEN
+!!$             error = .TRUE.
+!!$             CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
+!!$                  "Too few orbits in bin:", 1)
+!!$             WRITE(stderr,"(A,I0,A,1X,I0,1X,A)") "Bin #", imap, ":", COUNT(mask_arr), "orbits"
+!!$             RETURN
+!!$          END IF
+!!$          ALLOCATE(elements_arr_(COUNT(mask_arr),6))
+!!$          j = 0
+!!$          DO i=1,SIZE(elements_arr,dim=1)
+!!$             IF (mask_arr(i)) THEN
+!!$                j = j + 1
+!!$                elements_arr_(j,:) = elements_arr(i,:)
+!!$             END IF
+!!$          END DO
+!!$          mapping_intervals(imap,1) = mapping_start + (imap-1)*mapping_resolution
+!!$          mapping_intervals(imap,2) = mapping_start + imap*mapping_resolution
+!!$       ELSE ! Variable bin width, fixed sample size
+!!$          ! The last element of the previous subset:
+!!$          i = (imap-1)*FLOOR(1.0_bp*SIZE(elements_arr,dim=1)/this%vomcmc_nmap_prm)
+!!$          ! Allocate temporary container for orbital elements
+!!$          IF (imap /= this%vomcmc_nmap_prm) THEN
+!!$             ALLOCATE(elements_arr_(FLOOR(1.0_bp*SIZE(elements_arr,dim=1)/this%vomcmc_nmap_prm),6))
+!!$          ELSE
+!!$             ALLOCATE(elements_arr_(SIZE(elements_arr,dim=1)-i,6))
+!!$          END IF
+!!$          ! Fill temporary container with orbital elements
+!!$          DO k=1,SIZE(elements_arr_,dim=1)
+!!$             elements_arr_(k,:) = elements_arr(indx_arr(i+k),:)
+!!$          END DO
+!!$          mapping_intervals(imap,1) = elements_arr_(1,indx) 
+!!$          mapping_intervals(imap,2) = elements_arr_(SIZE(elements_arr_,dim=1),indx) 
+!!$       END IF
+!!$       ! Compute local 6D population covariance:
+!!$       CALL population_covariance(elements_arr_, local_covariance, local_mean)
+!!$       IF (error) THEN
+!!$          CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
+!!$               "TRACE BACK (265)", 1)
+!!$          RETURN
+!!$       END IF
+!!$       DEALLOCATE(elements_arr_)
+!!$       ! Extract the local 5x5 covariance by removing the row and
+!!$       ! column containing the covariances for the mapping parameter
+!!$       DO i=1,6
+!!$          IF (mask(i)) THEN
+!!$             local_5x5_covariance(COUNT(mask(:i)),:) = PACK(local_covariance(i,:), mask)
+!!$          END IF
+!!$       END DO
+!!$       ! Extract sigmas and construct correlation matrix for a more
+!!$       ! robust eigenvalue decomposition
+!!$       local_5x5_correlation = local_5x5_covariance
+!!$       local_sigmas = 0.0_bp
+!!$       inv_local_sigmas = 0.0_bp
+!!$       DO i=1,5
+!!$          local_sigmas(i,i) = SQRT(local_5x5_covariance(i,i))
+!!$          inv_local_sigmas(i,i) = 1.0_bp/local_sigmas(i,i)
+!!$       END DO
+!!$       local_5x5_correlation = MATMUL(MATMUL(inv_local_sigmas,local_5x5_covariance),inv_local_sigmas)
+!!$
+    !       write(*,*) 
+    !       write(*,*) "local_5x5_correlation:"
+    !       call matrix_print(local_5x5_correlation, stdout, errstr)
+    !       write(stdout,*)
+    !       !stop
+!!$
+!!$       ! Compute eigenvalues and eigenvectors for the local 5D covariance
+!!$       ! matrix:
+!!$       CALL eigen_decomposition_jacobi(local_5x5_correlation, &
+!!$            eigenvalues, eigenvectors, nrot, errstr)
+!!$       IF (LEN_TRIM(errstr) > 0) THEN
+!!$          error = .TRUE.
+!!$          CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
+!!$               "Eigen decomposition failed: " // TRIM(errstr), 1)
+!!$          RETURN
+!!$       END IF
+    !       ! Compute eigenvalues and eigenvectors for the local 5D covariance
+    !       ! matrix:
+    !       CALL eigen_decomposition_jacobi(local_5x5_covariance, &
+    !            eigenvalues, eigenvectors, nrot, errstr)
+    !       IF (LEN_TRIM(errstr) > 0) THEN
+    !          error = .TRUE.
+    !          CALL errorMessage("StochasticOrbit / virtualObservationMCMC", &
+    !               "Eigen decomposition failed: " // TRIM(errstr), 1)
+    !          RETURN
+    !       END IF
+!!$
+    !       WRITE(stdout,*) "eigendecomposition", imap, nrot
+    !       call matrix_print(eigenvectors, stdout, errstr)
+    !       write(stdout,*)
+    !       do i=1,5
+    !          write(stdout,*) sqrt(eigenvalues(i))
+    !       end do
+    !       write(stdout,*)
+!!$
+!!$       ! Put sigmas back into the eigen solution
+!!$       eigenvectors = MATMUL(MATMUL(TRANSPOSE(local_sigmas),eigenvectors),local_sigmas)
+!!$       DO i=1,5
+!!$          eigenvectors(:,i) = eigenvalues(i)*eigenvectors(:,i)
+!!$          eigenvalues(i) = SQRT(SUM(eigenvectors(:,i)**2))
+!!$          eigenvectors(:,i) = eigenvectors(:,i)/eigenvalues(i)
+!!$       END DO
+!!$
+    !       WRITE(stdout,*) "reconstructed eigendecomposition"
+    !       call matrix_print(eigenvectors, stdout, errstr)
+    !       write(stdout,*)
+    !       do i=1,5
+    !          write(stdout,*) sqrt(eigenvalues(i))
+    !       end do
+    !       write(stdout,*)
+!!$
+!!$       ! Mean elements:
+!!$       elements_mean(imap,1:6) = local_mean
+!!$       ! Relative sampling volumes (= lenght of mapping range times volume of 5-parallelotope):
+!!$       mat = TRANSPOSE(eigenvectors)
+!!$       DO i=1,5
+!!$          mat(i,:) = eigenvalues(i)*mat(i,:)
+!!$       END DO
 !!$       sampling_volume_arr(imap) = &
 !!$            (mapping_intervals(imap,2) - mapping_intervals(imap,1)) * &
-!!$            product(element_ranges(:,2)-element_ranges(:,1))
+!!$            SQRT(ABS(determinant(mat,errstr)))
 !!$       ! Compute sampling maps:
-!!$       principal_axes(imap,1:5,1:5) = 0.0_bp
 !!$       DO i=1,5
-!!$          principal_axes(imap,i,i) = 0.5_bp*(element_ranges(i,2)-element_ranges(i,1))
-!!$          WRITE(78,*) imap, sampling_volume_arr(imap), nrot, i, &
-!!$               principal_axes(imap,i,i), principal_axes(imap,1:5,i)
+!!$          principal_axes(imap,1:5,i) = SQRT(eigenvalues(i))*eigenvectors(1:5,i)
+!!$          !WRITE(78,*) imap, sampling_volume_arr(imap), nrot, i, SQRT(eigenvalues(i)), eigenvectors(1:5,i)
 !!$       END DO
-
-    END DO
-    !CLOSE(78)
-
-    ! Running mean for elements with 10x denser sampling than the 5D
-    ! local covariances:
-    running_mean_start = MINVAL(elements_arr(:,indx))
-    ! N full-width bins + 2 half-width bins at the endpoints
-    nmap = CEILING((MAXVAL(elements_arr(:,indx)) - running_mean_start)/mapping_resolution) + 1
-    ALLOCATE(elements_running_mean(10*nmap,6))
-    DO imap=1,10*nmap
-       ! Select orbits that fall within the boundaries of the local
-       ! running bin:
-       mask_arr = .FALSE.
-       WHERE (elements_arr(:,indx) > running_mean_start + ((imap-1)/10.0_bp - 0.5_bp)*mapping_resolution .AND. &
-            elements_arr(:,indx) <=  running_mean_start + ((imap-1)/10.0_bp + 0.5_bp)*mapping_resolution)
-          mask_arr = .TRUE.
-       END WHERE
-       ALLOCATE(elements_arr_(COUNT(mask_arr),6))
-       j = 0
-       DO i=1,SIZE(elements_arr,dim=1)
-          IF (mask_arr(i)) THEN
-             j = j + 1
-             elements_arr_(j,:) = elements_arr(i,:)
-          END IF
-       END DO
-       ! Store running mean for elements:
-       DO i=1,6
-          IF (i == indx) THEN
-             elements_running_mean(imap,i) = running_mean_start + ((imap-1)/10.0_bp)*mapping_resolution
-          ELSE
-             elements_running_mean(imap,i) = SUM(elements_arr_(:,i))/REAL(j,bp)
-          END IF
-       END DO
-       DEALLOCATE(elements_arr_)
-    END DO
+    !
+    !       j = 0
+    !       do i=1,6
+    !          if (i /= indx) then
+    !             j = j + 1
+    !             element_ranges(j,1) = minval(elements_arr_(:,i))
+    !             element_ranges(j,2) = maxval(elements_arr_(:,i))
+    !          end if
+    !       end do
+    !       sampling_volume_arr(imap) = &
+    !            (mapping_intervals(imap,2) - mapping_intervals(imap,1)) * &
+    !            product(element_ranges(:,2)-element_ranges(:,1))
+    !       ! Compute sampling maps:
+    !       principal_axes(imap,1:5,1:5) = 0.0_bp
+    !       DO i=1,5
+    !          principal_axes(imap,i,i) = 0.5_bp*(element_ranges(i,2)-element_ranges(i,1))
+    !          WRITE(78,*) imap, sampling_volume_arr(imap), nrot, i, &
+    !               principal_axes(imap,i,i), principal_axes(imap,1:5,i)
+    !       END DO
+!!$
+!!$    END DO
+!!$    !CLOSE(78)
+!!$
+!!$    ! Running mean for elements with 10x denser sampling than the 5D
+!!$    ! local covariances:
+!!$    running_mean_start = MINVAL(elements_arr(:,indx))
+!!$    ! N full-width bins + 2 half-width bins at the endpoints
+!!$    nmap = CEILING((MAXVAL(elements_arr(:,indx)) - running_mean_start)/mapping_resolution) + 1
+!!$    ALLOCATE(elements_running_mean(10*nmap,6))
+!!$    DO imap=1,10*nmap
+!!$       ! Select orbits that fall within the boundaries of the local
+!!$       ! running bin:
+!!$       mask_arr = .FALSE.
+!!$       WHERE (elements_arr(:,indx) > running_mean_start + ((imap-1)/10.0_bp - 0.5_bp)*mapping_resolution .AND. &
+!!$            elements_arr(:,indx) <=  running_mean_start + ((imap-1)/10.0_bp + 0.5_bp)*mapping_resolution)
+!!$          mask_arr = .TRUE.
+!!$       END WHERE
+!!$       ALLOCATE(elements_arr_(COUNT(mask_arr),6))
+!!$       j = 0
+!!$       DO i=1,SIZE(elements_arr,dim=1)
+!!$          IF (mask_arr(i)) THEN
+!!$             j = j + 1
+!!$             elements_arr_(j,:) = elements_arr(i,:)
+!!$          END IF
+!!$       END DO
+!!$       ! Store running mean for elements:
+!!$       DO i=1,6
+!!$          IF (i == indx) THEN
+!!$             elements_running_mean(imap,i) = running_mean_start + ((imap-1)/10.0_bp)*mapping_resolution
+!!$          ELSE
+!!$             elements_running_mean(imap,i) = SUM(elements_arr_(:,i))/REAL(j,bp)
+!!$          END IF
+!!$       END DO
+!!$       DEALLOCATE(elements_arr_)
+!!$    END DO
 
 
 
@@ -9654,17 +9714,18 @@ CONTAINS
        DEALLOCATE(this%repetition_arr_cmp)
     END IF
     DEALLOCATE(rchi2_arr)
-    ALLOCATE(sampling_cdf(this%vomcmc_nmap_prm), &
+    ALLOCATE( &
+                                !sampling_cdf(this%vomcmc_nmap_prm), &
          orb_accepted(this%vomcmc_norb_prm), &
          pdf_arr(0:this%vomcmc_norb_prm), &
          rchi2_arr(this%vomcmc_norb_prm), &
          this%repetition_arr_cmp(this%vomcmc_norb_prm))
     this%repetition_arr_cmp = 0
-    sampling_cdf(1) = sampling_volume_arr(1)
-    DO i=2,this%vomcmc_nmap_prm
-       sampling_cdf(i) = sampling_cdf(i-1) + sampling_volume_arr(i)
-    END DO
-    sampling_cdf = sampling_cdf/sampling_cdf(this%vomcmc_nmap_prm)
+    !    sampling_cdf(1) = sampling_volume_arr(1)
+    !    DO i=2,this%vomcmc_nmap_prm
+    !       sampling_cdf(i) = sampling_cdf(i-1) + sampling_volume_arr(i)
+    !    END DO
+    !    sampling_cdf = sampling_cdf/sampling_cdf(this%vomcmc_nmap_prm)
     pdf_arr(0) = TINY(pdf_arr(0))
 
     IF (info_verb >= 2) THEN
@@ -9674,6 +9735,7 @@ CONTAINS
     itrial = 0
     norb = this%vomcmc_norb_prm
     naccepted = 0
+    first = .TRUE.
     DO WHILE (iorb < this%vomcmc_norb_prm .AND. itrial < this%vomcmc_ntrial_prm)
 
        itrial = itrial + 1
@@ -9691,34 +9753,47 @@ CONTAINS
        !    in Muinonen et al.?
 
        CALL randomNumber(ran_arr)
-       ! Generate random point along the mapping axis based on the
-       ! mapping parameter cdf. First choose a random bin in the
-       ! mapping parameter using the cdf:
-       DO j=1,this%vomcmc_nmap_prm
-          IF  (ran_arr(indx) <= sampling_cdf(j)) THEN
-             EXIT
-          END IF
-       END DO
+!!$       ! Generate random point along the mapping axis based on the
+!!$       ! mapping parameter cdf. First choose a random bin in the
+!!$       ! mapping parameter using the cdf:
+!!$       DO j=1,this%vomcmc_nmap_prm
+!!$          IF  (ran_arr(1+indx) <= sampling_cdf(j)) THEN
+!!$             EXIT
+!!$          END IF
+!!$       END DO
+!!$       ! Generate a random point within the mapping bin using a
+!!$       ! uniform distribution:
+!!$       elements(indx) = mapping_intervals(j,1) + &
+!!$            ran_arr(8) * (mapping_intervals(j,2) - mapping_intervals(j,1))
+!!$       ! Find running-mean elements closest to generated mapping
+!!$       ! parameter:
+!!$       k = MINLOC(ABS(elements(indx)-elements_running_mean(:,indx)), dim=1)
+!!$       ! Uniform sampling for the remaining parameters using the (not
+!!$       ! interpolated!) precomputed map:
+!!$       DO ielem=1,6
+!!$          IF (mask(ielem)) THEN
+!!$             ! Use 5x5 covariances of the nearest mapping point
+!!$             variation = this%vomcmc_scaling_prm(ielem,1) * &
+!!$                  SUM((2.0_bp*ran_arr(2:6) - 1.0_bp)*principal_axes(j,COUNT(mask(:ielem)),1:5))
+!!$             elements(ielem) = elements_running_mean(k,ielem) + variation 
+!!$             !WRITE(80,*) itrial, j, ielem, this%vomcmc_scaling_prm(1,1), ran_arr(2:6), COUNT(mask(:ielem)), &
+!!$             !     elements(ielem), elements_running_mean(k,ielem), variation
+!!$          END IF
+!!$       END DO
 
-       ! Generate a random point within the mapping bin using a
-       ! uniform distribution:
-       elements(indx) = mapping_intervals(j,1) + &
-            ran_arr(7) * (mapping_intervals(j,2) - mapping_intervals(j,1))
-       ! Find running-mean elements closest to generated mapping
-       ! parameter:
-       k = MINLOC(ABS(elements(indx)-elements_running_mean(:,indx)), dim=1)
-       ! Uniform sampling for the remaining parameters using the (not
-       ! interpolated!) precomputed map:
-       DO ielem=1,6
-          IF (mask(ielem)) THEN
-             ! Use 5x5 covariances of the nearest mapping point
-             variation = this%vomcmc_scaling_prm(ielem,1) * &
-                  SUM((2.0_bp*ran_arr(2:6) - 1.0_bp)*principal_axes(j,COUNT(mask(:ielem)),1:5))
-             elements(ielem) = elements_running_mean(k,ielem) + variation 
-             !WRITE(80,*) itrial, j, ielem, this%vomcmc_scaling_prm(1,1), ran_arr(2:6), COUNT(mask(:ielem)), &
-             !     elements(ielem), elements_running_mean(k,ielem), variation
+       IF (first) THEN
+          elements = elements_arr(1,:)
+          first = .FALSE.
+       ELSE
+          i = CEILING(ran_arr(2)*SIZE(elements_arr,dim=1))
+          j = CEILING(ran_arr(3)*SIZE(elements_arr,dim=1))
+          IF (i == j) THEN
+             CYCLE
           END IF
-       END DO
+          elements = getElements(orb_accepted(iorb), this%element_type_prm, frame)
+          elements = elements + (elements_arr(i,:)-elements_arr(j,:))
+       END IF
+
        CALL NULLIFY(orb)
        CALL NEW(orb, elements, this%element_type_prm, frame, t0)
        IF (error) THEN
@@ -9762,7 +9837,7 @@ CONTAINS
        ! whether the trial orbit should be accepted or rejected
        a_r = pdf_arr(iorb+1)/pdf_arr(iorb)
        accept = .FALSE.
-       IF (ran_arr(8) < a_r) THEN
+       IF (ran_arr(1) < a_r) THEN
           accept = .TRUE.
        END IF
 
@@ -9857,23 +9932,24 @@ CONTAINS
     ALLOCATE(this%rchi2_arr_cmp(iorb), stat=err)
     this%rchi2_arr_cmp = rchi2_arr(1:iorb)
     this%chi2_min_cmp = MINVAL(this%rchi2_arr_cmp) + COUNT(obs_masks_)
-    IF (ASSOCIATED(this%vomcmc_map_cmp)) THEN
-       DEALLOCATE(this%vomcmc_map_cmp, stat=err)
-    END IF
-    ALLOCATE(this%vomcmc_map_cmp(this%vomcmc_nmap_prm,12), stat=err)
-    DO i=1,this%vomcmc_nmap_prm
-       this%vomcmc_map_cmp(i,1:6) = elements_mean(i,1:6)
-       DO j=1,6
-          IF (j == indx) THEN
-             this%vomcmc_map_cmp(i,6+j) = (mapping_end - mapping_start) / &
-                  (2.0_bp*this%vomcmc_scaling_prm(j,1))
-          ELSE
-             this%vomcmc_map_cmp(i,6+j) = SUM(ABS(principal_axes(i,COUNT(mask(:j)),:)))
-          END IF
-       END DO
-    END DO
-    this%vomcmc_scaling_cmp = this%vomcmc_scaling_prm
+!!$    IF (ASSOCIATED(this%vomcmc_map_cmp)) THEN
+!!$       DEALLOCATE(this%vomcmc_map_cmp, stat=err)
+!!$    END IF
+!!$    ALLOCATE(this%vomcmc_map_cmp(this%vomcmc_nmap_prm,12), stat=err)
+!!$    DO i=1,this%vomcmc_nmap_prm
+!!$       this%vomcmc_map_cmp(i,1:6) = elements_mean(i,1:6)
+!!$       DO j=1,6
+!!$          IF (j == indx) THEN
+!!$             this%vomcmc_map_cmp(i,6+j) = (mapping_end - mapping_start) / &
+!!$                  (2.0_bp*this%vomcmc_scaling_prm(j,1))
+!!$          ELSE
+!!$             this%vomcmc_map_cmp(i,6+j) = SUM(ABS(principal_axes(i,COUNT(mask(:j)),:)))
+!!$          END IF
+!!$       END DO
+!!$    END DO
+!!$    this%vomcmc_scaling_cmp = this%vomcmc_scaling_prm
 
+    DEALLOCATE(elements_arr, stat=err)
     DO i=1,SIZE(orb_arr)
        CALL NULLIFY(orb_arr(i))
     END DO
@@ -9882,8 +9958,8 @@ CONTAINS
        CALL NULLIFY(orb_accepted(i))
     END DO
     DEALLOCATE(orb_accepted, stat=err)
-    DEALLOCATE(elements_running_mean, stat=err)
-    DEALLOCATE(principal_axes, stat=err)
+!!$    DEALLOCATE(elements_running_mean, stat=err)
+!!$    DEALLOCATE(principal_axes, stat=err)
     DEALLOCATE(pdf_arr, stat=err)
     DEALLOCATE(rchi2_arr, stat=err)
 
@@ -11827,6 +11903,7 @@ CONTAINS
     DEALLOCATE(mask_measur, stat=err)
 
     ! Check whether acceptable solution based on rchi2
+
     IF (rchi2 > this%ls_rchi2_acceptable_prm) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / " // &
@@ -12082,8 +12159,11 @@ CONTAINS
          END IF
          IF (info_verb >= 2) THEN
             IF (ALL(mask_measur(j,2:3))) THEN
-               WRITE(stdout,"(2X,A,2(F20.7,1X),A,1X,A)") " ", &
-                    residuals(j,2:3)/rad_asec, " ", TRIM(obsy_codes(j))
+               t_ = getTime(obsy_ccoords(j))
+               WRITE(stdout,"(2X,A,2(F20.7,1X),A,1X,A)") &
+                    " ", &
+                    residuals(j,2:3)/rad_asec, " ", &
+                    TRIM(obsy_codes(j))
             ELSE
                WRITE(stdout,"(2X,A,2(F15.7,1X),A,1X,A)") "(", &
                     residuals(j,2:3)/rad_asec, ")", TRIM(obsy_codes(j))

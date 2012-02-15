@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,22 +28,28 @@
 !! @see SphericalCoordinates_class 
 !!  
 !! @author  MG
-!! @version 2008-08-12
+!! @version 2012-02-15
 !!
 MODULE random
 
   USE parameters
   IMPLICIT NONE
+  PRIVATE
   INTEGER, PARAMETER :: IA=16807, IM=2147483647, IQ=127773, IR=2836
   INTEGER, DIMENSION(:), ALLOCATABLE :: seed 
-  INTEGER :: idum, idum_prm = -1
+  INTEGER :: idum_prm = -1
+  INTEGER :: idum
   LOGICAL :: first_ran = .TRUE.
+
+  PUBLIC :: initializeRandomNumberGenerator
+  PUBLIC :: randomNumber
+  PUBLIC :: randomGaussian
 
   INTERFACE ran_pmm
      MODULE PROCEDURE ran_pmm_r4
      MODULE PROCEDURE ran_pmm_r8
      MODULE PROCEDURE ran_pmm_r16
-  END INTERFACE
+  END INTERFACE ran_pmm
 
   INTERFACE randomNumber
      MODULE PROCEDURE randomNumber_single_r4
@@ -54,7 +60,7 @@ MODULE random
      MODULE PROCEDURE randomNumber_array_r8
      MODULE PROCEDURE randomNumber_2array_r8
      MODULE PROCEDURE randomNumber_array_r16
-  END INTERFACE
+  END INTERFACE randomNumber
 
   INTERFACE randomGaussian
      MODULE PROCEDURE randomGaussian_single_r4
@@ -63,7 +69,7 @@ MODULE random
      MODULE PROCEDURE randomGaussian_array_r4
      MODULE PROCEDURE randomGaussian_array_r8
      MODULE PROCEDURE randomGaussian_array_r16
-  END INTERFACE
+  END INTERFACE randomGaussian
 
 
 CONTAINS
@@ -78,6 +84,40 @@ CONTAINS
     idum_prm = idum
 
   END SUBROUTINE initializeRandomNumberGenerator
+
+
+
+
+
+!!$  subroutine devroyeRandomMultinormalValues(covariance, ran)
+!!$
+!!$    implicit none
+!!$    real(prec8), dimension(:,:), intent(in) 
+!!$
+!!$    ! From Devroye: "Non-Uniform Random Variate Generation", 1986,
+!!$    ! chapter 11
+!!$
+!!$    A = 0.0_bp
+!!$    DO i=1,6
+!!$       DO j=1,i
+!!$          IF (j == 1) THEN
+!!$             A(i,1) = cov(i,1)/SQRT(cov(1,1))
+!!$          ELSE IF (i == j) THEN
+!!$             IF (cov(i,i) - SUM(A(i,1:i-1)**2) < -1E-7_bp) THEN
+!!$                CALL toString(i, str1, error)
+!!$                CALL toString(cov(i,i) - SUM(A(i,1:i-1)**2), str2, error, frmt=efrmt)
+!!$                error = .TRUE.
+!!$                CALL errorMessage("StochasticOrbit / covarianceSampling", &
+!!$                     "Square of element (" // TRIM(str1) // "," // TRIM(str1) // &
+!!$                     ") of Devroye's matrix A is negative (" // TRIM(str2) // ").", 1)
+!!$                RETURN
+!!$             END IF
+!!$             A(i,i) = SQRT(ABS(cov(i,i) - SUM(A(i,1:i-1)**2)))
+!!$          ELSE IF (j < i) THEN
+!!$             A(i,j) = (cov(i,j) - SUM(A(i,1:j-1)*A(j,1:j-1)))/A(j,j)
+!!$          END IF
+!!$       END DO
+!!$    END DO
 
 
 
