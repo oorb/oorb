@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2012-02-15
+!! @version 2012-04-03
 !!
 PROGRAM oorb
 
@@ -2066,6 +2066,526 @@ PROGRAM oorb
              "Could not deallocate memory (15).", 1)
         STOP
      END IF
+
+
+
+  CASE ("mcmcranging")
+
+     ! Orbital inversion using MCMC ranging, that is, without making
+     ! any assumptions on the shape of the resulting orbital-element
+     ! pdf.
+
+     CALL NULLIFY(epoch)
+     dyn_model = " "
+     integrator = " "
+     integration_step = -1.0_bp
+     apriori_a_max = -1.0_bp
+     apriori_a_min = -1.0_bp
+     apriori_periapsis_max = -1.0_bp
+     apriori_periapsis_min = -1.0_bp
+     apriori_apoapsis_max = -1.0_bp
+     apriori_apoapsis_min = -1.0_bp
+     apriori_rho_min = -1.0_bp
+     sor_type_prm = -1
+     sor_2point_method = " "
+     sor_2point_method_sw = " "
+     sor_norb = -1
+     sor_norb_sw = -1
+     sor_ntrial = -1
+     sor_ntrial_sw = -1
+     sor_niter = -1
+     sor_rho_init = HUGE(sor_rho_init)
+     generat_multiplier = -1.0_bp
+     sor_genwin_offset = -1.0_bp
+     sor_iterate_bounds = .TRUE.
+     accwin_multiplier = -1.0_bp
+     gaussian_rho = .FALSE.
+     regularized = .FALSE.
+     write_residuals = .FALSE.
+     CALL readConfigurationFile(conf_file, &
+          t0=epoch, &
+          dyn_model=dyn_model, &
+          perturbers=perturbers, &
+          integrator=integrator, &
+          integration_step=integration_step, &
+          dyn_model_init=dyn_model_init, &
+          integrator_init=integrator_init, &
+          integration_step_init=integration_step_init, &
+          apriori_a_max=apriori_a_max, &
+          apriori_a_min=apriori_a_min, &
+          apriori_periapsis_max=apriori_periapsis_max, &
+          apriori_periapsis_min=apriori_periapsis_min, &
+          apriori_apoapsis_max=apriori_apoapsis_max, &
+          apriori_apoapsis_min=apriori_apoapsis_min, &
+          apriori_rho_min=apriori_rho_min, &
+          sor_type=sor_type_prm, sor_2point_method=sor_2point_method, &
+          sor_2point_method_sw=sor_2point_method_sw, &
+          sor_norb=sor_norb, sor_norb_sw=sor_norb_sw, &
+          sor_ntrial=sor_ntrial, sor_ntrial_sw=sor_ntrial_sw, &
+          sor_niter=sor_niter, sor_rho_init=sor_rho_init, &
+          generat_multiplier=generat_multiplier, &
+          sor_genwin_offset=sor_genwin_offset, &
+          sor_iterate_bounds=sor_iterate_bounds, &
+          accwin_multiplier=accwin_multiplier, &
+          regularized_pdf=regularized, &
+          sor_random_obs=random_obs, sor_rho_gauss=gaussian_rho, &
+          write_residuals=write_residuals, &
+          ls_correction_factor=ls_correction_factor, &
+          ls_element_mask=ls_element_mask, &
+          ls_niter_major_max=ls_niter_major_max, &
+          ls_niter_major_min=ls_niter_major_min, &
+          ls_niter_minor=ls_niter_minor)
+     IF (error) THEN
+        CALL errorMessage("oorb / mcmcranging", &
+             "TRACE BACK (5)", 1)
+        STOP
+     END IF
+     obss_sep => getSeparatedSets(obss_in)
+     IF (error) THEN
+        CALL errorMessage("oorb / mcmcranging", &
+             "TRACE BACK (10)", 1)
+        STOP
+     END IF
+     CALL NULLIFY(obss_in)
+     ! Print header before printing first orbit:
+     first = .TRUE.
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "TRACE BACK (15)", 1)
+           STOP
+        END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
+                ". observation set (", TRIM(id), ")."
+        END IF
+        nobs = getNrOfObservations(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "TRACE BACK (20)", 1)
+           STOP
+        END IF
+        dt = getObservationalTimespan(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "TRACE BACK (40)", 1)
+           STOP
+        END IF
+        IF (.NOT.exist(epoch)) THEN
+           CALL NULLIFY(t)
+           obs = getObservation(obss_sep(i),1)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (45)", 1)
+              STOP
+           END IF
+           t = getTime(obs)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (50)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obs)
+           mjd = getMJD(t, "tt")
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (55)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(t)
+           mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
+           CALL NEW(t, mjd, "tt")   
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (60)", 1)
+              STOP
+           END IF
+        ELSE
+           CALL NULLIFY(t)
+           t = copy(epoch)
+        END IF
+        iorb = 0
+        IF (ALLOCATED(storb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 iorb = j
+                 EXIT
+              END IF
+           END DO
+           IF (iorb == 0) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "Initial orbit not available.", 1)
+              STOP
+           END IF
+           orb_arr => getSampleOrbits(storb_arr_in(iorb))
+           orb = copy(orb_arr(1))
+           DEALLOCATE(orb_arr)
+        ELSE IF (ASSOCIATED(orb_arr_in)) THEN
+           DO j=1,SIZE(id_arr_in,dim=1)
+              IF (id_arr_in(j) == id) THEN
+                 iorb = j
+                 EXIT
+              END IF
+           END DO
+           IF (iorb == 0) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "Initial orbit not available.", 1)
+              STOP
+           END IF
+           orb = copy(orb_arr_in(iorb))
+        END IF
+        CALL setParameters(orb, &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step)
+        ! Propagate initial orbit to inversion epoch
+        CALL propagate(orb, t)
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "TRACE BACK (65)", 1)
+           STOP
+        END IF
+        CALL NEW(storb, obss_sep(i))        
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "TRACE BACK (65)", 1)
+           STOP
+        END IF
+        CALL setParameters(storb, &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step, &
+             outlier_rejection=outlier_rejection_prm, &
+             outlier_multiplier=outlier_multiplier_prm, &
+             t_inv=t, &
+             element_type=element_type_comp_prm, &
+             dchi2_rejection = dchi2_rejection, &
+             dchi2_max = dchi2_max, &
+             regularized_pdf = regularized, &
+             accept_multiplier=accwin_multiplier, &
+             apriori_a_max=apriori_a_max, apriori_a_min=apriori_a_min, &
+             apriori_periapsis_max=apriori_periapsis_max, &
+             apriori_periapsis_min=apriori_periapsis_min, &
+             apriori_apoapsis_max=apriori_apoapsis_max, &
+             apriori_apoapsis_min=apriori_apoapsis_min, &
+             apriori_rho_min=apriori_rho_min, &
+             sor_2point_method=sor_2point_method, &
+             sor_2point_method_sw=sor_2point_method_sw, &
+             sor_norb=sor_norb, sor_ntrial=sor_ntrial, &
+             sor_iterate_bounds=sor_iterate_bounds, &
+             sor_random_obs_selection=.FALSE., &
+             gaussian_pdf=gaussian_rho, &
+             generat_multiplier=generat_multiplier, &
+             sor_generat_offset=sor_genwin_offset)
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "TRACE BACK (70)", 1)
+           STOP
+        END IF
+        CALL MCMCRanging(storb, orb)
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "MCMC failed:", 1)
+           IF (err_verb >= 1) THEN
+              WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
+                   " and number of observations: ", nobs
+           END IF
+           error  = .FALSE.
+           CALL NEW(out_file, "problematic_observation_sets" // "." // &
+                TRIM(observation_format_out))
+           CALL setPositionAppend(out_file)
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (90)", 1)
+              STOP
+           END IF
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out))
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (95)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (100)", 1)
+              STOP
+           END IF
+        ELSE
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(3(1X,A))") "Mcmc inversion for object", &
+                   TRIM(id), "is ready."
+           END IF
+!!$           CALL NEW(out_file, TRIM(id) // ".sor")
+!!$           CALL OPEN(out_file)
+!!$           IF (error) THEN
+!!$              CALL errorMessage("oorb / mcmcranging", &
+!!$                   "TRACE BACK (105)", 1)
+!!$              STOP
+!!$           END IF
+!!$           ! WRITE OBSERVATIONS:
+!!$           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+!!$                TRIM(observation_format_out)) 
+!!$           IF (error) THEN
+!!$              CALL errorMessage("oorb / mcmcranging", &
+!!$                   "TRACE BACK (110)", 1)
+!!$              STOP
+!!$           END IF
+!!$           WRITE(getUnit(out_file),"(A)") "#" 
+!!$           ! WRITE MCMC PARAMETERS
+!!$           CALL writeSORResults(storb, obss_sep(i), getUnit(out_file))
+!!$           IF (error) THEN
+!!$              CALL errorMessage("oorb / mcmcranging", &
+!!$                   "TRACE BACK (115)", 1)
+!!$              STOP
+!!$           END IF
+!!$           CALL NULLIFY(out_file) 
+           ! WRITE ORBITAL-ELEMENT PDF
+           orb_arr_cmp => getSampleOrbits(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging ", &
+                   "TRACE BACK (125)", 1)
+              STOP
+           END IF
+           pdf_arr_cmp => getPDFValues(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging ", &
+                   "TRACE BACK (130)", 1)
+              STOP
+           END IF
+           rchi2_arr_cmp => getReducedChi2Distribution(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging ", &
+                   "TRACE BACK (135)", 1)
+              STOP
+           END IF
+!!$           CALL getResults(storb, &
+!!$                reg_apr_arr=reg_apr_arr_cmp, &
+!!$                jac_arr=jac_arr_cmp)
+!!$           IF (error) THEN
+!!$              CALL errorMessage("oorb / mcmcranging ", &
+!!$                   "TRACE BACK (140)", 1)
+!!$              STOP
+!!$           END IF
+           IF (separately) THEN
+              CALL NEW(out_file, TRIM(id) // ".orb")
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging", &
+                      "TRACE BACK (145)", 1)
+                 STOP
+              END IF
+              lu_orb_out = getUnit(out_file)
+           END IF
+           DO j=1,SIZE(orb_arr_cmp,dim=1)
+              IF (orbit_format_out == "orb") THEN
+                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                      print_header=j==1, &
+                      element_type_out=element_type_out_prm, &
+                      id=id, &
+                      orb=orb_arr_cmp(j), &
+                      element_type_pdf=element_type_comp_prm, &
+                      pdf=pdf_arr_cmp(j), &
+                      rchi2=rchi2_arr_cmp(j))
+!!$                   reg_apr=reg_apr_arr_cmp(j), &
+!!$                   jac_sph_inv=jac_arr_cmp(j,1), &
+!!$                   jac_car_kep=jac_arr_cmp(j,2), &
+!!$                   jac_equ_kep=jac_arr_cmp(j,3))
+              ELSE IF (orbit_format_out == "des") THEN
+                 CALL errorMessage("oorb / mcmcranging", &
+                      "DES format not yet supported for MCMC output.", 1)
+                 STOP                 
+              END IF
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging ", &
+                      "TRACE BACK (150)", 1)
+                 STOP
+              END IF
+           END DO
+           IF (separately) THEN
+              CALL NULLIFY(out_file)
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(id) // ".orb")
+              END IF
+           END IF
+           ! WRITE RESIDUALS
+           IF (write_residuals) THEN
+              CALL NEW(out_file, TRIM(out_fname) // ".res")
+              CALL setPositionAppend(out_file)
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging", &
+                      "TRACE BACK (155)", 1)
+                 STOP
+              END IF
+              CALL writeResiduals(storb, obss_sep(i), getUnit(out_file))
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging", &
+                      "TRACE BACK (160)", 1)
+                 STOP
+              END IF
+              CALL NULLIFY(out_file)
+           END IF
+           IF (plot_results) THEN
+              CALL toString(dt, str, error, frmt="(F10.2)")
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging ", &
+                      "TRACE BACK (165)", 1)
+                 STOP
+              END IF
+              str = TRIM(id) // "_"// TRIM(str)
+              CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
+                   "_mcmcranging_residual_stamps.eps")
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging", &
+                      "TRACE BACK (170)", 1)
+                 STOP
+              END IF
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(str) // "_mcmcranging_residual_stamps.eps")
+              END IF
+              IF (plot_open) THEN
+                 CALL system("gv " // TRIM(str) // "_mcmcranging_residual_stamps.eps* &")
+              END IF
+              ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
+              IF (err /= 0) THEN
+                 CALL errorMessage("oorb / mcmcranging", &
+                      "Could not allocate memory (3).", 1)
+                 STOP
+              END IF
+              CALL NEW(tmp_file, TRIM(str)// "_mcmcranging_orbits.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging ", &
+                      "TRACE BACK (175)", 1)
+                 STOP
+              END IF
+              DO j=1,SIZE(orb_arr_cmp,dim=1)
+                 IF (element_type_comp_prm == "cartesian") THEN
+                    CALL rotateToEcliptic(orb_arr_cmp(j))
+                 END IF
+                 elements_arr(j,1:6) = getElements(orb_arr_cmp(j), element_type_comp_prm)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / mcmcranging", &
+                         "TRACE BACK (180)", 1)
+                    STOP
+                 END IF
+                 IF (element_type_comp_prm == "keplerian") THEN
+                    elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
+                 END IF
+                 elements_arr(j,7) = pdf_arr_cmp(j)
+                 t = getTime(orb_arr_cmp(j))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / mcmcranging ", &
+                         "TRACE BACK (185)", 1)
+                    STOP
+                 END IF
+                 WRITE(getUnit(tmp_file),*) &
+                      elements_arr(j,1:6), &
+                      pdf_arr_cmp(j), &
+                      getCalendarDateString(t,"tdt")
+                 IF (error) THEN
+                    CALL errorMessage("oorb / mcmcranging ", &
+                         "TRACE BACK (190)", 1)
+                    STOP
+                 END IF
+                 CALL NULLIFY(t)
+              END DO
+              CALL NULLIFY(tmp_file)
+              CALL NEW(tmp_file, TRIM(str) // &
+                   "_mcmcranging_sample_standard_deviations.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging ", &
+                      "TRACE BACK (195)", 1)
+                 STOP
+              END IF
+              WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                   advance="no") &
+                   getObservationalTimespan(obss_sep(i))
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging ", &
+                      "TRACE BACK (200)", 1)
+                 STOP
+              END IF
+              DO j=1,6
+                 CALL moments(elements_arr(:,j), &
+                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
+                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                      advance="no") stdev
+              END DO
+              WRITE(getUnit(tmp_file),*)
+              CALL NULLIFY(tmp_file)
+              DEALLOCATE(elements_arr, stat=err)
+              IF (err /= 0) THEN
+                 CALL errorMessage("oorb / mcmcranging", &
+                      "Could not deallocate memory (5).", 1)
+                 STOP
+              END IF
+              ! Make plot using gnuplot:
+              CALL system("cp " // TRIM(str) // &
+                   "_mcmcranging_orbits.out sor_orbits.out")
+              IF (element_type_comp_prm == "cartesian") THEN
+                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_car.gp")
+              ELSE
+                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
+              END IF
+              CALL system("cp sor_results.eps " // TRIM(str) // &
+                   "_mcmcranging_" // TRIM(element_type_comp_prm) // &
+                   "_results.eps")
+              CALL system("rm -f sor_orbits.out sor_results.eps " // & 
+                   TRIM(str) // "_mcmcranging_orbits.out " // TRIM(str) // &
+                   "_sor_sample_standard_deviations.out")
+              IF (compress) THEN
+                 CALL system("gzip -f " // TRIM(str) // "_mcmcranging_" // &
+                      TRIM(element_type_comp_prm) // "_results.eps")
+              END IF
+              IF (plot_open) THEN
+                 CALL system("gv " // TRIM(str) // "_mcmcranging_" // &
+                      TRIM(element_type_comp_prm) // &
+                      "_results.eps* &")
+              END IF
+           END IF
+           DO j=1,SIZE(orb_arr_cmp)
+              CALL NULLIFY(orb_arr_cmp(j))
+           END DO
+           DEALLOCATE(orb_arr_cmp, stat=err)
+           DEALLOCATE(pdf_arr_cmp, stat=err)
+           DEALLOCATE(rchi2_arr_cmp, stat=err)
+!!$           DEALLOCATE(reg_apr_arr_cmp, stat=err)
+!!$           DEALLOCATE(jac_arr_cmp, stat=err)
+           IF (err /= 0) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "Could not deallocate memory (10).", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obss_sep(i))
+           IF (info_verb >= 2) THEN
+              WRITE(stdout,"(3(1X,A))") "Object", &
+                   TRIM(id), "successfully processed."
+           END IF
+
+        END IF
+        CALL NULLIFY(storb)
+        CALL NULLIFY(orb)
+        IF (info_verb > 2) THEN
+           WRITE(stdout,*)
+           WRITE(stdout,*)
+        END IF
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep, stat=err)
+     IF (err /= 0) THEN
+        CALL errorMessage("oorb / mcmcranging", &
+             "Could not deallocate memory (15)", 1)
+        STOP
+     END IF
+
 
 
   CASE ("simplex")
