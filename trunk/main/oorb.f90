@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2012-04-03
+!! @version 2012-04-30
 !!
 PROGRAM oorb
 
@@ -6576,6 +6576,11 @@ PROGRAM oorb
         END IF
 
         dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
+
+        IF (info_verb >= 2) THEN
+           WRITE(stderr,"(A,1X,I0,1X,A)") "Integrating", &
+                SIZE(orb_arr_in), "particles."
+        END IF
         DO i=1,SIZE(orb_arr_in)
            IF (.NOT.exist(epoch1) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
@@ -6688,9 +6693,12 @@ PROGRAM oorb
 
            ! Loop over the integration interval and output
            ! intermediate results during each step if requested
-           DO WHILE ((output_interval > 0.0_bp .AND. mjd < mjd1) .OR. &
+           first = .TRUE. ! cycle at least once for printing purposes
+           DO WHILE (first .OR. &
+                (output_interval > 0.0_bp .AND. mjd < mjd1) .OR. &
                 (output_interval < 0.0_bp .AND. mjd > mjd1))
 
+              first = .FALSE.
               IF ((output_interval > 0.0_bp .AND. mjd + output_interval >= mjd1) .OR. &
                    (output_interval < 0.0_bp .AND. mjd + output_interval <= mjd1)) THEN
                  mjd = mjd1
