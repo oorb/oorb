@@ -1,8 +1,8 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
-! Dagmara Oszkiewicz                                                 !
+! Dagmara Oszkiewicz, Lynne Jones                                    !
 !                                                                    !
 ! This file is part of OpenOrb.                                      !
 !                                                                    !
@@ -23,8 +23,8 @@
 !
 !! Module for which f2py builds Python wrappers.
 !!
-!! @author  MG, FP
-!! @version 2009-12-11
+!! @author  MG, FP, LJ
+!! @version 2012-09-21
 !!
 MODULE pyoorb
 
@@ -304,8 +304,12 @@ CONTAINS
           error_code = 58
           RETURN
        END IF
-       out_orbits(i,8:) = in_orbits(i,8:)
+       ! Set element type (same as input element type)
+       out_orbits(i,8) = in_orbits(i,8)
+       out_orbits(i,9) = in_epoch(1)
+       out_orbits(i,10) = in_epoch(2)
        CALL NULLIFY(orb)
+       CALL NULLIFY(t1)
     END DO
 
   END SUBROUTINE oorb_propagation_2b
@@ -333,13 +337,16 @@ CONTAINS
     ! Output error code
     INTEGER, INTENT(out)                                :: error_code
 
-    TYPE (Orbit) :: orb
+    ! TYPE (Orbit) :: orb
+    TYPE (Orbit), DIMENSION(1) :: orb_arr
     TYPE (Time) :: t0, t1
     CHARACTER(len=INTEGRATOR_LEN) :: integrator
     CHARACTER(len=6) :: dyn_model
     REAL(8) :: integration_step
     INTEGER :: i
     LOGICAL, DIMENSION(10) :: perturbers
+    REAL(8), DIMENSION(6) :: coordinates, &
+         elements
 
     ! Init
     errstr = ""
@@ -361,6 +368,7 @@ CONTAINS
        END IF
 
        ! Get each flattened orbit and create an Orbit instance.
+       elements(1:6) = in_orbits(i,2:7)
        ! First create a Time instance corresponding to the orbit epoch.
        CALL NEW(t0, in_orbits(i,9), timescales(NINT(in_orbits(i,10))))
        IF(error) THEN
@@ -370,13 +378,13 @@ CONTAINS
        END IF
 
        ! Now create an Orbit instance.
-       CALL NEW(orb, &
-            in_orbits(i,2:7), &
+       CALL NEW(orb_arr(1), &
+            elements(1:6), &
             element_types(NINT(in_orbits(i,8))), &
             "ecliptic", &
             copy(t0))
        CALL NULLIFY(t0)
-       CALL setParameters(orb, &
+       CALL setParameters(orb_arr(1), &
             dyn_model=dyn_model, &
             perturbers=perturbers, &
             integrator=integrator, &
@@ -392,24 +400,29 @@ CONTAINS
           error_code = 58
           RETURN
        END IF
-       ! Compute topocentric ephemerides
-       CALL propagate(orb, &
+       ! Propagate orbits
+       CALL propagate(orb_arr(1), &
             t1)
        IF (error) THEN
-          ! Error in getEphemerides()
+          ! Error in propagation
           error_code = 40
           RETURN
        END IF
        out_orbits(i,1) = in_orbits(i,1)
-       out_orbits(i,2:7) = getElements(orb, element_types(NINT(in_orbits(i,8))), &
+       out_orbits(i,2:7) = getElements(orb_arr(1), element_types(NINT(in_orbits(i,8))), &
             "ecliptic")
        IF (error) THEN
           ! Error in transformation
           error_code = 58
           RETURN
        END IF
-       out_orbits(i,8:) = in_orbits(i,8:)
-       CALL NULLIFY(orb)
+       ! Set element type (same as input element type)
+       out_orbits(i,8) = in_orbits(i,8)
+       out_orbits(i,9) = in_epoch(1)
+       out_orbits(i,10) = in_epoch(2)
+       ! print *,out_orbits
+       CALL NULLIFY(orb_arr(1))
+       CALL NULLIFY(t1)
     END DO
 
   END SUBROUTINE oorb_propagation_nb
@@ -438,8 +451,8 @@ CONTAINS
     ! (mjd, timescale)
     REAL(8), DIMENSION(in_ndate,2), INTENT(in)          :: in_date_ephems ! (1:ndate,1:2)
     ! Output ephemeris
-    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, dra/dt, ddec/dt), )
-    REAL(8), DIMENSION(in_norb,in_ndate,8), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:8)
+    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, dra/dt, ddec/dt, phase, solar_elongation), )
+    REAL(8), DIMENSION(in_norb,in_ndate,10), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:8)
     ! Output error code
     INTEGER, INTENT(out)                                :: error_code
 
@@ -448,22 +461,29 @@ CONTAINS
     TYPE (Orbit), DIMENSION(1) :: orb_arr
     TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: observers
     TYPE (CartesianCoordinates) :: ccoord
+    TYPE (CartesianCoordinates) :: obsy_ccoord
     TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides
     TYPE (Time) :: t
+    REAL(8), DIMENSION(:,:), POINTER :: planeph
     CHARACTER(len=INTEGRATOR_LEN) :: integrator
     CHARACTER(len=6) :: dyn_model
     REAL(8), DIMENSION(6) :: coordinates, &
          elements
     REAL(8), DIMENSION(3) :: obsy_obj, &
          obsy_pos, &
+         geoc_obsy, &
+         obsy_sun, &
+         vec3, &
          pos
     REAL(8) :: cos_phase, &
          ephemeris_r2, &
          heliocentric_r2, &
          integration_step, &
          mjd, &
+         mjd_tt, &
          observer_r2, &
          phase, &
+         solar_elongation, &
          vmag
     INTEGER :: i, &
          j
@@ -590,11 +610,15 @@ CONTAINS
                   'TRACE BACK (65)',1)
              STOP
           END IF
+          geoc_obsy = obsy_pos - pos
           observer_r2 = DOT_PRODUCT(obsy_pos,obsy_pos)
           cos_phase = 0.5_bp * (heliocentric_r2 + ephemeris_r2 - &
                observer_r2) / (SQRT(heliocentric_r2) * &
                SQRT(ephemeris_r2))
           phase = ACOS(cos_phase)
+
+
+
           vmag = getApparentMagnitude(H=in_orbits(i,11), &
                G=in_orbits(i,12), r=SQRT(heliocentric_r2), &
                Delta=coordinates(1), phase_angle=phase)
@@ -607,7 +631,35 @@ CONTAINS
           ! ephem date
           t = getTime(observers(j))
           mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
+          mjd_tt = getMJD(t, "TT")
+          obsy_ccoord = getGeocentricObservatoryCCoord(obsies, in_obscode, t)
+          IF (error) THEN
+             CALL errorMessage('oorb / ephemeris', &
+                  'TRACE BACK (75)',1)
+             STOP
+          END IF
+          CALL rotateToEquatorial(obsy_ccoord)
+          geoc_obsy = getPosition(obsy_ccoord)
+          IF (error) THEN
+             CALL errorMessage('oorb / ephemeris', &
+                  'TRACE BACK (80)',1)
+             STOP
+          END IF
+
           CALL NULLIFY(t)
+
+          planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+          IF (error) THEN
+             CALL errorMessage('oorb / ephemeris', &
+                  'TRACE BACK (85)',1)
+             STOP
+          END IF
+
+          geoc_obsy = getPosition(obsy_ccoord)
+          obsy_sun = -(planeph(1,1:3) + geoc_obsy)
+          vec3 = cross_product(obsy_obj,obsy_sun)
+          solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
+
 
           ! Write the output ephem array.
           out_ephems(i,j,1) = coordinates(1)                             ! distance
@@ -618,6 +670,8 @@ CONTAINS
           out_ephems(i,j,6) = NINT(in_date_ephems(j,2))                  ! ephem mjd timescale
           out_ephems(i,j,7) = coordinates(5)*COS(coordinates(3))/rad_deg ! dra/dt  sky-motion
           out_ephems(i,j,8) = coordinates(6)/rad_deg                     ! ddec/dt sky-motion
+          out_ephems(i,j,9) = phase/rad_deg                              ! phase angle
+          out_ephems(i,j,10) = solar_elongation/rad_deg                  ! solar elongation angle (deg)
 
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
@@ -661,8 +715,8 @@ CONTAINS
     ! (mjd, timescale)
     REAL(8), DIMENSION(in_ndate,2), INTENT(in)            :: in_date_ephems ! (1:ndate,1:2)
     ! Output ephemeris
-    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, dra/dt, ddec/dt, raErr, decErr, smaa, smia, pa), )
-    REAL(8), DIMENSION(in_norb,in_ndate,13), INTENT(out)  :: out_ephems ! (1:norb,1:ndate,1:13)
+    ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, dra/dt, ddec/dt, phase, raErr, decErr, smaa, smia, pa), )
+    REAL(8), DIMENSION(in_norb,in_ndate,14), INTENT(out)  :: out_ephems ! (1:norb,1:ndate,1:13)
     ! Output error code
     INTEGER, INTENT(out)                                  :: error_code
 
@@ -673,6 +727,7 @@ CONTAINS
     TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: observers
     TYPE (CartesianCoordinates) :: ccoord
     TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph
     TYPE (Time) :: t
     CHARACTER(len=INTEGRATOR_LEN) :: integrator
     CHARACTER(len=6) :: dyn_model
@@ -892,11 +947,12 @@ CONTAINS
           out_ephems(i,j,6) = NINT(in_date_ephems(j,2))                  ! ephem mjd timescale
           out_ephems(i,j,7) = coordinates(5)*COS(coordinates(3))/rad_deg ! dra/dt  sky-motion
           out_ephems(i,j,8) = coordinates(6)/rad_deg                     ! ddec/dt sky-motion
-          out_ephems(i,j,9) = sigma_ra                                   ! raErr
-          out_ephems(i,j,10) = sigma_dec                                 ! decErr
-          out_ephems(i,j,11) = smaa                                      ! semi-major axis
-          out_ephems(i,j,12) = smia                                      ! semi-minor axis
-          out_ephems(i,j,13) = pa                                        ! position angle
+          out_ephems(i,j,9) = phase/rad_deg                              ! phase angle
+          out_ephems(i,j,10) = sigma_ra                                  ! raErr
+          out_ephems(i,j,11) = sigma_dec                                 ! decErr
+          out_ephems(i,j,12) = smaa                                      ! semi-major axis
+          out_ephems(i,j,13) = smia                                      ! semi-minor axis
+          out_ephems(i,j,14) = pa                                        ! position angle
 
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
