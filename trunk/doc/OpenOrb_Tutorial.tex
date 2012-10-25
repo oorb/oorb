@@ -1,6 +1,6 @@
 %====================================================================%
 %                                                                    %
-% Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  %
+% Copyright 2002-2011, 2012                                          %
 % Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      %
 % Dagmara Oszkiewicz                                                 %
 %                                                                    %
@@ -36,8 +36,8 @@
 \usepackage{latexsym}
 \usepackage{ae}
 \usepackage{aecompl}
-\usepackage{acronym}
-\usepackage{harvard}
+%\usepackage{acronym}
+%\usepackage{harvard}
 \usepackage{ae}    
 \usepackage{aecompl}  
 \usepackage{url}
@@ -90,8 +90,9 @@
 \usepackage{hyperref} 
 \begin{document}
 \maketitle
-\citationstyle{agsm}
-\citationmode{abbr}
+
+%\citationstyle{agsm}
+%\citationmode{abbr}
 
 \pagenumbering{roman}
 \setcounter{page}{1}
@@ -100,7 +101,7 @@
 \begin{verbatim}
 #====================================================================#
 #                                                                    #
-# Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  #
+# Copyright 2002-2011,2012                                           #
 # Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      #
 # Dagmara Oszkiewicz                                                 #
 #                                                                    #
@@ -132,7 +133,33 @@
 
 \chapter{Short introduction to OpenOrb}
 
-\section{Theory}
+\section{What OpenOrb does and what it doesn't}
+
+\noindent OpenOrb does
+\begin{itemize}
+
+\item compute an orbit for an object if the user provides a list of
+  astrometric positions for that object.
+
+\item integrate orbits.
+
+\item dynamically classify orbits.
+
+\item a slew of other tasks related to asteroids and orbit
+  computation.
+
+\end{itemize}
+
+
+\noindent OpenOrb does not
+\begin{itemize}
+
+\item do image processing. OpenOrb does not do \emph{anything} with images.
+
+\end{itemize}
+
+
+\section{Orbital inversion theory}
 
 In the Bayesian framework, the parameters to be estimated are treated
 as random variables and the complete solution to the inverse problem
@@ -201,6 +228,12 @@ either by performing the simulation for a smaller number of sample
 orbits before performing the full-scale inversion \cite{vir2003a} or
 by starting with only two observations and adding more observations
 step by step \cite{gra2005c}.
+
+
+\subsubsection{MCMCRanging}
+
+Markov-Chain Monte Carlo version of the Ranging method.
+
 
 \subsubsection{Least-squares with linearized covariances}
 
@@ -282,8 +315,8 @@ every six months or so.
 To generate the JPL planetary ephemeris file \verb|de405.dat|, go to
 the \\ \verb|OpenOrb/data/JPL_ephemeris/| directory \\ \\ 
 \verb|cd ../data/JPL_ephemeris/| \\ \\ 
-and issue the following \verb|make| command: \\ \\ 
-\verb|make de405| \\ \\
+and issue the following command: \\ \\ 
+\verb|make| \\ \\
 If successful, the ASCII versions of the de405 ephemerides will first
 be automatically downloaded from the JPL FTP server, and then built to
 the binary file \verb|de405.dat|. Finally, \verb|de405.dat| is copied
@@ -293,7 +326,7 @@ file every time you get a new version of OpenOrb. However, since
 \verb|de405.dat| is a binary file, it may have to be built separately
 for every operating system. The correctness of the generated ephemeris
 file can be checked with \\ \\
-\verb|make de405_test| \\ \\
+\verb|make test| \\ \\
 Finally, the \verb|OORB_DATA| environment variable, which contains the
 path to the data directory (usually \verb|OpenOrb/data/|), should be
 added to the environment: \\ \\
@@ -357,16 +390,19 @@ parameters are defined using a configuration file.
 \begin{itemize}
 
 \item Current MPC format (.mpc).
+\item The Data Exchange Standard format used by, e.g., Pan-STARRS (.des).
 \item New MPC format (.mpc3).
 
 \end{itemize}
 
-In the future, OpenOrb will be able to use the format which Pan-STARRS
-will be using.
-
 \subsection{Orbits}
 
-Current OpenOrb format (.orb).
+\begin{itemize}
+
+\item The OpenOrb format (.orb).
+\item The Data Exchange Standard format used by, e.g., Pan-STARRS (.des).
+
+\end{itemize}
 
 \subsection{Ephemeris}
 
@@ -379,21 +415,21 @@ Current OpenOrb format (.eph).
 The \verb|oorb| executable currently has to ways of obtaining the
 orbital-element PDF based on the observed positions, Ranging
 (\verb|--task=ranging|) and LSL (\verb|--task=lsl|). Whereas Ranging
-maps the PDF rigorously, that is, without prior
-assumptions of its shape, LSL assumes that the PDF is Gaussian and
-derives a so-called single-point estimate for the orbital-element
-PDF. In practice, the single-point estimate consists of the nominal
-orbit and the corresponding hyperellipsoid which describes the
-uncertainty of the orbit. In general, Ranging is optimized for
-situations with scarce data. LSL, on the other hand, should only be
-used when there is enough data available to assume that the {\it true}
-shape of the orbital-element PDF is indeed more or less
-Gaussian. The orbital inversion is performed by using either one of
-the followong commands: \\ \\
+maps the PDF rigorously, that is, without prior assumptions of its
+shape, LSL assumes that the PDF is Gaussian and derives a so-called
+single-point estimate for the orbital-element PDF. In practice, the
+single-point estimate consists of the nominal orbit and the
+corresponding hyperellipsoid which describes the uncertainty of the
+orbit. In general, Ranging is optimized for situations with scarce
+data. LSL, on the other hand, should only be used when there is enough
+data available to assume that the {\it true} shape of the
+orbital-element PDF is indeed more or less Gaussian. The orbital
+inversion is performed by using either one of the followong commands:
+\\ \\
 \verb|oorb --task=ranging --obs-in=FILE.mpc [ --orb-out=OUTFILE ]| \\
-\verb|   [ --orb-out-separately ]| \\ \\ 
+\verb|   [ --separately ]| \\ \\ 
 \verb|oorb --task=lsl --obs-in=FILE.mpc --orb-in=INFILE|\\
-\verb|   [ --orb-out=OUTFILE ] [ --orb-out-separately ]| \\ \\ 
+\verb|   [ --orb-out=OUTFILE ] [ --separately ]| \\ \\ 
 Here \verb|FILE.mpc| contains the observed positions in the Minor
 Planet Center (MPC) format, and the file may contain more than one
 object in which case the number or temporary designation separates
@@ -404,11 +440,11 @@ uncertain. In the New MPC Format (OpenOrb recognizes it by the suffix
 \verb|.mpc3|) observations are, among other things, allowed to have
 individual uncertainties. For LSL, \verb|oorb| needs at least one
 starting point which is supplied using INFILE. If
-\verb|--orb-out=OUTFILE| is omitted, the resulting orbital-element
-PDF is written to standard out. With the
-\verb|--orb-out-separately| option the orbit or orbits for each
-separate observation set is written to separate file the name of which
-is defined by the designation or number of the observation set.
+\verb|--orb-out=OUTFILE| is omitted, the resulting orbital-element PDF
+is written to standard out. With the \verb|--separately| option the
+orbit or orbits for each separate observation set is written to
+separate file the name of which is defined by the designation or
+number of the observation set.
 
 \subsection{Tips for using Ranging}
 
@@ -456,7 +492,7 @@ resulting orbital-element PDF is written to standard out.
 
 Topocentric ephemerides and their uncertainties are computed based on
 the orbital-element PDF using the command \\ \\
-\verb+oorb --task=ephemeris --obs-code=CODE [ --epoch-mjd-utc=MJD |+\\
+\verb+oorb --task=ephemeris --code=CODE [ --epoch-mjd-utc=MJD |+\\
 \verb+     --epoch-mjd-tt=MJD | --timespan=DT1 --step=DT2 ]+\\
 \verb+     --orb-in=INFILE+\\ \\
 where \verb|CODE| is the observatory code assigned by MPC and MJD is
@@ -572,8 +608,7 @@ The ephemerides are written to standard out.
 It is reasonably straightforward to develop your own applications in
 the OpenOrb framework due to the object-oriented approach. Although
 Fortran 90/95 is not a pure object-oriented language, we have mimicked
-object-oriented concepts in the software by using the guidelines by
-\citeasnoun{dec1997a}.
+object-oriented concepts in the software \cite{dec1997a}.
 
 More to be added later if there is interest\ldots
 
@@ -586,7 +621,7 @@ Due to manpower limitations, we cannot promise to give personal
 assistance in all situations. It is assumed that the user is familiar
 with state-of-the-art orbit computation methods and Bayesian inversion
 theory through published literature
-\citeaffixed{vir2005c,bow2003a,vir2008a}{for reviews, see}. However,
+\cite[for reviews, see]{vir2005c,bow2003a,vir2008a}. However,
 if you intend to publish results obtained with OpenOrb and have doubt
 regarding the interpretation of the results, we encourage you to
 contact either Mikael Granvik (mgranvik@iki.fi) or Jenni Virtanen
@@ -612,17 +647,15 @@ subject line.
 
 If you find OpenOrb useful in your work, please acknowledge our
 efforts by citing, in addition to the relevant original papers, the
-following abstract (which will hopefully evolve into an ACM 2008
-conference proceedings ma\-nu\-script) on the OpenOrb software package: \\ \\ 
+following paper on the OpenOrb software package: \\ \\
 
-\noindent Granvik, M., Virtanen, J., and Muinonen, K. (2008),
-`OpenOrb: Open-source asteroid-orbit-computation software including
-statistical orbital ranging', Asteroids, Comets, Meteors 2008,
-Abstract \#8206, CD-ROM, LPI Contribution No.\ 1405.
-
+\noindent Granvik, M., Virtanen, J., Oszkiewizc, D., Muinonen,
+K. (2009). \emph{OpenOrb: Open-source asteroid-orbit-computation
+  software including statistical ranging}, Meteoritics and Planetary
+Science {\bf 44}(12), 1853--1861.
 
 
-\bibliographystyle{agsm}
+\bibliographystyle{alpha}
 \bibliography{asteroid,educational,fortran}
 %\nocite{mui1999a}
 
