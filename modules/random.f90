@@ -28,7 +28,7 @@
 !! @see SphericalCoordinates_class 
 !!  
 !! @author  MG
-!! @version 2012-02-15
+!! @version 2012-10-26
 !!
 MODULE random
 
@@ -44,6 +44,7 @@ MODULE random
   PUBLIC :: initializeRandomNumberGenerator
   PUBLIC :: randomNumber
   PUBLIC :: randomGaussian
+  PUBLIC :: randomMaxwellian
 
   INTERFACE ran_pmm
      MODULE PROCEDURE ran_pmm_r4
@@ -70,6 +71,10 @@ MODULE random
      MODULE PROCEDURE randomGaussian_array_r8
      MODULE PROCEDURE randomGaussian_array_r16
   END INTERFACE randomGaussian
+
+  INTERFACE randomMaxwellian
+     MODULE PROCEDURE randomMaxwellian_single_r8
+  END INTERFACE randomMaxwellian
 
 
 CONTAINS
@@ -586,6 +591,37 @@ CONTAINS
 
   END SUBROUTINE setRandomSeed
 
+
+
+
+
+  !! *Description*:
+  !!
+  !! Generate random number following the Maxwellian distribution with
+  !! parameter alpha. Method based on Jöhnk's method after a
+  !! transformation to a Gamma distribution.
+  !!
+  SUBROUTINE randomMaxwellian_single_r8(alpha, ranmaxwell)
+
+    IMPLICIT NONE
+    REAL(rprec8), INTENT(in) :: alpha
+    REAL(rprec8), INTENT(out) :: ranmaxwell 
+
+    REAL(rprec8), DIMENSION(4) :: ran4
+    REAL(rprec8) :: r, w
+
+    CALL randomNumber(ran4(1))
+    r = -LOG(ran4(1))
+    w = 2.0_rprec8
+    DO WHILE (w > 1.0_rprec8)
+       CALL randomNumber(ran4(2:3))       
+       w = SUM(ran4(2:3)**2)
+    END DO
+    CALL randomNumber(ran4(4))
+    r = r - ran4(2)**2/w*LOG(ran4(4))
+    ranmaxwell = alpha*SQRT(2.0_rprec8*r)
+
+  END SUBROUTINE randomMaxwellian_single_r8
 
 
 

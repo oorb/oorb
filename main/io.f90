@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2012-02-15
+!! @version 2012-10-26
 !!
 MODULE io
 
@@ -317,13 +317,13 @@ CONTAINS
        RETURN
     END IF
 
-    nrow_max = 4
-    ncolumn_max = 4
+    nrow_max = 7
+    ncolumn_max = 10
     nrow = CEILING(nobs/REAL(ncolumn_max))
 
     str = " "
     str = TRIM(id) // "_" // TRIM(str) // "resid_stamp.gp"
-    CALL system("echo set terminal postscript eps enhanced color linewidth 1.0 8.0 > " // TRIM(str))
+    CALL system("echo set terminal postscript eps enhanced linewidth 1.0 8.0 > " // TRIM(str))
     CALL system("echo set out \'residual_stamps.eps\' >> " // TRIM(str))
     CALL system("echo unset key >> " // TRIM(str))
     CALL system("echo set pointsize 0.2 >> " // TRIM(str))
@@ -368,13 +368,13 @@ CONTAINS
        !       CALL system('echo set multiplot title \"'  // TRIM(id) // &
        !            '\" >> ' // TRIM(str))
        CALL system('echo set multiplot >> ' // TRIM(str))
-       CALL toString(1.0/ncolumn_max, str1, error)
+       CALL toString(1.0/(ncolumn_max-1.5), str1, error)
        IF (error) THEN
           CALL errorMessage("io / makeResidualStamps", &
                "TRACE BACK (75)", 1)
           RETURN
        END IF
-       CALL toString(1.0/nrow_max, str2, error)
+       CALL toString(1.0/(nrow_max-1.5), str2, error)
        IF (error) THEN
           CALL errorMessage("io / makeResidualStamps", &
                "TRACE BACK (80)", 1)
@@ -399,7 +399,7 @@ CONTAINS
                      "TRACE BACK (85)", 1)
                 RETURN
              END IF
-             CALL toString(ysize-i*(1.0/nrow_max), str2, error)
+             CALL toString(ysize-i*(1.0/nrow_max)-0.02, str2, error)
              IF (error) THEN
                 CALL errorMessage("io / makeResidualStamps", &
                      "TRACE BACK (90)", 1)
@@ -430,12 +430,16 @@ CONTAINS
              str1 = "-" // TRIM(str2)
              CALL system("echo set yrange [" // TRIM(str1) // &
                   ":" // TRIM(str2) // "] >> " // TRIM(str))
-             !             CALL system('echo set title \"' // TRIM(id) // "\\" // "n" // &
-             CALL system('echo set title \"' // TRIM(codes(k)) // " " &
-                  // TRIM(dates(k)) // '\" >> ' // TRIM(str))
-             CALL system("echo set xlabel \'{/Symbol D}RA [asec]\' >> " // &
+             !!             CALL system('echo set title \"' // TRIM(id) // "\\" // "n" // &
+             !CALL system('echo set title \"' // TRIM(codes(k)) // " " &
+             !     // TRIM(dates(k)) // '\" >> ' // TRIM(str))
+             !CALL system("echo set xlabel \'{/Symbol D}RA [asec]\' >> " // &
+             !     TRIM(str))
+             !CALL system("echo set ylabel \'{/Symbol D}Dec [asec]\' >> " // &
+             !     TRIM(str))
+             CALL system('echo set format x \"\" >> ' // &
                   TRIM(str))
-             CALL system("echo set ylabel \'{/Symbol D}Dec [asec]\' >> " // &
+             CALL system('echo set format y \"\" >> ' // &
                   TRIM(str))
              CALL toString(k, str1, error)
              IF (error) THEN
@@ -1864,6 +1868,9 @@ CONTAINS
        IF (frmt == "COM") THEN
           elements(3:5) = elements(3:5)*rad_deg
           CALL NEW(orb_arr(norb+1), elements, "cometary", "ecliptic", epoch)
+       ELSE IF (frmt == "COMM") THEN
+          elements(3:6) = elements(3:6)*rad_deg
+          CALL NEW(orb_arr(norb+1), elements, "cometary_ma", "ecliptic", epoch)
        ELSE IF (frmt == "COT") THEN
           elements(3:6) = elements(3:6)*rad_deg
           CALL NEW(orb_arr(norb+1), elements, "cometary_ta", "ecliptic", epoch)
@@ -2157,6 +2164,7 @@ CONTAINS
             "Orbital elements are unknown to the software.", 1)       
        RETURN
     END IF
+
     CALL NEW(orb, elements, element_type_in, "ecliptic", copy(t))
     IF (error) THEN
        CALL errorMessage("io / readOpenOrbOrbitFile", &
@@ -2666,7 +2674,7 @@ CONTAINS
     REAL(bp), DIMENSION(6,6)   :: cov, corr
     REAL(bp), DIMENSION(6)     :: elements, sigmas
     REAL(bp) :: obsarc, rchi2
-    INTEGER :: k, l, err
+    INTEGER :: k, l, err, err_verb_
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL, DIMENSION(6) :: ls_element_mask
 
@@ -2699,6 +2707,8 @@ CONTAINS
 
     element_type_ = TRIM(element_type)
     str = "#CAR  "
+    err_verb_ = err_verb
+    err_verb = 0
     elements = getElements(orb, TRIM(element_type_))
     IF (error .AND. TRIM(element_type_) == "cartesian") THEN
        CALL errorMessage("io / writeNominalSolution", &
@@ -2712,6 +2722,7 @@ CONTAINS
        elements(3:6) = elements(3:6)/rad_deg
        str = "#KEP  "
     END IF
+    err_verb = err_verb_
     id = getID(obss)
 !!$    obsarc = getObservationalTimespan(obss)
 !!$    WRITE(lu,"(A,F14.4)") "#Observational arc = ",obsarc
@@ -3944,9 +3955,6 @@ CONTAINS
        END IF
 
        DO j=1,SIZE(orb_arr, dim=1)
-          IF (ASSOCIATED(computed_scoords)) THEN
-             NULLIFY(computed_scoords)
-          END IF
           CALL getEphemerides(orb_arr(j), obsy_ccoords, &
                computed_scoords)
           IF (error) THEN
@@ -3969,7 +3977,9 @@ CONTAINS
                      "TRACE BACK (30)", 1)
                 RETURN
              END IF
+             CALL NULLIFY(computed_scoords(i))
           END DO
+          DEALLOCATE(computed_scoords, stat=err)
           residuals_(j,1:nobs,1:6) = observed_coords(1:nobs,1:6) - &
                computed_coords(1:nobs,1:6)        
           residuals_(j,1:nobs,2) = residuals_(j,1:nobs,2) * &
@@ -3977,7 +3987,7 @@ CONTAINS
        END DO
 
        DEALLOCATE(observed_coords, computed_coords, observed_scoords, &
-            obsy_ccoords, computed_scoords, orb_arr, stat=err)
+            obsy_ccoords, orb_arr, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("io / writeResiduals", &
@@ -3986,7 +3996,6 @@ CONTAINS
           DEALLOCATE(computed_coords, stat=err)
           DEALLOCATE(observed_scoords, stat=err)
           DEALLOCATE(obsy_ccoords, stat=err)
-          DEALLOCATE(computed_scoords, stat=err)
           DEALLOCATE(orb_arr, stat=err)
           RETURN
        END IF
@@ -4154,7 +4163,7 @@ CONTAINS
          sor_norb_cmp, sor_ntrial_cmp, &
          sor_norb_prm, sor_ntrial_prm, sor_rho_histo_cmp
     INTEGER :: &
-         nobs, i, k, err, indx_ml, nra, ndec
+         nobs, i, k, err, indx_ml, nra, ndec, err_verb_
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask_arr
     LOGICAL :: impact_, sor_random_obs_prm, regularization_prm, dchi2_rejection_prm
@@ -4312,20 +4321,36 @@ CONTAINS
        END IF
        indx_ml = MAXLOC(pdf_arr_cmp,dim=1)
        ALLOCATE(elements_arr(SIZE(orb_arr_cmp),6))
-       str1 = "KEP elements     = "
-       str2 = "Confid. limit lo = "
-       str3 = "Confid. limit hi = "
+       str1 = "KEP elements = "
+       str2 = "Lower limit  = "
+       str3 = "Upper limit  = "
+       err_verb_ = err_verb
+       err_verb = 0
        DO i=1,SIZE(orb_arr_cmp)
           elements_arr(i,1:6) =  getElements(orb_arr_cmp(i), "keplerian")
           IF (error) THEN
              EXIT
           END IF
+          elements_arr(i,3:6) = elements_arr(i,3:6)/rad_deg
        END DO
        IF (error) THEN
           error = .FALSE.
-          str1 = "CAR elements     = "
-          str2 = "Confid. limit lo = "
-          str3 = "Confid. limit hi = "
+          str1 = "COM elements = "
+          str2 = "Lower limit  = "
+          str3 = "Upper limit  = "
+          DO i=1,SIZE(orb_arr_cmp)
+             elements_arr(i,1:6) =  getElements(orb_arr_cmp(i), "cometary")
+             IF (error) THEN
+                EXIT
+             END IF
+             elements_arr(i,3:5) = elements_arr(i,3:5)/rad_deg             
+          END DO
+       END IF
+       IF (error) THEN
+          error = .FALSE.
+          str1 = "CAR elements = "
+          str2 = "Lower limit  = "
+          str3 = "Upper limit  = "
           DO i=1,SIZE(orb_arr_cmp)
              elements_arr(i,1:6) =  getElements(orb_arr_cmp(i), "cartesian", "ecliptic")
              IF (error) THEN
@@ -4334,9 +4359,9 @@ CONTAINS
                 RETURN
              END IF
           END DO
-       ELSE
-          elements_arr(:,3:6) = elements_arr(:,3:6)/rad_deg
        END IF
+       err_verb = err_verb_
+
        ! Compute 1-sigma-equivalent and 3-sigma-equivalent bounds for elements 
        DO i=1,6
           CALL confidence_limits(elements_arr(:,i), pdf_arr_cmp, &
@@ -4362,13 +4387,13 @@ CONTAINS
        frmt = "('#',3X,'ORBITAL-ELEMENT PDF' /" // &
             "'#',3X,' Epoch            = ',A,' = ',F13.5,' TDT'/" // &
             "'#',3X,' Maximum likelihood (ML) orbit' /" // &
-            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
             "'#',3X,' 68.27% credible intervals' /" // &
-            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
-            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
             "'#',3X,' 99.73% credible intervals' /" // &
-            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
-            "'#',3X,'  ',A19,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
             "'#',3X,'  ML value        =',E16.6/" // &
             "'#',3X,'  ML reduced chi2 =',E16.6/" // &
             "'#',3X,'  ML rms          =',E16.6,3X,'arcsec'/" // &            
@@ -4699,12 +4724,18 @@ CONTAINS
 
     indx_ml = MAXLOC(pdf_arr_cmp,dim=1)
 
-    elements = getElements(orb_arr_cmp(indx_ml), "cartesian")
+    elements = getElements(orb_arr_cmp(indx_ml), TRIM(element_type_prm), "ecliptic")
+    IF (error) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeVOMCMCResults", &
+            "TRACE BACK", 1)
+       RETURN
+    END IF
     !elements(3:6) = elements(3:6)/rad_deg
     str1 = "CAR elements    = "
     str2 = "CAR stdevs      = "
 
-    elem_stdevs = getStandardDeviations(storb, "cartesian")
+    elem_stdevs = getStandardDeviations(storb, TRIM(element_type_prm))
     IF (error) THEN
        error = .TRUE.
        CALL errorMessage("io / writeVOMCMCResults", &
@@ -4850,7 +4881,7 @@ CONTAINS
          vov_norb_cmp, vov_ntrial_cmp, &
          vov_norb_prm, vov_ntrial_prm, vov_nmap_prm 
     INTEGER :: &
-         nobs, i, err, indx_ml, nra, ndec
+         nobs, i, err, indx_ml, nra, ndec, err_verb_
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL, DIMENSION(6,2) :: &
          vov_scaling_ready_cmp
@@ -4948,6 +4979,8 @@ CONTAINS
 
     indx_ml = MAXLOC(pdf_arr_cmp,dim=1)
 
+    err_verb_ = err_verb
+    err_verb = 0
     elements = getElements(orb_arr_cmp(indx_ml), "keplerian")
     IF (error) THEN
        error = .FALSE.
@@ -4959,6 +4992,7 @@ CONTAINS
        str1 = "KEP elements    = "
        str2 = "KEP stdevs      = "
     END IF
+    err_verb = err_verb_
 
     elem_stdevs = getStandardDeviations(storb, "keplerian")
     IF (error) THEN
