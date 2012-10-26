@@ -28,7 +28,7 @@
 !! @see Observations_class
 !! 
 !! @author  MG
-!! @version 2012-02-15
+!! @version 2012-10-26
 !!
 MODULE SphericalCoordinates_cl
 
@@ -555,6 +555,10 @@ CONTAINS
        error = .TRUE.
        CALL errorMessage("SphericalCoordinates / addMultinormalDeviate", &
             "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (ALL(mean == 0.0_bp) .AND. ALL(covariance == 0)) THEN
        RETURN
     END IF
 

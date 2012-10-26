@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see Orbit_class
 !! 
 !! @author  MG, JV
-!! @version 2009-10-16
+!! @version 2012-10-26
 !!
 MODULE Time_cl
 
@@ -89,41 +89,41 @@ MODULE Time_cl
      MODULE PROCEDURE new_T_cd_short
      MODULE PROCEDURE new_T_mjd
      MODULE PROCEDURE new_T_MPC
-  END INTERFACE
+  END INTERFACE NEW
 
   INTERFACE NULLIFY
      MODULE PROCEDURE nullify_T
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   INTERFACE copy
      MODULE PROCEDURE copy_T
-  END INTERFACE
+  END INTERFACE copy
 
   INTERFACE exist
      MODULE PROCEDURE exist_T
-  END INTERFACE
+  END INTERFACE exist
 
   INTERFACE equal
      MODULE PROCEDURE equal_T
-  END INTERFACE
+  END INTERFACE equal
 
   INTERFACE getCalendarDate
      MODULE PROCEDURE getCalendarDate_long
      MODULE PROCEDURE getCalendarDate_short
-  END INTERFACE
+  END INTERFACE getCalendarDate
 
   INTERFACE getCurrentTime
      MODULE PROCEDURE getCurrentTime_values
-  END INTERFACE
+  END INTERFACE getCurrentTime
 
   INTERFACE getMJD
      MODULE PROCEDURE getMJD_t
      MODULE PROCEDURE getMJD_cd
-  END INTERFACE
+  END INTERFACE getMJD
 
   INTERFACE reallocate
      MODULE PROCEDURE reallocate_T_1
-  END INTERFACE
+  END INTERFACE reallocate
 
 CONTAINS
 
@@ -1008,8 +1008,8 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(Time), INTENT(inout) :: this
-    INTEGER                :: itjm,i
-    REAL(bp)               :: t0,tjm,gmst0,gmst,h
+    INTEGER                :: imjd,i
+    REAL(bp)               :: t0,mjd,gmst0,gmst,h
     REAL(bp), PARAMETER    :: c0  = 24110.54841_bp, c1 = 8640184.812866_bp,&
          c2  = 9.3104e-2_bp,   c3 =-6.2e-6_bp, &
          rap = 1.00273790934_bp
@@ -1021,15 +1021,15 @@ CONTAINS
        RETURN
     END IF
 
-    tjm = getMJD(this, "UT1")
+    mjd = getMJD(this, "UT1")
     ! Sidereal time at 0h UT1
-    itjm = tjm
-    t0 = (itjm-51544.5_bp)/36525.0_bp
+    imjd = mjd
+    t0 = (imjd-51544.5_bp)/36525.0_bp
     gmst0 = ((c3*t0+c2)*t0+c1)*t0 + c0
     gmst0 = gmst0*two_pi/86400.0_bp
 
     ! Increment in GMST from 0h
-    h = (tjm-itjm)*two_pi
+    h = (mjd-imjd)*two_pi
     gmst = gmst0 + h*rap
     i = gmst/two_pi
     IF (gmst < 0.0_bp) THEN
@@ -1292,9 +1292,9 @@ CONTAINS
     CHARACTER(len=*), INTENT(in) :: scale1, scale2
     REAL(bp), INTENT(out)        :: mjd2
     CHARACTER(len=3)             :: eqsc, eqsc2, scale
-    REAL(bp)                     :: tjm2, dt, tjmt, sec2r, diff, &
+    REAL(bp)                     :: mjd2_, dt, mjdt, sec2r, diff, &
          sect, dat, sec1, sec2
-    INTEGER                      :: loops, nit, mjd2_real, mjdt, mjd2_int
+    INTEGER                      :: loops, nit, mjd2_real, mjdt_int, mjd2_int
 
     sec1  = 86400.0_bp*(mjd1 - INT(mjd1))
     mjd2_int = INT(mjd1)
@@ -1331,8 +1331,8 @@ CONTAINS
        !
        IF(eqsc == "UT1") THEN
           ! Conversion UT1 --> TDT
-          tjm2 = mjd2_int + sec2/86400.0_bp
-          dt = deltaT(tjm2)
+          mjd2_ = mjd2_int + sec2/86400.0_bp
+          dt = deltaT(mjd2_)
           sec2 = sec2 + dt
           eqsc = "TDT"
        ELSE IF (eqsc == "TDT") THEN
@@ -1340,16 +1340,16 @@ CONTAINS
              ! Conversion TDT --> UT1 (iterative method)
              !   a) computation of DT = TDT - UT1 using (mjd2_int,sec2) (TDT) as an
              !      approximate value of UT1
-             tjm2 = mjd2_int + sec2/86400.0_bp
-             dt = deltaT(tjm2)
+             mjd2_ = mjd2_int + sec2/86400.0_bp
+             dt = deltaT(mjd2_)
              !   b) subtract DT from (mjd2_int,sec2), finding a first approximation
              !      for UT1
-             mjdt = mjd2_int
+             mjdt_int = mjd2_int
              sect = sec2 - dt
              !   start iterations
              nit = 0
              DO
-                CALL toNormalForm(mjdt, sect, "UT1")
+                CALL toNormalForm(mjdt_int, sect, "UT1")
                 IF (error) THEN
                    CALL errorMessage("Time / timescaleConversion", &
                         "TRACE BACK (10)", 1)
@@ -1364,9 +1364,9 @@ CONTAINS
                 ENDIF
                 !   c) try to find the starting value of TDT from the approximate
                 !      value of UT1
-                tjmt = mjdt + sect/86400.0_bp
-                dt = deltaT(tjmt)
-                mjd2_real = mjdt
+                mjdt = mjdt_int + sect/86400.0_bp
+                dt = deltaT(mjdt)
+                mjd2_real = mjdt_int
                 sec2r = sect + dt
                 CALL toNormalForm(mjd2_real, sec2r, "TDT")
                 IF (error) THEN
@@ -1382,7 +1382,7 @@ CONTAINS
                    EXIT
                 END IF
              END DO
-             mjd2_int = mjdt
+             mjd2_int = mjdt_int
              sec2 = sect
              eqsc = "UT1"
           ELSE
@@ -1395,9 +1395,9 @@ CONTAINS
              ! Conversion TAI --> UTC (iterative method)
              !   a) computation of DAT = TAI - UTC using (mjd2_int,sec2) (TAI) as an
              !      approximate value of UTC
-             mjdt = mjd2_int
+             mjdt_int = mjd2_int
              sect = sec2
-             dat = deltaAT(mjdt)
+             dat = deltaAT(mjdt_int)
              IF (error) THEN
                 CALL errorMessage("Time / timescaleConversion", &
                      "TRACE BACK (20)", 1)
@@ -1409,7 +1409,7 @@ CONTAINS
              !   start iterations
              nit = 0
              DO
-                CALL toNormalForm(mjdt, sect, "UTC")
+                CALL toNormalForm(mjdt_int, sect, "UTC")
                 IF (error) THEN
                    CALL errorMessage("Time / timescaleConversion", &
                         "TRACE BACK (25)", 1)
@@ -1424,8 +1424,8 @@ CONTAINS
                 END IF
                 !   c) try to find the starting value of TAI from the approximate
                 !      value of UTC
-                mjd2_real = mjdt
-                sec2r = sect + deltaAT(mjdt)
+                mjd2_real = mjdt_int
+                sec2r = sect + deltaAT(mjdt_int)
                 IF (error) THEN
                    CALL errorMessage("Time / timescaleConversion", &
                         "TRACE BACK (30)", 1)
@@ -1451,7 +1451,7 @@ CONTAINS
                    EXIT   
                 END IF
              END DO
-             mjd2_int = mjdt
+             mjd2_int = mjdt_int
              sec2 = sect
              eqsc = "UTC"
           ELSE

@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2012-02-15
+!! @version 2012-10-26
 !!  
 MODULE Observation_cl
 
@@ -545,13 +545,14 @@ CONTAINS
        RETURN
     END IF
 
-    this%covariance = covariance
-    CALL addMultinormalDeviate(this%obs_scoord, mean, this%covariance)
+    CALL addMultinormalDeviate(this%obs_scoord, mean, covariance)
     IF (error) THEN
        CALL errorMessage("Observation / addMultinormalDeviate", &
             "TRACE BACK", 1)
        RETURN
     END IF
+    ! New noise estimate = old noise estimate + added noise
+    this%covariance = this%covariance + covariance
 
   END SUBROUTINE addMultinormalDeviate_Obs
 

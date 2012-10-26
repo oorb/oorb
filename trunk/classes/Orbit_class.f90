@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012   !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2012-02-15
+!! @version 2012-10-26
 !!
 MODULE Orbit_cl
 
@@ -81,8 +81,8 @@ MODULE Orbit_cl
   PRIVATE :: rotateToEquatorial_Orb
   PRIVATE :: estimateCosDf
   PRIVATE :: setParameters_Orb
-  PRIVATE :: solveKeplerEquation_stumpff
-  PRIVATE :: solveKeplerEquation_newton
+!  PRIVATE :: solveKeplerEquation_stumpff
+!  PRIVATE :: solveKeplerEquation_newton
   PRIVATE :: toCartesian_Orb
   PRIVATE :: toCometary_Orb
   PRIVATE :: toKeplerian_Orb
@@ -622,6 +622,75 @@ CONTAINS
        this%frame = frame
        this%is_initialized = .TRUE.
 
+    CASE ("cometary_ma")
+
+       !! Same as 'cometary', but time of perihelion changed to the
+       !! mean anomaly.
+
+       ! Check soundness of cometary elements:
+       IF (elements(1) < 0.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Perihelion distance is negative.", 1)
+          RETURN
+       ELSE
+          this%elements(1) = elements(1)
+       END IF
+
+       IF (elements(2) < 0.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Eccentricity is negative.", 1)
+          RETURN
+       ELSE IF (elements(2) == 1.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Eccentricity is exactly 1 (not possible, too few digits used).", 1)
+          RETURN
+       ELSE
+          this%elements(2) = elements(2)
+       END IF
+
+       IF (elements(3) < 0.0_bp .OR. elements(3) >= pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Inclination is outside the range [0,pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(3) = elements(3)
+       END IF
+
+       IF (elements(4) < 0.0_bp .OR. elements(4) >= two_pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Longitude of Ascending Node is outside the range [0,two_pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(4) = elements(4)
+       END IF
+
+       IF (elements(5) < 0.0_bp .OR. elements(5) >= two_pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Argument of Perihelion is outside the range [0,two_pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(5) = elements(5)
+       END IF
+
+       IF (elements(6) < 0.0_bp .OR. elements(6) >= two_pi) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / new", &
+               "Mean Anomaly is outside the range [0,two_pi[.", 1)
+          RETURN
+       ELSE
+          this%elements(6) = elements(6)
+       END IF
+
+       this%element_type = "cometary_ma"
+       this%frame = frame
+       this%is_initialized = .TRUE.
+
     CASE default
 
        error = .TRUE.
@@ -655,7 +724,7 @@ CONTAINS
   !!
   RECURSIVE SUBROUTINE new_Orb_2point(this, ccoord0, ccoord1, &
        method, smamax, ftol, iter, perturbers, integrator, &
-       integration_step)
+       integration_step, central_body)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)                       :: this
@@ -667,6 +736,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL       :: perturbers
     CHARACTER(len=*), INTENT(in), OPTIONAL            :: integrator
     REAL(bp), INTENT(in), OPTIONAL                    :: integration_step
+    INTEGER, INTENT(in), OPTIONAL                     :: central_body
 
     REAL(bp), PARAMETER :: dp_init = 1.0_bp !1.0_bp
     REAL(bp), PARAMETER :: p_init = 1.0e-7_bp
@@ -674,7 +744,6 @@ CONTAINS
     REAL(bp), PARAMETER :: told = 1.0e-16_bp !1.0e-16
     REAL(bp), PARAMETER :: tol = 1.0e-10_bp !1.0e-13_bp
     REAL(bp), PARAMETER :: toli = 1.0e-8_bp
-    REAL(bp), PARAMETER :: tol_amoeba = 1.0e-13_bp
     ! Require 100m accuracy (comparable to better than 0.5" astrometric
     ! accuracy when the topocentric distance is more than 40,000 km) in
     ! the n-body amoeba routine:
@@ -760,6 +829,9 @@ CONTAINS
        this%integration_step_prm = integration_step
     ELSE
        this%integration_step_prm = 1.0_bp
+    END IF
+    IF (PRESENT(central_body)) THEN
+       this%central_body = central_body
     END IF
 
     method_ = method
@@ -2380,7 +2452,7 @@ CONTAINS
        CALL NULLIFY(this_)
        CALL NULLIFY(t)
 
-    CASE ("cometary_ta")
+    CASE ("cometary_ta", "cometary_ma")
 
        this_ = copy(this)
        IF (error) THEN
@@ -2414,7 +2486,8 @@ CONTAINS
        cea = COS(ea)
        sea = SIN(ea)
        b = this%elements(1) * SQRT(1.0_bp - this%elements(2)**2.0_bp)
-       dot_ea = SQRT(planetary_mu(this%central_body)/this%elements(1)**3.0_bp)/(1.0_bp - this%elements(2)*cea)
+       dot_ea = SQRT(planetary_mu(this%central_body)/this%elements(1)**3.0_bp) / &
+            (1.0_bp - this%elements(2)*cea)
 
        ! Keplerian elements to polar Cartesian elements:
        ! -positions:
@@ -2547,6 +2620,10 @@ CONTAINS
     !! The tolerances have subsequently been updated using the S1b
     !! population and when generating initial orbits for the tidal
     !! disruption studies.
+!!$    REAL(bp), PARAMETER :: tol1 = 1.0e-6_bp
+!!$    REAL(bp), PARAMETER :: tol2 = 1.0e-2_bp
+!!$    REAL(bp), PARAMETER :: tol3 = 1.0e-1_bp
+!!$    REAL(bp), PARAMETER :: tol4 = 1.0e-2_bp
     REAL(bp), PARAMETER :: tol1 = 1.0e-6_bp
     REAL(bp), PARAMETER :: tol2 = 1.0e-6_bp
     REAL(bp), PARAMETER :: tol3 = 1.0e-10_bp
@@ -2609,6 +2686,24 @@ CONTAINS
        END IF
        CALL NULLIFY(this_)
 
+    CASE ("cometary_ma")
+
+       this_ = copy(this)
+       ! Time of periapsis:
+       mm = SQRT(abs(this_%elements(1) / &
+            (1.0_bp-this_%elements(2)))**3.0_bp / &
+            planetary_mu(this_%central_body))
+       mjd_tt = getMJD(this_%t,"TT")
+       dt = this%elements(6) * mm
+       p = two_pi * mm
+       ! Select the closest time of perihelion:
+       IF (this%elements(6) <= pi) THEN
+          getCometaryElements(6) = mjd_tt - dt
+       ELSE
+          getCometaryElements(6) = mjd_tt + (p - dt)
+       END IF
+       CALL NULLIFY(this_)
+
     CASE ("keplerian")
 
        this_ = copy(this)
@@ -2617,7 +2712,8 @@ CONTAINS
             this_%elements(1) * (1.0_bp - this_%elements(2))
        ! period p:
        mjd_tt = getMJD(this_%t,"TT")
-       mm = SQRT(this_%elements(1)**3.0_bp / planetary_mu(this_%central_body))
+       ! |a| is there to allow use with hyperbolic orbits
+       mm = SQRT(abs(this_%elements(1))**3.0_bp / planetary_mu(this_%central_body))
        dt = this_%elements(6) * mm
        p = two_pi * mm
        ! Remove full periods from dt:
@@ -2635,6 +2731,17 @@ CONTAINS
     CASE ("cartesian")
 
        this_ = copy(this)
+
+!!$       call toKeplerian(this_)
+!!$       getCometaryElements = getElements(this_, "cometary")
+!!$       call nullify(this_)
+!!$       if (error) then
+!!$          CALL errorMessage("Orbit / getCometaryElements", &
+!!$               "TRACE BACK (10)", 1)
+!!$          return
+!!$       end if
+!!$       
+!!$
        CALL rotateToEcliptic(this_)
 
        ! Semimajor axis, eccentricity and mean anomaly:
@@ -2735,9 +2842,19 @@ CONTAINS
              s = 0.0_bp
           END IF
        END IF
+!write(*,*) 
+!write(*,*) 
+!write(*,*) q,e,i/rad_deg,an/rad_deg,ap/rad_deg
+!write(*,*) 
+
        DO iiter=1,max_iter
           x = s**2.0_bp * alpha
           CALL getStumpffFunctions(x, stumpff_c)
+          if (error) then
+             CALL errorMessage("Orbit / getCometaryElements", &
+                  "TRACE BACK (10)", 1)
+             return
+          end if
           stumpff_cs(0) = stumpff_c(0)
           stumpff_cs(1) = stumpff_c(1) * s
           stumpff_cs(2) = stumpff_c(2) * s**2.0_bp
@@ -2750,13 +2867,17 @@ CONTAINS
                stumpff_cs(0) - xv * alpha * stumpff_cs(1)
           ds = -rp/rpp
           s = s + ds
+          !write(*,*) s, x, q, r, rp, rpp, ds
           IF (ABS(ds) < tol2 .AND. ABS(rp) < tol3 .AND. &
-               (ABS(r-q) < tol4 .OR. ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) < tol4)) THEN
+               (ABS(r-q) < tol4 .OR. (e < 1.0_bp .and. &
+               ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) < tol4))) THEN
              EXIT
           END IF
        END DO
        IF (ABS(ds) > tol2 .OR. ABS(rp) > tol3 .OR. &
-            (ABS(r-q) > tol4 .AND. ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4)) THEN
+            (e >= 1.0_bp .and. ABS(r-q) > tol4) .or. &
+            (e < 1.0_bp .and. ABS(r-q) > tol4 .and. &
+            ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getCometaryElements", &
                "Computation of time of perihelion did not converge.", 1)
@@ -2765,10 +2886,12 @@ CONTAINS
                   "(", ABS(ds), " > ", tol2, ") or"
              WRITE(stderr,*) "abs(rp) > tol3: ", ABS(rp) > tol3, &
                   "(", ABS(rp), " > ", tol3, ") or"
-             WRITE(stderr,*) "abs(r-q) > tol4 and abs(r-Q) > tol4: ", &
-                  ABS(r-q) > tol4 .AND. ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4, &
-                  "(", ABS(r-q), " > ", tol4, " and ", &
-                  ABS(r-q/(1.0_bp-e)*(1.0_bp+e)), " > ", tol4, ")"
+             WRITE(stderr,*) "e >= 1 and abs(r-q) > tol4: ", &
+                  e >= 1.0_bp .and. ABS(r-q) > tol4, &
+                  "(", ABS(r-q), " > ", tol4, ")"
+             WRITE(stderr,*) "e < 1 and abs(r-q) > tol4 and abs(r-Q) > tol4: ", &
+                  e < 1.0_bp .and. ABS(r-q) > tol4 .AND. ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4, &
+                  "(", ABS(r-q), " > ", tol4, " and ", ABS(r-q/(1.0_bp-e)*(1.0_bp+e)), " > ", tol4, ")"
           END IF
           RETURN          
        END IF
@@ -4455,8 +4578,33 @@ CONTAINS
           CASE ("cartesian")
 
              ! Topocentric, spherical, equatorial coordinates wrt Cartesian elements.
-             !CALL partialsSCoordWrtCartesian_d(this_1, scoord_partials)
-             CALL partialsSCoordWrtCartesian_i(this_2, observer_, scoord_partials)
+
+!!$             ! There may be something wrong with the jacobians since
+!!$             ! the analytical and numerical approaches do not
+!!$             ! match. Or it may be that the numerical solution is
+!!$             ! inaccurate because of multiplying matrices with large
+!!$             ! condition numbers.
+!!$             write(stdout,*)
+!!$             write(stdout,*) "Analytical method"
+!!$             write(stdout,*)
+!!$             CALL partialsSCoordWrtCartesian_d(this_1, scoord_partials)
+!!$             call matrix_print(scoord_partials, stdout, errstr)
+!!$             write(stdout,*)
+!!$             write(stdout,*) cond_nr(scoord_partials, errstr)
+!!$             write(stdout,*)
+!!$             write(stdout,*)
+!!$             write(stdout,*) "Inverse or numerical method"
+!!$             write(stdout,*)
+!!$             CALL partialsSCoordWrtCartesian_i(this_2, observer_, scoord_partials)
+!!$             call matrix_print(scoord_partials, stdout, errstr)
+!!$             write(stdout,*)
+!!$             write(stdout,*) cond_nr(scoord_partials, errstr)
+!!$             write(stdout,*)
+
+
+             !CALL partialsSCoordWrtCartesian_i(this_2, observer_, scoord_partials)
+             CALL partialsSCoordWrtCartesian_d(this_1, scoord_partials)
+
              IF (error) THEN
                 CALL errorMessage("Orbit / getEphemeris (multiple)", &
                      "TRACE BACK 30", 1)
@@ -4724,14 +4872,10 @@ CONTAINS
           RETURN
        END IF
        a = r / (2.0_bp - alpha)
-       IF (a < 0.0_bp) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getKeplerianElements", &
-               "Semimajor axis is negative.", 1)
-          RETURN
-       END IF
-       ! gamma = sqrt(mu*a)
-       gamma = SQRT(planetary_mu(this%central_body)*a)
+       ! gamma = sqrt(mu*a) 
+       ! Note that we use |a| below in order to allow for hyperbolic
+       ! orbits.
+       gamma = SQRT(planetary_mu(this%central_body)*abs(a))
        IF (ABS(gamma) < TINY(gamma)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getKeplerianElements", &
@@ -4745,12 +4889,7 @@ CONTAINS
        !
        e_sin_ea = DOT_PRODUCT(pos,vel)/gamma
        e = SQRT(e_cos_ea**2.0_bp + e_sin_ea**2.0_bp)
-       IF (e > 1.0_bp) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getKeplerianElements", &
-               "Orbit is hyperbolic.", 1)
-          RETURN
-       ELSE IF (e == 1.0_bp) THEN
+       IF (e == 1.0_bp) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getKeplerianElements", &
                "Orbit is parabolic.", 1)
@@ -4771,6 +4910,7 @@ CONTAINS
        IF (ma == two_pi) THEN
           ma = 0.0_bp
        END IF
+       ma = modulo(ma,two_pi)
 
        ! Inclination and ascending node:
        ru = SQRT(DOT_PRODUCT(k,k))
@@ -4847,7 +4987,7 @@ CONTAINS
        getKeplerianElements(6) = &
             MODULO(getKeplerianElements(6), two_pi)
 
-    CASE ("cometary_ta")
+    CASE ("cometary_ta", "cometary_ma")
 
        this_ = copy(this)
        IF (error) THEN
@@ -5638,12 +5778,6 @@ CONTAINS
              RETURN
           END IF
           a_ = r / (2.0_bp - alpha)
-          IF (a_ < 0.0_bp) THEN
-             error = .TRUE.
-             CALL errorMessage("Orbit / getPeriapsisDistance", &
-                  "Semimajor axis is negative.", 1)
-             RETURN
-          END IF
        END IF
        ! gamma = sqrt(mu*a)
        gamma = SQRT(planetary_mu(this_%central_body)*a_)
@@ -5660,12 +5794,7 @@ CONTAINS
        !
        e_sin_ea = DOT_PRODUCT(pos,vel)/gamma
        e = SQRT(e_cos_ea**2.0_bp + e_sin_ea**2.0_bp)
-       IF (e > 1.0_bp) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getPeriapsisDistance", &
-               "Orbit is hyperbolic.", 1)
-          RETURN
-       ELSE IF (e < 10.0_bp*EPSILON(e)) THEN
+       IF (e < 10.0_bp*EPSILON(e)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getPeriapsisDistance", &
                "Orbit is almost circular (1).", 1)
@@ -5673,6 +5802,12 @@ CONTAINS
           RETURN
        END IF
        CALL NULLIFY(this_)
+       IF ((1.0_bp-e)*a_ < 0.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getPeriapsisDistance", &
+               "Signs of semimajor axis and eccentricity are incompatible.", 1)
+          RETURN
+       END IF
        q = a_*(1.0_bp - e)
 
        IF (PRESENT(partials)) THEN
@@ -6327,7 +6462,7 @@ CONTAINS
     REAL(bp), INTENT(in)                  :: x
     REAL(bp), DIMENSION(0:3), INTENT(out) :: stumpff_c
     REAL(bp), PARAMETER                   :: xm = 0.1_bp 
-    REAL(bp), PARAMETER                   :: xc = -1.0e5_bp
+    REAL(bp), PARAMETER                   :: xc = -1.0e6_bp ! -1.0e5
     REAL(bp)                              :: y
     INTEGER                               :: n, i
 
@@ -6335,6 +6470,7 @@ CONTAINS
        error = .TRUE.
        CALL errorMessage("Orbit / getStumpffFunctions", &
             "x < xc", 1)
+       write(stderr,*) x
        RETURN
     END IF
 
@@ -6907,7 +7043,7 @@ CONTAINS
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
 
     ! Mean motion:
-    mm = SQRT(planetary_mu(this%central_body))/SQRT(kep_elements(1)**3.0_bp)
+    mm = SQRT(planetary_mu(this%central_body))/SQRT(abs(kep_elements(1))**3.0_bp)
 
     ! Sines and cosines of the inclination, the longitude of the
     ! ascending node, and the argument of periapsis:
@@ -7422,7 +7558,7 @@ CONTAINS
     ! Semiminor axis:
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
     ! Mean motion:
-    mm = SQRT(planetary_mu(this%central_body))/SQRT(kep_elements(1)**3.0_bp)
+    mm = SQRT(planetary_mu(this%central_body))/SQRT(abs(kep_elements(1))**3.0_bp)
 
     CALL solveKeplerEquation(this, this%t, ea)
     IF (error) THEN
@@ -7546,6 +7682,15 @@ CONTAINS
        RETURN
     END IF
     partials = MATMUL(scoord_kep,kep_car)
+
+!!$    call matrix_print(scoord_kep, stdout, errstr)
+!!$    write(stdout,*)
+!!$    write(stdout,*) cond_nr(scoord_kep, errstr)
+!!$    write(stdout,*)
+!!$    call matrix_print(kep_car, stdout, errstr)
+!!$    write(stdout,*)
+!!$    write(stdout,*) cond_nr(kep_car, errstr)
+!!$    write(stdout,*)
 
   END SUBROUTINE partialsSCoordWrtCartesian_i
 
@@ -8169,7 +8314,7 @@ CONTAINS
 
     CASE ("2-body")
 
-       IF (info_verb >= 4) THEN
+       IF (info_verb >= 5) THEN
           WRITE(stdout,"(2X,A,1X,A)") &
                "Orbit / propagate_Orb_multiple:", &
                "Preparing for 2-body propagation..."
@@ -8194,7 +8339,7 @@ CONTAINS
 
           CASE ("cartesian")
 
-             IF (info_verb >= 4) THEN
+             IF (info_verb >= 5) THEN
                 WRITE(stdout,"(2X,A,1X,A,I0,A)") &
                      "Orbit / propagate_Orb_multiple:", &
                      "Carrying out 2-body propagation for orbit #", i, "..."
@@ -8232,7 +8377,7 @@ CONTAINS
              END IF
              this_arr(i)%elements(1:3) = pos(1:3)
              this_arr(i)%elements(4:6) = vel(1:3)
-             IF (info_verb >= 4) THEN
+             IF (info_verb >= 5) THEN
                 WRITE(stdout,"(2X,A,1X,A,I0,A)") &
                      "Orbit / propagate_Orb_multiple:", &
                      "2-body propagation carried out for orbit #", i, "."
@@ -8362,7 +8507,7 @@ CONTAINS
              RETURN
           END IF
        END DO
-       IF (info_verb >= 3) THEN
+       IF (info_verb >= 4) THEN
           WRITE(stdout,"(2X,A,1X,I0)") "Number of standard perturbers:", &
                COUNT(this_arr(1)%perturbers_prm)
        END IF
@@ -8508,7 +8653,7 @@ CONTAINS
           END IF
        END DO
 
-       IF (info_verb >= 3) THEN
+       IF (info_verb >= 4) THEN
           WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
        END IF
        ALLOCATE(masses(nthis+naddit), stat=err)
@@ -9506,10 +9651,11 @@ CONTAINS
     REAL(bp), DIMENSION(0:3), INTENT(out) :: stumpff_cs, ffs
     INTEGER, INTENT(in)                   :: central_body
     REAL(bp), INTENT(out)                 :: s
-    INTEGER,  PARAMETER                   :: nnew = 8 ! 8
-    INTEGER,  PARAMETER                   :: nlag = 20 ! 20
+    INTEGER,  PARAMETER                   :: nnew = 40 ! 8
+    INTEGER,  PARAMETER                   :: nlag = 100 ! 20
     ! Care must be taken that tols is not too small!
     REAL(bp), PARAMETER                   :: tols = 1.0e-10_bp ! e-10
+    REAL(bp), PARAMETER                   :: toll = 1.0e+150_bp
     REAL(bp), DIMENSION(0:3)              :: stumpff_c
     REAL(bp)                              :: s_, ds, a, e, en, ec, es, tmp
     REAL(bp)                              :: ech, esh, x, y, sigma, dm, ln, mu_
@@ -9521,6 +9667,9 @@ CONTAINS
     ! For small ds, equal initial guesses for elliptic and hyperbolic motion;
     ! for large ds, separate initial guesses:
     IF (ABS(dt/r0) <= 0.2_bp) THEN
+       if (info_verb >= 4) then
+          write(stdout,*) "Small ds -> equal initial guess for e<1 and e>1 orbits..."
+       end if
        IF (ABS(r0**3.0_bp) < 10*EPSILON(r0)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / solveKeplerEquation", &
@@ -9540,7 +9689,10 @@ CONTAINS
           ! If alpha < 0, then mu < 0, and vice versa:
           en = SQRT(SIGN(mu_,alpha)/(a**3.0_bp))
        END IF
-       IF (alpha > 0.0_bp) THEN ! alpha positive -> elliptic motion
+       IF (alpha > epsilon(alpha)) THEN ! alpha positive -> elliptic motion
+          if (info_verb >= 4) then
+             write(stdout,*) "Large ds and alpha > 0 -> initial guess for e<1 orbit..."
+          end if
           ec = 1.0_bp - r0/a
           tmp = en*a**2.0_bp
           IF (ABS(tmp) < 10*EPSILON(tmp)) THEN
@@ -9557,7 +9709,10 @@ CONTAINS
           sigma = SIGN(1.0_bp,es*COS(y)+ec*SIN(y))
           x = y + sigma*0.85_bp*e
           s = x/SQRT(alpha)
-       ELSE ! alpha negative (or equal to zero) -> hyperbolic motion
+       ELSE if (alpha < -epsilon(alpha)) then ! alpha negative -> hyperbolic motion
+          if (info_verb >= 4) then
+             write(stdout,*) "Large ds and alpha < 0 -> initial guess for e>1 orbit..."
+          end if
           ech = 1.0_bp - r0/a
           tmp = SQRT(-a*mu_)
           esh = u/tmp
@@ -9578,6 +9733,11 @@ CONTAINS
              tmp = ech - esh
              s = -LOG((-2.0_bp*dm + 1.8_bp*e)/tmp)/SQRT(-alpha)
           END IF
+       ELSE
+          error = .TRUE.
+          CALL errorMessage("Orbit / solveKeplerEquation", &
+               "Large ds and alpha ~0 -> no initial guess for s...", 1)
+          RETURN
        END IF
     END IF
     s_ = s
@@ -9586,6 +9746,7 @@ CONTAINS
     n  = 0
     DO WHILE (n < nnew)
        n             = n + 1
+!write(*,*) "nnew", n, s, alpha, s**2.0_bp, s**2.0_bp * alpha
        x             = s**2.0_bp * alpha
        CALL getStumpffFunctions(x, stumpff_c)
        IF (error) THEN
@@ -9640,6 +9801,8 @@ CONTAINS
     n  = 0
     DO WHILE (n < nlag)
        n = n + 1
+!write(*,*) "nlag", n, s, r0, u, alpha, dt, central_body, stumpff_cs(0:3), ffs(0:2)
+!write(*,*) "nlag", n, s, stumpff_cs(0:3), ffs(0:2)
        x = s**2.0_bp * alpha
        CALL getStumpffFunctions(x, stumpff_c)
        IF (error) THEN
@@ -9654,12 +9817,18 @@ CONTAINS
        ffs(0)        = r0*stumpff_cs(1) + u*stumpff_cs(2) + mu_*stumpff_cs(3) - dt
        ffs(1)        = r0*stumpff_cs(0) + u*stumpff_cs(1) + mu_*stumpff_cs(2)
        ffs(2)        = (-r0*alpha+mu_)*stumpff_cs(1) + u*stumpff_cs(0)
-       tmp = ffs(1)+SIGN(1.0_bp,ffs(1))*SQRT(ABS((ln-1.0_bp)**2.0_bp*ffs(1)**2.0_bp - &
+       tmp = ffs(1)+SIGN(1.0_bp,ffs(1)) * &
+            SQRT(ABS((ln-1.0_bp)**2.0_bp*ffs(1)**2.0_bp - &
             (ln-1.0_bp)*ln*ffs(0)*ffs(2)))
        IF (ABS(tmp) < 10*EPSILON(ffs(1))) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / solveKeplerEquation", &
                "Division by zero (55).", 1)
+          RETURN
+       ELSE IF (ABS(ffs(1)) > toll) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / solveKeplerEquation", &
+               "tmp blew up.", 1)
           RETURN
        ELSE
           ds = -ln*ffs(0) / tmp

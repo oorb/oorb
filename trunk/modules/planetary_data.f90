@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012   !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -23,9 +23,9 @@
 !
 !! *Module*description*:
 !!
-!! Defines parameters relating to planets and minor planets in the 
+!! Defines parameters relating to planets and minor planets in the
 !! solar system, and contains the routines for using planetary
-!! ephemeris provided by the Jet Propulsion Laboratory.
+!! ephemerides provided by JPL and IMCCE.
 !!
 !! This software is partly based on <i>jplsub.f</i> (by JPL) and a
 !! Fortran 90 compilation of the same software by Hannu Karttunen 
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2012-01-09
+!! @version 2012-10-26
 !!
 MODULE planetary_data
 
@@ -61,12 +61,18 @@ MODULE planetary_data
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4
   INTEGER, PARAMETER            :: RECORD_SIZE_405 =  2036
   INTEGER, PARAMETER            :: RECORD_SIZE_406 =  1456
+  INTEGER, PARAMETER            :: RECORD_SIZE_INPOP10B =  1876
   INTEGER, PARAMETER            :: NCOEFF_405 = 1018
   INTEGER, PARAMETER            :: NCOEFF_406 = 728
+  INTEGER, PARAMETER            :: NCOEFF_INPOP10B = 938
   INTEGER, PARAMETER            :: NRECORD_MAX = 35000 ! Fits all of de405 and de406
-  REAL(rprec8), PARAMETER       :: ggc = 0.01720209895_rprec8
   REAL(rprec8), PARAMETER       :: kgm3_smau3 = (1.4959787066e8_rprec8)**3/1.989100e30
 
+  ! Planets' GMs are read from the ephemeris file 
+  ! Unit: AU^3 day^(-2)
+  REAL(rprec8), DIMENSION(17), PUBLIC :: planetary_mu
+  !! Masses are computed based on above GMs
+  REAL(rprec8), DIMENSION(17), PUBLIC :: planetary_masses
 
   CHARACTER(len=23), DIMENSION(13), PARAMETER, PUBLIC :: planetary_locations = (/ &
        "Mercury                ", &
@@ -103,27 +109,6 @@ MODULE planetary_data
        1.74802e-6_rprec8, &   !! (16) Pallas,
        1.67449e-6_rprec8  /)  !! (17) Vesta
 
-  ! Data from http://ssd.jpl.nasa.gov/ 
-  ! Unit: M_sol
-  REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_masses = (/ &
-       1.0_rprec8/6023600.0_rprec8, &                                      !!  (1) Mercury,
-       1.0_rprec8/408523.71_rprec8, &                                      !!  (2) Venus,
-       1.0_rprec8/(328900.56_rprec8*(1.0_rprec8+0.012300033739_rprec8)), & !!  (3) Earth, 
-       1.0_rprec8/3098708.0_rprec8, &                                      !!  (4) Mars,
-       1.0_rprec8/1047.3486_rprec8, &                                      !!  (5) Jupiter,
-       1.0_rprec8/3497.898_rprec8, &                                       !!  (6) Saturn,
-       1.0_rprec8/22902.98_rprec8, &                                       !!  (7) Uranus,
-       1.0_rprec8/19412.24_rprec8, &                                       !!  (8) Neptune,
-       1.0_rprec8/1.35e8_rprec8, &                                         !!  (9) Pluto,
-       1.0_rprec8/(328900.56_rprec8*(1.0_rprec8+81.30059_rprec8)), &       !! (10) Moon,
-       1.0_rprec8, &                                                       !! (11) Sun,
-       0.0_rprec8, &                                                       !! (12) solar system barycenter,
-       1.0_rprec8/328900.56_rprec8, &                                      !! (13) Earth-Moon barycenter,
-       0.0_rprec8, &                                                       !! (14) Asteroid,
-       1.0_rprec8/2099880378.8_rprec8, &                                   !! (15) Ceres,   GM=63.2
-       1.0_rprec8/9280590205.59_rprec8, &                                  !! (16) Pallas,  GM=14.3
-       1.0_rprec8/7455755052.81_rprec8  /)                                 !! (17) Vesta    GM=17.8
-
   ! Data from http://nssdc.gsfc.nasa.gov/planetary/planetfact.html
   ! Unit: M_sol AU^(-3)
   REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_densities = (/ &
@@ -144,25 +129,6 @@ MODULE planetary_data
        0.0_rprec8, &                             !! (15) Ceres,
        0.0_rprec8, &                             !! (16) Pallas,
        0.0_rprec8  /)                            !! (17) Vesta
-
-  ! Constants of gravitation (G*M)
-  ! Unit: AU^3 day^(-2)
-  REAL(rprec8), DIMENSION(14), PARAMETER, PUBLIC :: planetary_mu  = (/ &
-       ggc**2*planetary_masses(1), &             !!  (1) Mercury,
-       ggc**2*planetary_masses(2), &             !!  (2) Venus,
-                                !8.887692691e-10_rprec8, &                 !!  (3) Earth, in SI: 398600.4415e9_bp (IAU'94)
-       ggc**2*planetary_masses(3), &             !!  (3) Earth,
-       ggc**2*planetary_masses(4), &             !!  (4) Mars,
-       ggc**2*planetary_masses(5), &             !!  (5) Jupiter,
-       ggc**2*planetary_masses(6), &             !!  (6) Saturn,
-       ggc**2*planetary_masses(7), &             !!  (7) Uranus,
-       ggc**2*planetary_masses(8), &             !!  (8) Neptune,
-       ggc**2*planetary_masses(9), &             !!  (9) Pluto,
-       ggc**2*planetary_masses(10), &            !! (10) Moon,
-       ggc**2*planetary_masses(11), &            !! (11) Sun; ggc**2 * 1
-       ggc**2*planetary_masses(12), &            !! (12) solar system barycenter,
-       ggc**2*planetary_masses(13), &            !! (13) Earth-Moon barycenter,
-       0.0_rprec8 /)                             !! (14) Asteroid
 
   CHARACTER(len=6), DIMENSION(14,3)         :: ttl
   CHARACTER(len=6), DIMENSION(400)          :: cnam
@@ -310,6 +276,14 @@ CONTAINS
     ELSE IF (INDEX(fname,"406") /= 0) THEN
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_406, action='READ', iostat=err)
+    ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
+       OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
+            recl=RECORD_LENGTH*RECORD_SIZE_INPOP10B, action='READ', iostat=err)
+    ELSE
+       error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could select correct record length for file '" &
+            // TRIM(fname) // "'."
+       RETURN
     END IF
     IF (err /= 0) THEN
        error = .TRUE.
@@ -336,6 +310,13 @@ CONTAINS
        ALLOCATE(tmp(NCOEFF_405,NRECORD_MAX), stat=err)
     ELSE IF (INDEX(fname,"406") /= 0) THEN
        ALLOCATE(tmp(NCOEFF_406,NRECORD_MAX), stat=err)
+    ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
+       ALLOCATE(tmp(NCOEFF_INPOP10B,NRECORD_MAX), stat=err)
+    ELSE
+       error = .TRUE.
+       WRITE(0,*) "JPL_ephemeris_init(): Could select correct amount of memory for file '" &
+            // TRIM(fname) // "'."
+       RETURN
     END IF
     IF (err /= 0) THEN
        error = .TRUE.
@@ -359,6 +340,72 @@ CONTAINS
           END IF
        END IF
     END DO
+
+    ! Planets' and Moon's GMs
+    planetary_mu = 0.0_rprec8
+    IF (INDEX(fname,"405") /= 0 .OR. INDEX(fname,"406") /= 0) THEN
+
+       !  (1) Mercury,
+       !  (2) Venus,
+       !  (3) Earth, 
+       !  (4) Mars,
+       !  (5) Jupiter,
+       !  (6) Saturn,
+       !  (7) Uranus,
+       !  (8) Neptune,
+       !  (9) Pluto,
+       planetary_mu(1:9) = cval(9:17)
+       ! remove Moon from EMS's GM to get Earth's GM
+       planetary_mu(3) = planetary_mu(3)*(1.0_rprec8 - 1.0_rprec8/emrat) 
+       ! (10) Moon,
+       planetary_mu(10) = planetary_mu(3)/emrat
+       ! (11) Sun,
+       planetary_mu(11) = cval(18)
+       ! (12) solar system barycenter,
+       planetary_mu(12) = SUM(planetary_mu(1:11))
+       ! (13) Earth-Moon barycenter,
+       planetary_mu(13) = cval(11) 
+
+    ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
+
+       !  (1) Mercury,
+       !  (2) Venus,
+       !  (3) Earth, 
+       !  (4) Mars,
+       !  (5) Jupiter,
+       !  (6) Saturn,
+       !  (7) Uranus,
+       !  (8) Neptune,
+       !  (9) Pluto,
+       planetary_mu(1:9) = cval(7:15)
+       ! remove Moon from EMS's GM to get Earth's GM
+       planetary_mu(3) = planetary_mu(3)*(1.0_rprec8 - 1.0_rprec8/emrat) 
+       ! (10) Moon,
+       planetary_mu(10) = planetary_mu(3)/emrat
+       ! (11) Sun,
+       planetary_mu(11) = cval(16)
+       ! (12) solar system barycenter,
+       planetary_mu(12) = SUM(planetary_mu(1:11))
+       ! (13) Earth-Moon barycenter,
+       planetary_mu(13) = cval(9) 
+
+    END IF
+
+    ! Planets' and Moon's mass
+    ! Unit: M_sol
+    planetary_masses = planetary_mu/planetary_mu(11)
+
+!!$    do i=1,13
+!!$       write(*,"(I2,1X,A23,1X,E20.12,1X,F20.10)") &
+!!$            i, planetary_locations(i), &
+!!$            planetary_mu(i), 1.0_rprec8/planetary_masses(i)
+!!$    end do
+!!$
+!!$    do i=1,size(cval)
+!!$       write(*,"(I3,1X,E20.12)") &
+!!$            i, cval(i)
+!!$    end do
+
     ALLOCATE(buf(SIZE(tmp,dim=1),i), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.

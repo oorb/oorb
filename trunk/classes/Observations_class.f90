@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2011-08-18
+!! @version 2012-10-26
 !!  
 MODULE Observations_cl
 
@@ -1261,6 +1261,7 @@ CONTAINS
        DEALLOCATE(getBlockDiagInformationMatrix, stat=err)
        RETURN
     END IF
+
     getBlockDiagInformationMatrix = 0.0_bp
     DO i=1,this%nobs
        ! The covariance matrix can be inverted separately for
@@ -3123,6 +3124,7 @@ CONTAINS
     CHARACTER(len=132), DIMENSION(5) :: records
     CHARACTER(len=132) :: record
     CHARACTER(len=124) :: line1, line2, line_, str, filter, obstype
+    CHARACTER(len=7) :: nr_str
     CHARACTER(len=4) :: timescale, obsy_code
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr
     REAL(bp), DIMENSION(6,6) :: covariance
@@ -3133,7 +3135,7 @@ CONTAINS
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
          rmin, rarcmin, mag_unc, s2n
     INTEGER :: i, j, err, nr, year, month, hour, min, deg, arcmin, &
-         nlines, coord_unit, indx, iobs, irecord, norb
+         nlines, coord_unit, indx, iobs, irecord, norb, ccd
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat
 
@@ -4468,21 +4470,21 @@ CONTAINS
 
           CALL NEW(t, mjd_utc + dt, "utc")
           IF (error) THEN
-             CALL errorMessage("Observations / readGAIAFile", &
+             CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
              DEALLOCATE(element_arr, stat=err)
              RETURN
           END IF
           obsy = getObservatory(obsies, "500")
           IF (error) THEN
-             CALL errorMessage("Observations / readGaiaFile", &
+             CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (120)", 1)
              DEALLOCATE(element_arr, stat=err)
              RETURN
           END IF
           obsy_ccoord = getObservatoryCCoord(obsies, "500", t)
           IF (error) THEN
-             CALL errorMessage("Observations / readGaiaFile", &
+             CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (125)", 1)
              DEALLOCATE(element_arr, stat=err)
              RETURN
@@ -4512,7 +4514,7 @@ CONTAINS
           position(2:3) = coordinates(2:3)
           CALL NEW(obs_scoord, position, velocity, "equatorial", t)
           IF (error) THEN
-             CALL errorMessage("Observations / readGAIAFile", &
+             CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (130)", 1)
              DEALLOCATE(element_arr, stat=err)
              RETURN
@@ -4524,7 +4526,7 @@ CONTAINS
                obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
                obsy=obsy, obsy_ccoord=obsy_ccoord)
           IF (error) THEN
-             CALL errorMessage("Observations / readGAIAFile", &
+             CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (135)", 1)
              DEALLOCATE(element_arr, stat=err)
              RETURN
@@ -4544,6 +4546,101 @@ CONTAINS
                "Could not deallocate memory.", 1)
           RETURN
        END IF
+
+    CASE ("gaia3")
+
+       covariance = 0.0_bp
+       position = 0.0_bp
+       velocity = 0.0_bp
+       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+       ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
+       mjd_utc = 55197.0_bp
+       i = 0
+       DO
+
+          READ(getUnit(obsf), "(A)", iostat=err, advance="NO") nr_str
+          IF (err > 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file.", 1)
+             RETURN
+          ELSE IF (err < 0) THEN ! end-of-file
+             EXIT
+          ELSE IF (nr_str(1:1) == "#") THEN
+             READ(getUnit(obsf), "(A)", iostat=err) nr_str
+             CYCLE
+          END IF
+          READ(getUnit(obsf), *, iostat=err) ccd, dt, position(2), &
+               position(3), covariance(2,2), covariance(2,3), covariance(3,3), &
+               coordinates(1:6)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file.", 1)
+             RETURN
+          END IF
+          covariance(3,2) = covariance(2,3)
+
+          i = i + 1
+          IF (i == 1) THEN
+             discovery = .TRUE.
+          ELSE
+             discovery = .FALSE.
+          END IF
+          CALL toInt(nr_str, nr, error)
+
+          CALL NEW(t, mjd_utc + dt, "utc")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+          obsy = getObservatory(obsies, "247")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (120)", 1)
+             RETURN
+          END IF
+          CALL NEW(obsy_ccoord, coordinates, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (125)", 1)
+             RETURN
+          END IF
+          CALL NEW(obs_scoord, position, velocity, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (130)", 1)
+             RETURN
+          END IF
+          satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
+          CALL rotateToEquatorial(satellite_ccoord)
+          CALL rotateToEquatorial(obsy_ccoord)
+          coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+          CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+          CALL NULLIFY(this%obs_arr(i))
+          CALL NEW(this%obs_arr(i), number=nr, designation=" ", &
+               discovery=discovery, note1=" ", note2="S", &
+               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
+               obsy=obsy, obsy_ccoord=obsy_ccoord, &
+               satellite_ccoord=satellite_ccoord, &
+               coord_unit=2)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (135)", 1)
+             RETURN
+          END IF
+
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+
+       END DO
 
     CASE ("elgb")
 
