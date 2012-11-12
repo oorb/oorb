@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2011,2012                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2011-01-26
+!! @version 2012-11-12
 !!
 MODULE PhysicalParameters_cl
 
@@ -44,7 +44,7 @@ MODULE PhysicalParameters_cl
   USE planetary_data
   USE linal
   USE sort
-  use statistics
+  USE statistics
 
   IMPLICIT NONE
 
@@ -74,19 +74,19 @@ MODULE PhysicalParameters_cl
   INTERFACE NEW
      MODULE PROCEDURE new_PP
      MODULE PROCEDURE new_PP_storb
-  END INTERFACE
+  END INTERFACE NEW
 
   INTERFACE NULLIFY
      MODULE PROCEDURE nullify_PP
-  END INTERFACE
+  END INTERFACE NULLIFY
 
   INTERFACE copy
      MODULE PROCEDURE copy_PP
-  END INTERFACE
+  END INTERFACE copy
 
   INTERFACE exist
      MODULE PROCEDURE exist_PP
-  END INTERFACE
+  END INTERFACE exist
 
 CONTAINS
 
@@ -376,9 +376,13 @@ CONTAINS
           END DO
           this%H0_arr(i,1) = SUM(H_arr)/nmag
           this%H0_arr(i,2) = 0.0_bp
+          IF (info_verb >= 3) THEN
+             WRITE(stdout,*) "H0_arr: ", this%H0_arr(i,:), &
+                  "   G_arr: ", this%G_arr(i,:) 
+          END IF
        END DO
        IF (info_verb >= 2) THEN
-          WRITE(*,*) "H0_min: ", MINVAL(this%H0_arr(:,1)-this%H0_arr(:,2)), &
+          WRITE(stdout,*) "H0_min: ", MINVAL(this%H0_arr(:,1)-this%H0_arr(:,2)), &
                "  H0_max: ", MAXVAL(this%H0_arr(:,1)+this%H0_arr(:,2))
        END IF
     ELSE
@@ -393,7 +397,7 @@ CONTAINS
        this%H0_nominal = SUM(H_arr)/nmag
        this%H0_unc = 0.0_bp
        IF (info_verb >= 2) THEN
-          WRITE(*,*) "H0: ", this%H0_nominal, "  dH0: ", this%H0_unc
+          WRITE(stdout,*) "H0: ", this%H0_nominal, "  dH0: ", this%H0_unc
        END IF
     END IF
 
@@ -473,6 +477,11 @@ CONTAINS
     obs_mag_arr => getMagnitudes(obss)
     obs_mag_unc_arr => getMagnitudeUncertainties(obss)
     filter_arr => getFilters(obss)
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / estimateHAndG", &
+            "TRACE BACK (5).", 1)
+       RETURN
+    END IF
     IF (info_verb >= 2) THEN
        WRITE(stdout,*) "Photometry extracted..."
     END IF
@@ -528,6 +537,11 @@ CONTAINS
           helio_dist_arr(j,i) = SQRT(SUM(coordinates(1:3)**2.0_bp))
           coordinates = getCoordinates(ephemerides_arr(j,i))
           topo_dist_arr(j,i) = coordinates(1)
+          IF (error) THEN
+             CALL errorMessage("PhysicalParameters / estimateHAndG", &
+                  "TRACE BACK (15).", 1)
+             RETURN
+          END IF
        END DO
        IF (info_verb >= 3) THEN
           WRITE(stdout,*) coordinates(2:3)/rad_deg
@@ -535,6 +549,11 @@ CONTAINS
     END DO
     CALL getPhaseAngles(this%storb, obsy_ccoord_arr, &
          phase_angle_arr)
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / estimateHAndG", &
+            "TRACE BACK (20).", 1)
+       RETURN
+    END IF
     IF (info_verb >= 2) THEN
        WRITE(stdout,*) "Phase angles and distances computed..."
     END IF
@@ -554,11 +573,20 @@ CONTAINS
                   this%H0_arr(i,1), this%H0_arr(i,2), this%G_arr(i,1), &
                   this%G_arr(i,2))
           END IF
+          IF (error) THEN
+             CALL errorMessage("PhysicalParameters / estimateHAndG", &
+                  "TRACE BACK (25).", 1)
+             RETURN
+          END IF
+          IF (info_verb >= 3) THEN
+             WRITE(stdout,*) "H0_arr: ", this%H0_arr(i,:), &
+                  "   G_arr: ", this%G_arr(i,:) 
+          END IF
        END DO
        IF (info_verb >= 2) THEN
-          WRITE(*,*) "H0_min: ", MINVAL(this%H0_arr(:,1)-this%H0_arr(:,2)), &
+          WRITE(stdout,*) "H0_min: ", MINVAL(this%H0_arr(:,1)-this%H0_arr(:,2)), &
                "  H0_max: ", MAXVAL(this%H0_arr(:,1)+this%H0_arr(:,2))
-          WRITE(*,*) "G_min:  ", MINVAL(this%G_arr(:,1)-this%G_arr(:,2)), &
+          WRITE(stdout,*) "G_min:  ", MINVAL(this%G_arr(:,1)-this%G_arr(:,2)), &
                "  G_max:  ", MAXVAL(this%G_arr(:,1)+this%G_arr(:,2))
        END IF
     ELSE
@@ -573,9 +601,14 @@ CONTAINS
                this%H0_nominal, this%H0_unc, this%G_nominal, &
                this%G_unc)
        END IF
+       IF (error) THEN
+          CALL errorMessage("PhysicalParameters / estimateHAndG", &
+               "TRACE BACK (30).", 1)
+          RETURN
+       END IF
        IF (info_verb >= 2) THEN
-          WRITE(*,*) "H0: ", this%H0_nominal, "  dH0: ", this%H0_unc
-          WRITE(*,*) "G:  ", this%G_nominal,  "  dG:  ", this%G_unc
+          WRITE(stdout,*) "H0: ", this%H0_nominal, "  dH0: ", this%H0_unc
+          WRITE(stdout,*) "G:  ", this%G_nominal,  "  dG:  ", this%G_unc
        END IF
     END IF
 
@@ -618,6 +651,31 @@ CONTAINS
          G*phi(2)) + 5.0_bp*LOG10(r*Delta)
 
   END FUNCTION getApparentMagnitude
+
+
+
+
+
+  !! *Description*:*
+  !!
+  !! The apparent cometary magnitude using theory reviewed in Cook et
+  !! al. 2012, in prep.
+  !!
+  REAL(bp) FUNCTION getApparentCometaryMagnitude(H10, G, r, Delta, phase_angle, n)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: H10, G, r, Delta, phase_angle, n
+
+    REAL(bp), DIMENSION(2) :: phi
+
+    phi = HGPhaseFunctions(phase_angle)
+
+    getApparentCometaryMagnitude = &
+         H10 - &
+         2.5_bp*LOG10((1.0_bp - G)*phi(1) + G*phi(2)) + &
+         2.5_bp*(0.5_bp*n*LOG10(r**2) + LOG10(Delta**2))
+
+  END FUNCTION getApparentCometaryMagnitude
 
 
 
@@ -767,6 +825,20 @@ CONTAINS
        !phi_arr(i,1:2) = simplifiedHGPhaseFunctions(phase_angle_arr(i))
     END DO
 
+    IF (ANY(obs_mag_unc_arr == 0.0_bp)) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / HG", &
+            "One or more reported brightness uncertainties are equal to zero.", 1)
+       RETURN       
+    END IF
+
+    IF (SIZE(obs_mag_arr) < 3) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / HG", &
+            "Needs 3 or more brightness measurements to estimate uncertainty on H and/or G.", 1)
+       RETURN       
+    END IF
+
     IF (PRESENT(input_G)) THEN
 
        ! Compute nominal LS value for H(alpha=0) assuming fixed G
@@ -906,20 +978,6 @@ CONTAINS
 
   END FUNCTION HGPhaseFunctions
 
-
-
-
-
-  !! MCMC mass estimation algorithm
-  SUBROUTINE massEstimation_mcmc(this, perturber_arr, proposal_density_masses, estimated_masses)
-
-    IMPLICIT NONE
-    TYPE (StochasticOrbit), INTENT(in) :: this
-    TYPE (StochasticOrbit), DIMENSION(:), INTENT(in) :: perturber_arr
-    REAL(bp), DIMENSION(:), INTENT(in) :: proposal_density_masses
-    REAL(bp), DIMENSION(:,:), POINTER :: estimated_masses
-
-  END SUBROUTINE massEstimation_mcmc
 
 
 
