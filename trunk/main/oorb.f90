@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2012-10-26
+!! @version 2013-03-07
 !!
 PROGRAM oorb
 
@@ -312,6 +312,7 @@ PROGRAM oorb
        compress, &
        cos_gaussian, &
        first, &
+       force_earth_impact_at_epoch, &
        force_pdf, &
        gaussian_rho, &
        generat_gaussian_deviates, &
@@ -582,6 +583,9 @@ PROGRAM oorb
                    "Could not read orbit file.", 1)
               STOP
            END IF
+           DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
+              id_arr_in(i) = "0" // TRIM(id_arr_in(i))
+           END DO
         END DO
         CALL NULLIFY(orb_in_file)
 
@@ -734,6 +738,11 @@ PROGRAM oorb
         id_arr_in => reallocate(id_arr_in, norb)
         orb_arr_in => reallocate(orb_arr_in, norb)
         HG_arr_in => reallocate(HG_arr_in, norb, 4)
+        DO i=1,SIZE(id_arr_in)
+           DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
+              id_arr_in(i) = "0" // TRIM(id_arr_in(i))
+           END DO
+        END DO
 
      CASE default
 
@@ -2361,7 +2370,7 @@ PROGRAM oorb
               WRITE(stderr,"(2X,I0)") sor_type_prm
            END IF
            STOP              
-        END SELECT           
+        END SELECT
         IF (error) THEN
            CALL errorMessage("oorb / mcmcranging", &
                 "MCMC failed:", 1)
@@ -2664,6 +2673,9 @@ PROGRAM oorb
 
      ! Orbit optimization using the downhill simplex method.
 
+     force_earth_impact_at_epoch = &
+          get_cl_option("--force-earth-impact-at-epoch", .FALSE.)
+
      ALLOCATE(orb_arr_(7))
 
      CALL NULLIFY(epoch)
@@ -2865,7 +2877,8 @@ PROGRAM oorb
                  STOP
               END IF
            END DO
-           CALL simplexOrbits(storb, orb_arr_)
+           CALL simplexOrbits(storb, orb_arr_, &
+                force_earth_impact_at_epoch=force_earth_impact_at_epoch)
            IF (.NOT.error) THEN
               EXIT
            ELSE IF (j + 13 < norb) THEN
@@ -6513,6 +6526,7 @@ PROGRAM oorb
 
      ELSE
 
+        first = .TRUE.
         dt = get_cl_option("--delta-epoch-mjd=", 0.0_bp)
 
         IF (info_verb >= 2) THEN
@@ -6631,7 +6645,6 @@ PROGRAM oorb
 
            ! Loop over the integration interval and output
            ! intermediate results during each step if requested
-           first = .TRUE. ! cycle at least once for printing purposes
            DO WHILE (first .OR. &
                 (output_interval > 0.0_bp .AND. mjd < mjd1) .OR. &
                 (output_interval < 0.0_bp .AND. mjd > mjd1))
@@ -6729,6 +6742,7 @@ PROGRAM oorb
            orb_arr => getSampleOrbits(storb_arr_in(i), probability_mass, force_pdf=force_pdf)
 
            DO j=1,SIZE(orb_arr)
+
               IF (orbit_format_out == "des") THEN
                  CALL writeDESOrbitFile(lu_orb_out, & 
                       first, element_type_out_prm, &
@@ -6963,6 +6977,11 @@ PROGRAM oorb
                  CYCLE
               END IF
               observers => getObservatoryCCoords(obss_sep(k))
+              IF (error) THEN
+                 CALL errorMessage('oorb / ephemeris', &
+                      'TRACE BACK (35)',1)
+                 STOP
+              END IF
               IF (info_verb >= 3) THEN
                  WRITE(stdout,"(9(1X,A17))") "GEO2OBSY X [KM]", &
                       "GEO2OBSY Y [KM]", "GEO2OBSY Z [KM]", &
@@ -6985,7 +7004,11 @@ PROGRAM oorb
                  CALL rotateToEquatorial(observers(j))
               END DO
               obsy_code_arr => getObservatoryCodes(obss_sep(k))
-              CALL NULLIFY(obss_sep(k))
+              IF (error) THEN
+                 CALL errorMessage('oorb / ephemeris', &
+                      'TRACE BACK (40)',1)
+                 STOP
+              END IF
            ELSE
               t = getTime(orb_arr_in(i))
               mjd_tt = getMJD(t, "TT")
@@ -7187,7 +7210,7 @@ PROGRAM oorb
               ! Compute apparent brightness:
               ! Input slope parameter
               G_value = get_cl_option("--G=", HG_arr_in(i,3))
-              obj_vmag = getApparentMagnitude(H=HG_arr_in(i,1), &
+              obj_vmag = getApparentHGMagnitude(H=HG_arr_in(i,1), &
                    G=G_value, r=SQRT(heliocentric_r2), &
                    Delta=Delta, phase_angle=obj_phase)
               IF (error) THEN
@@ -7330,18 +7353,18 @@ PROGRAM oorb
 
         END DO
 
-        IF (ASSOCIATED(obss_sep)) THEN
-           first = .TRUE.
-           DO i=1,SIZE(obss_sep)
-              IF (exist(obss_sep(i))) THEN
-                 IF (first) THEN
-                    WRITE(stderr,"(A)") "Orbit missing for the following observation set(s):"
-                    first = .FALSE.
-                 END IF
-                 WRITE(stderr,"(A)") TRIM(id_arr(i))
-              END IF
-           END DO
-        END IF
+!!$        IF (ASSOCIATED(obss_sep)) THEN
+!!$           first = .TRUE.
+!!$           DO i=1,SIZE(obss_sep)
+!!$              IF (exist(obss_sep(i))) THEN
+!!$                 IF (first) THEN
+!!$                    WRITE(stderr,"(A)") "Orbit missing for the following observation set(s):"
+!!$                    first = .FALSE.
+!!$                 END IF
+!!$                 WRITE(stderr,"(A)") TRIM(id_arr(i))
+!!$              END IF
+!!$           END DO
+!!$        END IF
 
      END IF
 
@@ -7372,8 +7395,8 @@ PROGRAM oorb
                 "uncertainty information required for this task.", 1)        
            STOP
         END IF
-        ! Propagate input orbital-element pdf to Keplerian-element pdf:
-        CALL toKeplerian(storb_arr_in(i))
+        ! Propagate input orbital-element pdf to cometary pdf:
+        !CALL toCometary(storb_arr_in(i))
         ! Compute weights for each class that has been defined:
         CALL getGroupWeights(storb_arr_in(i), weight_arr, group_name_arr)
         ! Write output
@@ -7413,8 +7436,8 @@ PROGRAM oorb
                 "uncertainty information required for this task.", 1)        
            STOP
         END IF
-        ! Propagate input orbital-element pdf to Keplerian-element pdf:
-        CALL toKeplerian(storb_arr_in(i))
+        ! Propagate input orbital-element pdf to cometary pdf:
+        !CALL toCometary(storb_arr_in(i))
         ! Compute weights for each class that has been defined:
         CALL getGroupWeights(storb_arr_in(i), weight_arr, group_name_arr)
         weight_arr(5) = weight_arr(5)*35.0_bp
@@ -7469,7 +7492,7 @@ PROGRAM oorb
              planetary_masses(11), elements(1), elements(2))
      END DO
      DEALLOCATE(planeph)
-!write(*,*) planetary_mu
+     !write(*,*) planetary_mu
      ! JPL_ephemeris PRODUCES BOGUS RESULTS FOR EMB 
      !planeph => JPL_ephemeris(mjd_tt, 13, 11, error)
      !call new(ccoord, planeph(1,:), "equatorial", epoch)
@@ -7659,6 +7682,10 @@ PROGRAM oorb
 
      ! Input maximum phase of Moon
      lunar_phase_max = get_cl_option("--lunar-phase-max=", 1.0_bp) ! 1
+
+     IF (.NOT.get_cl_option("--cometary-magnitude", .FALSE.)) THEN
+        obj_vmag_cometary = -99.0_bp
+     END IF
 
      CALL NEW(obsies)
      IF (error) THEN
@@ -7915,7 +7942,7 @@ PROGRAM oorb
               obj_phase = ACOS(cos_obj_phase)
 
               ! Compute apparent brightness:
-              obj_vmag = getApparentMagnitude(H=H_value, &
+              obj_vmag = getApparentHGMagnitude(H=H_value, &
                    G=G_value, r=SQRT(heliocentric_r2), &
                    Delta=Delta, phase_angle=obj_phase)
               IF (error) THEN
@@ -7933,7 +7960,7 @@ PROGRAM oorb
                          'TRACE BACK (70)',1)
                     STOP
                  END IF
-                 IF (elements(6) < mjd_tt) THEN
+                 IF (mjd_tt < elements(6)) THEN
                     n = 5.0_bp
                  ELSE
                     n = 3.5_bp
@@ -8116,19 +8143,22 @@ PROGRAM oorb
 
               IF (istep == minstep) THEN
                  DO k=1,istep
-                    WRITE(lu,'(I0,1X,2(A,1X),37(F18.10,1X))') i, &
+                    WRITE(lu,'(I0,1X,2(A,1X),41(F18.10,1X))') i, &
                          id_arr_in(i), TRIM(obsy_code), &
-                         temp_arr(k,:), H_value, G_value
+                         temp_arr(k,:), H_value, G_value, diameter, &
+                         geometric_albedo, obj_vmag_cometary, H10_value
                  END DO
               ELSE IF (istep > minstep) THEN
-                 WRITE(lu,'(I0,1X,2(A,1X),37(F18.10,1X))') &
+                 WRITE(lu,'(I0,1X,2(A,1X),41(F18.10,1X))') &
                       i, id_arr_in(i), TRIM(obsy_code), mjd_utc, Delta, &
                       ra, dec, dDelta, dra, ddec, obj_vmag, obj_alt, &
                       obj_phase, lunar_elongation, lunar_alt, &
                       lunar_phase, solar_elongation, solar_alt, hdist, &
                       hlon, hlat, tlon, tlat, toclon, toclat, hoclon, &
                       hoclat, opplon, opplat, h_ecl_car_coord_obj, &
-                      h_ecl_car_coord_obsy(1:3), H_value, G_value
+                      h_ecl_car_coord_obsy(1:3), H_value, G_value, &
+                      diameter, geometric_albedo,  &
+                      obj_vmag_cometary, H10_value
               END IF
 
            END DO
@@ -8369,7 +8399,7 @@ PROGRAM oorb
                     H_value = get_cl_option("--H=", HG_arr_storb_in(i,k,1))
                     ! Input slope parameter
                     G_value = get_cl_option("--G=", HG_arr_storb_in(i,k,3))
-                    temp_arr(k,3) = getApparentMagnitude(H=H_value, &
+                    temp_arr(k,3) = getApparentHGMagnitude(H=H_value, &
                          G=G_value, r=SQRT(heliocentric_r2), &
                          Delta=Delta, phase_angle=obj_phase)
                     IF (error) THEN
@@ -8500,7 +8530,7 @@ PROGRAM oorb
                  H_value = get_cl_option("--H=", HG_arr_storb_in(i,1,1))
                  ! Input slope parameter
                  G_value = get_cl_option("--G=", HG_arr_storb_in(i,1,3))
-                 temp_arr(1,3) = getApparentMagnitude(H=H_value, &
+                 temp_arr(1,3) = getApparentHGMagnitude(H=H_value, &
                       G=G_value, r=SQRT(heliocentric_r2), &
                       Delta=Delta, phase_angle=obj_phase)
                  IF (error) THEN
@@ -8772,6 +8802,7 @@ PROGRAM oorb
            STOP
         END IF
         DO 
+           id = ""
            READ(getUnit(tmp_file),"(A)",iostat=err) id
            IF (err < 0) THEN
               EXIT
