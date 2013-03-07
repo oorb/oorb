@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -24,12 +24,13 @@
 !! *Class*description*: 
 !!
 !! Type and routines for various physical parameters such as absolute
-!! magnitude H and slope parameter G.
+!! magnitude H and slope parameter G and the new H,G1,G2 and H,G12
+!! systems.
 !!
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2012-11-12
+!! @version 2013-03-07
 !!
 MODULE PhysicalParameters_cl
 
@@ -639,7 +640,7 @@ CONTAINS
   !!
   !! The apparent magnitude from the H,G magnitude system.
   !!
-  REAL(bp) FUNCTION getApparentMagnitude(H, G, r, Delta, phase_angle)
+  REAL(bp) FUNCTION getApparentHGMagnitude(H, G, r, Delta, phase_angle)
 
     IMPLICIT NONE
     REAL(bp), INTENT(in) :: H, G, r, Delta, phase_angle
@@ -647,10 +648,67 @@ CONTAINS
     REAL(bp), DIMENSION(2) :: phi
 
     phi = HGPhaseFunctions(phase_angle)
-    getApparentMagnitude = H - 2.5_bp*LOG10((1.0_bp - G)*phi(1) + &
+    getApparentHGMagnitude = H - 2.5_bp*LOG10((1.0_bp - G)*phi(1) + &
          G*phi(2)) + 5.0_bp*LOG10(r*Delta)
 
-  END FUNCTION getApparentMagnitude
+    !write(*,*) 'asteroidal:', H, - 2.5_bp*LOG10((1.0_bp - G)*phi(1) + &
+    !         G*phi(2)), 5.0_bp*LOG10(r*Delta), 2.5_bp*(LOG10(r**2)+log10(Delta**2))
+
+  END FUNCTION getApparentHGMagnitude
+
+
+
+
+
+  !! *Description*:*
+  !!
+  !! Returns the apparent magnitude from the H,G1,G2 magnitude system
+  !! (see Muinonen et al. 2010, Icarus, 209, 542-555 for details).
+  !!
+  REAL(bp) FUNCTION getApparentHG1G2Magnitude(H, G1, G2, r, Delta, phase_angle)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: H, G1, G2, r, Delta, phase_angle
+
+    REAL(bp), DIMENSION(3) :: phi
+
+    phi = HG1G2BasisFunctions(phase_angle)
+    getApparentHG1G2Magnitude = H - 2.5_bp*LOG10(G1*phi(1) + G2*phi(2) + &
+         (1.0_bp - G1 - G2)*phi(3)) + 5.0_bp*LOG10(r*Delta)
+
+  END FUNCTION getApparentHG1G2Magnitude
+
+
+
+
+
+  !! *Description*:*
+  !!
+  !! Returns the apparent magnitude from the H,G12 magnitude system
+  !! (see Muinonen et al. 2010, Icarus, 209, 542-555 for details).
+  !!
+  REAL(bp) FUNCTION getApparentHG12Magnitude(H, G12, r, Delta, phase_angle)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: H, G12, r, Delta, phase_angle
+
+    REAL(bp), DIMENSION(3) :: phi
+    REAL(bp) :: G1, G2
+
+    IF (G12 < 0.2_bp) THEN
+       G1 = 0.7527_bp*G12 + 0.06164_bp
+       G2 = -0.9612_bp*G12 + 0.6270_bp
+    ELSE
+       G1 = 0.9529_bp*G12 + 0.02162_bp
+       G2 = -0.6125_bp*G12 + 0.5572_bp
+    END IF
+
+    phi = HG1G2BasisFunctions(phase_angle)
+
+    getApparentHG12Magnitude = H - 2.5_bp*LOG10(G1*phi(1) + G2*phi(2) + &
+         (1.0_bp - G1 - G2)*phi(3)) + 5.0_bp*LOG10(r*Delta)
+
+  END FUNCTION getApparentHG12Magnitude
 
 
 
@@ -822,7 +880,7 @@ CONTAINS
 
     DO i=1,SIZE(reduced_mag_arr)
        phi_arr(i,1:2) = HGPhaseFunctions(phase_angle_arr(i))
-       !phi_arr(i,1:2) = simplifiedHGPhaseFunctions(phase_angle_arr(i))
+       !phi_arr(i,1:2) = simplifiedHGPhaseFunctions(phase_angle_arr(i))    
     END DO
 
     IF (ANY(obs_mag_unc_arr == 0.0_bp)) THEN
@@ -978,6 +1036,198 @@ CONTAINS
 
   END FUNCTION HGPhaseFunctions
 
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the values of the basis functions phi1, phi2 and phi3 of
+  !! the H,G1,G2 system at the given phase angle (see Muinonen et
+  !! al. 2010, Icarus, 209, 542-555 for details).
+  !!
+  !! Based on implementation by H. Penttilä.
+  !!
+  FUNCTION HG1G2BasisFunctions(phase_angle)
+
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(3) :: HG1G2BasisFunctions
+    REAL(bp), INTENT(in) :: phase_angle
+
+    ! The following splines for basis functions phi1, phi2 and phi3
+    ! are defined in Muinonen et al. (2010, Icarus 209, 542-555) and
+    ! the derivatives are computed using an algorithm based on the
+    ! public sw produced by H. Penttilä. The knots12 and knots3 arrays
+    ! contain phase angle at knot, value of basis function at knot,
+    ! and derivative at knot for each spline representation
+    ! (i=function, j=knot, k=(angle,value,derivative)).
+
+    ! phi1 and phi2 
+    REAL(bp), DIMENSION(2,6,3), PARAMETER :: knots12 = RESHAPE((/ &
+         0.13089969389957470_bp, 0.13089969389957470_bp, &
+         0.52359877559829882_bp, 0.52359877559829882_bp, &
+         1.0471975511965976_bp, 1.0471975511965976_bp, &
+         1.5707963267948966_bp, 1.5707963267948966_bp, &
+         2.0943951023931953_bp, 2.0943951023931953_bp, &
+         2.6179938779914944_bp, 2.6179938779914944_bp, &
+         0.75000000000000000_bp, 0.92500000000000004_bp, &
+         0.33486016000000002_bp, 0.62884169000000001_bp, &
+         0.13410559999999999_bp, 0.31755495000000000_bp, &
+         5.11047560000000012E-002_bp, 0.12716367000000001_bp, &
+         2.14656870000000007E-002_bp, 2.23739030000000005E-002_bp, &
+         3.63969890000000011E-003_bp, 1.65056890000000008E-004_bp, &
+         -1.9098593171027440_bp, -0.57295779513082323_bp, &
+         -0.55463432402954305_bp, -0.76705367127692980_bp, &
+         -0.24404598605661942_bp, -0.45665789025666331_bp, &
+         -9.49804380669390519E-002_bp, -0.28071808974438800_bp, &
+         -2.14114236377018034E-002_bp, -0.11173256930106369_bp, &
+         -9.13286120000000035E-002_bp, -8.65731380000000014E-008_bp &
+         /), (/ 2,6,3 /))
+    ! phi3
+    REAL(bp), DIMENSION(9,3) :: knots3 = RESHAPE((/ &
+         0.00000000000000000E+000_bp, 5.23598775598298812E-003_bp, &
+         1.74532925199432955E-002_bp, 3.49065850398865909E-002_bp, &
+         6.98131700797731819E-002_bp, 0.13962634015954636_bp, &
+         0.20943951023931956_bp, 0.34906585039886590_bp, &
+         0.52359877559829882_bp, 1.0000000000000000_bp, &
+         0.83381185000000002_bp, 0.57735424000000002_bp, &
+         0.42144772000000003_bp, 0.23174230000000001_bp, &
+         0.10348178000000000_bp, 6.17334729999999970E-002_bp, &
+         1.61070060000000001E-002_bp, 0.00000000000000000E+000_bp, &
+         -0.10630096999999999_bp, -41.180439484750558_bp, &
+         -10.366914741841031_bp, -7.5784614901018310_bp, &
+         -3.6960950182737276_bp, -0.78605651603897575_bp, &
+         -0.46527011787268774_bp, -0.20459544750797629_bp, &
+         0.00000000000000000E+000_bp /), (/ 9, 3 /))
+
+    REAL(bp) :: phase_angle_lo, phase_angle_hi, &
+         basis_function_lo, basis_function_hi, &
+         phase_angle_derivative_lo, phase_angle_derivative_hi, &
+         Delta_phase_angle, Delta_basis_function, &
+         a, b, t
+    INTEGER :: i, j
+
+    ! Basis functions 1 and 2
+    IF (phase_angle < 7.5_bp*rad_deg) THEN
+       DO i=1,2
+          HG1G2BasisFunctions(i) = & 
+               (phase_angle - knots12(i,1,1))*knots12(i,1,3) + &
+               knots12(i,1,2)
+       END DO
+    ELSE
+       DO i=1,2 ! loop over basis functions 1 and 2
+          DO j=1,SIZE(knots12,dim=2) - 1 ! loop over phase-angle bins
+             IF (knots12(i,j,1) <= phase_angle .AND. &
+                  phase_angle <= knots12(i,j+1,1)) EXIT
+          END DO
+          phase_angle_lo = knots12(i,j,1)
+          phase_angle_hi = knots12(i,j+1,1)
+          basis_function_lo = knots12(i,j,2)
+          basis_function_hi = knots12(i,j+1,2)
+          phase_angle_derivative_lo = knots12(i,j,3)
+          phase_angle_derivative_hi = knots12(i,j+1,3)
+          Delta_phase_angle = phase_angle_hi - phase_angle_lo
+          Delta_basis_function = basis_function_hi - basis_function_lo
+          a = phase_angle_derivative_lo*Delta_phase_angle - &
+               Delta_basis_function
+          b = -phase_angle_derivative_hi*Delta_phase_angle + &
+               Delta_basis_function
+          t = (phase_angle - phase_angle_lo) / Delta_phase_angle
+          HG1G2BasisFunctions(i) = (1-t)*basis_function_lo + &
+               t*basis_function_hi + t*(1-t)*(a*(1-t)+b*t)
+       END DO
+    END IF
+
+    ! Basis function 3
+    IF (phase_angle > 30.0_bp*rad_deg) THEN
+       HG1G2BasisFunctions(3) = 0.0_bp
+    ELSE
+       DO j=1,SIZE(knots3,dim=1) - 1 ! loop over phase-angle bins
+          IF (knots3(j,1) <= phase_angle .AND. &
+               phase_angle <= knots3(j+1,1)) EXIT
+       END DO
+       phase_angle_lo = knots3(j,1)
+       phase_angle_hi = knots3(j+1,1)
+       basis_function_lo = knots3(j,2)
+       basis_function_hi = knots3(j+1,2)
+       phase_angle_derivative_lo = knots3(j,3)
+       phase_angle_derivative_hi = knots3(j+1,3)
+       Delta_phase_angle = phase_angle_hi - phase_angle_lo
+       Delta_basis_function = basis_function_hi - basis_function_lo
+       a = phase_angle_derivative_lo*Delta_phase_angle - &
+            Delta_basis_function
+       b = -phase_angle_derivative_hi*Delta_phase_angle + &
+            Delta_basis_function
+       t = (phase_angle - phase_angle_lo) / Delta_phase_angle
+       HG1G2BasisFunctions(3) = (1-t)*basis_function_lo + &
+            t*basis_function_hi + t*(1-t)*(a*(1-t)+b*t)
+    END IF
+
+  END FUNCTION HG1G2BasisFunctions
+
+
+
+
+
+  SUBROUTINE spline_coefs(xval, yval, deriv, d)
+
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(:), INTENT(IN) :: xval, yval
+    REAL(bp), DIMENSION(:), INTENT(out) :: d
+    REAL(bp), DIMENSION(2), INTENT(IN) :: deriv
+
+    INTEGER :: i, j, n
+    REAL(bp) :: bet
+    REAL(bp), DIMENSION(SIZE(xval,1)) :: a, b, c, r, gam, u
+
+    n = SIZE(xval,1)
+
+    ! Spline system matrix A coefficients
+
+    a(1) = 0.0_bp
+    DO i=2,n-1
+       a(i) = 1.0_bp/(xval(i)-xval(i-1))
+    END DO
+    a(n) = 0.0_bp
+
+    b(1) = 1.0_bp
+    DO i=2,n-1
+       b(i) = 2.0_bp/(xval(i)-xval(i-1)) + 2.0_bp/(xval(i+1)-xval(i))
+    END DO
+    b(n) = 1.0_bp
+
+    c(1) = 0.0_bp
+    DO i=2,n-1
+       c(i) = 1.0_bp/(xval(i+1)-xval(i))
+    END DO
+    c(n) = 0.0_bp
+
+    r(1) = deriv(1)
+    DO i=2,n-1
+       r(i) = 3.0_bp * ((yval(i)-yval(i-1))/((xval(i)-xval(i-1))**2) + &
+            (yval(i+1)-yval(i))/((xval(i+1)-xval(i))**2))
+    END DO
+    r(n) = deriv(2)
+
+    ! Tri-diagonal solver
+    bet=b(1)
+    u(1)=r(1)/bet
+    DO i=2,n
+       gam(i)=c(i-1)/bet
+       bet=b(i)-a(i)*gam(i)
+       u(i)=(r(i)-a(i)*u(i-1))/bet
+    END DO
+
+    DO i=n-1,1,-1
+       u(i)=u(i)-gam(i+1)*u(i+1) ! derivative
+    END DO
+
+    DO i=1,n
+       d(i) = u(i) 
+       !write(*,*) xval(i), yval(i), u(i)
+    END DO
+
+  END SUBROUTINE spline_coefs
 
 
 
