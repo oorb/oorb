@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2013-03-07
+!! @version 2013-03-08
 !!
 PROGRAM oorb
 
@@ -7254,17 +7254,7 @@ PROGRAM oorb
               solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
 
               ! Compute phase of the Moon:
-              ! Position of the geocenter as seen from the Moon:
-              planeph => JPL_ephemeris(mjd_tt, 3, 10, error)
-              IF (error) THEN
-                 CALL errorMessage('oorb / ephemeris', &
-                      'TRACE BACK (90)',1)
-                 STOP
-              END IF
-              ! Position of the Moon as seen from the observatory:
-              obsy_moon = -(planeph(1,1:3) + geoc_obsy)
-              DEALLOCATE(planeph)
-              ! Position of the Sun as seen from the Moon:
+              ! Position of the Moon as seen from the Sun:
               planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
               IF (error) THEN
                  CALL errorMessage('oorb / ephemeris', &
@@ -7273,6 +7263,8 @@ PROGRAM oorb
               END IF
               sun_moon = planeph(1,1:3)
               DEALLOCATE(planeph)
+              ! Position of the Moon as seen from the observatory:
+              obsy_moon = sun_moon - obsy_pos
               obsy_moon_r2 = DOT_PRODUCT(obsy_moon,obsy_moon)
               sun_moon_r2 = DOT_PRODUCT(sun_moon,sun_moon)
               cos_obj_phase = 0.5_bp * (sun_moon_r2 + obsy_moon_r2 - &
