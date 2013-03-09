@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -35,14 +35,13 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2011-08-08
+!! @version 2013-03-10
 !!
 MODULE Base_cl
 
   USE utilities
   IMPLICIT NONE
   PRIVATE :: calendarDateToJulianDate
-  PRIVATE :: julianDateToCalendarDate
   PRIVATE :: coordinatedUniversalTime
 
   INTEGER, PARAMETER :: stderr = 0 !! Standard error logical unit. 
@@ -55,9 +54,10 @@ MODULE Base_cl
   INTEGER, PARAMETER :: cbp =  SELECTED_REAL_KIND(p=12) !! Base precision kind for type complex.
   INTEGER, PARAMETER :: hp  =  SELECTED_REAL_KIND(p=18) !! High precision kind for type real.
   INTEGER, PARAMETER :: bp  =  SELECTED_REAL_KIND(p=12) !! Base precision kind for type real.
-  INTEGER, PARAMETER :: lp  =  SELECTED_REAL_KIND(p=6)  !! Low precision kind for type real.
+  INTEGER, PARAMETER :: lp  =  SELECTED_REAL_KIND(p=12)  !! Low precision kind for type real. p=6
   INTEGER, PARAMETER :: ihp =  SELECTED_INT_KIND(12)    !! High precision kind for type integer.
   INTEGER, PARAMETER :: ibp =  SELECTED_INT_KIND(7)     !! Base precision kind for type integer.
+  INTEGER, PARAMETER :: ilp =  SELECTED_INT_KIND(4)     !! Low precision kind for type integer.
   REAL(bp) :: timezone = 10.0_bp  !! Difference between UT and local time [h]. Default: 10 (HST).
   CHARACTER(len=3), DIMENSION(12), PARAMETER :: month_abbr = (/ &
        "Jan", &
@@ -131,6 +131,9 @@ MODULE Base_cl
        "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", &
        "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", &
        "x", "y", "z" /)
+  ! MPC conversion string
+  CHARACTER(len=62), PARAMETER :: mpc_conv_str = &
+       "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
   INTEGER :: err_verb = 1
   INTEGER :: info_verb = 1
@@ -306,6 +309,64 @@ CONTAINS
 
 
   !! *Description*:
+  !! 
+  !! This routines reports warnings in a standard fashion. The first
+  !! character string is the name of the routine from which this
+  !! routine is invoked. It is nice to know from where this message
+  !! originates. The other character string is the warning
+  !! description. The warning message is written to the standard error
+  !! logical unit, and can be presented to the end-user.
+  !!
+  !! The standard array of I/O errors can occur but they are ignored
+  !! because this is an error handling routine and it would be easy
+  !! to get into an error loop.
+  !!
+  !! *Usage*:
+  !!
+  !! <pre>
+  !! use Base_cl !(contains global logical variable "error")
+  !! .
+  !! .
+  !! .
+  !! subroutine thisroutine(...)
+  !! .
+  !! .
+  !! .
+  !! if (error) then
+  !! call warningMessage("thisroutine","Experienced this event.",1)
+  !! return
+  !! end if
+  !! </pre>
+  !!
+  SUBROUTINE warningMessage(routine_name, msg_str, vrbs)
+
+    IMPLICIT NONE
+    CHARACTER(len=*), INTENT(in)    :: routine_name, msg_str
+    INTEGER, INTENT(in)             :: vrbs
+    CHARACTER(len=3), DIMENSION(12) :: month_abbrev
+    CHARACTER(len=256)              :: form
+    INTEGER, DIMENSION(3)           :: date, time
+    INTEGER                         :: err
+
+    IF (err_verb >= vrbs) THEN
+       month_abbrev = (/ "Jan", "Feb", "Mar", "Apr", "May", "Jun", &
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" /)
+       CALL coordinatedUniversalTime(date,time)
+       form = "('***WARNING*** ', i2, ' ', a3, ' ', i4, ' ', i2.2, " // &
+            "':', i2.2, ':', i2.2, 'UTC (', a, ') ', a)"
+       WRITE(stderr, TRIM(form), iostat=err) date(1), month_abbrev(date(2)), &
+            date(3), time(1), time(2), time(3), TRIM(routine_name), &
+            TRIM(msg_str)
+       IF (err /= 0) WRITE(stderr,*) "Could not write warning message!" 
+    END IF
+
+  END SUBROUTINE warningMessage
+
+
+
+
+
+  !! *Description*:
   !!
   !! Transforms hours, minutes, and/or seconds to radians.
   !!
@@ -418,27 +479,26 @@ CONTAINS
 
 
 
-  !! Mean obliquity of ecliptic (see Astronomical Almanac 1987, B18)
+  !! Mean obliquity of ecliptic (J2000.0?). See Astronomical Almanac
+  !! 1987, B18.
   !!
-  !!  INPUT:    TJM   -   Modified Julian Time (TDT)
+  !!  INPUT:    mjd   -   Modified Julian Date (TT)
   !!
   !!  OUTPUT:   in radians
   !!
-  REAL(bp) FUNCTION meanObliquity(tjm)
+  REAL(bp) FUNCTION meanObliquity(mjd_tt)
 
     IMPLICIT NONE
 
-    !  type(Time), intent(in) :: t
-    REAL(bp), INTENT(in) :: tjm
+    REAL(bp), INTENT(in) :: mjd_tt
     REAL(bp)             :: t0
     REAL(bp), PARAMETER  :: ob0 = &
-         (23.0_bp*3600.0_bp+26.0_bp*60.0_bp+21.45_bp)*rad_asec, & ! IAU value
-                                !(float(23*3600+26*60)+21.448_bp) * rad_asec ! Improved value
-         ob1 = -46.815_bp  * rad_asec, &
-         ob2 = -0.0006_bp  * rad_asec, &
-         ob3 =  0.00181_bp * rad_asec
+         (23.0_bp*3600.0_bp+26.0_bp*60.0_bp+21.448_bp)*rad_asec, & ! IAU value - 0.02"
+         ob1 = -46.8150_bp  * rad_asec, & ! -46.815_bp
+         ob2 = -0.00059_bp  * rad_asec, & ! -0.0006_bp
+         ob3 =  0.001813_bp * rad_asec    ! 0.00181_bp
 
-    t0     = ( tjm - 51544.5_bp ) / 36525.0_bp
+    t0     = ( mjd_tt - 51544.5_bp ) / 36525.0_bp
     meanObliquity = (( ob3 * t0 + ob2 ) * t0 + ob1 ) * t0 + ob0
 
   END FUNCTION meanObliquity
@@ -492,9 +552,9 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Rotation matrix around i"th axis: If X are "old" coordinates and
-  !! X" are "new" coordinates (referred to a frame which is rotated by
-  !! an angle alpha around an axis in direct sense), then X" = R X,
+  !! Rotation matrix around i'th axis: If X are "old" coordinates and
+  !! X' are "new" coordinates (referred to a frame which is rotated by
+  !! an angle alpha around an axis in direct sense), then X' = R X,
   !! where R is the rotation matrix.
   !!
   !! Returns error.
@@ -752,6 +812,7 @@ CONTAINS
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(inout) :: designation
     CHARACTER(len=DESIGNATION_LEN) :: designation_
+    CHARACTER(len=2) :: str
     INTEGER :: i
 
     CALL removeLeadingBlanks(designation)
@@ -760,11 +821,14 @@ CONTAINS
          (i >= 48 .AND.  i <= 57)) THEN
        ! Designation already seems to be decoded, because it 
        ! contains empty space or starts with a number.
-       RETURN
-    END IF
-
-    IF (designation(3:3) == "S") THEN
+       CONTINUE
+    ELSE IF (LEN_TRIM(designation) == 5) THEN
+       i = INDEX(mpc_conv_str, designation(1:1)) - 1
+       CALL toString(i, str, error)
+       designation = TRIM(str) // designation(2:5)
+    ELSE IF (designation(3:3) == "S") THEN
        ! Designation of type T3S1234:
+       designation_ = ""
        designation_(1:4) = designation(4:7)
        designation_(5:5) = " "
        designation_(6:8) = designation(1:1) // "-" // &
@@ -812,6 +876,13 @@ CONTAINS
        END IF
        designation = TRIM(designation_)
     END IF
+    ! Remove leading zeros
+    DO WHILE (designation(1:1) == "0")
+       designation_ = ""
+       designation_(1:) = designation(2:LEN_TRIM(designation))
+       designation = ""
+       designation = TRIM(designation_)
+    END DO
 
   END SUBROUTINE decodeMPCDesignation
 
