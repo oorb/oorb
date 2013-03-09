@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2012-10-26
+!! @version 2013-03-09
 !!  
 MODULE StochasticOrbit_cl
 
@@ -422,6 +422,8 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(inout) :: this
     TYPE (Observations), INTENT(in)       :: obss
 
+    INTEGER :: err_verb_
+
     IF (this%is_initialized_prm) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / new", &
@@ -441,11 +443,15 @@ CONTAINS
 
     ! Initialize other variables needed in the computation
     this%is_initialized_prm = .TRUE.
+    err_verb_ = err_verb
+    err_verb = 0
     CALL setObservationPair(this)
+    err_verb = err_verb_
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / new", &
-            "TRACE BACK", 1)
-       RETURN
+       CALL warningMessage("StochasticOrbit / new", &
+            "Observation pair could not be selected. Possibly " // &
+            "because only one observation has been provided.", 1)
+       error = .FALSE.
     END IF
 
   END SUBROUTINE new_SO_observations
@@ -470,7 +476,7 @@ CONTAINS
     CHARACTER(len=*), INTENT(in), OPTIONAL    :: element_type
     TYPE (Observations), INTENT(in), OPTIONAL :: obss
     CHARACTER(len=*), INTENT(in), OPTIONAL    :: id
-    INTEGER                                   :: err
+    INTEGER                                   :: err, err_verb_
 
     IF (this%is_initialized_prm) THEN
        error = .TRUE.
@@ -508,11 +514,15 @@ CONTAINS
     END IF
     this%is_initialized_prm = .TRUE.
     IF (PRESENT(obss)) THEN
+       err_verb_ = err_verb
+       err_verb = 0
        CALL setObservationPair(this)
+       err_verb = err_verb_
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit /  new", &
-               "TRACE BACK", 1)
-          RETURN
+          CALL warningMessage("StochasticOrbit / new", &
+               "Observation pair could not be selected. Possibly " // &
+               "because only one observation has been provided.", 1)
+          error = .FALSE.
        END IF
     END IF
     IF (PRESENT(id)) THEN
@@ -546,7 +556,7 @@ CONTAINS
     REAL(bp), DIMENSION(:), INTENT(in), OPTIONAL   :: rchi2_arr
     INTEGER, DIMENSION(:), INTENT(in), OPTIONAL    :: repetition_arr
 
-    INTEGER :: i, err
+    INTEGER :: i, err, err_verb_
 
     IF (this%is_initialized_prm) THEN
        error = .TRUE.
@@ -607,15 +617,17 @@ CONTAINS
        this%reg_apr_arr_cmp = reg_apr_arr
     END IF
     IF (PRESENT(repetition_arr)) THEN
-       ALLOCATE(this%repetition_arr_cmp(this%sor_norb_cmp), &
-            stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / new", &
-               "Could not allocate pointer (25).", 1)
-          RETURN
+       IF (.NOT.ALL(repetition_arr == 0)) THEN
+          ALLOCATE(this%repetition_arr_cmp(this%sor_norb_cmp), &
+               stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / new", &
+                  "Could not allocate pointer (25).", 1)
+             RETURN
+          END IF
+          this%repetition_arr_cmp = repetition_arr
        END IF
-       this%repetition_arr_cmp = repetition_arr
     END IF
     this%element_type_prm = element_type
     IF (PRESENT(obss)) THEN
@@ -629,12 +641,17 @@ CONTAINS
        this%obs_masks_prm => getObservationMasks(this%obss)
     END IF
     this%is_initialized_prm = .TRUE.
+
     IF (PRESENT(obss)) THEN
+       err_verb_ = err_verb
+       err_verb = 0
        CALL setObservationPair(this)
+       err_verb = err_verb_
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit /  new", &
-               "TRACE BACK", 1)
-          RETURN
+          CALL warningMessage("StochasticOrbit / new", &
+               "Observation pair could not be selected. Possibly " // &
+               "because only one observation has been provided.", 1)
+          error = .FALSE.
        END IF
     END IF
     IF (PRESENT(id)) THEN
@@ -2154,6 +2171,15 @@ CONTAINS
                   "jacobian matrix " // TRIM(errstr), 1)
              errstr = ""
              IF (err_verb >= 1) THEN
+                WRITE(stderr,"(A)") "cosdec0(1):"
+                WRITE(stderr,"(F15.10)") cosdec0(1)
+                WRITE(stderr,"(A)") "partials_arr(1:3,:,1):"
+                CALL matrix_print(partials_arr(1:3,:,1), stderr, errstr)
+                WRITE(stderr,"(A)") "cosdec0(nobs):"
+                WRITE(stderr,"(F15.10)") cosdec0(nobs)
+                WRITE(stderr,"(A)") "partials_arr(1:3,:,nobs):"
+                CALL matrix_print(partials_arr(1:3,:,nobs), stderr, errstr)
+                WRITE(stderr,"(A)") "jacobian_matrix:"
                 CALL matrix_print(jacobian_matrix, stderr, errstr)
              END IF
              errstr = ""
@@ -3414,7 +3440,7 @@ CONTAINS
        RETURN
     END IF
 
-    ngroup = 17
+    ngroup = 18
     IF (.NOT. ASSOCIATED(this%orb_arr_cmp)) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / getGroupWeights", &
@@ -3435,10 +3461,16 @@ CONTAINS
     pdf = this%pdf_arr_cmp
     pdf = pdf / SUM(pdf)
     DO i=1,norb
-       elements(i,:) = getElements(this%orb_arr_cmp(i), "keplerian")
+       elements(i,:) = getElements(this%orb_arr_cmp(i), "cometary")
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / getGroupWeights", &
+               "TRACE BACK", 1)          
+          RETURN
+       END IF
+       !       write(stdout,"(6(E15.5,1X))") elements(i,:)
     END DO
-    apoapsis = elements(:,1) * (1.0_bp + elements(:,2))
-    periapsis = elements(:,1) * (1.0_bp - elements(:,2))
+    apoapsis = elements(:,1) * (1.0_bp + elements(:,2)) / (1.0_bp - elements(:,2))
+    periapsis = elements(:,1)
     IF (PRESENT(apriori_pdf)) THEN
        IF (SIZE(apriori_pdf,dim=1) /= norb) THEN
           error = .TRUE.
@@ -3454,10 +3486,20 @@ CONTAINS
        END IF
     END IF
 
+    ! Hyperbolic orbits (e.g., interstellar comets and asteroids)
+    groups(18) = "Hyperbolic"
+    mask_array = .FALSE.
+    WHERE (elements(:,2) > 1.0_bp)
+       mask_array = .TRUE.
+    END WHERE
+    weights(18) = SUM(pdf,mask=mask_array)
+    WHERE (mask_array) mask_array_tot = .FALSE.
+
     ! Atira (AKA IEO AKA Apohele)
     groups(1) = "Atira"
     mask_array = .FALSE.
-    WHERE (apoapsis <= 0.983_bp)
+    WHERE (apoapsis <= 0.983_bp .AND. &
+         mask_array_tot)
        mask_array = .TRUE.
     END WHERE
     weights(1) = SUM(pdf,mask=mask_array)
@@ -3466,7 +3508,7 @@ CONTAINS
     ! Aten
     groups(2) = "NEO/Aten"
     mask_array = .FALSE.
-    WHERE (elements(:,1) <= 1.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) <= 1.0_bp .AND. &
          apoapsis > 0.983_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(2) = SUM(pdf,mask=mask_array)
@@ -3475,7 +3517,7 @@ CONTAINS
     ! Apollo
     groups(3) = "NEO/Apollo"
     mask_array = .FALSE.
-    WHERE (elements(:,1) > 1.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) > 1.0_bp .AND. &
          periapsis <= 1.017_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(3) = SUM(pdf,mask=mask_array)
@@ -3502,8 +3544,8 @@ CONTAINS
     ! Hungaria
     groups(6) = "Hungaria"
     mask_array = .FALSE.
-    WHERE (elements(:,1) >= 1.8_bp .AND. &
-         elements(:,1) <= 2.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) >= 1.8_bp .AND. &
+         elements(:,1)/(1.0_bp-elements(:,2)) <= 2.0_bp .AND. &
          elements(:,2) >= 0.0_bp .AND. &
          elements(:,2) <= 0.16_bp .AND. &
          elements(:,3) >= 15.0_bp .AND. &
@@ -3513,11 +3555,11 @@ CONTAINS
     weights(6) = SUM(pdf,mask=mask_array)
     WHERE (mask_array) mask_array_tot = .FALSE.
 
-    ! Phocaea (part of the mainbelt)
-    groups(7) = "MBO/Phocaea"
+    ! Phocaea
+    groups(7) = "Phocaea"
     mask_array = .FALSE.
-    WHERE (elements(:,1) >= 2.26_bp .AND. &
-         elements(:,1) <= 2.50_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) >= 2.26_bp .AND. &
+         elements(:,1)/(1.0_bp-elements(:,2)) <= 2.50_bp .AND. &
          elements(:,2) >= 0.1_bp .AND. &
          elements(:,2) <= 0.3_bp .AND. &
          elements(:,3) >= 10.0_bp .AND. &
@@ -3527,11 +3569,11 @@ CONTAINS
     weights(7) = SUM(pdf,mask=mask_array)
     WHERE (mask_array) mask_array_tot = .FALSE.
 
-    ! Mainbelt (without Phocaea)
-    groups(8) = "MBO exc. Phocaea"
+    ! Mainbelt
+    groups(8) = "MBO"
     mask_array = .FALSE.
-    WHERE (elements(:,1) >= 2.1_bp .AND. &
-         elements(:,1) <= 3.5_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) >= 2.1_bp .AND. &
+         elements(:,1)/(1.0_bp-elements(:,2)) <= 3.5_bp .AND. &
          elements(:,2) >= 0.0_bp .AND. &
          elements(:,2) <= 0.35_bp .AND. &
          elements(:,3) >= 0.0_bp .AND. &
@@ -3545,8 +3587,8 @@ CONTAINS
     ! Hilda
     groups(9) = "Hilda"
     mask_array = .FALSE.
-    WHERE (elements(:,1) >= 3.75_bp .AND. &
-         elements(:,1) <= 4.02_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) >= 3.75_bp .AND. &
+         elements(:,1)/(1.0_bp-elements(:,2)) <= 4.02_bp .AND. &
          elements(:,2) >= 0.0_bp .AND. &
          elements(:,2) <= 0.26_bp .AND. &
          elements(:,3) >= 0.0_bp .AND. &
@@ -3558,8 +3600,8 @@ CONTAINS
     ! Jupiter Trojan
     groups(10) = "Jupiter Trojan"
     mask_array = .FALSE.
-    WHERE (elements(:,1) >= 5.08_bp .AND. &
-         elements(:,1) <= 5.33_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) >= 5.08_bp .AND. &
+         elements(:,1)/(1.0_bp-elements(:,2)) <= 5.33_bp .AND. &
          elements(:,2) >= 0.0_bp .AND. &
          elements(:,2) <= 0.28_bp .AND. &
          elements(:,3) >= 0.0_bp .AND. &
@@ -3580,8 +3622,8 @@ CONTAINS
     ! TNO Inner belt
     groups(12) = "TNO/Inner belt"
     mask_array = .FALSE.
-    WHERE (elements(:,1) >= 36.0_bp .AND. &
-         elements(:,1) <= 39.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) >= 36.0_bp .AND. &
+         elements(:,1)/(1.0_bp-elements(:,2)) <= 39.0_bp .AND. &
          periapsis > 35.0_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(12) = SUM(pdf,mask=mask_array)
@@ -3590,7 +3632,7 @@ CONTAINS
     ! Plutino
     groups(13) = "TNO/Plutino"
     mask_array = .FALSE.
-    WHERE (elements(:,1) > 39.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) > 39.0_bp .AND. &
          periapsis < 40.0_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(13) = SUM(pdf,mask=mask_array)
@@ -3599,8 +3641,8 @@ CONTAINS
     ! Classical TNO
     groups(14) = "TNO/Classical"
     mask_array = .FALSE.
-    WHERE (elements(:,1) >= 40.0_bp .AND. &
-         elements(:,1) <= 48.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) >= 40.0_bp .AND. &
+         elements(:,1)/(1.0_bp-elements(:,2)) <= 48.0_bp .AND. &
          periapsis > 35.0_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(14) = SUM(pdf,mask=mask_array)
@@ -3609,7 +3651,7 @@ CONTAINS
     ! TNO Outer belt
     groups(15) = "TNO/Outer belt"
     mask_array = .FALSE.
-    WHERE (elements(:,1) > 48.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) > 48.0_bp .AND. &
          periapsis > 36.0_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(15) = SUM(pdf,mask=mask_array)
@@ -3618,7 +3660,7 @@ CONTAINS
     ! Scattered TNO
     groups(16) = "TNO/Scattered"
     mask_array = .FALSE.
-    WHERE (elements(:,1) > 49.0_bp .AND. &
+    WHERE (elements(:,1)/(1.0_bp-elements(:,2)) > 49.0_bp .AND. &
          periapsis < 36.0_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(16) = SUM(pdf,mask=mask_array)
@@ -6094,7 +6136,7 @@ CONTAINS
     INTEGER, DIMENSION(:,:), POINTER :: obs_pair_arr
     INTEGER, DIMENSION(6) :: n0, n0_
     INTEGER, DIMENSION(2) :: obs_pair
-    INTEGER :: ndof, i, err, nobs, j
+    INTEGER :: ndof, i, itrial, err, nobs, j
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL :: accepted, first = .TRUE., burn_in = .FALSE.
 
@@ -6268,228 +6310,214 @@ CONTAINS
     this%sor_ntrial_cmp = -1 ! first loop is setting the parameters
     chi2min = HUGE(chi2min)
     first = .TRUE.
+    itrial = 0
 
     DO WHILE (this%sor_norb_cmp < this%sor_norb_prm .AND. &
          this%sor_ntrial_cmp < this%sor_ntrial_prm)
 
-       this%sor_ntrial_cmp = this%sor_ntrial_cmp + 1
-
-       IF (first .AND. this%sor_ntrial_cmp > 0) THEN
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "Setting up the parameters failed and process got stuck in a loop.", 1)
-          RETURN          
-       END IF
-
        ! Get next state(topocentric distances and sky positions for
        ! the two observations) around the previous computed state
-       IF (info_verb >= 3) THEN
+       IF (itrial == 0 .AND. info_verb >= 3) THEN
           WRITE(stdout,"(A)") "Generating new state..."
        END IF
-       i = 0
-       DO
 
-          i = i + 1
-          IF (info_verb >= 4) THEN
-             WRITE(stdout,"(A,I0)") "Trial state #", i
-          END IF
-
-          IF (first) THEN
-             state = state_
-          ELSE
-             CALL randomGaussian(rans)
-             state = state_ + rans * proposal_density
-          END IF
-
-          ! Check if the distances are negative
-          IF (state(1) <= 0.0_bp .OR. state(1)+state(4) <= 0.0_bp) THEN
-             IF (info_verb >= 5) THEN
-                WRITE(stdout,"(2X,A,F10.7,A)") &
-                     "Failed (One or both topocentric distances smaller than the Earth radius.)" 
-             END IF
-             CYCLE ! next-state-generation loop
-          END IF
-
-          ! Create new spherical coordinates with generated states in equatorial frame
-          CALL NULLIFY(obs_scoord1)
-          CALL NULLIFY(obs_scoord2)
-          CALL NEW(obs_scoord1, state(1), state(2), state(3), getTime(obsy_ccoords(obs_pair(1))))
-          CALL NEW(obs_scoord2, state(1)+state(4), state(5), state(6), getTime(obsy_ccoords(obs_pair(2))))
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (65)", 1)
-             RETURN
-          END IF
-
-          ! Create new topocentric cartesian coordinates of the observations in equatorial frame
-          CALL NULLIFY(obs_ccoord_topo1)
-          CALL NULLIFY(obs_ccoord_topo2)
-          CALL NEW(obs_ccoord_topo1, obs_scoord1) 
-          CALL NEW(obs_ccoord_topo2, obs_scoord2) 
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (70)", 1)
-             RETURN
-          END IF
-
-          ! Rotate to ecliptic
-          CALL rotateToEcliptic(obs_ccoord_topo1)
-          CALL rotateToEcliptic(obs_ccoord_topo2)
-          CALL rotateToEcliptic(obsy_ccoords(obs_pair(1)))
-          CALL rotateToEcliptic(obsy_ccoords(obs_pair(2)))
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (75)", 1)
-             RETURN
-          END IF
-
-          ! Cartesian heliocentric coordinates
-          CALL NULLIFY(obs_ccoord_helio1)
-          CALL NULLIFY(obs_ccoord_helio2)
-          obs_ccoord_helio1 = copy(obsy_ccoords(obs_pair(1)) + obs_ccoord_topo1)
-          obs_ccoord_helio2 = copy(obsy_ccoords(obs_pair(2)) + obs_ccoord_topo2)
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (80)", 1)
-             RETURN
-          END IF
-
-          CALL estimateLightTime(obs_ccoord_helio1, state(1))! changed from 3 and 6
-          CALL estimateLightTime(obs_ccoord_helio2, state(1)+state(4))
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (85)", 1)
-             RETURN
-          END IF
-
-          ! Find orbit candidate at the epoch of the first observation by
-          ! using the chosen method to solve the 2-point boundary value
-          ! problem:
-          CALL NULLIFY(orb)
-          CALL NEW(orb, obs_ccoord_helio1, obs_ccoord_helio2, &
-               this%sor_2point_method_prm, this%apriori_a_max_prm, &
-               central_body=this%central_body_prm, &
-               perturbers=this%perturbers_prm, &
-               integrator=this%integrator_prm, &
-               integration_step=this%integration_step_prm)
-          IF (error) THEN 
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (86)", 1)
-             error = .FALSE.
-             CYCLE ! next-state-generation loop
-          END IF
-
-          CALL setParameters(orb, &
-               dyn_model=this%dyn_model_prm, &
-               perturbers=this%perturbers_prm, &
-               integrator=this%integrator_prm, &
-               integration_step=this%integration_step_prm)
-
-          ! checking if the epochs are the same
-          IF (.NOT. equal(this%t_inv_prm,getTime(orb))) THEN
-             CALL propagate(orb, this%t_inv_prm)
-             IF (error) THEN 
-                CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                     "TRACE BACK (90)", 1)
-                error = .FALSE.
-                CYCLE ! next-state-generation loop
-             END IF
-          END IF
-
-          IF (this%informative_apriori_prm .AND. .NOT. first) THEN
-             ! Semimajor axis:
-             a = -1.0_bp
-             IF (this%apriori_a_min_prm >= 0.0_bp .OR. &
-                  this%apriori_a_max_prm >= 0.0_bp) THEN
-                a = getSemimajorAxis(orb)
-                IF (this%apriori_a_min_prm >= 0.0_bp .AND. &
-                     a < this%apriori_a_min_prm) THEN
-                   ! Semimajor axis too small
-                   IF (info_verb >= 4) THEN
-                      WRITE(stdout,"(2X,A,F13.7,A)") &
-                           "Failed (semimajor axis too small: ", a, " AU)"
-                   END IF
-                   CYCLE
-                END IF
-                IF (this%apriori_a_max_prm >= 0.0_bp .AND. &
-                     a > this%apriori_a_max_prm) THEN
-                   ! Semimajor axis too large
-                   IF (info_verb >= 4) THEN
-                      WRITE(stdout,"(2X,A,F10.7,A)") &
-                           "Failed (semimajor axis too large: ", a, " AU)"
-                   END IF
-                   CYCLE
-                END IF
-             END IF
-             ! Periapsis distance:
-             IF (this%apriori_periapsis_min_prm >= 0.0_bp .OR. &
-                  this%apriori_periapsis_max_prm >= 0.0_bp) THEN
-                IF (a >= 0.0_bp) THEN
-                   CALL getPeriapsisDistance(orb, q, a)
-                ELSE
-                   CALL getPeriapsisDistance(orb, q)
-                END IF
-                IF (error) THEN
-                   error = .FALSE.
-                   CYCLE
-                END IF
-                ! Periapsis distance too small:
-                IF (this%apriori_periapsis_min_prm >= 0.0_bp .AND. &
-                     q < this%apriori_periapsis_min_prm) THEN
-                   IF (info_verb >= 4) THEN
-                      WRITE(stdout,"(2X,A,F13.7,A)") &
-                           "Failed (periapsis distance too small: ", a, " AU)"
-                   END IF
-                   CYCLE
-                END IF
-                ! Periapsis distance too large:
-                IF (this%apriori_periapsis_max_prm >= 0.0_bp .AND. &
-                     q > this%apriori_periapsis_max_prm) THEN
-                   IF (info_verb >= 4) THEN
-                      WRITE(stdout,"(2X,A,F10.7,A)") &
-                           "Failed (periapsis distance too large: ", a, " AU)"
-                   END IF
-                   CYCLE
-                END IF
-             END IF
-             ! Apoapsis distance:
-             IF (this%apriori_apoapsis_min_prm >= 0.0_bp .OR. &
-                  this%apriori_apoapsis_max_prm >= 0.0_bp) THEN
-                IF (a >= 0.0_bp) THEN
-                   CALL getApoapsisDistance(orb, Q, a)
-                ELSE
-                   CALL getApoapsisDistance(orb, Q)
-                END IF
-                ! Apoapsis distance too small:
-                IF (this%apriori_apoapsis_min_prm >= 0.0_bp .AND. &
-                     Q < this%apriori_apoapsis_min_prm) THEN
-                   IF (info_verb >= 4) THEN
-                      WRITE(stdout,"(2X,A,F13.7,A)") &
-                           "Failed (apoapsis distance too small: ", a, " AU)"
-                   END IF
-                   CYCLE
-                END IF
-                ! Apoapsis distance too large:
-                IF (this%apriori_apoapsis_max_prm >= 0.0_bp .AND. &
-                     Q > this%apriori_apoapsis_max_prm) THEN
-                   IF (info_verb >= 4) THEN
-                      WRITE(stdout,"(2X,A,F10.7,A)") &
-                           "Failed (apoapsis distance too large: ", a, " AU)"
-                   END IF
-                   CYCLE
-                END IF
-             END IF
-          END IF
-
-          ! Exit if this point has been reached
-          EXIT
-
-       END DO
-       IF (info_verb >= 3) THEN
-          WRITE(stdout,"(A,1X,I0,1X,A)") "New state generated using", i, "trials."
+       this%sor_ntrial_cmp = this%sor_ntrial_cmp + 1
+       itrial = itrial + 1
+       IF (info_verb >= 4) THEN
+          WRITE(stdout,"(A,I0)") "Trial state #", itrial
        END IF
 
+       IF (first) THEN
+          state = state_
+       ELSE
+          CALL randomGaussian(rans)
+          state = state_ + rans * proposal_density
+       END IF
 
+       ! Check if the distances are negative
+       IF (state(1) <= 0.0_bp .OR. state(1)+state(4) <= 0.0_bp) THEN
+          IF (info_verb >= 5) THEN
+             WRITE(stdout,"(2X,A,F10.7,A)") &
+                  "Failed (One or both topocentric distances smaller than the Earth radius.)" 
+          END IF
+          CYCLE
+       END IF
+
+       ! Create new spherical coordinates with generated states in equatorial frame
+       CALL NULLIFY(obs_scoord1)
+       CALL NULLIFY(obs_scoord2)
+       CALL NEW(obs_scoord1, state(1), state(2), state(3), getTime(obsy_ccoords(obs_pair(1))))
+       CALL NEW(obs_scoord2, state(1)+state(4), state(5), state(6), getTime(obsy_ccoords(obs_pair(2))))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
+               "TRACE BACK (65)", 1)
+          RETURN
+       END IF
+
+       ! Create new topocentric cartesian coordinates of the observations in equatorial frame
+       CALL NULLIFY(obs_ccoord_topo1)
+       CALL NULLIFY(obs_ccoord_topo2)
+       CALL NEW(obs_ccoord_topo1, obs_scoord1) 
+       CALL NEW(obs_ccoord_topo2, obs_scoord2) 
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
+               "TRACE BACK (70)", 1)
+          RETURN
+       END IF
+
+       ! Rotate to ecliptic
+       CALL rotateToEcliptic(obs_ccoord_topo1)
+       CALL rotateToEcliptic(obs_ccoord_topo2)
+       CALL rotateToEcliptic(obsy_ccoords(obs_pair(1)))
+       CALL rotateToEcliptic(obsy_ccoords(obs_pair(2)))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
+               "TRACE BACK (75)", 1)
+          RETURN
+       END IF
+
+       ! Cartesian heliocentric coordinates
+       CALL NULLIFY(obs_ccoord_helio1)
+       CALL NULLIFY(obs_ccoord_helio2)
+       obs_ccoord_helio1 = copy(obsy_ccoords(obs_pair(1)) + obs_ccoord_topo1)
+       obs_ccoord_helio2 = copy(obsy_ccoords(obs_pair(2)) + obs_ccoord_topo2)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
+               "TRACE BACK (80)", 1)
+          RETURN
+       END IF
+
+       CALL estimateLightTime(obs_ccoord_helio1, state(1))! changed from 3 and 6
+       CALL estimateLightTime(obs_ccoord_helio2, state(1)+state(4))
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
+               "TRACE BACK (85)", 1)
+          RETURN
+       END IF
+
+       ! Find orbit candidate at the epoch of the first observation by
+       ! using the chosen method to solve the 2-point boundary value
+       ! problem:
+       CALL NULLIFY(orb)
+       CALL NEW(orb, obs_ccoord_helio1, obs_ccoord_helio2, &
+            this%sor_2point_method_prm, this%apriori_a_max_prm, &
+            central_body=this%central_body_prm, &
+            perturbers=this%perturbers_prm, &
+            integrator=this%integrator_prm, &
+            integration_step=this%integration_step_prm)
+       IF (error) THEN 
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
+               "TRACE BACK (86)", 1)
+          error = .FALSE.
+          CYCLE
+       END IF
+
+       CALL setParameters(orb, &
+            dyn_model=this%dyn_model_prm, &
+            perturbers=this%perturbers_prm, &
+            integrator=this%integrator_prm, &
+            integration_step=this%integration_step_prm)
+
+       ! checking if the epochs are the same
+       IF (.NOT. equal(this%t_inv_prm,getTime(orb))) THEN
+          CALL propagate(orb, this%t_inv_prm)
+          IF (error) THEN 
+             CALL errorMessage("StochasticOrbit / MCMCRanging", &
+                  "TRACE BACK (90)", 1)
+             error = .FALSE.
+             CYCLE
+          END IF
+       END IF
+
+       IF (this%informative_apriori_prm .AND. .NOT. first) THEN
+          ! Semimajor axis:
+          a = -1.0_bp
+          IF (this%apriori_a_min_prm >= 0.0_bp .OR. &
+               this%apriori_a_max_prm >= 0.0_bp) THEN
+             a = getSemimajorAxis(orb)
+             IF (this%apriori_a_min_prm >= 0.0_bp .AND. &
+                  a < this%apriori_a_min_prm) THEN
+                ! Semimajor axis too small
+                IF (info_verb >= 4) THEN
+                   WRITE(stdout,"(2X,A,F13.7,A)") &
+                        "Failed (semimajor axis too small: ", a, " AU)"
+                END IF
+                CYCLE
+             END IF
+             IF (this%apriori_a_max_prm >= 0.0_bp .AND. &
+                  a > this%apriori_a_max_prm) THEN
+                ! Semimajor axis too large
+                IF (info_verb >= 4) THEN
+                   WRITE(stdout,"(2X,A,F10.7,A)") &
+                        "Failed (semimajor axis too large: ", a, " AU)"
+                END IF
+                CYCLE
+             END IF
+          END IF
+          ! Periapsis distance:
+          IF (this%apriori_periapsis_min_prm >= 0.0_bp .OR. &
+               this%apriori_periapsis_max_prm >= 0.0_bp) THEN
+             IF (a >= 0.0_bp) THEN
+                CALL getPeriapsisDistance(orb, q, a)
+             ELSE
+                CALL getPeriapsisDistance(orb, q)
+             END IF
+             IF (error) THEN
+                error = .FALSE.
+                CYCLE
+             END IF
+             ! Periapsis distance too small:
+             IF (this%apriori_periapsis_min_prm >= 0.0_bp .AND. &
+                  q < this%apriori_periapsis_min_prm) THEN
+                IF (info_verb >= 4) THEN
+                   WRITE(stdout,"(2X,A,F13.7,A)") &
+                        "Failed (periapsis distance too small: ", a, " AU)"
+                END IF
+                CYCLE
+             END IF
+             ! Periapsis distance too large:
+             IF (this%apriori_periapsis_max_prm >= 0.0_bp .AND. &
+                  q > this%apriori_periapsis_max_prm) THEN
+                IF (info_verb >= 4) THEN
+                   WRITE(stdout,"(2X,A,F10.7,A)") &
+                        "Failed (periapsis distance too large: ", a, " AU)"
+                END IF
+                CYCLE
+             END IF
+          END IF
+          ! Apoapsis distance:
+          IF (this%apriori_apoapsis_min_prm >= 0.0_bp .OR. &
+               this%apriori_apoapsis_max_prm >= 0.0_bp) THEN
+             IF (a >= 0.0_bp) THEN
+                CALL getApoapsisDistance(orb, Q, a)
+             ELSE
+                CALL getApoapsisDistance(orb, Q)
+             END IF
+             ! Apoapsis distance too small:
+             IF (this%apriori_apoapsis_min_prm >= 0.0_bp .AND. &
+                  Q < this%apriori_apoapsis_min_prm) THEN
+                IF (info_verb >= 4) THEN
+                   WRITE(stdout,"(2X,A,F13.7,A)") &
+                        "Failed (apoapsis distance too small: ", a, " AU)"
+                END IF
+                CYCLE
+             END IF
+             ! Apoapsis distance too large:
+             IF (this%apriori_apoapsis_max_prm >= 0.0_bp .AND. &
+                  Q > this%apriori_apoapsis_max_prm) THEN
+                IF (info_verb >= 4) THEN
+                   WRITE(stdout,"(2X,A,F10.7,A)") &
+                        "Failed (apoapsis distance too large: ", a, " AU)"
+                END IF
+                CYCLE
+             END IF
+          END IF
+       END IF
+
+       IF (info_verb >= 3) THEN
+          WRITE(stdout,"(A,1X,I0,1X,A)") "New state generated using", itrial, "trials."
+       END IF
+       itrial = 0
 
        !! 
        !! COMPUTE CHI2 AND PDF FOR PROPOSED ORBIT
@@ -6658,6 +6686,9 @@ CONTAINS
        END IF
 
     END DO
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(A)") "END OF MCMC RANGING"
+    END IF
 
     this%orb_arr_cmp => reallocate(this%orb_arr_cmp, this%sor_norb_cmp)
     this%repetition_arr_cmp => reallocate(this%repetition_arr_cmp, this%sor_norb_cmp)
@@ -6669,7 +6700,6 @@ CONTAINS
     i = MAXLOC(this%pdf_arr_cmp,dim=1)
     this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
     IF (info_verb >= 2) THEN
-       WRITE(stdout,"(A)") "END OF THE SECOND STEP"
        WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
             this%cov_type_prm, getElementType(this%orb_ml_cmp)
        WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
@@ -14981,29 +15011,49 @@ CONTAINS
   !! Parameters: The maximum allowed number of function evaluations,
   !! and a small number.
   !!
-  SUBROUTINE simplexOrbits(this, orb_arr, mask)
+  SUBROUTINE simplexOrbits(this, orb_arr, mask, force_earth_impact_at_epoch)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
     TYPE (Orbit), DIMENSION(:), INTENT(inout) :: orb_arr
     LOGICAL, DIMENSION(6), INTENT(in), OPTIONAL :: mask
+    LOGICAL, INTENT(in), OPTIONAL :: force_earth_impact_at_epoch
 
     REAL(bp), PARAMETER :: TINY = 1.0e-10_bp
 
+    TYPE (Observatories) :: obsies
+    TYPE (CartesianCoordinates) :: ccoord
     CHARACTER(len=FRAME_LEN) :: frame
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: p, p_init
     REAL(bp), DIMENSION(:), ALLOCATABLE :: y, psum, p_best
+    REAL(bp), DIMENSION(6) :: coord_obj, coord_earth
     REAL(bp) :: y_best
     INTEGER(ibp) :: ihi, ilo, ndim ! Global variables (within this subroutine).  
     INTEGER :: err, i, info_verb_, nobs
+    LOGICAL :: force_earth_impact_at_epoch_
 
     IF (PRESENT(mask)) THEN
        ndim = COUNT(mask)
     ELSE
        ndim = 6
     END IF
+    IF (PRESENT(force_earth_impact_at_epoch)) THEN
+       force_earth_impact_at_epoch_ = force_earth_impact_at_epoch
+    ELSE
+       force_earth_impact_at_epoch_ = .FALSE.
+    END IF
+
     ALLOCATE(p(ndim+1,ndim), p_init(ndim+1,ndim), y(ndim+1), &
          psum(ndim), p_best(ndim))
+
+    IF (force_earth_impact_at_epoch_) THEN
+       CALL NEW(obsies)
+       ccoord = getObservatoryCCoord(obsies, "500", this%t_inv_prm)
+       CALL rotateToEcliptic(ccoord)
+       coord_earth = getCoordinates(ccoord)
+       CALL NULLIFY(ccoord)
+       CALL NULLIFY(obsies)
+    END IF
 
     IF (info_verb >= 3) THEN
        WRITE(stdout,"(2X,A)") "SIMPLEX OPTIMIZATION"
@@ -15401,6 +15451,14 @@ CONTAINS
          CALL errorMessage("StochasticOrbit / simplexOrbits / simtry", &
               "TRACE BACK (45)", 1)
          RETURN
+      END IF
+      ! Get heliocentric cartesion coordinates if forcing Earth impact
+      IF (force_earth_impact_at_epoch_) THEN
+         coord_obj = getElements(orb, "cartesian", "ecliptic")
+         IF (SQRT(SUM((coord_obj(1:3) - coord_earth(1:3))**2)) > planetary_radii(3) + 60.0_bp/km_au) THEN
+            ytry = HUGE(ytry)
+            RETURN
+         END IF
       END IF
       info_verb_ = info_verb
       info_verb = info_verb_ - 1
@@ -16953,6 +17011,15 @@ CONTAINS
                      "jacobian matrix " // TRIM(errstr), 1)
                 errstr = ""
                 IF (err_verb >= 1) THEN
+                   WRITE(stderr,"(A)") "cosdec0_arr(obs_pair_arr(i,1)):"
+                   WRITE(stderr,"(F15.10)") cosdec0_arr(obs_pair_arr(i,1))
+                   WRITE(stderr,"(A)") "partials_arr(i,1:3,:,obs_pair_arr(i,1)) :"
+                   CALL matrix_print(partials_arr(i,1:3,:,obs_pair_arr(i,1)) , stderr, errstr)
+                   WRITE(stderr,"(A)") "cosdec0(nobs):"
+                   WRITE(stderr,"(F15.10)") cosdec0_arr(obs_pair_arr(i,2))
+                   WRITE(stderr,"(A)") "partials_arr(i,1:3,:,obs_pair_arr(i,2)):"
+                   CALL matrix_print(partials_arr(i,1:3,:,obs_pair_arr(i,2)), stderr, errstr)
+                   WRITE(stderr,"(A)") "jacobian_matrix:"
                    CALL matrix_print(jacobian_matrix, stderr, errstr)
                 END IF
                 errstr = ""
