@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2013-03-08
+!! @version 2013-04-14
 !!
 PROGRAM oorb
 
@@ -583,9 +583,9 @@ PROGRAM oorb
                    "Could not read orbit file.", 1)
               STOP
            END IF
-           DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
-              id_arr_in(i) = "0" // TRIM(id_arr_in(i))
-           END DO
+           !DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
+           !   id_arr_in(i) = "0" // TRIM(id_arr_in(i))
+           !END DO
         END DO
         CALL NULLIFY(orb_in_file)
 

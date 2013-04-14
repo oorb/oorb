@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2012-10-26
+!! @version 2013-04-14
 !!
 MODULE io
 
@@ -2910,6 +2910,7 @@ CONTAINS
 
     TYPE (Time) :: t
     CHARACTER(len=1024), DIMENSION(4) :: header
+    REAL(bp), DIMENSION(6,6) :: jacobian_matrix
     REAL(bp), DIMENSION(6) :: elements, stdev
     REAL(bp) :: day, jac, mjd_tt
     INTEGER :: year, month, err, indx, i, j
@@ -3454,22 +3455,42 @@ CONTAINS
              IF (PRESENT(jac_car_kep)) THEN
                 jac = jac_car_kep
              ELSE
-                error = .TRUE.
-                CALL errorMessage("io / writeOpenOrbOrbitFile", &
-                     "Jacobian between Cartesian and Keplerian " // &
-                     "elements needed, but missimg.", 1)
-                RETURN
+                CALL partialsCartesianWrtKeplerian(orb, jacobian_matrix, "equatorial")
+                IF (error) THEN
+                   CALL errorMessage("io / writeOpenOrbOrbitFile", &
+                        "TRACE BACK (20) ",4)
+                   RETURN
+                ELSE
+                   jac = ABS(determinant(jacobian_matrix, errstr))
+                   IF (LEN_TRIM(errstr) > 0) THEN
+                      error = .TRUE.
+                      CALL errorMessage("io / writeOpenOrbOrbitFile", &
+                           "Failed computing determinant of jacobian between Cartesian and Keplerian " // &
+                           "elements.", 1)
+                      RETURN
+                   END IF
+                END IF
              END IF
           ELSE IF (element_type_pdf == "keplerian" .AND. &
                element_type_out == "cartesian") THEN
              IF (PRESENT(jac_car_kep)) THEN
                 jac = 1.0_bp/jac_car_kep
              ELSE
-                error = .TRUE.
-                CALL errorMessage("io / writeOpenOrbOrbitFile", &
-                     "Jacobian between Cartesian and Keplerian " // &
-                     "elements needed, but missimg.", 1)
-                RETURN
+                CALL partialsCartesianWrtKeplerian(orb, jacobian_matrix, "equatorial")
+                IF (error) THEN
+                   CALL errorMessage("io / writeOpenOrbOrbitFile", &
+                        "TRACE BACK (25) ",4)
+                   RETURN
+                ELSE
+                   jac = 1.0_bp/ABS(determinant(jacobian_matrix, errstr))
+                   IF (LEN_TRIM(errstr) > 0) THEN
+                      error = .TRUE.
+                      CALL errorMessage("io / writeOpenOrbOrbitFile", &
+                           "Failed computing determinant of jacobian between Cartesian and Keplerian " // &
+                           "elements.", 1)
+                      RETURN
+                   END IF
+                END IF
              END IF
           END IF
           WRITE(lu, "(1X,E18.10)", advance="no", iostat=err) pdf*jac

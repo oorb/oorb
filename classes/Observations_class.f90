@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2012-10-26
+!! @version 2013-04-14
 !!  
 MODULE Observations_cl
 
@@ -368,8 +368,8 @@ CONTAINS
     TYPE (Observations), INTENT(inout) :: this
     TYPE (Observation), INTENT(in)     :: obs
     TYPE (Time)                        :: t
-    CHARACTER(len=DESIGNATION_LEN)     :: str
-    INTEGER                            :: err, number
+    CHARACTER(len=DESIGNATION_LEN)     :: number
+    INTEGER                            :: err
 
 
     IF (this%is_initialized) THEN
@@ -397,25 +397,12 @@ CONTAINS
        RETURN
     END IF
     this%nobjects = 1
-    IF (getNumber(obs) /= 0) THEN
-       number = getNumber(obs)
-       IF (error) THEN
-          CALL errorMessage("Observations / new", &
-               "TRACE BACK (10)", 1)
-          CALL NULLIFY(this)
-          RETURN
-       END IF
-       CALL toString(number, str, error)
-       IF (error) THEN
-          CALL errorMessage("Observations / new", &
-               "TRACE BACK (15)", 1)
-          CALL NULLIFY(this)
-          RETURN
-       END IF
-       DO WHILE (LEN_TRIM(str) < 7)
-          str = "0" // TRIM(str)
-       END DO
-       this%objects(this%nobjects) = TRIM(str)
+    number = getNumber(obs)
+    IF (LEN_TRIM(number) /= 0) THEN
+!!$       DO WHILE (LEN_TRIM(number) < 7)
+!!$          number = "0" // TRIM(number)
+!!$       END DO
+       this%objects(this%nobjects) = TRIM(number)
     ELSE
        this%objects(this%nobjects) = getDesignation(obs)
        IF (error) THEN
@@ -2192,7 +2179,7 @@ CONTAINS
   !!
   !! Returns error if there are more than one numbers.
   !!
-  INTEGER FUNCTION getNumber_Obss(this)
+  CHARACTER(len=DESIGNATION_LEN) FUNCTION getNumber_Obss(this)
 
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)  :: this
@@ -2868,8 +2855,8 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout)         :: this
     TYPE (Observations), DIMENSION(:), POINTER :: getSeparatedSets
-    CHARACTER(len=DESIGNATION_LEN)             :: id
-    INTEGER                                    :: i, j, err, number
+    CHARACTER(len=DESIGNATION_LEN)             :: number, id
+    INTEGER                                    :: i, j, err
 
     IF (.NOT.this%is_initialized) THEN
        error = .TRUE.
@@ -2914,17 +2901,8 @@ CONTAINS
           DEALLOCATE(getSeparatedSets, stat=err)
           RETURN
        END IF
-       IF (number /= 0) THEN
-          CALL toString(number, id, error)
-          IF (error) THEN
-             CALL errorMessage("Observations / getSeparatedSets", &
-                  "TRACE BACK 4", 1)
-             DEALLOCATE(getSeparatedSets, stat=err)
-             RETURN
-          END IF
-          DO WHILE (LEN_TRIM(id) < 7)
-             id = "0" // TRIM(id)
-          END DO
+       IF (LEN_TRIM(number) /= 0) THEN
+          id = number
        ELSE
           id = getDesignation(this%obs_arr(this%ind(i)))
           IF (error) THEN
@@ -3120,12 +3098,13 @@ CONTAINS
     TYPE (CartesianCoordinates) :: obsy_ccoord, geocenter_ccoord, &
          satellite_ccoord
     CHARACTER(len=FNAME_LEN) :: fname, suffix
-    CHARACTER(len=DESIGNATION_LEN) :: designation
+    CHARACTER(len=DESIGNATION_LEN) :: number, designation
     CHARACTER(len=132), DIMENSION(5) :: records
     CHARACTER(len=132) :: record
     CHARACTER(len=124) :: line1, line2, line_, str, filter, obstype
     CHARACTER(len=7) :: nr_str
     CHARACTER(len=4) :: timescale, obsy_code
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr
     REAL(bp), DIMENSION(6,6) :: covariance
     REAL(bp), DIMENSION(6) :: coordinates, stdev_, mean
@@ -3133,8 +3112,8 @@ CONTAINS
     REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd_utc, dt, &
          ecl_lon, ecl_lat, angscan, pos_unc_along, pos_unc_across, &
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
-         rmin, rarcmin, mag_unc, s2n
-    INTEGER :: i, j, err, nr, year, month, hour, min, deg, arcmin, &
+         rmin, rarcmin, mag_unc, s2n, mjd_tt
+    INTEGER :: i, j, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat
@@ -3271,7 +3250,7 @@ CONTAINS
              filter = " "
           END IF
           i = i + 1
-          CALL NEW(this%obs_arr(i), number=0, designation=designation, &
+          CALL NEW(this%obs_arr(i), number="", designation=designation, &
                discovery=.FALSE., note1="", note2="", &
                obs_scoord=obs_scoord, covariance=covariance, &
                obs_mask=obs_mask, mag=mag, mag_unc=mag_unc, &
@@ -3339,17 +3318,8 @@ CONTAINS
              line1 = line_
           END IF
 
-          IF (line1(1:1) /= " ") THEN
-             DO j=0,34
-                IF (mpc_conv_table(j) == line1(1:1)) THEN
-                   EXIT
-                END IF
-             END DO
-             CALL toInt(line1(2:5), nr, error)
-             nr = j*10000 + nr
-          ELSE
-             nr = 0
-          END IF
+          number = line1(1:5)
+          designation = line1(6:12)
           IF (line1(13:13) == "*") THEN
              discovery = .TRUE.
           ELSE
@@ -3482,14 +3452,6 @@ CONTAINS
              line1(15:15) = "C"
           END SELECT
 
-          designation = line1(6:12)
-!!$          CALL MPCDesToMPC3Des(designation)
-!!$          IF (error) THEN
-!!$             CALL errorMessage("Observations / readObservationFile", &
-!!$                  "TRACE BACK (50)", 1)
-!!$             RETURN
-!!$          END IF
-
           ! Create observation object:
           CALL NULLIFY(this%obs_arr(i))
           SELECT CASE (line1(15:15))
@@ -3558,7 +3520,7 @@ CONTAINS
                 CALL rotateToEquatorial(satellite_ccoord)
                 coord_unit = 2
              END SELECT
-             CALL NEW(this%obs_arr(i), nr, designation, discovery, &
+             CALL NEW(this%obs_arr(i), number, designation, discovery, &
                   line1(14:14), line1(15:15), obs_scoord, covariance, &
                   obs_mask, mag, -1.0_bp, line1(71:71), -1.0_bp, &
                   obsy, obsy_ccoord, &
@@ -3572,7 +3534,7 @@ CONTAINS
                 CALL addMultinormalDeviate(obs_scoord, mean, covariance)
                 this%obs_note_arr(i) = "S"
              END IF
-             CALL NEW(this%obs_arr(i), number=nr, &
+             CALL NEW(this%obs_arr(i), number=number, &
                   designation=designation, discovery=discovery, &
                   note1=line1(14:14), note2=line1(15:15), &
                   obs_scoord=obs_scoord, covariance=covariance, &
@@ -3646,8 +3608,8 @@ CONTAINS
              END DO
           END IF
 
-          CALL toInt(records(1)(1:7), nr, error)
-
+          number = records(1)(1:7)
+          designation = records(1)(8:16)
           IF (records(1)(18:18) == "*") THEN
              discovery = .TRUE.
           ELSE
@@ -3814,16 +3776,6 @@ CONTAINS
           covariance(2,3) = correlation*stdev_(2)*stdev_(3)
           covariance(3,2) = covariance(2,3)
 
-          designation = records(1)(8:16)
-          IF (converttonewformat .AND. LEN_TRIM(ADJUSTL(designation)) < 9) THEN
-             CALL MPCDesToMPC3Des(designation)
-             IF (error) THEN
-                CALL errorMessage("Observations / readObservationFile", &
-                     "TRACE BACK (75)", 1)
-                RETURN
-             END IF
-          END IF
-
           ! Compute the heliocentric position of the observer at epoch t:
           obsy_code = records(1)(129:132)
           IF (obsy_code(1:1) == "0") THEN
@@ -3842,7 +3794,7 @@ CONTAINS
           SELECT CASE (records(1)(19:19))
           CASE (" ", "C", "A", "T", "M", "P")
              obsy_ccoord = getObservatoryCCoord(obsies, obsy_code, t)
-             CALL NEW(this%obs_arr(iobs), number=nr, designation=designation, &
+             CALL NEW(this%obs_arr(iobs), number=number, designation=designation, &
                   discovery=discovery, note1=records(1)(124:124), &
                   note2=records(1)(19:19), obs_scoord=obs_scoord, &
                   covariance=covariance, obs_mask=obs_mask, &
@@ -3894,7 +3846,7 @@ CONTAINS
              coordinates = 0.0_bp
              coordinates(1:3) = position(1:3)
              CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
-             CALL NEW(this%obs_arr(iobs), number=nr, designation=designation, &
+             CALL NEW(this%obs_arr(iobs), number=number, designation=designation, &
                   discovery=discovery, note1=records(1)(124:124), &
                   note2=records(1)(19:19), obs_scoord=obs_scoord, &
                   covariance=covariance, obs_mask=obs_mask, &
@@ -3988,25 +3940,12 @@ CONTAINS
              END DO
           END IF
 
-          nr = 0
           SELECT CASE (records(1)(7:7))
           CASE ("C", "P", "D", "X", "A")
-             CALL toInt(records(1)(1:6), nr, error)
-             IF (error) THEN
-                CALL errorMessage("Observations / readObservationFile", &
-                     "Could not convert string (" // records(1)(1:7) &
-                     // ") to number.", 1)
-                RETURN
-             END IF
+             number = records(1)(1:6)
              designation = records(1)(7:16)
           CASE default
-             CALL toInt(records(1)(1:7), nr, error)
-             IF (error) THEN
-                CALL errorMessage("Observations / readObservationFile", &
-                     "Could not convert string (" // records(1)(1:7) &
-                     // ") to number.", 1)
-                RETURN
-             END IF
+             number = records(1)(1:7)
              designation = records(1)(8:16)
           END SELECT
           IF (records(1)(20:20) == "*") THEN
@@ -4221,7 +4160,7 @@ CONTAINS
           SELECT CASE (records(1)(21:21))
           CASE (" ", "C", "A", "T", "M", "P", "c")
              obsy_ccoord = getObservatoryCCoord(obsies, obsy_code, t)
-             CALL NEW(this%obs_arr(iobs), number=nr, designation=designation, &
+             CALL NEW(this%obs_arr(iobs), number=number, designation=designation, &
                   discovery=discovery, note1=records(1)(124:124), &
                   note2=records(1)(21:21), obs_scoord=obs_scoord, &
                   covariance=covariance, obs_mask=obs_mask, &
@@ -4273,7 +4212,7 @@ CONTAINS
              coordinates = 0.0_bp
              coordinates(1:3) = position(1:3)
              CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
-             CALL NEW(this%obs_arr(iobs), number=nr, designation=designation, &
+             CALL NEW(this%obs_arr(iobs), number=number, designation=designation, &
                   discovery=discovery, note1=records(1)(124:124), &
                   note2=records(1)(21:21), obs_scoord=obs_scoord, &
                   covariance=covariance, obs_mask=obs_mask, &
@@ -4308,244 +4247,6 @@ CONTAINS
 
        i = iobs
 
-    CASE ("gaia2")
-
-       ! Temporary solution while the dynamical model is unknown:
-       CALL NEW(orbfile,fname(1:indx) // "orb")
-       CALL OPEN(orbfile)
-       IF (error) THEN
-          CALL errorMessage("Observations / readObservationFile", &
-               "Could not open orbit file.", 1)
-          RETURN          
-       END IF
-       norb = getNrOfLines(orbfile)
-       DO i=1,2
-          READ(getUnit(orbfile),*) record
-          norb = norb - 1
-       END DO
-       ALLOCATE(element_arr(norb,10), stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("Observations / readObservationFile", &
-               "Could not allocate memory.", 1)
-          RETURN
-       END IF
-       jd = 2456000.5_bp
-       CALL NEW(t0, jd-2400000.5_bp, "tdt")
-       DO i=1,norb
-          READ(getUnit(orbfile),*,iostat=err) element_arr(i,:), str
-          IF (err /= 0) THEN
-             WRITE(*,*) element_arr(i,:), str
-             STOP
-          END IF
-       END DO
-       CALL NULLIFY(orbfile)
-       element_arr(:,4:7) = element_arr(:,4:7)*rad_deg
-       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
-
-       ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
-       mjd_utc = 55197.0_bp
-       i = 0
-       DO
-
-          READ(getUnit(obsf), "(A120)", iostat=err) record
-          IF (err > 0) THEN
-             error = .TRUE.
-             CALL errorMessage("Observations / readObservationFile", &
-                  "Error while reading observations from file.", 1)
-             DEALLOCATE(element_arr, stat=err)
-             RETURN
-          ELSE IF (err < 0) THEN ! end-of-file
-             EXIT
-          END IF
-
-          IF (info_verb >= 4) THEN
-             WRITE(stdout,"(A120)") record
-          END IF
-
-          ! If the line is empty or marked with "#", read the next line:
-          IF (LEN_TRIM(record) == 0 .OR. record(1:1) == "#") THEN
-             CYCLE
-          END IF
-
-          i = i + 1
-          IF (i == 1) THEN
-             discovery = .TRUE.
-          ELSE
-             discovery = .FALSE.
-          END IF
-          CALL toInt(record(1:6), nr, error)
-          ! Epoch of detection, in days, starting from 1.0 January 2010
-          ! (= 2455197.5):
-          CALL toReal(record(7:24), dt, error)
-          ! Ecliptic longitude - as seen by Gaia at the epoch of the
-          ! observation:
-          CALL toReal(record(25:40), ecl_lon, error)
-          ! Ecliptic latitude:
-          CALL toReal(record(41:56), ecl_lat, error)
-          ! Position angle of the ecliptic meridian (0 to 360 deg) .
-          ! Convention: (same as for double star) clockwise when seen
-          ! from outside the celestial sphere, and counterclockwise 
-          ! (= direct rotation) when seen from inside the celestial
-          ! sphere:
-          ! 
-          !                ^            /  Pole ecliptic
-          !                |          /
-          !    ____________|________/________
-          !    |           |      /
-          !    |           |angscan
-          !    |           |  /
-          !    |___________|/________________       scan circle(from outside celestial sphere).
-          !    |                                    FOV moving on the sphere from left to right
-          !    |                                    here angscan ~ +45 deg
-          !    |
-          !    |____________________________
-          ! Pole ecliptic  |
-          !     \          |
-          !    ___\________|________________
-          !    |    \      |
-          !    |    angscan
-          !    |        \  |
-          !    |__________\|_________________> scan (from inside the  celestial sphere). The
-          !    |                                 star transits from left to right.
-          !    |
-          !    |                               here angscan ~ +45 deg
-          !    |____________________________
-          !
-          !
-          CALL toReal(record(57:72), angscan, error)
-          ! Position uncertainty, in mas, in the along- and
-          ! across-scan directions, respectively. This should alway be
-          ! > 0:
-          CALL toReal(record(73:84), pos_unc_along, error)
-          IF (pos_unc_along == 0.0_bp) THEN
-             i = i - 1
-             CYCLE
-          END IF
-          CALL toReal(record(85:96), pos_unc_across, error)
-          IF (pos_unc_across == 0.0_bp) THEN
-             i = i - 1
-             CYCLE
-          END IF
-          ! Convert to radians:
-          pos_unc_along = pos_unc_along*0.001_bp*rad_asec
-          pos_unc_across = pos_unc_across*0.001_bp*rad_asec
-          ! Velocity uncertainty, in mas, in the along- and
-          ! across-scan directions, respectively. When = 0 it means
-          ! that the corresponding velocity cannot be determined (this
-          ! is very rare in the main belt, since velocity is always
-          ! low and the object remains in the CCD "windows" long
-          ! enough..).
-          CALL toReal(record(97:108), vel_unc_along, error)
-          IF (vel_unc_along == 0.0_bp) THEN
-             i = i - 1
-             CYCLE
-          END IF
-          CALL toReal(record(109:120), vel_unc_across, error)
-          IF (vel_unc_along == 0.0_bp) THEN
-             i = i - 1
-             CYCLE
-          END IF
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "Could not convert string to number on line:", 1)
-             IF (err_verb >= 1) WRITE(stderr,"(A)") TRIM(record)
-             DEALLOCATE(element_arr, stat=err)
-             RETURN
-          END IF
-
-          ! True rotation angle is: 
-          ! direction of the scan w.r.t. equator = (direction of the scan
-          ! w.r.t. ecliptic pole) - (obliquity of the ecliptic)
-          rot_angle = angscan - eps
-          covariance = 0.0_bp
-          covariance(2,2) = (pos_unc_along*COS(rot_angle))**2.0_bp + &
-               (pos_unc_across*SIN(rot_angle))**2.0_bp
-          covariance(2,3) = (pos_unc_along**2.0_bp - pos_unc_across**2.0_bp)* &
-               COS(rot_angle)*SIN(rot_angle)
-          covariance(3,2) = (pos_unc_along**2.0_bp - pos_unc_across**2.0_bp)* &
-               COS(rot_angle)*SIN(rot_angle)
-          covariance(3,3) = (pos_unc_along*SIN(rot_angle))**2.0_bp + &
-               (pos_unc_across*COS(rot_angle))**2.0_bp
-
-          CALL NEW(t, mjd_utc + dt, "utc")
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (115)", 1)
-             DEALLOCATE(element_arr, stat=err)
-             RETURN
-          END IF
-          obsy = getObservatory(obsies, "500")
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (120)", 1)
-             DEALLOCATE(element_arr, stat=err)
-             RETURN
-          END IF
-          obsy_ccoord = getObservatoryCCoord(obsies, "500", t)
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (125)", 1)
-             DEALLOCATE(element_arr, stat=err)
-             RETURN
-          END IF
-          ! As a temporary solution, generate positions based on given
-          ! orbital elements, while the dynamical model is uncertain:
-          DO j=1,norb
-             IF (nr == NINT(element_arr(j,1))) THEN
-                EXIT
-             END IF
-          END DO
-          CALL NEW(orb, element_arr(j,2:7), "keplerian", "ecliptic", t0)
-          ! Generate n-body observations:
-          !CALL setPropagationParameters(orb, dyn_model="n-body", &
-          !     integrator="gauss-radau", integration_step=1.0_bp)
-          !CALL setPropagationParameters(orb, dyn_model="n-body", &
-          !     integrator="bulirsch-stoer", integration_step=10.0_bp)
-          CALL getEphemeris(orb, obsy_ccoord, ephemeris)
-          CALL NULLIFY(orb)
-          ! Add Gaussian noise depending on the uncertainties:
-          mean = 0.0_bp
-          CALL addMultinormalDeviate(ephemeris, mean, covariance)
-          coordinates = getCoordinates(ephemeris)
-          CALL NULLIFY(ephemeris)
-          position = 0.0_bp
-          velocity = 0.0_bp
-          position(2:3) = coordinates(2:3)
-          CALL NEW(obs_scoord, position, velocity, "equatorial", t)
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (130)", 1)
-             DEALLOCATE(element_arr, stat=err)
-             RETURN
-          END IF
-          CALL NULLIFY(this%obs_arr(i))
-          CALL NEW(this%obs_arr(i), number=nr, designation=" ", &
-               discovery=discovery, note1=" ", note2="C", &
-               obs_scoord=obs_scoord, covariance=covariance, &
-               obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
-               obsy=obsy, obsy_ccoord=obsy_ccoord)
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (135)", 1)
-             DEALLOCATE(element_arr, stat=err)
-             RETURN
-          END IF
-
-          CALL NULLIFY(obs_scoord)
-          CALL NULLIFY(t)
-          CALL NULLIFY(obsy)
-          CALL NULLIFY(obsy_ccoord)
-
-       END DO
-
-       DEALLOCATE(element_arr, stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("Observations / readObservationFile", &
-               "Could not deallocate memory.", 1)
-          RETURN
-       END IF
 
     CASE ("gaia3")
 
@@ -4559,7 +4260,7 @@ CONTAINS
        i = 0
        DO
 
-          READ(getUnit(obsf), "(A)", iostat=err, advance="NO") nr_str
+          READ(getUnit(obsf), "(A)", iostat=err, advance="NO") number
           IF (err > 0) THEN
              error = .TRUE.
              CALL errorMessage("Observations / readObservationFile", &
@@ -4567,8 +4268,8 @@ CONTAINS
              RETURN
           ELSE IF (err < 0) THEN ! end-of-file
              EXIT
-          ELSE IF (nr_str(1:1) == "#") THEN
-             READ(getUnit(obsf), "(A)", iostat=err) nr_str
+          ELSE IF (number(1:1) == "#") THEN
+             READ(getUnit(obsf), "(A)", iostat=err) number
              CYCLE
           END IF
           READ(getUnit(obsf), *, iostat=err) ccd, dt, position(2), &
@@ -4582,13 +4283,127 @@ CONTAINS
           END IF
           covariance(3,2) = covariance(2,3)
 
+          covariance(2,:) = covariance(2,:) * COS(position(3))
+          covariance(:,2) = covariance(:,2) * COS(position(3))
+
           i = i + 1
           IF (i == 1) THEN
              discovery = .TRUE.
           ELSE
              discovery = .FALSE.
           END IF
-          CALL toInt(nr_str, nr, error)
+
+          CALL NEW(t, mjd_utc + dt, "utc")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+          obsy = getObservatory(obsies, "247")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (120)", 1)
+             RETURN
+          END IF
+          ! Transform barycentric spacecraft coordinates to
+          ! heliocentric spacecraft coordinates
+          mjd_tt = getMJD(t, "TT")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (121)", 1)
+             RETURN
+          END IF
+          planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (122)", 1)
+             RETURN
+          END IF
+          CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (125)", 1)
+             RETURN
+          END IF
+          DEALLOCATE(planeph, stat=err)
+          CALL NEW(obs_scoord, position, velocity, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (130)", 1)
+             RETURN
+          END IF
+          satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
+          CALL rotateToEquatorial(satellite_ccoord)
+          CALL rotateToEquatorial(obsy_ccoord)
+          coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+          CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+          CALL NULLIFY(this%obs_arr(i))
+          CALL NEW(this%obs_arr(i), number=number, designation=" ", &
+               discovery=discovery, note1=" ", note2="S", &
+               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
+               obsy=obsy, obsy_ccoord=obsy_ccoord, &
+               satellite_ccoord=satellite_ccoord, &
+               coord_unit=2)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (135)", 1)
+             RETURN
+          END IF
+
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+
+       END DO
+
+    CASE ("sentinel")
+
+       covariance = 0.0_bp
+       position = 0.0_bp
+       velocity = 0.0_bp
+       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+       ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
+       mjd_utc = 55197.0_bp
+       i = 0
+       DO
+
+          READ(getUnit(obsf), "(A)", iostat=err, advance="NO") number
+          IF (err > 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file.", 1)
+             RETURN
+          ELSE IF (err < 0) THEN ! end-of-file
+             EXIT
+          ELSE IF (number(1:1) == "#") THEN
+             READ(getUnit(obsf), "(A)", iostat=err) number
+             CYCLE
+          END IF
+          READ(getUnit(obsf), *, iostat=err) ccd, dt, position(2), &
+               position(3), covariance(2,2), covariance(2,3), covariance(3,3), &
+               coordinates(1:6)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file.", 1)
+             RETURN
+          END IF
+          covariance(3,2) = covariance(2,3)
+
+          covariance(2,:) = covariance(2,:) * COS(position(3))
+          covariance(:,2) = covariance(:,2) * COS(position(3))
+
+          i = i + 1
+          IF (i == 1) THEN
+             discovery = .TRUE.
+          ELSE
+             discovery = .FALSE.
+          END IF
 
           CALL NEW(t, mjd_utc + dt, "utc")
           IF (error) THEN
@@ -4621,7 +4436,7 @@ CONTAINS
           CALL NULLIFY(satellite_ccoord)
           CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
           CALL NULLIFY(this%obs_arr(i))
-          CALL NEW(this%obs_arr(i), number=nr, designation=" ", &
+          CALL NEW(this%obs_arr(i), number=number, designation=" ", &
                discovery=discovery, note1=" ", note2="S", &
                obs_scoord=obs_scoord, covariance=covariance, &
                obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
@@ -4693,11 +4508,12 @@ CONTAINS
     TYPE (SphericalCoordinates)        :: obs_scoord
     TYPE (CartesianCoordinates)        :: obsy_ccoord, &
          geocenter_ccoord, satellite_ccoord
+    CHARACTER(len=DESIGNATION_LEN)     :: number
     CHARACTER(len=96)                  :: line1
     CHARACTER(len=3)                   :: timescale, obsy_code
     REAL(bp), DIMENSION(6,6)           :: covariance
     REAL(bp)                           :: day, sec, arcsec, mag
-    INTEGER                            :: i, err, nr, year, &
+    INTEGER                            :: i, err, year, &
          month, hour, min, deg, arcmin, nlines
     LOGICAL, DIMENSION(6)              :: obs_mask
     LOGICAL                            :: discovery
@@ -4765,7 +4581,7 @@ CONTAINS
 
        i = i + 1
        !       CALL toInt(line1(1:5), nr, error)
-       nr = 0
+       number = ""
        IF (line1(62:62) == "*") THEN
           discovery = .TRUE.
        ELSE
@@ -4842,7 +4658,7 @@ CONTAINS
        CALL NULLIFY(this%obs_arr(i))
        obsy_ccoord = getObservatoryCCoord(obsies, obsy_code, t)
 
-       CALL NEW(this%obs_arr(i), number=nr, &
+       CALL NEW(this%obs_arr(i), number=number, &
             designation=line1(54:61), discovery=discovery, & 
             note1=" ", note2=line1(69:69), obs_scoord=obs_scoord, &
             covariance=covariance, obs_mask=obs_mask, mag=mag, &
@@ -4895,11 +4711,11 @@ CONTAINS
     TYPE (Time)                           :: t
     TYPE (SphericalCoordinates)           :: obs_scoord
     TYPE (CartesianCoordinates)           :: obsy_ccoord
+    CHARACTER(len=DESIGNATION_LEN)        :: number
     CHARACTER(len=93)                     :: line, frst_line
     CHARACTER(len=14)                     :: empty_form, full_form
     CHARACTER(len=13)                     :: designation
-    CHARACTER(len=5)                      :: form_, line_length, &
-         number, nobs_char
+    CHARACTER(len=5)                      :: form_, line_length, nobs_char
     CHARACTER(len=3), PARAMETER           :: rec_length="14"
     INTEGER, PARAMETER                    :: nrecords=17
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: stdevs
@@ -4908,7 +4724,7 @@ CONTAINS
          distances, longitudes, latitudes, rot_angles
     REAL(bp), DIMENSION(3)                :: position, velocity
     REAL(bp)                              :: mjd_utc
-    INTEGER                               :: i, err, nr, nlines, nobs, nobs_, len
+    INTEGER                               :: i, err, nlines, nobs, nobs_, len
     LOGICAL, DIMENSION(6)                 :: obs_mask
     LOGICAL                               :: discovery
 
@@ -4958,12 +4774,6 @@ CONTAINS
        IF (error) THEN
           CALL errorMessage("Observations / readGAIAFile", &
                "Could not convert character string to integer (1).", 1)
-          RETURN       
-       END IF
-       CALL toInt(frst_line(11:15), nr, error)
-       IF (error) THEN
-          CALL errorMessage("Observations / readGAIAFile", &
-               "Could not convert character string to integer (2).", 1)
           RETURN       
        END IF
        designation = frst_line(17:29)
@@ -5209,7 +5019,7 @@ CONTAINS
                (stdevs(i,2)*COS(rot_angles(i)))**2.0_bp
 
           CALL NULLIFY(this%obs_arr(nobs-nobs_+i))
-          CALL NEW(this%obs_arr(nobs-nobs_+i), number=nr, &
+          CALL NEW(this%obs_arr(nobs-nobs_+i), number=number, &
                designation=designation, discovery=discovery, & 
                note1=" ", note2="C", obs_scoord=obs_scoord, &
                covariance=covariance, obs_mask=obs_mask, &
@@ -5391,11 +5201,11 @@ CONTAINS
     CHARACTER(len=*), INTENT(in), OPTIONAL :: primary_sort
     LOGICAL, INTENT(in), OPTIONAL          :: force_full
     TYPE (Time)                            :: t
-    CHARACTER(len=DESIGNATION_LEN)         :: id
+    CHARACTER(len=DESIGNATION_LEN)         :: number, id
     CHARACTER(len=16)                      :: primarysort
     REAL(bp), DIMENSION(:), ALLOCATABLE    :: tmp
     REAL(bp)                               :: mjd_tdt
-    INTEGER                                :: i, iobs, iobj, number
+    INTEGER                                :: i, iobs, iobj
 
     id = " "
     IF (this%nobjects == 0) THEN
@@ -5443,16 +5253,11 @@ CONTAINS
        END IF
 
        ! Use (1) number or (2) designation:
-       IF (number /= 0 .AND. primarysort == "number") THEN
-          CALL toString(number, id, error)
-          IF (error) THEN
-             CALL errorMessage("Observations / sortObservations", &
-                  "Could not convert integer to string.", 1)
-             RETURN
-          END IF
-          DO WHILE (LEN_TRIM(id) < 7)
-             id = "0" // TRIM(id)
-          END DO
+       IF (LEN_TRIM(number) /= 0 .AND. primarysort == "number") THEN
+          id = number
+!!$          DO WHILE (LEN_TRIM(id) < 7)
+!!$             id = "0" // TRIM(id)
+!!$          END DO
        ELSE
           id = getDesignation(this%obs_arr(iobs))
           IF (error) THEN
@@ -5536,7 +5341,7 @@ CONTAINS
     TYPE (Observations), INTENT(in) :: this
     CHARACTER(len=*)                :: frmt
     INTEGER, INTENT(in)             :: lu         
-    INTEGER, INTENT(in), OPTIONAL   :: number
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: number
     CHARACTER(len=OBS_RECORD_LEN), DIMENSION(:), POINTER :: records
     CHARACTER(len=2)                :: note
     INTEGER                         :: i, j, err
