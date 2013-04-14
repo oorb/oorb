@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV 
-!! @version 2012-10-26
+!! @version 2013-04-14
 !!
 MODULE Orbit_cl
 
@@ -81,8 +81,8 @@ MODULE Orbit_cl
   PRIVATE :: rotateToEquatorial_Orb
   PRIVATE :: estimateCosDf
   PRIVATE :: setParameters_Orb
-!  PRIVATE :: solveKeplerEquation_stumpff
-!  PRIVATE :: solveKeplerEquation_newton
+  !  PRIVATE :: solveKeplerEquation_stumpff
+  !  PRIVATE :: solveKeplerEquation_newton
   PRIVATE :: toCartesian_Orb
   PRIVATE :: toCometary_Orb
   PRIVATE :: toKeplerian_Orb
@@ -2626,7 +2626,7 @@ CONTAINS
 !!$    REAL(bp), PARAMETER :: tol4 = 1.0e-2_bp
     REAL(bp), PARAMETER :: tol1 = 1.0e-6_bp
     REAL(bp), PARAMETER :: tol2 = 1.0e-6_bp
-    REAL(bp), PARAMETER :: tol3 = 1.0e-10_bp
+    REAL(bp), PARAMETER :: tol3 = 1.0e-9_bp
     REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
     INTEGER, PARAMETER :: max_iter = 100
     REAL(bp), DIMENSION(0:3) :: stumpff_c, stumpff_cs
@@ -2690,7 +2690,7 @@ CONTAINS
 
        this_ = copy(this)
        ! Time of periapsis:
-       mm = SQRT(abs(this_%elements(1) / &
+       mm = SQRT(ABS(this_%elements(1) / &
             (1.0_bp-this_%elements(2)))**3.0_bp / &
             planetary_mu(this_%central_body))
        mjd_tt = getMJD(this_%t,"TT")
@@ -2713,7 +2713,7 @@ CONTAINS
        ! period p:
        mjd_tt = getMJD(this_%t,"TT")
        ! |a| is there to allow use with hyperbolic orbits
-       mm = SQRT(abs(this_%elements(1))**3.0_bp / planetary_mu(this_%central_body))
+       mm = SQRT(ABS(this_%elements(1))**3.0_bp / planetary_mu(this_%central_body))
        dt = this_%elements(6) * mm
        p = two_pi * mm
        ! Remove full periods from dt:
@@ -2842,19 +2842,19 @@ CONTAINS
              s = 0.0_bp
           END IF
        END IF
-!write(*,*) 
-!write(*,*) 
-!write(*,*) q,e,i/rad_deg,an/rad_deg,ap/rad_deg
-!write(*,*) 
+       !write(*,*) 
+       !write(*,*) 
+       !write(*,*) q,e,i/rad_deg,an/rad_deg,ap/rad_deg
+       !write(*,*) 
 
        DO iiter=1,max_iter
           x = s**2.0_bp * alpha
           CALL getStumpffFunctions(x, stumpff_c)
-          if (error) then
+          IF (error) THEN
              CALL errorMessage("Orbit / getCometaryElements", &
                   "TRACE BACK (10)", 1)
-             return
-          end if
+             RETURN
+          END IF
           stumpff_cs(0) = stumpff_c(0)
           stumpff_cs(1) = stumpff_c(1) * s
           stumpff_cs(2) = stumpff_c(2) * s**2.0_bp
@@ -2869,14 +2869,14 @@ CONTAINS
           s = s + ds
           !write(*,*) s, x, q, r, rp, rpp, ds
           IF (ABS(ds) < tol2 .AND. ABS(rp) < tol3 .AND. &
-               (ABS(r-q) < tol4 .OR. (e < 1.0_bp .and. &
+               (ABS(r-q) < tol4 .OR. (e < 1.0_bp .AND. &
                ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) < tol4))) THEN
              EXIT
           END IF
        END DO
        IF (ABS(ds) > tol2 .OR. ABS(rp) > tol3 .OR. &
-            (e >= 1.0_bp .and. ABS(r-q) > tol4) .or. &
-            (e < 1.0_bp .and. ABS(r-q) > tol4 .and. &
+            (e >= 1.0_bp .AND. ABS(r-q) > tol4) .OR. &
+            (e < 1.0_bp .AND. ABS(r-q) > tol4 .AND. &
             ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getCometaryElements", &
@@ -2887,10 +2887,10 @@ CONTAINS
              WRITE(stderr,*) "abs(rp) > tol3: ", ABS(rp) > tol3, &
                   "(", ABS(rp), " > ", tol3, ") or"
              WRITE(stderr,*) "e >= 1 and abs(r-q) > tol4: ", &
-                  e >= 1.0_bp .and. ABS(r-q) > tol4, &
+                  e >= 1.0_bp .AND. ABS(r-q) > tol4, &
                   "(", ABS(r-q), " > ", tol4, ")"
              WRITE(stderr,*) "e < 1 and abs(r-q) > tol4 and abs(r-Q) > tol4: ", &
-                  e < 1.0_bp .and. ABS(r-q) > tol4 .AND. ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4, &
+                  e < 1.0_bp .AND. ABS(r-q) > tol4 .AND. ABS(r-q/(1.0_bp-e)*(1.0_bp+e)) > tol4, &
                   "(", ABS(r-q), " > ", tol4, " and ", ABS(r-q/(1.0_bp-e)*(1.0_bp+e)), " > ", tol4, ")"
           END IF
           RETURN          
@@ -4875,42 +4875,53 @@ CONTAINS
        ! gamma = sqrt(mu*a) 
        ! Note that we use |a| below in order to allow for hyperbolic
        ! orbits.
-       gamma = SQRT(planetary_mu(this%central_body)*abs(a))
+       gamma = SQRT(planetary_mu(this%central_body)*ABS(a))
        IF (ABS(gamma) < TINY(gamma)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getKeplerianElements", &
                "Gamma is computationally too small.", 1)
           RETURN
        END IF
-       ! r(1+e*cos(f))=a|1-e^2|, r*cos(f)=a*cos(E)-ae, and for elliptical 
-       ! orbits a=r/(2-rv^2/mu) (see above) and |1-e^2|=1-e^2
-       ! -> e*cos(E)=rv^2/mu-1=alpha-1
-       e_cos_ea = alpha - 1.0_bp
-       !
-       e_sin_ea = DOT_PRODUCT(pos,vel)/gamma
-       e = SQRT(e_cos_ea**2.0_bp + e_sin_ea**2.0_bp)
-       IF (e == 1.0_bp) THEN
+       IF (a > 0.0_bp) THEN ! elliptic motion
+
+          ! r(1+e*cos(f))=a|1-e^2|, r*cos(f)=a*cos(E)-ae, and for elliptical 
+          ! orbits a=r/(2-rv^2/mu) (see above) and |1-e^2|=1-e^2
+          ! -> e*cos(E)=rv^2/mu-1=alpha-1
+          e_cos_ea = alpha - 1.0_bp
+          !
+          e_sin_ea = DOT_PRODUCT(pos,vel)/gamma
+          e = SQRT(e_cos_ea**2.0_bp + e_sin_ea**2.0_bp)
+          IF (e == 1.0_bp) THEN
+             error = .TRUE.
+             CALL errorMessage("Orbit / getKeplerianElements", &
+                  "Orbit is parabolic.", 1)
+             RETURN
+          ELSE IF (e < EPSILON(e)) THEN
+             error = .TRUE.
+             CALL errorMessage("Orbit / getKeplerianElements", &
+                  "Orbit is (almost) circular.", 1)
+             WRITE(stderr,*) e
+             RETURN
+          END IF
+          cos_ea = e_cos_ea/e
+          sin_ea = e_sin_ea/e
+          IF (ABS(cos_ea) > 1.0_bp) cos_ea = SIGN(1.0_bp, cos_ea)
+          ea = ACOS(cos_ea)
+          IF (sin_ea < 0.0_bp) ea = two_pi - ea
+          ma = ea - e_sin_ea
+          IF (ma == two_pi) THEN
+             ma = 0.0_bp
+          END IF
+          ma = MODULO(ma,two_pi)
+
+       ELSE IF (a < 0.0_bp) THEN ! hyperbolic motion
+
           error = .TRUE.
           CALL errorMessage("Orbit / getKeplerianElements", &
-               "Orbit is parabolic.", 1)
+               "Orbit is hyperbolic.", 1)
           RETURN
-       ELSE IF (e < EPSILON(e)) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getKeplerianElements", &
-               "Orbit is (almost) circular.", 1)
-          WRITE(stderr,*) e
-          RETURN
+
        END IF
-       cos_ea = e_cos_ea/e
-       sin_ea = e_sin_ea/e
-       IF (ABS(cos_ea) > 1.0_bp) cos_ea = SIGN(1.0_bp, cos_ea)
-       ea = ACOS(cos_ea)
-       IF (sin_ea < 0.0_bp) ea = two_pi - ea
-       ma = ea - e_sin_ea
-       IF (ma == two_pi) THEN
-          ma = 0.0_bp
-       END IF
-       ma = modulo(ma,two_pi)
 
        ! Inclination and ascending node:
        ru = SQRT(DOT_PRODUCT(k,k))
@@ -6470,7 +6481,7 @@ CONTAINS
        error = .TRUE.
        CALL errorMessage("Orbit / getStumpffFunctions", &
             "x < xc", 1)
-       write(stderr,*) x
+       WRITE(stderr,*) x
        RETURN
     END IF
 
@@ -7043,7 +7054,7 @@ CONTAINS
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
 
     ! Mean motion:
-    mm = SQRT(planetary_mu(this%central_body))/SQRT(abs(kep_elements(1))**3.0_bp)
+    mm = SQRT(planetary_mu(this%central_body))/SQRT(ABS(kep_elements(1))**3.0_bp)
 
     ! Sines and cosines of the inclination, the longitude of the
     ! ascending node, and the argument of periapsis:
@@ -7558,7 +7569,7 @@ CONTAINS
     ! Semiminor axis:
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
     ! Mean motion:
-    mm = SQRT(planetary_mu(this%central_body))/SQRT(abs(kep_elements(1))**3.0_bp)
+    mm = SQRT(planetary_mu(this%central_body))/SQRT(ABS(kep_elements(1))**3.0_bp)
 
     CALL solveKeplerEquation(this, this%t, ea)
     IF (error) THEN
@@ -8208,7 +8219,7 @@ CONTAINS
     END DO
 
     multiple_t0 = .FALSE.
-    DO i=1,nthis
+    DO i=2,nthis
        IF (.NOT.equal(this_arr(1)%t,this_arr(i)%t)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / propagate (multiple)",&
@@ -8382,7 +8393,6 @@ CONTAINS
                      "Orbit / propagate_Orb_multiple:", &
                      "2-body propagation carried out for orbit #", i, "."
              END IF
-
 
           CASE ("cometary")
 
@@ -9654,7 +9664,7 @@ CONTAINS
     INTEGER,  PARAMETER                   :: nnew = 40 ! 8
     INTEGER,  PARAMETER                   :: nlag = 100 ! 20
     ! Care must be taken that tols is not too small!
-    REAL(bp), PARAMETER                   :: tols = 1.0e-10_bp ! e-10
+    REAL(bp), PARAMETER                   :: tols = 1.0e-11_bp ! e-10
     REAL(bp), PARAMETER                   :: toll = 1.0e+150_bp
     REAL(bp), DIMENSION(0:3)              :: stumpff_c
     REAL(bp)                              :: s_, ds, a, e, en, ec, es, tmp
@@ -9667,9 +9677,9 @@ CONTAINS
     ! For small ds, equal initial guesses for elliptic and hyperbolic motion;
     ! for large ds, separate initial guesses:
     IF (ABS(dt/r0) <= 0.2_bp) THEN
-       if (info_verb >= 4) then
-          write(stdout,*) "Small ds -> equal initial guess for e<1 and e>1 orbits..."
-       end if
+       IF (info_verb >= 4) THEN
+          WRITE(stdout,*) "Small ds -> equal initial guess for e<1 and e>1 orbits..."
+       END IF
        IF (ABS(r0**3.0_bp) < 10*EPSILON(r0)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / solveKeplerEquation", &
@@ -9689,10 +9699,10 @@ CONTAINS
           ! If alpha < 0, then mu < 0, and vice versa:
           en = SQRT(SIGN(mu_,alpha)/(a**3.0_bp))
        END IF
-       IF (alpha > epsilon(alpha)) THEN ! alpha positive -> elliptic motion
-          if (info_verb >= 4) then
-             write(stdout,*) "Large ds and alpha > 0 -> initial guess for e<1 orbit..."
-          end if
+       IF (alpha > EPSILON(alpha)) THEN ! alpha positive -> elliptic motion
+          IF (info_verb >= 4) THEN
+             WRITE(stdout,*) "Large ds and alpha > 0 -> initial guess for e<1 orbit..."
+          END IF
           ec = 1.0_bp - r0/a
           tmp = en*a**2.0_bp
           IF (ABS(tmp) < 10*EPSILON(tmp)) THEN
@@ -9709,10 +9719,10 @@ CONTAINS
           sigma = SIGN(1.0_bp,es*COS(y)+ec*SIN(y))
           x = y + sigma*0.85_bp*e
           s = x/SQRT(alpha)
-       ELSE if (alpha < -epsilon(alpha)) then ! alpha negative -> hyperbolic motion
-          if (info_verb >= 4) then
-             write(stdout,*) "Large ds and alpha < 0 -> initial guess for e>1 orbit..."
-          end if
+       ELSE IF (alpha < -EPSILON(alpha)) THEN ! alpha negative -> hyperbolic motion
+          IF (info_verb >= 4) THEN
+             WRITE(stdout,*) "Large ds and alpha < 0 -> initial guess for e>1 orbit..."
+          END IF
           ech = 1.0_bp - r0/a
           tmp = SQRT(-a*mu_)
           esh = u/tmp
@@ -9746,7 +9756,7 @@ CONTAINS
     n  = 0
     DO WHILE (n < nnew)
        n             = n + 1
-!write(*,*) "nnew", n, s, alpha, s**2.0_bp, s**2.0_bp * alpha
+       !write(*,*) "nnew", n, s, alpha, s**2.0_bp, s**2.0_bp * alpha
        x             = s**2.0_bp * alpha
        CALL getStumpffFunctions(x, stumpff_c)
        IF (error) THEN
@@ -9801,8 +9811,8 @@ CONTAINS
     n  = 0
     DO WHILE (n < nlag)
        n = n + 1
-!write(*,*) "nlag", n, s, r0, u, alpha, dt, central_body, stumpff_cs(0:3), ffs(0:2)
-!write(*,*) "nlag", n, s, stumpff_cs(0:3), ffs(0:2)
+       !write(*,*) "nlag", n, s, r0, u, alpha, dt, central_body, stumpff_cs(0:3), ffs(0:2)
+       !write(*,*) "nlag", n, s, stumpff_cs(0:3), ffs(0:2)
        x = s**2.0_bp * alpha
        CALL getStumpffFunctions(x, stumpff_c)
        IF (error) THEN

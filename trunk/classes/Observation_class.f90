@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2012,2013                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2012-10-26
+!! @version 2013-04-14
 !!  
 MODULE Observation_cl
 
@@ -67,7 +67,7 @@ MODULE Observation_cl
 
   TYPE Observation
      PRIVATE
-     INTEGER                        :: number
+     CHARACTER(len=DESIGNATION_LEN) :: number
      CHARACTER(len=DESIGNATION_LEN) :: designation
      LOGICAL                        :: discovery
      CHARACTER(len=1)               :: note1, note2, mode
@@ -196,7 +196,7 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (Observation), INTENT(inout)                 :: this
-    INTEGER, INTENT(in)                               :: number
+    CHARACTER(len=*), INTENT(in)                      :: number
     CHARACTER(len=*), INTENT(in)                      :: designation
     LOGICAL, INTENT(in)                               :: discovery
     CHARACTER(len=*), INTENT(in)                      :: note1, note2
@@ -220,7 +220,7 @@ CONTAINS
        RETURN
     END IF
 
-    this%number             = number
+    this%number             = TRIM(number)
     IF (LEN_TRIM(designation) <= designation_len) THEN
        this%designation = TRIM(designation)
     ELSE
@@ -278,7 +278,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observation), INTENT(inout) :: this
 
-    this%number            = 0
+    this%number            = ""
     this%designation       = ""
     this%discovery         = .FALSE.
     this%note1             = ""
@@ -799,15 +799,10 @@ CONTAINS
        RETURN
     END IF
 
-    IF (this%number == 0) THEN
+    IF (LEN_TRIM(this%number) == 0) THEN
        getID_Obs = this%designation
     ELSE
-       CALL toString(this%number, getID_Obs, error)
-       IF (error) THEN
-          CALL errorMessage("Observation / getID", &
-               "Could not convert integer to string.", 1)
-          RETURN
-       END IF
+       getID_Obs = this%number
     END IF
 
   END FUNCTION getID_Obs
@@ -872,11 +867,11 @@ CONTAINS
   !!
   !! Returns number of the asteroid corresponding to this object. If
   !! the asteroid is unnumbered, the function returns the default
-  !! value (usually 0).
+  !! value (empty string).
   !!
   !! Returns error.
   !!
-  INTEGER FUNCTION getNumber_Obs(this)
+  CHARACTER(len=DESIGNATION_LEN) FUNCTION getNumber_Obs(this)
 
     IMPLICIT NONE
     TYPE (Observation), INTENT(in) :: this
@@ -909,24 +904,23 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observation), INTENT(in)                       :: this
     CHARACTER(len=*), INTENT(in)                         :: frmt
-    INTEGER, INTENT(in), OPTIONAL                        :: number
+    CHARACTER(len=*), INTENT(in), OPTIONAL               :: number
     CHARACTER(len=OBS_RECORD_LEN), DIMENSION(:), POINTER :: records
 
     TYPE (Time)                       :: t
     TYPE (CartesianCoordinates)       :: ccoord
-    CHARACTER(len=DESIGNATION_LEN)    :: designation, secret_name
+    CHARACTER(len=DESIGNATION_LEN)    :: designation, secret_name, number_
     CHARACTER(len=12)                 :: day_str
     CHARACTER(len=9)                  :: ra_unc, dec_unc
-    CHARACTER(len=7)                  :: number_str
     CHARACTER(len=6)                  :: s_str, mag_str
-    CHARACTER(len=5)                  :: as_str
+    CHARACTER(len=5)                  :: as_str, number_str
     CHARACTER(len=4)                  :: obsy_code
     CHARACTER(len=2)                  :: month_str, h_str, m_str, deg_str, am_str, filter_
     CHARACTER(len=1)                  :: discovery, sign_dec, sign_x, sign_y, sign_z
     REAL(bp), DIMENSION(6)            :: coord
     REAL(bp)                          :: day, ra, s, dec, as, correlation
     INTEGER(ihp)                      :: day_integer
-    INTEGER                           :: number_, err, year, month, h, m, &
+    INTEGER                           :: err, year, month, h, m, &
          deg, am, n, i, indx
 
     IF (.NOT. this%is_initialized) THEN
@@ -1100,19 +1094,21 @@ CONTAINS
 
     CASE ("mpc","sor")
 
-       IF (number_ == 0) THEN
-          number_str(1:5) = "     "
-       ELSE
-          CALL toString(number_, number_str, error)
+       IF (LEN_TRIM(number_) > 5) THEN
+          CALL encodeMPCNumber(number_, 5)
           IF (error) THEN
              CALL errorMessage("Observation / getObservationRecords", &
-                  "Could not convert number to string.", 1)
+                  "TRACE BACK (18)", 1)
              DEALLOCATE(records, stat=err)
              RETURN
           END IF
-          DO WHILE (LEN_TRIM(number_str) < 5)
-             number_str = "0" // TRIM(number_str)
-          END DO
+          IF (LEN_TRIM(number_) > 5) THEN
+             error = .TRUE.
+             CALL errorMessage("Observation / getObservationRecords", &
+                  "Number is too long for MPC format.", 1)
+             DEALLOCATE(records, stat=err)
+             RETURN             
+          END IF
        END IF
        n = LEN_TRIM(this%designation)
        IF (n <= 7) THEN
@@ -1139,7 +1135,7 @@ CONTAINS
        END IF
        err = 0
        WRITE(records(1),"(A5,A7,3A1,I4,1X,A2,1X,A8,1X,A2,1X,A2,1X,A6," // &
-            "A1,A2,1X,A2,1X,A5,9X,A5,A2,5X,A3)", iostat=err) number_str(1:5), &
+            "A1,A2,1X,A2,1X,A5,9X,A5,A2,5X,A3)", iostat=err) number_(1:5), &
             designation(1:7), discovery, this%note1, this%note2, year, &
             month_str, day_str(1:8), h_str, m_str, s_str, sign_dec, &
             deg_str, am_str, as_str, mag_str(1:5), this%filter, obsy_code
@@ -1175,7 +1171,7 @@ CONTAINS
              coord(1:3) = coord(1:3)*km_au
              coord = ABS(coord)
              WRITE(records(2),"(A5,A7,3A1,I4,1X,A2,1X,A8,1X,I1,3(1X,A1,F10.4)," // &
-                  "8X,A3)", iostat=err) number_str(1:5), designation(1:7), " ", &
+                  "8X,A3)", iostat=err) number_(1:5), designation(1:7), " ", &
                   this%note1, "s", year, month_str, day_str(1:8), &
                   this%coord_unit, sign_x, coord(1), sign_y, coord(2), &
                   sign_z, coord(3), obsy_code
@@ -1183,7 +1179,7 @@ CONTAINS
              coord = ABS(coord)
              WRITE(records(2), &
                   "(A5,A7,3A1,I4,1X,A2,1X,A8,1X,I1,3(1X,A1,F10.8),8X,A3)",iostat=err) &
-                  number_str(1:5), designation(1:7), " ", &
+                  number_(1:5), designation(1:7), " ", &
                   this%note1, "s", year, month_str, day_str(1:8), &
                   this%coord_unit, sign_x, coord(1), sign_y, coord(2), sign_z, coord(3), obsy_code
           CASE default
@@ -1211,19 +1207,21 @@ CONTAINS
           obsy_code = "0" // TRIM(obsy_code)
        END DO
 
-       IF (number_ == 0) THEN
-          number_str(1:7) = "       "
-       ELSE
-          CALL toString(number_, number_str, error)
+       IF (LEN_TRIM(number_) > 7) THEN
+          CALL encodeMPCNumber(number_, 7)
           IF (error) THEN
              CALL errorMessage("Observation / getObservationRecords", &
-                  "Could not convert number to string.", 1)
+                  "TRACE BACK (22)", 1)
              DEALLOCATE(records, stat=err)
              RETURN
           END IF
-          DO WHILE (LEN_TRIM(number_str) < 7)
-             number_str = "0" // TRIM(number_str)
-          END DO
+          IF (LEN_TRIM(number_) > 7) THEN
+             error = .TRUE.
+             CALL errorMessage("Observation / getObservationRecords", &
+                  "Number is too long for MPC3 format.", 1)
+             DEALLOCATE(records, stat=err)
+             RETURN             
+          END IF
        END IF
        n = LEN_TRIM(this%designation)
        IF (n <= 9) THEN
@@ -1252,7 +1250,7 @@ CONTAINS
             SQRT(this%covariance(3,3))/rad_asec > 0.01_bp) THEN
           WRITE(records(1),"(A7,A9,3A1,I4,1X,A2,1X,A12,1X,A2,1X,A2,1X,A6," // &
                "3X,A1,A2,1X,A2,1X,A5,4X,A6,A2,A1,1X,A3,A1,A12,1X,A12," // & 
-               "1X,A12,A1,2A4)", iostat=err) number_str(1:7), designation(1:9), "1", &
+               "1X,A12,A1,2A4)", iostat=err) number_(1:7), designation(1:9), "1", &
                discovery, this%note2, year, month_str, day_str, h_str, m_str, &
                s_str, sign_dec, deg_str, am_str, as_str, mag_str, this%filter, &
                " ", "   ", " ", "            ", "            ", "            ", &
@@ -1261,7 +1259,7 @@ CONTAINS
           ! Optical (assumes zero-correlation and error estimates):
           WRITE(records(2),"(A7,A9,3A1,I4,1X,A2,1X,A12,1X,F6.3,1X,F6.3,3X," // &
                "F8.5,A1,A7,F12.10,F5.3,A4,A4,F5.1,I1,3X,A1,2A8,A1,2A4)", iostat=err) &
-               number_str(1:7), designation(1:9), "2", " ", this%note2, year, month_str, day_str, &
+               number_(1:7), designation(1:9), "2", " ", this%note2, year, month_str, day_str, &
                SQRT(this%covariance(2,2))/rad_asec, &
                SQRT(this%covariance(3,3))/rad_asec, &
                correlation, "X", "       ", 0.0_bp, 0.0_bp, "    ", "    ", 0.0_bp, 0, &
@@ -1269,7 +1267,7 @@ CONTAINS
        ELSE
           WRITE(records(1),"(A7,A9,3A1,I4,1X,A2,1X,A12,1X,F14.12,1X," // &
                "A1,F14.12,1X,A6,A2,A1,1X,A3,A1,A12,1X,A12," // & 
-               "1X,A12,A1,2A4)", iostat=err) number_str(1:7), designation(1:9), "1", &
+               "1X,A12,A1,2A4)", iostat=err) number_(1:7), designation(1:9), "1", &
                discovery, this%note2, year, month_str, day_str, ra,  &
                sign_dec, ABS(dec), mag_str, this%filter, &
                " ", "   ", " ", "            ", "            ", "            ", &
@@ -1317,7 +1315,7 @@ CONTAINS
           ! Optical (assumes zero-correlation and error estimates):
           WRITE(records(2),"(A7,A9,3A1,I4,1X,A2,1X,A12,1X,A8,A8," // &
                "F8.5,A1,A7,F12.10,F5.3,A4,A4,F5.1,I1,3X,A1,2A8,A1,2A4)", iostat=err) &
-               number_str(1:7), designation(1:9), "2", " ", this%note2, &
+               number_(1:7), designation(1:9), "2", " ", this%note2, &
                year, month_str, day_str, ra_unc(1:8), dec_unc(1:8), correlation, "X", &
                "       ", 0.0_bp, 0.0_bp, "    ", "    ", 0.0_bp, 0, &
                " ", "        ", "        ", " ", "    ", obsy_code
@@ -1365,20 +1363,23 @@ CONTAINS
           obsy_code = "0" // TRIM(obsy_code)
        END DO
 
-       IF (number_ == 0) THEN
-          number_str(1:7) = "       "
-       ELSE
-          CALL toString(number_, number_str, error)
+       IF (LEN_TRIM(number_) > 7) THEN
+          CALL encodeMPCNumber(number_, 7)
           IF (error) THEN
              CALL errorMessage("Observation / getObservationRecords", &
-                  "Could not convert number to string.", 1)
+                  "TRACE BACK (22)", 1)
              DEALLOCATE(records, stat=err)
              RETURN
           END IF
-          DO WHILE (LEN_TRIM(number_str) < 7)
-             number_str = "0" // TRIM(number_str)
-          END DO
+          IF (LEN_TRIM(number_) > 7) THEN
+             error = .TRUE.
+             CALL errorMessage("Observation / getObservationRecords", &
+                  "Number is too long for MPC3 format.", 1)
+             DEALLOCATE(records, stat=err)
+             RETURN             
+          END IF
        END IF
+
        designation = " "
        n = LEN_TRIM(this%designation)
        IF (simulated_observations) THEN
@@ -1391,8 +1392,8 @@ CONTAINS
              CALL MPCDesToMPC3Des(designation)
           ELSE IF (n > 9) THEN
              designation = this%designation(n-8:n)
-             number_str(1:6) = number_str(2:7)
-             number_str(7:7) = this%designation(n-9:n-9)
+!!$             number_str(1:6) = number_str(2:7)
+!!$             number_str(7:7) = this%designation(n-9:n-9)
           END IF
        END IF
        day_integer = NINT(day*10_ihp**9_ihp,kind=ihp)
@@ -1418,7 +1419,7 @@ CONTAINS
             SQRT(this%covariance(3,3))/rad_asec > 0.01_bp) THEN
           WRITE(records(1),"(A7,A9,2X,3A1,I4,A2,A12,1X,A2,1X,A2,1X,A6," // &
                "3X,A1,A2,1X,A2,1X,A5,4X,A6,A2,A1,1X,A3,A1,A12,1X,A12," // & 
-               "1X,A12,A1,2A4)", iostat=err) number_str(1:7), designation(1:9), "1", &
+               "1X,A12,A1,2A4)", iostat=err) number_(1:7), designation(1:9), "1", &
                discovery, this%note2, year, month_str, day_str, h_str, m_str, &
                s_str, sign_dec, deg_str, am_str, as_str, mag_str, this%filter, &
                " ", "   ", " ", "            ", "            ", "            ", &
@@ -1427,7 +1428,7 @@ CONTAINS
           ! Optical (assumes zero-correlation and error estimates):
           WRITE(records(2),"(A7,A9,2X,3A1,I4,A2,A12,1X,F6.3,1X,F6.3,3X," // &
                "F8.5,A1,A7,F12.10,F5.3,A4,A4,F5.1,I1,3X,A1,2A8,A1,2A4)", iostat=err) &
-               number_str(1:7), designation(1:9), "2", " ", this%note2, &
+               number_(1:7), designation(1:9), "2", " ", this%note2, &
                year, month_str, day_str, &
                SQRT(this%covariance(2,2))/rad_asec, &
                SQRT(this%covariance(3,3))/rad_asec, &
@@ -1436,7 +1437,7 @@ CONTAINS
        ELSE
           WRITE(records(1),"(A7,A9,2X,3A1,I4,A2,A12,1X,F14.12,1X," // &
                "A1,F14.12,1X,A6,A2,A1,1X,A3,A1,A12,1X,A12," // & 
-               "1X,A12,A1,2A4)", iostat=err) number_str(1:7), &
+               "1X,A12,A1,2A4)", iostat=err) number_(1:7), &
                designation(1:9), "1", discovery, this%note2, year, month_str, &
                day_str, ra, sign_dec, ABS(dec), mag_str, this%filter, &
                " ", "   ", " ", "            ", "            ", &
@@ -1484,7 +1485,7 @@ CONTAINS
           ! Optical (assumes zero-correlation and error estimates):
           WRITE(records(2),"(A7,A9,2X,3A1,I4,A2,A12,1X,A8,A8," // &
                "F8.5,A1,A7,F12.10,F5.3,A4,A4,F5.1,I1,3X,A1,2A8,A1,2A4)", &
-               iostat=err) number_str(1:7), designation(1:9), "2", &
+               iostat=err) number_(1:7), designation(1:9), "2", &
                " ", this%note2, year, month_str, day_str, ra_unc(1:8), &
                dec_unc(1:8), correlation, "X", "       ", 0.0_bp, 0.0_bp, &
                "    ", "    ", 0.0_bp, 0, " ", "        ", "        ", &
@@ -1529,7 +1530,7 @@ CONTAINS
 
     CASE ("elgb")
 
-       IF (number_ == 0) THEN
+       IF (LEN_TRIM(number_) == 0) THEN
           n = LEN_TRIM(this%designation)
           IF (n <= 8) THEN
              designation = this%designation
@@ -1537,13 +1538,7 @@ CONTAINS
              designation = this%designation(n-7:n)
           END IF
        ELSE
-          CALL toString(number_, designation, error)
-          IF (error) THEN
-             CALL errorMessage("Observation / getELGBString", &
-                  "Could not convert number to string.", 1)
-             DEALLOCATE(records, stat=err)
-             RETURN
-          END IF
+          designation = number_
        END IF
 
        err = 0
@@ -1572,10 +1567,10 @@ CONTAINS
        ELSE
           secret_name = this%secret_name
        END IF
-       IF (this%number /= 0) THEN
-          WRITE(records(1),"(I0,1X,F16.10,1X,A,3(1X,F14.10)," // &
+       IF (LEN_TRIM(this%number) /= 0) THEN
+          WRITE(records(1),"(A,1X,F16.10,1X,A,3(1X,F14.10)," // &
                "2(1X,A),2(1X,F14.10),1X,F14.10,1X,E14.7,1X,A)", iostat=err) & 
-               this%number, getMJD(t, "UTC"), "O", &
+               TRIM(this%number), getMJD(t, "UTC"), "O", &
                ra/rad_deg, dec/rad_deg, this%mag, filter_, &
                TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_asec, &
                SQRT(this%covariance(3,3))/rad_asec, this%mag_unc, &
@@ -1955,7 +1950,13 @@ CONTAINS
        RETURN
     END IF
 
-    this%number = number
+    CALL toString(number, this%number, error)
+    IF (error) THEN
+       CALL errorMessage("Observations / setDesignation", &
+            "Conversion of number to string failed.", 1)
+       RETURN
+    END IF
+
 
   END SUBROUTINE setNumber_Obs
 

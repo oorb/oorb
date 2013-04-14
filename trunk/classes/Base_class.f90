@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2013-03-10
+!! @version 2013-04-14
 !!
 MODULE Base_cl
 
@@ -1029,6 +1029,51 @@ CONTAINS
     END IF
 
   END SUBROUTINE encodeMPCDesignation
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Encodes a number using the MPC scheme.
+  !!
+  !! Example:
+  !!
+  !! 100001 -> A0001 
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE encodeMPCNumber(number, length)
+
+    IMPLICIT NONE
+    CHARACTER(len=*), INTENT(inout) :: number
+    INTEGER, INTENT(in) :: length
+    CHARACTER(len=DESIGNATION_LEN) :: number_
+    INTEGER :: i
+
+    CALL removeLeadingBlanks(number)
+    i = IACHAR(number(1:1))
+    IF (i < 48 .OR.  i > 57 .OR. LEN_TRIM(number) <= length) THEN
+       ! Number either doesn't need to be coded or already seems to be
+       ! encoded, because it starts with a non-number.
+       RETURN
+    END IF
+
+    ! Number of type 100001:
+    CALL toInt(number(1:2), i, error)
+    IF (error) THEN
+       CALL errorMessage("Base / encodeMPCNumber", &
+            "Could not convert string to integer (5).", 1)       
+       WRITE(stderr,*) TRIM(number)
+       RETURN
+    END IF
+    number_ = " "
+    number_(1:) = mpc_conv_table(i) // TRIM(number(3:))
+    number = " "
+    number = TRIM(number_)
+
+  END SUBROUTINE encodeMPCNumber
 
 
 
