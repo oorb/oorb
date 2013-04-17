@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2013-04-14
+!! @version 2013-04-16
 !!  
 MODULE Observations_cl
 
@@ -3097,6 +3097,7 @@ CONTAINS
     TYPE (SphericalCoordinates) :: obs_scoord, ephemeris
     TYPE (CartesianCoordinates) :: obsy_ccoord, geocenter_ccoord, &
          satellite_ccoord
+    CHARACTER(len=512) :: line
     CHARACTER(len=FNAME_LEN) :: fname, suffix
     CHARACTER(len=DESIGNATION_LEN) :: number, designation
     CHARACTER(len=132), DIMENSION(5) :: records
@@ -4260,25 +4261,24 @@ CONTAINS
        i = 0
        DO
 
-          READ(getUnit(obsf), "(A)", iostat=err, advance="NO") number
+          READ(getUnit(obsf), "(A)", iostat=err) line
           IF (err > 0) THEN
              error = .TRUE.
              CALL errorMessage("Observations / readObservationFile", &
-                  "Error while reading observations from file.", 1)
+                  "Error while reading observations from file (1).", 1)
              RETURN
           ELSE IF (err < 0) THEN ! end-of-file
              EXIT
-          ELSE IF (number(1:1) == "#") THEN
-             READ(getUnit(obsf), "(A)", iostat=err) number
+          ELSE IF (line(1:1) == "#") THEN
              CYCLE
           END IF
-          READ(getUnit(obsf), *, iostat=err) ccd, dt, position(2), &
+          READ(line, *, iostat=err) number, ccd, dt, position(2), &
                position(3), covariance(2,2), covariance(2,3), covariance(3,3), &
                coordinates(1:6)
           IF (err /= 0) THEN
              error = .TRUE.
              CALL errorMessage("Observations / readObservationFile", &
-                  "Error while reading observations from file.", 1)
+                  "Error while reading observations from file (2).", 1)
              RETURN
           END IF
           covariance(3,2) = covariance(2,3)
@@ -4372,7 +4372,7 @@ CONTAINS
        i = 0
        DO
 
-          READ(getUnit(obsf), "(A)", iostat=err, advance="NO") number
+          READ(getUnit(obsf), "(A)", iostat=err) line
           IF (err > 0) THEN
              error = .TRUE.
              CALL errorMessage("Observations / readObservationFile", &
@@ -4380,11 +4380,10 @@ CONTAINS
              RETURN
           ELSE IF (err < 0) THEN ! end-of-file
              EXIT
-          ELSE IF (number(1:1) == "#") THEN
-             READ(getUnit(obsf), "(A)", iostat=err) number
+          ELSE IF (line(1:1) == "#") THEN
              CYCLE
           END IF
-          READ(getUnit(obsf), *, iostat=err) ccd, dt, position(2), &
+          READ(line, *, iostat=err) number, ccd, dt, position(2), &
                position(3), covariance(2,2), covariance(2,3), covariance(3,3), &
                coordinates(1:6)
           IF (err /= 0) THEN
