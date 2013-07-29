@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2013-04-14
+!! @version 2013-07-30
 !!
 PROGRAM oorb
 
@@ -738,11 +738,11 @@ PROGRAM oorb
         id_arr_in => reallocate(id_arr_in, norb)
         orb_arr_in => reallocate(orb_arr_in, norb)
         HG_arr_in => reallocate(HG_arr_in, norb, 4)
-        DO i=1,SIZE(id_arr_in)
-           DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
-              id_arr_in(i) = "0" // TRIM(id_arr_in(i))
-           END DO
-        END DO
+!!$        DO i=1,SIZE(id_arr_in)
+!!$           DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
+!!$              id_arr_in(i) = "0" // TRIM(id_arr_in(i))
+!!$           END DO
+!!$        END DO
 
      CASE default
 
@@ -6534,6 +6534,7 @@ PROGRAM oorb
                 SIZE(orb_arr_in), "particles."
         END IF
         DO i=1,SIZE(orb_arr_in)
+
            IF (.NOT.exist(epoch1) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
@@ -6629,8 +6630,6 @@ PROGRAM oorb
            ELSE IF (output_interval > 0.0_bp .AND. output_interval < integration_step) THEN
               integration_step = output_interval
               output_interval = SIGN(output_interval,mjd1-mjd0)
-           ELSE
-              output_interval = mjd1 - mjd0
            END IF
 
            ! Set integration parameters
@@ -6645,12 +6644,10 @@ PROGRAM oorb
 
            ! Loop over the integration interval and output
            ! intermediate results during each step if requested
-           DO WHILE (first .OR. &
-                (output_interval > 0.0_bp .AND. mjd < mjd1) .OR. &
-                (output_interval < 0.0_bp .AND. mjd > mjd1))
+           DO 
 
               IF ((output_interval > 0.0_bp .AND. mjd + output_interval >= mjd1) .OR. &
-                   (output_interval < 0.0_bp .AND. mjd + output_interval <= mjd1)) THEN
+                   output_interval < 0.0_bp) THEN
                  mjd = mjd1
               ELSE
                  mjd = mjd + output_interval
@@ -6714,6 +6711,10 @@ PROGRAM oorb
                  STOP              
               END IF
               first = .FALSE.
+              IF ((output_interval > 0.0_bp .AND. ABS(mjd-mjd1) < EPSILON(mjd)) .OR. &
+                   output_interval < 0.0_bp) THEN
+                 EXIT
+              END IF
 
            END DO
 
@@ -6765,9 +6766,11 @@ PROGRAM oorb
         END DO
 
      ELSE
+
         CALL errorMessage("oorb / credible_region", &
              "Cannot compute credible region due to lack of uncertainty information", 1)
         STOP
+
      END IF
 
   CASE ("ephemeris")
