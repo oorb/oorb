@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2012,2013                                           !
+! Copyright 2002-2013,2014                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2013-07-30
+!! @version 2014-08-22
 !!
 PROGRAM oorb
 
@@ -110,6 +110,8 @@ PROGRAM oorb
        id_arr_storb_in, &
        id_arr_in, &
        id_arr
+  CHARACTER(len=2), DIMENSION(:), POINTER :: &
+       filters
   CHARACTER(len=32), DIMENSION(:), ALLOCATABLE :: &
        str_arr
   CHARACTER(len=32), DIMENSION(6) :: &
@@ -140,7 +142,8 @@ PROGRAM oorb
        integrator, &                                                !! Integrator.
        integrator_init                                              !! Integrator used to propagate init orbit to epoch in LSL.
   CHARACTER(len=FRAME_LEN) :: &
-       frame
+       frame, &
+       frame_
   CHARACTER(len=256) :: &
        frmt, &
        str, &
@@ -179,7 +182,8 @@ PROGRAM oorb
        temp_arr
   REAL(bp), DIMENSION(6,6) :: &
        corr, &
-       cov
+       cov, &
+       eigenvectors
   REAL(bp), DIMENSION(6,2) :: &
        vov_scaling_cmp, &
        vov_scaling_prm, &
@@ -188,10 +192,11 @@ PROGRAM oorb
   REAL(bp), DIMENSION(2,2) :: &
        sor_rho_cmp
   REAL(bp), DIMENSION(:), POINTER :: &
-       rchi2_arr_cmp, &
+       mags, &
        pdf_arr, &
        pdf_arr_cmp, &
        pdf_arr_in, &
+       rchi2_arr_cmp, &
        reg_apr_arr_cmp, &
        weight_arr
   REAL(bp), DIMENSION(:), ALLOCATABLE :: &
@@ -205,6 +210,7 @@ PROGRAM oorb
   REAL(bp), DIMENSION(6) :: &
        comp_coord, &
        coordinates, &
+       eigenvalues, &
        elements, &
        h_ecl_car_coord_obj, &
        h_ecl_car_coord_obsy, &
@@ -217,24 +223,29 @@ PROGRAM oorb
        sor_genwin_offset, &
        sor_rho_init
   REAL(bp), DIMENSION(3) :: &
+       dgeoc_obsy, &
        geoc_obsy, &
+       moon_obsy, &
+       moon_sun, &
        obsy_moon, &
        obsy_obj, &
        obsy_pos, &
        obsy_sun, &
+       obsy_vel, &
        pos, &
        pos_opp, &
        pos_sun, &
        sun_moon, &
        pos_ast, &
-       vec3
+       vec3, &
+       vel
   REAL(bp), DIMENSION(2) :: &
        bounds
   REAL(bp) :: &
        b1, b2, &
        Delta, diameter, &
-       H_max, H_value, H10_value, &
-       G_value, &
+       H_max, H_value, H10_value, H, &
+       G_value, G12, &
        accwin_multiplier, angular_distance_dec, angular_distance_ra, &
        apoapsis_distance, apriori_a_max, &
        apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
@@ -249,7 +260,8 @@ PROGRAM oorb
        ls_correction_factor, ls_rchi2_acceptable, lunar_alt, lunar_alt_max, &
        lunar_elongation, lunar_elongation_min, lunar_phase, &
        lunar_phase_min, lunar_phase_max, &
-       mag, mjd, mjd0, mjd1, mjd_tai, mjd_tt, mjd_utc, moid, &
+       mag, mjd, mjd0, mjd1, mjd_tai, mjd_tt, mjd_utc, mjd_utc0, moid, &
+       moon_obsy_r2, moon_sun_r2, &
        n, &
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_cometary, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
@@ -288,7 +300,7 @@ PROGRAM oorb
        lu_orb_out, &
        min, minstep, &
        month, month0, month1, &
-       ncenter, nhist, nobj, nobs, norb, noutlier, nstep, &
+       center, nhist, nobj, nobs, norb, noutlier, nstep, &
        os_norb, os_ntrial, os_sampling_type, &
        smplx_niter, &
        sor_niter, sor_norb, sor_norb_sw, sor_ntrial, sor_ntrial_sw, &
@@ -323,6 +335,7 @@ PROGRAM oorb
        plot_results, &
        relativity, &
        pp_H_estimation, &
+       radians, &
        random_obs, &
        regularized, &
        separately, separately_, & !! Output orbit(s)/ephemerides/etc separately for each object
@@ -340,6 +353,7 @@ PROGRAM oorb
   planetary_ephemeris_fname = "de405.dat"
   err_verb = 1
   info_verb = 1
+  frame = "ecliptic"
   gnuplot_scripts_dir = "."
   obs_stdev_arr_prm = -1.0_bp
   observation_format_out = "des"
@@ -354,6 +368,7 @@ PROGRAM oorb
   outlier_rejection_prm = .FALSE.
   plot_open = .FALSE.
   plot_results = .FALSE.
+  radians = .FALSE.
   relativity = .TRUE.
   pp_H_estimation = .FALSE.
   pp_G = 99.9_bp
@@ -786,6 +801,10 @@ PROGRAM oorb
         DEALLOCATE(orb_arr_in, stat=err)
      ELSE
         DO i=1,norb
+           !write(*,*) 'oorb 2', orb_arr_in(1)%center, &
+           !     orb_arr_in(1)%element_type, &
+           !     orb_arr_in(1)%elements(1:2), &
+           !     orb_arr_in(1)%elements(3:6)/rad_deg
            IF (element_type_comp_prm == "keplerian") THEN
               CALL toKeplerian(orb_arr_in(i))
            ELSE IF (element_type_comp_prm == "cartesian") THEN
@@ -832,18 +851,18 @@ PROGRAM oorb
   ! each object (overrides --orb-out)
   separately = get_cl_option("--separately",separately)
 
-
   ! OpenOrb orbit files written use mjd instead of cal date:
   mjd_epoch = get_cl_option("--oorb-mjd", mjd_epoch)
 
-
-  ncenter = get_cl_option("--center=",11)
-  IF (ncenter < 0 .OR. ncenter > 13) THEN
+  center = get_cl_option("--center=",11)
+  IF (center < 0 .OR. center > 13) THEN
      CALL errorMessage("oorb", &
           "New center must be given with the --center=CENTER " // &
           "option where 1 <= CENTER <= 13. Default is the Sun (11).", 1)
      STOP
   END IF
+
+  frame = get_cl_option("--frame=", "ecliptic")
 
   SELECT CASE (task)
 
@@ -1087,7 +1106,7 @@ PROGRAM oorb
                  END IF
                  CALL writeDESOrbitFile(lu_orb_out, first, &
                       element_type_out_prm, id_arr_storb_in(i), &
-                      orb_arr_in(j), HG_arr_storb_in(i,j,1))
+                      orb_arr_in(j), HG_arr_storb_in(i,j,1), center=center)
                  IF (error) THEN
                     CALL errorMessage("oorb", &
                          "DES output failed at orbit:", 1)
@@ -1113,7 +1132,7 @@ PROGRAM oorb
               END IF
               CALL writeDESOrbitFile(lu_orb_out, first, &
                    element_type_out_prm, id_arr_storb_in(i), orb, &
-                   HG_arr_storb_in(i,1,1))
+                   HG_arr_storb_in(i,1,1), center=center)
               first = .FALSE.
               CALL NULLIFY(orb)
            END IF
@@ -1142,7 +1161,7 @@ PROGRAM oorb
               END IF
            END IF
            CALL writeDESOrbitFile(lu_orb_out, first, element_type_out_prm, &
-                id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1))
+                id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), center=center)
            IF (error) THEN
               CALL errorMessage("oorb", &
                    "DES output failed at orbit:", 1)
@@ -1361,9 +1380,9 @@ PROGRAM oorb
         END IF
         SELECT CASE (TRIM(orbit_format_out))
         CASE ("des")
-           CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
-                id, orb, H_value, 1, 6, &
-                REAL(int_arr(7),bp), "OPENORB")
+           CALL writeDESOrbitFile(lu_orb_out, i==1, &
+                element_type_out_prm, id, orb, H_value, 1, 6, &
+                REAL(int_arr(7),bp), "OPENORB", center=center)
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
@@ -1429,7 +1448,7 @@ PROGRAM oorb
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                arc_arr(i), "OPENORB")
+                arc_arr(i), "OPENORB", center=center)
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
@@ -1468,7 +1487,7 @@ PROGRAM oorb
         t = getTime(orb_arr_in(i))
         mjd = getMJD(t, "TT")
         ! Get Sun's coordinates at the epoch as seen from the planet:
-        planeph => JPL_ephemeris(mjd, 11, ncenter, error)
+        planeph => JPL_ephemeris(mjd, 11, center, error)
         CALL NEW(ccoord, planeph(1,1:6), "equatorial", t)
         DEALLOCATE(planeph)
         CALL rotateToEcliptic(ccoord)
@@ -1476,18 +1495,18 @@ PROGRAM oorb
         CALL NULLIFY(ccoord)
         elements = getElements(orb_arr_in(i), "cartesian", "ecliptic")
         ! New center -> asteroid = new_center -> Sun + Sun -> asteroid
-        CALL NEW(orb, coordinates + elements, "cartesian", "ecliptic", t, central_body=ncenter)
+        CALL NEW(orb, coordinates + elements, "cartesian", "ecliptic", t, center=center)
         SELECT CASE (TRIM(orbit_format_out))
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb, HG_arr_in(i,1), 1, 6, &
-                -1.0_bp, "OPENORB")
+                -1.0_bp, "OPENORB", frame=frame, center=center)
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
                 id=TRIM(id_arr_in(i)), orb=orb, &
                 H=HG_arr_in(i,1), G=HG_arr_in(i,2), &
-                mjd=mjd_epoch)
+                mjd=mjd_epoch, frame=frame)
         CASE default
            CALL errorMessage("oorb / planetocentricorbits", &
                 "Orbit format " // TRIM(orbit_format_out) // &
@@ -1650,7 +1669,7 @@ PROGRAM oorb
                    accept_multiplier=accwin_multiplier, &
                    apriori_rho_min=apriori_rho_min, &
                    set_acceptance_window=.FALSE., &
-                   central_body=ncenter)
+                   center=center)
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
                       "TRACE BACK (30)", 1)
@@ -1731,7 +1750,7 @@ PROGRAM oorb
              regularized_pdf = regularized, &
              dchi2_rejection = dchi2_rejection, &
              dchi2_max = dchi2_max, &
-             central_body=ncenter, &
+             center=center, &
              chi2_min=chi2_min_init, &
              accept_multiplier=accwin_multiplier, &
              apriori_a_max=apriori_a_max, apriori_a_min=apriori_a_min, &
@@ -2248,25 +2267,25 @@ PROGRAM oorb
                    apriori_rho_min=apriori_rho_min, &
                    set_acceptance_window=.FALSE.)
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
+                 CALL errorMessage("oorb / mcmcranging", &
                       "TRACE BACK (30)", 1)
                  STOP
               END IF
               CALL constrainRangeDistributions(storb_arr_in(j), obss_sep(i))
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
+                 CALL errorMessage("oorb / mcmcranging", &
                       "TRACE BACK (31)", 1)
                  STOP
               END IF
               CALL setRangeBounds(storb_arr_in(j))
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
+                 CALL errorMessage("oorb / mcmcranging", &
                       "TRACE BACK (32)", 1)
                  STOP
               END IF
               sor_rho_init(1:4) = getRangeBounds(storb_arr_in(j))
               IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
+                 CALL errorMessage("oorb / mcmcranging", &
                       "TRACE BACK (33)", 1)
                  STOP
               END IF
@@ -2352,7 +2371,7 @@ PROGRAM oorb
         END IF
         SELECT CASE (sor_type_prm)
         CASE (1)
-           CALL MCMCRanging(storb)
+           CALL MCMCRanging2(storb)
         CASE (2)
 !!$           CALL setParameters(storb, &
 !!$                dyn_model_init=dyn_model_init, &
@@ -2362,7 +2381,7 @@ PROGRAM oorb
 !!$                accept_multiplier=accwin_multiplier, &
 !!$                apriori_rho_min=apriori_rho_min, &
 !!$                set_acceptance_window=.FALSE.)
-           CALL autoMCMCRanging(storb)
+           CALL autoMCMCRanging2(storb)
         CASE default
            CALL errorMessage("oorb / mcmcranging", &
                 "Unknown type of ranging:", 1)
@@ -4468,7 +4487,7 @@ PROGRAM oorb
            END DO
            IF (norb == 0) THEN
               CALL errorMessage("oorb / vomcmc", &
-                   "Initial orbit not available.", 1)
+                   "Initial orbit not available (1).", 1)
               STOP
            END IF
         ELSE IF (ASSOCIATED(orb_arr_in)) THEN
@@ -4490,7 +4509,7 @@ PROGRAM oorb
            END DO
            IF (norb == 0) THEN
               CALL errorMessage("oorb / vomcmc", &
-                   "Initial orbit not available.", 1)
+                   "Initial orbit not available (2).", 1)
               STOP
            ELSE
               orb_arr => reallocate(orb_arr,norb)
@@ -4594,8 +4613,10 @@ PROGRAM oorb
         END IF
         SELECT CASE (vomcmc_type_prm)
         CASE (1)
+           !WRITE(*,*) "type = 1"
            CALL virtualObservationMCMC(storb, orb_arr)
         CASE (2)
+           !WRITE(*,*) "type = 2"
            CALL virtualObservationMCMC2(storb, orb_arr)
         CASE default
            CALL errorMessage("oorb / vomcmc", &
@@ -4606,6 +4627,7 @@ PROGRAM oorb
            STOP
         END SELECT
         IF (error .OR. getNrOfSampleOrbits(storb) < INT(0.5*vomcmc_norb)) THEN
+           WRITE(stderr,*) error, getNrOfSampleOrbits(storb), INT(0.5*vomcmc_norb)
            CALL errorMessage("oorb / vomcmc", &
                 "TRACE BACK (80)", 1)
            error  = .FALSE.
@@ -5745,8 +5767,8 @@ PROGRAM oorb
            STOP
         END IF
         orb = getNominalOrbit(storb_arr_in(j))
-        frame = getFrame(orb)
-        cov = getCovarianceMatrix(storb_arr_in(j),element_type_comp_prm,frame)
+        frame_ = getFrame(orb)
+        cov = getCovarianceMatrix(storb_arr_in(j),element_type_comp_prm,frame_)
         CALL NEW(storb, orb, cov, element_type_comp_prm, &
              element_type_comp_prm, obss_sep(i))
         IF (error) THEN
@@ -6535,6 +6557,17 @@ PROGRAM oorb
         END IF
         DO i=1,SIZE(orb_arr_in)
 
+           IF (separately) THEN
+              CALL NEW(out_file, TRIM(id_arr_in(i)) // ".des")
+              CALL OPEN(out_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / propagation", &
+                      "TRACE BACK (85)", 1)
+                 STOP
+              END IF
+              lu_orb_out = getUnit(out_file)
+           END IF
+
            IF (.NOT.exist(epoch1) .AND. &
                 .NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.)) .AND. & 
@@ -6644,8 +6677,9 @@ PROGRAM oorb
 
            ! Loop over the integration interval and output
            ! intermediate results during each step if requested
-           DO 
-
+           integration_interval: DO 
+              !write(*,*) 'propagation 1:', orb_arr_in(1)%center, orb_arr_in(1)%element_type, &
+              !     orb_arr_in(1)%elements(1:2),  orb_arr_in(1)%elements(3:6)/rad_deg
               IF ((output_interval > 0.0_bp .AND. mjd + output_interval >= mjd1) .OR. &
                    output_interval < 0.0_bp) THEN
                  mjd = mjd1
@@ -6653,7 +6687,9 @@ PROGRAM oorb
                  mjd = mjd + output_interval
               END IF
               CALL NEW(epoch, mjd, "TT")
-              IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
+              IF ((info_verb >= 2 .OR. &
+                   get_cl_option("--discard-impactors", .FALSE.)) .AND. &
+                   dyn_model /= "2-body") THEN
                  CALL propagate(orb_arr_in(i), epoch, encounters=encounters)
               ELSE
                  CALL propagate(orb_arr_in(i), epoch)
@@ -6672,16 +6708,29 @@ PROGRAM oorb
                       " (orbit #", i, ") between ", year0, "-", month0, &
                       "-", day0, " and ", year1, "-", month1, "-", day1, ":"
                  DO j=1,SIZE(encounters,dim=2)
-                    IF (encounters(1,j,2) < 1.1_bp) THEN
+                    IF (encounters(1,j,2) < 1.1_bp) THEN 
+                       ! encounters(1,j,2) == 1 == impact
                        WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F15.6,1X,A,1X,F0.6,1X,A)') &
                             "!! I-M-P-A-C-T !! with", planetary_locations(j), &
                             "at MJD", encounters(1,j,1), "TT given a stepsize of", &
                             encounters(1,j,4), "days."
                     ELSE
+                       ! encounters(1,j,2) == 2 == non-impact
                        WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F15.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
                             "Closest encounter with", planetary_locations(j), &
                             "at MJD", encounters(1,j,1), "TT at a distance of", &
                             encounters(1,j,3), "AU given a stepsize of", encounters(1,j,4), "days."
+                    END IF
+                 END DO
+              END IF
+              IF (get_cl_option("--discard-impactors", .FALSE.)) THEN
+                 DO j=1,SIZE(encounters,dim=2)
+                    IF (encounters(1,j,2) < 1.1_bp) THEN 
+                       DEALLOCATE(encounters, stat=err)
+                       CALL NULLIFY(epoch0)
+                       CALL NULLIFY(epoch1)
+                       CALL NULLIFY(epoch)
+                       EXIT integration_interval
                     END IF
                  END DO
               END IF
@@ -6696,7 +6745,7 @@ PROGRAM oorb
                  CALL writeDESOrbitFile(lu_orb_out, & 
                       first, element_type_out_prm, &
                       id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), &
-                      1, 6, -1.0_bp, "OPENORB")
+                      1, 6, -1.0_bp, "OPENORB", center=center)
               ELSE IF (orbit_format_out == "orb") THEN
                  CALL writeOpenOrbOrbitFile(lu_orb_out, &
                       print_header=first, &
@@ -6705,9 +6754,23 @@ PROGRAM oorb
                       H=HG_arr_in(i,1), G=HG_arr_in(i,3), &
                       mjd=mjd_epoch)
               END IF
+
+!!$              IF (orbit_format_out == "des") THEN
+!!$                 CALL writeDESOrbitFile(lu_orb_out, & 
+!!$                      first, element_type_out_prm, &
+!!$                      id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), &
+!!$                      1, 6, -1.0_bp, "OPENORB")
+!!$              ELSE IF (orbit_format_out == "orb") THEN
+!!$                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
+!!$                      print_header=first, &
+!!$                      element_type_out=element_type_out_prm, &
+!!$                      id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
+!!$                      H=HG_arr_in(i,1), G=HG_arr_in(i,3), &
+!!$                      mjd=mjd_epoch)
+!!$              END IF
               IF (error) THEN
                  CALL errorMessage("oorb / propagation", &
-                      "TRACE BACK (170) " // TRIM(id_arr_in(i)), 1)
+                      "Unable to propagate orbit for " // TRIM(id_arr_in(i)), 1)
                  STOP              
               END IF
               first = .FALSE.
@@ -6716,11 +6779,15 @@ PROGRAM oorb
                  EXIT
               END IF
 
-           END DO
+           END DO integration_interval
 
            IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.))) THEN
               CALL NULLIFY(epoch1)
+           END IF
+
+           IF (separately) THEN
+              CALL NULLIFY(out_file)
            END IF
 
         END DO
@@ -6748,7 +6815,7 @@ PROGRAM oorb
                  CALL writeDESOrbitFile(lu_orb_out, & 
                       first, element_type_out_prm, &
                       id_arr_storb_in(i), orb_arr(j), HG_arr_storb_in(i,j,1), &
-                      1, 6, -1.0_bp, "OPENORB")
+                      1, 6, -1.0_bp, "OPENORB", center=center)
               ELSE IF (orbit_format_out == "orb") THEN
                  CALL writeOpenOrbOrbitFile(lu_orb_out, &
                       print_header=first, &
@@ -6778,6 +6845,9 @@ PROGRAM oorb
      ! Input observatory code
      obsy_code = get_cl_option("--code=", obsy_code)
 
+     ! Input start date [MJD in UTC]
+     mjd_utc0 = get_cl_option("--start-mjd-utc=", -HUGE(mjd_utc0))
+
      ! Input evolutionary timespan [days]
      timespan = get_cl_option("--timespan=", 0.0_bp)
 
@@ -6794,6 +6864,10 @@ PROGRAM oorb
         nstep = NINT(timespan/step) + 1
      END IF
      integration_step = MIN(ABS(step),integration_step)
+
+     radians = get_cl_option("--radians", radians)
+
+     G12 = get_cl_option("--G12=", -HUGE(G12))
 
      CALL NEW(obsies)
      IF (error) THEN
@@ -6884,7 +6958,7 @@ PROGRAM oorb
                       "Observatory_code ", "MJD_UTC  ", "Delta  ", "RA  ", &
                       "Dec  ", "dDelta/dt  ", "dRA/dt  ", "dDec/dt  ", "PDF_value  "
               ELSE
-                 WRITE(lu,"(A,A11,5X,29(1X,A18))") "#", "Designation  ", &
+                 WRITE(lu,"(A,A11,5X,30(1X,A18))") "#", "Designation  ", &
                       "Observatory_code ", "MJD_UTC  ", "Delta  ", "RA  ", "Dec  ", &
                       "dDelta/dt  ", "dRA/dt  ", "dDec/dt  ", "Delta_unc  ", &
                       "RA_unc  ", "Dec_unc  ", "dDelta/dt_unc  ", "dRA/dt_unc  ", &
@@ -6895,7 +6969,7 @@ PROGRAM oorb
                       "cor(RA,dDec)  ", "cor(Dec,dDelta)  ", &
                       "cor(Dec,dRA)  ", "cor(Dec,dDec)  ", &
                       "cor(dDelta,dRA)  ", "cor(dDelta,dDec)  ", &
-                      "cor(dRA,dDec)  "
+                      "cor(dRA,dDec)  ", "Current Eph. Unc. "
               END IF
            END IF
 
@@ -6932,13 +7006,15 @@ PROGRAM oorb
                             (stdev_arr(k)*stdev_arr(l))
                     END DO
                  END DO
-                 WRITE(lu,"(2(A18,1X),28(F18.10,1X))") TRIM(id_arr_storb_in(i)), &
+                 WRITE(lu,"(2(A18,1X),29(F18.10,1X))") &
+                      TRIM(id_arr_storb_in(i)), &
                       TRIM(obsy_code_arr(j)), mjd_utc, coordinates(1), &
                       coordinates(2:3)/rad_deg, coordinates(4), &
                       coordinates(5:6)/rad_deg, stdev_arr(1), &
                       stdev_arr(2:3)/rad_deg, stdev_arr(4), &
                       stdev_arr(5:6)/rad_deg, corr(1,2:6), &
-                      corr(2,3:6), corr(3,4:6), corr(4,5:6), corr(5,6)
+                      corr(2,3:6), corr(3,4:6), corr(4,5:6), corr(5,6), &
+                      SQRT(2.3_bp*(cov_arr(2,2,j)*COS(coordinates(3))**2+cov_arr(3,3,j)))/rad_deg
                  CALL NULLIFY(ephemerides_arr(1,j))
               END IF
            END DO
@@ -6986,21 +7062,43 @@ PROGRAM oorb
                  STOP
               END IF
               IF (info_verb >= 3) THEN
-                 WRITE(stdout,"(9(1X,A17))") "GEO2OBSY X [KM]", &
-                      "GEO2OBSY Y [KM]", "GEO2OBSY Z [KM]", &
-                      "HELIO2GEO X [AU]", "HELIO2GEO Y [AU]", &
-                      "HELIO2GEO Z [AU]", "HELIO2OBSY X [AU]", &
-                      "HELIO2OBSY Y [AU]", "HELIO2OBSY Z [AU]" 
+
+                 WRITE(stdout,"(18(1X,A23))") &
+                      "GEO2OBSY_X_[AU]", &
+                      "GEO2OBSY_Y_[AU]", &
+                      "GEO2OBSY_Z_[AU]", &
+                      "GEO2OBSY_dX/dt_[AU/d]", &
+                      "GEO2OBSY_dY/dt_[AU/d]", &
+                      "GEO2OBSY_dZ/dt_[AU/d]", &
+                      "HELIO2GEO_X_[AU]", &
+                      "HELIO2GEO_Y_[AU]", &
+                      "HELIO2GEO_Z_[AU]", &
+                      "HELIO2GEO_dX/dt_[AU/d]", &
+                      "HELIO2GEO_dY/dt_[AU/d]", &
+                      "HELIO2GEO_dZ/dt_[AU/d]", &
+                      "HELIO2OBSY_X_[AU]", &
+                      "HELIO2OBSY_Y_[AU]", &
+                      "HELIO2OBSY_Z_[AU]", &
+                      "HELIO2OBSY_dX/dt_[AU/d]", &
+                      "HELIO2OBSY_dY/dt_[AU/d]", &
+                      "HELIO2OBSY_dZ/dt_[AU/d]"
+
                  DO j=1,SIZE(observers)
-                    CALL rotateToEcliptic(observers(j))
+                    !CALL rotateToEcliptic(observers(j))
+                    CALL rotateToEquatorial(observers(j))
                     obsy_pos = getPosition(observers(j))
+                    obsy_vel = getVelocity(observers(j))
                     t = getTime(observers(j))
                     ccoord = getObservatoryCCoord(obsies,"500",t)
-                    CALL rotateToEcliptic(ccoord)
+                    !CALL rotateToEcliptic(ccoord)
+                    CALL rotateToEquatorial(ccoord)
                     pos = getPosition(ccoord)
+                    vel = getVelocity(ccoord)
                     geoc_obsy = obsy_pos - pos
-                    WRITE(stdout,"(3(1X,F17.5),6(1X,F17.13))") &
-                         geoc_obsy*km_au, pos, obsy_pos
+                    dgeoc_obsy = obsy_vel - vel
+                    WRITE(stdout,"(18(1X,F23.16))") &
+                         geoc_obsy, dgeoc_obsy, &
+                         pos, vel, obsy_pos, obsy_vel
                  END DO
               END IF
               DO j=1,SIZE(observers)
@@ -7013,8 +7111,13 @@ PROGRAM oorb
                  STOP
               END IF
            ELSE
-              t = getTime(orb_arr_in(i))
-              mjd_tt = getMJD(t, "TT")
+              IF (get_cl_option("--start-mjd-utc",.FALSE.)) THEN
+                 CALL NEW(t, mjd_utc0, "UTC")
+                 mjd_tt = getMJD(t, "TT")
+              ELSE
+                 t = getTime(orb_arr_in(i))
+                 mjd_tt = getMJD(t, "TT")
+              END IF
               ALLOCATE(observers(nstep), obsy_code_arr(nstep))
               DO j=1,nstep
                  obsy_code_arr(j) = obsy_code
@@ -7027,7 +7130,7 @@ PROGRAM oorb
                  END IF
                  CALL rotateToEquatorial(observers(j))
                  CALL NULLIFY(t)
-                 CALL NEW(t, mjd_tt+j*step, "TT")
+                 CALL NEW(t, mjd_tt+(j-1)*step, "TT")
                  IF (error) THEN
                     CALL errorMessage("oorb / ephemeris", &
                          "TRACE BACK (15)", 1)
@@ -7211,11 +7314,23 @@ PROGRAM oorb
               obj_phase = ACOS(cos_obj_phase)
 
               ! Compute apparent brightness:
+              ! Input absolute magnitude
+              IF (get_cl_option("--H=", .FALSE.)) THEN
+                 H_value = get_cl_option("--H=", 99.9_bp)
+              ELSE
+                 H_value = HG_arr_in(i,1)
+              END IF
               ! Input slope parameter
-              G_value = get_cl_option("--G=", HG_arr_in(i,3))
-              obj_vmag = getApparentHGMagnitude(H=HG_arr_in(i,1), &
-                   G=G_value, r=SQRT(heliocentric_r2), &
-                   Delta=Delta, phase_angle=obj_phase)
+              IF (get_cl_option("--G12", .FALSE.)) THEN
+                 obj_vmag = getApparentHG12Magnitude(H=H_value, &
+                      G12=G12, r=SQRT(heliocentric_r2), &
+                      Delta=Delta, phase_angle=obj_phase)
+              ELSE
+                 G_value = get_cl_option("--G=", HG_arr_in(i,3))
+                 obj_vmag = getApparentHGMagnitude(H=H_value, &
+                      G=G_value, r=SQRT(heliocentric_r2), &
+                      Delta=Delta, phase_angle=obj_phase)
+              END IF
               IF (error) THEN
                  CALL errorMessage('oorb / ephemeris', &
                       'TRACE BACK (70)',1)
@@ -7307,27 +7422,29 @@ PROGRAM oorb
               CALL NULLIFY(ccoord)
               CALL NULLIFY(obsy_ccoord)
 
-              ra = ra/rad_deg
-              dec = dec/rad_deg
-              dDelta = dDelta
-              dra = dra/rad_deg
-              ddec = ddec/rad_deg
-              obj_alt = obj_alt/rad_deg
-              obj_phase = obj_phase/rad_deg
-              lunar_elongation = lunar_elongation/rad_deg
-              lunar_alt = lunar_alt/rad_deg
-              solar_elongation = solar_elongation/rad_deg
-              solar_alt = solar_alt/rad_deg
-              tlon = tlon/rad_deg
-              tlat = tlat/rad_deg
-              toclon = toclon/rad_deg
-              toclat = toclat/rad_deg
-              hlon = hlon/rad_deg
-              hlat = hlat/rad_deg
-              hoclon = hoclon/rad_deg
-              hoclat = hoclat/rad_deg
-              opplon = opplon/rad_deg
-              opplat = opplat/rad_deg
+              IF (.NOT.radians) THEN 
+                 ra = ra/rad_deg
+                 dec = dec/rad_deg
+                 dDelta = dDelta
+                 dra = dra/rad_deg
+                 ddec = ddec/rad_deg
+                 obj_alt = obj_alt/rad_deg
+                 obj_phase = obj_phase/rad_deg
+                 lunar_elongation = lunar_elongation/rad_deg
+                 lunar_alt = lunar_alt/rad_deg
+                 solar_elongation = solar_elongation/rad_deg
+                 solar_alt = solar_alt/rad_deg
+                 tlon = tlon/rad_deg
+                 tlat = tlat/rad_deg
+                 toclon = toclon/rad_deg
+                 toclat = toclat/rad_deg
+                 hlon = hlon/rad_deg
+                 hlat = hlat/rad_deg
+                 hoclon = hoclon/rad_deg
+                 hoclat = hoclat/rad_deg
+                 opplon = opplon/rad_deg
+                 opplat = opplat/rad_deg
+              END IF
 
               WRITE(lu,'(2(A,1X),35(F18.10,1X))') &
                    id_arr_in(i), TRIM(obsy_code_arr(j)), mjd_utc, Delta, &
@@ -7362,6 +7479,305 @@ PROGRAM oorb
 !!$        END IF
 
      END IF
+
+
+
+  CASE ("phasecurve")
+
+     ! Input time step [days]
+     step = get_cl_option("--step=", 1.0_bp)
+     IF (step == 0.0_bp) THEN
+        nstep = 1        
+     ELSE
+        step = SIGN(ABS(step),timespan)
+        IF (ABS(timespan) > 10.0_bp*EPSILON(timespan) .AND. &
+             ABS(timespan) < ABS(step)) THEN
+           step = timespan
+        END IF
+        nstep = NINT(timespan/step) + 1
+     END IF
+     integration_step = MIN(ABS(step),integration_step)
+
+     CALL NEW(obsies)
+     IF (error) THEN
+        CALL errorMessage('oorb / phasecurve', &
+             'TRACE BACK (5)',1)
+        STOP
+     END IF
+
+
+     IF (.NOT.ASSOCIATED(obss_sep)) THEN
+        CALL errorMessage('oorb / phasecurve', &
+             'Observations must be provided.',1)
+        STOP
+     END IF
+
+     id_arr => getObjects(obss_in)
+
+     DO i=1,norb
+
+        k = -1
+        DO j=1,SIZE(id_arr)
+           IF (TRIM(id_arr_in(i)) == TRIM(id_arr(j))) THEN
+              k = j
+              EXIT
+           END IF
+        END DO
+        IF (k < 0) THEN
+           IF (err_verb >= 1) THEN
+              WRITE(stderr,*) "WARNING: Observations for object " // &
+                   TRIM(id_arr_in(i)) // " not found..."
+           END IF
+           CYCLE
+        END IF
+        observers => getObservatoryCCoords(obss_sep(k))
+        IF (error) THEN
+           CALL errorMessage('oorb / phasecurve', &
+                'TRACE BACK (35)',1)
+           STOP
+        END IF
+        nobs = SIZE(observers)
+        DO j=1,nobs
+           CALL rotateToEquatorial(observers(j))
+        END DO
+        obsy_code_arr => getObservatoryCodes(obss_sep(k))
+        IF (error) THEN
+           CALL errorMessage('oorb / phasecurve', &
+                'TRACE BACK (40)',1)
+           STOP
+        END IF
+        mags => getMagnitudes(obss_sep(k))
+        IF (error) THEN
+           CALL errorMessage('oorb / phasecurve', &
+                'TRACE BACK (45)',1)
+           STOP
+        END IF
+        filters => getFilters(obss_sep(k))
+        IF (error) THEN
+           CALL errorMessage('oorb / phasecurve', &
+                'TRACE BACK (50)',1)
+           STOP
+        END IF
+
+        ! Set integration parameters
+        CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
+             perturbers=perturbers, integrator=integrator, &
+             integration_step=integration_step)
+        IF (error) THEN
+           CALL errorMessage("oorb / phasecurve", &
+                "TRACE BACK (15)", 1)
+           STOP
+        END IF
+
+        ! Compute topocentric ephemerides
+        CALL getEphemerides(orb_arr_in(i), observers, ephemerides, &
+             this_lt_corr_arr=orb_lt_corr_arr)
+        IF (error) THEN
+           CALL errorMessage('oorb / phasecurve', &
+                'TRACE BACK (20)',1)
+           STOP
+        END IF
+
+        IF (separately) THEN
+           CALL NEW(tmp_file, TRIM(id_arr_in(i)) // ".pc")
+           IF (error) THEN
+              CALL errorMessage('oorb / phasecurve', &
+                   'TRACE BACK (25)',1)
+              STOP
+           END IF
+           CALL OPEN(tmp_file)
+           IF (error) THEN
+              CALL errorMessage('oorb / phasecurve', &
+                   'TRACE BACK (30)',1)
+              STOP
+           END IF
+           lu = getUnit(tmp_file)
+        ELSE
+           lu = stdout
+        END IF
+
+        ! Calculate number of observations for which no reported
+        ! magnitudes are available:
+        k = 0
+        DO j=1,nobs
+           IF (mags(j) > 90.0_bp) THEN
+              k = k + 1
+           END IF
+        END DO
+
+        ! Header for the output (file)
+        WRITE(lu,'("#",A,1X,I0)') TRIM(id_arr_in(i)), nobs-k
+
+        DO j=1,nobs
+
+           IF (mags(j) > 90.0_bp) THEN
+              ! No reported magnitudes available
+              CYCLE
+           END IF
+
+           ! Compute phase angle
+           CALL NEW(ccoord, ephemerides(j))
+           IF (error) THEN
+              CALL errorMessage('oorb / phasecurve', &
+                   'TRACE BACK (50)',1)
+              STOP
+           END IF
+           CALL rotateToEquatorial(ccoord)
+           obsy_obj = getPosition(ccoord)
+           IF (error) THEN
+              CALL errorMessage('oorb / phasecurve', &
+                   'TRACE BACK (55)',1)
+              STOP
+           END IF
+           ephemeris_r2 = DOT_PRODUCT(obsy_obj,obsy_obj)
+           CALL toCartesian(orb_lt_corr_arr(j), frame='equatorial')
+           pos = getPosition(orb_lt_corr_arr(j))
+           IF (error) THEN
+              CALL errorMessage('oorb / phasecurve', &
+                   'TRACE BACK (60)',1)
+              STOP
+           END IF
+           heliocentric_r2 = DOT_PRODUCT(pos,pos)
+           obsy_pos = getPosition(observers(j))
+           IF (error) THEN
+              CALL errorMessage('oorb / phasecurve', &
+                   'TRACE BACK (65)',1)
+              STOP
+           END IF
+           observer_r2 = DOT_PRODUCT(obsy_pos,obsy_pos)
+           cos_obj_phase = 0.5_bp * (heliocentric_r2 + ephemeris_r2 - &
+                observer_r2) / SQRT(heliocentric_r2 * ephemeris_r2)
+           obj_phase = ACOS(cos_obj_phase)
+
+           ! Compute reduced magnitude:
+           mag = mags(j) - 5.0_bp*LOG10(SQRT(heliocentric_r2*ephemeris_r2))
+
+           ! Filter transformations to V:
+           !
+           IF (obsy_code_arr(j) == "F51") THEN
+
+              ! PS1SC internal analysis by A. Fitzsimmons 08-11-2011.
+              ! Average results for (S+C).
+              SELECT CASE (filters(j))
+              CASE ("g")
+                 obj_vmag = mag - 0.28_bp
+              CASE ("r")
+                 obj_vmag = mag + 0.23_bp
+              CASE ("i")
+                 obj_vmag = mag + 0.39_bp
+              CASE ("z")
+                 obj_vmag = mag + 0.37_bp
+              CASE ("y")
+                 obj_vmag = mag + 0.36_bp
+              CASE ("w")
+                 obj_vmag = mag + 0.16_bp
+              CASE default
+                 IF (error) THEN
+                    CALL errorMessage('oorb / phasecurve', &
+                         'Unknown filter for F51: ' // TRIM(filters(j)),1)
+                    STOP
+                 END IF
+              END SELECT
+
+           ELSE
+
+              ! MPC transformations from G. Williams 05-11-2013.
+              SELECT CASE (filters(j))
+              CASE ("")
+                 ! Values are stored as V-"Band" 
+                 obj_vmag = mag - 0.8_bp
+              CASE ("U")
+                 obj_vmag = mag - 1.3_bp
+              CASE ("B")
+                 obj_vmag = mag - 0.8_bp
+              CASE ("g")
+                 ! [V-g = -0.60(B-V)+0.12, Jester et al. ,2005]
+                 obj_vmag = mag - 0.35_bp
+              CASE ("V")
+                 obj_vmag = mag
+              CASE ("r")
+                 ! [V-r = 0.42(B-V)-0.11, Jester et al. ,2005]
+                 obj_vmag = mag + 0.14_bp
+              CASE ("R")
+                 obj_vmag = mag + 0.4_bp
+              CASE ("C")
+                 obj_vmag = mag + 0.4_bp
+              CASE ("W")
+                 obj_vmag = mag + 0.4_bp
+              CASE ("i")
+                 ! [V-i = 0.91(R-I)+0.42(B-V)-0.31, Jester et al. ,2005]
+                 obj_vmag = mag + 0.32_bp
+              CASE ("z")
+                 ! [V-z = 1.72(R-I)+0.42(B-V)-0.52, Jester et al. ,2005]
+                 obj_vmag = mag + 0.26_bp
+              CASE ("I")
+                 obj_vmag = mag + 0.8_bp
+              CASE ("J")
+                 ! Was +1.4 
+                 obj_vmag = mag + 1.2_bp
+              CASE ("w")
+                 obj_vmag = mag - 0.13_bp
+              CASE ("y")
+                 obj_vmag = mag + 0.32_bp
+              CASE ("L")
+                 obj_vmag = mag + 0.2_bp
+              CASE default
+                 IF (error) THEN
+                    CALL errorMessage('oorb / phasecurve', &
+                         'Unknown filter for ' // TRIM(obsy_code_arr(j)) // &
+                         ': ' // TRIM(filters(j)),1)
+                    STOP
+                 END IF
+              END SELECT
+
+           END IF
+!!$
+!!$           obj_vmag = mag
+
+           obj_phase = obj_phase/rad_deg
+           t = getTime(ephemerides(j))
+           err_verb_ = err_verb
+           err_verb = 0
+           mjd_utc = getMJD(t,"UTC") 
+           IF (error) THEN
+              error = .FALSE.
+              mjd_utc = getMJD(t,"UT1") 
+           END IF
+           err_verb = err_verb_
+
+           WRITE(lu,'(2(F13.8,1X),A,1X,F12.5)') obj_phase, obj_vmag, &
+                TRIM(obsy_code_arr(j)), mjd_utc
+
+           CALL NULLIFY(t)
+           CALL NULLIFY(observers(j))
+           CALL NULLIFY(ephemerides(j))
+           CALL NULLIFY(orb_lt_corr_arr(j))
+           CALL NULLIFY(ccoord)
+           CALL NULLIFY(obsy_ccoord)
+
+
+        END DO
+
+        IF (separately) THEN
+           CALL NULLIFY(tmp_file)
+        END IF
+        DEALLOCATE(observers, ephemerides, orb_lt_corr_arr, &
+             obsy_code_arr, mags, filters, stat=err)
+
+     END DO
+
+  CASE ("synthetic_phasecurve")
+
+     H = get_cl_option("--H=", 0.0_bp)
+     G12 = get_cl_option("--G12=", 0.0_bp)
+
+     DO i=0,150*5
+
+        WRITE(stdout,*) i/5.0_bp, getApparentHG12Magnitude(H=H, &
+             G12=G12, r=1.0_bp, Delta=1.0_bp, &
+             phase_angle=i/5.0_bp*rad_deg)
+
+     END DO
 
 
   CASE ("classification")
@@ -7602,7 +8018,7 @@ PROGRAM oorb
         IF (orbit_format_out == "des") THEN
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                moid, "OPENORB")
+                moid, "OPENORB", center=center)
         ELSE IF (orbit_format_out == "orb") THEN
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
@@ -8035,8 +8451,8 @@ PROGRAM oorb
                       'TRACE BACK (90)',1)
                  STOP
               END IF
-              ! Position of the Moon as seen from the observatory:
-              obsy_moon = -(planeph(1,1:3) + geoc_obsy)
+              ! Position of the observatory as seen from the Moon:
+              moon_obsy = planeph(1,1:3) + geoc_obsy
               DEALLOCATE(planeph)
               ! Position of the Sun as seen from the Moon:
               planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
@@ -8045,13 +8461,12 @@ PROGRAM oorb
                       'TRACE BACK (95)',1)
                  STOP
               END IF
-              sun_moon = planeph(1,1:3)
+              moon_sun = planeph(1,1:3)
               DEALLOCATE(planeph)
-              obsy_moon_r2 = DOT_PRODUCT(obsy_moon,obsy_moon)
-              sun_moon_r2 = DOT_PRODUCT(sun_moon,sun_moon)
-              cos_obj_phase = 0.5_bp * (sun_moon_r2 + obsy_moon_r2 - &
-                   observer_r2) / (SQRT(sun_moon_r2) * &
-                   SQRT(obsy_moon_r2))
+              moon_obsy_r2 = DOT_PRODUCT(moon_obsy,moon_obsy)
+              moon_sun_r2 = DOT_PRODUCT(moon_sun,moon_sun)
+              cos_obj_phase = DOT_PRODUCT(moon_obsy,moon_sun) / (SQRT(moon_sun_r2) * &
+                   SQRT(moon_obsy_r2))
               lunar_phase = (pi-ACOS(cos_obj_phase))/pi
               IF (lunar_phase < lunar_phase_min) THEN
                  istep = 0
