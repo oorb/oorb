@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2012,2013                                           !
+! Copyright 2002-2013,2014                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2013-04-14
+!! @version 2014-08-22
 !!
 MODULE io
 
@@ -1817,7 +1817,7 @@ CONTAINS
     REAL(bp), DIMENSION(:), INTENT(out) :: H_arr
     TYPE (Time) :: epoch
     CHARACTER(len=16) :: compcode, str
-    CHARACTER(len=8) :: frmt
+    CHARACTER(len=16) :: frmt
     REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: mjd_epoch, moid
     INTEGER :: err, indx_, npar
@@ -1860,6 +1860,7 @@ CONTAINS
        END IF
        CALL removeLeadingBlanks(id_arr(norb+1))
        CALL NEW(epoch, mjd_epoch, "TT")
+       !      CALL NEW(epoch, mjd_epoch, "TCB")
        IF (error) THEN
           CALL errorMessage("io / readDESOrbitFile", &
                "TRACE BACK (5)", 1)
@@ -1877,8 +1878,15 @@ CONTAINS
        ELSE IF (frmt == "KEP") THEN
           elements(3:6) = elements(3:6)*rad_deg
           CALL NEW(orb_arr(norb+1), elements, "keplerian", "ecliptic", epoch)
+       ELSE IF (frmt == "KEP3") THEN
+          ! Keplerian geocentric
+          elements(3:6) = elements(3:6)*rad_deg
+          CALL NEW(orb_arr(norb+1), elements, "keplerian", "ecliptic", epoch, center=3)
+          !call switchCenter(orb_arr(norb+1),11)
        ELSE IF (frmt == "CAR") THEN
           CALL NEW(orb_arr(norb+1), elements, "cartesian", "ecliptic", epoch)
+       ELSE IF (frmt == "CAR3") THEN
+          CALL NEW(orb_arr(norb+1), elements, "cartesian", "ecliptic", epoch, center=3)
        ELSE IF (frmt == "CAREQ") THEN
           CALL NEW(orb_arr(norb+1), elements, "cartesian", "equatorial", epoch)
        ELSE
@@ -2009,8 +2017,17 @@ CONTAINS
           CALL toInt(line(128:131), y1, error)
           CALL toInt(line(133:136), y2, error)
           arc_arr(norb) = REAL(y2-y1)*day_year
+!!$          arc_arr(norb) = y1
        ELSE
           CALL toReal(line(128:131), arc_arr(norb), error)          
+!!$          line = ""
+!!$          line = id_arr(norb)
+!!$          CALL decodeMPCDesignation(line)
+!!$          CALL toReal(line(1:4),arc_arr(norb),error)
+          IF (error) THEN
+             error = .FALSE.
+             arc_arr(norb) = -1
+          END IF
        END IF
        IF (error) THEN
           CALL errorMessage("io / readMPCOrbitFile", &
@@ -2551,7 +2568,7 @@ CONTAINS
 
 
   SUBROUTINE writeDESOrbitFile(lu, print_header, element_type_out, &
-       id, orb, H, indx, npar, moid, compcode)
+       id, orb, H, indx, npar, moid, compcode, frame, center)
 
     IMPLICIT NONE
     INTEGER, INTENT(in) :: lu
@@ -2563,28 +2580,51 @@ CONTAINS
     INTEGER, INTENT(in), OPTIONAL :: indx, npar
     REAL(bp), INTENT(in), OPTIONAL :: moid
     CHARACTER(len=*), INTENT(in), OPTIONAL :: compcode
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: frame
+    INTEGER, INTENT(in), OPTIONAL :: center
 
+    TYPE (Orbit) :: orb_
     TYPE (Time) :: epoch
-    CHARACTER(len=32) :: compcode_
-    CHARACTER(len=3) :: frmt
+    CHARACTER(len=32) :: compcode_, frame_
+    CHARACTER(len=16) :: frmt
     REAL(bp), DIMENSION(6) :: elements
     REAL(bp) :: mjd_tt, moid_
-    INTEGER :: err, indx_, npar_
+    INTEGER :: err, indx_, npar_, center_
 
-    elements = getElements(orb, element_type_out, "ecliptic")
+    IF (PRESENT(frame)) THEN
+       frame_ = frame
+    ELSE
+       frame_ = "ecliptic"
+    END IF
+
+    IF (PRESENT(center)) THEN
+       center_ = center
+    ELSE
+       center_ = 11
+    END IF
+
+    orb_ = copy(orb)
+    CALL switchCenter(orb_,center_)
+    IF (center_ /= 11) THEN
+       CALL toString(center_, frmt, error)
+    ELSE
+       frmt = ""
+    END IF
+
+    elements = getElements(orb_, element_type_out, TRIM(frame_))
     IF (error) THEN
        CALL errorMessage("io / writeDESOrbitFile", &
             "TRACE BACK", 1)
        RETURN       
     END IF
     IF (element_type_out == "cometary") THEN
-       frmt = "COM"
+       frmt = "COM" // TRIM(frmt)
        elements(3:5) = elements(3:5)/rad_deg
     ELSE IF (element_type_out == "keplerian") THEN
-       frmt = "KEP"
+       frmt = "KEP" // TRIM(frmt)
        elements(3:6) = elements(3:6)/rad_deg
     ELSE IF (element_type_out == "cartesian") THEN
-       frmt = "CAR"
+       frmt = "CAR" // TRIM(frmt)
     ELSE
        error = .TRUE.
        CALL errorMessage("io / writeDESOrbitFile", &
@@ -2592,7 +2632,7 @@ CONTAINS
             "' not yet supported (5).", 1)
        RETURN
     END IF
-    epoch = getTime(orb)
+    epoch = getTime(orb_)
     mjd_tt = getMJD(epoch, "TT")
     CALL NULLIFY(epoch)
     IF (PRESENT(indx)) THEN
@@ -2640,6 +2680,7 @@ CONTAINS
             "Write error (5).", 1)
        RETURN
     END IF
+    CALL NULLIFY(orb_)
 
   END SUBROUTINE writeDESOrbitFile
 
@@ -2736,12 +2777,12 @@ CONTAINS
 
     IF (element_type_ == "keplerian") THEN
        WRITE(lu,"(A6,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
-            "a [AU]", "e", "i [deg]", "node [deg]", "ap [deg]", & 
+            "a [au]", "e", "i [deg]", "node [deg]", "ap [deg]", & 
             "M [deg]", "Epoch"
     ELSE
        WRITE(lu,"(A6,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
-            "x [AU]", "y [AU]", "z [AU]", "dx/dt [AU/d]", & 
-            "dy/dt [AU/d]", "dz/dt [AU/d]", "Epoch" 
+            "x [au]", "y [au]", "z [au]", "dx/dt [au/d]", & 
+            "dy/dt [au/d]", "dz/dt [au/d]", "Epoch" 
     END IF
     WRITE(lu,"(A6,2X,A7,1X,6(F16.12,1X),A,'TT')") &
          str(1:6), id(1:7), elements, getCalendarDateString(t,"tt")
@@ -2892,7 +2933,7 @@ CONTAINS
   SUBROUTINE writeOpenOrbOrbitFile(lu, print_header, element_type_out, &
        id, orb, element_type_pdf, cov, pdf, rchi2, reg_apr, &
        jac_sph_inv, jac_car_kep, jac_equ_kep, H, G, rho1, rho2, &
-       rms, npdf, mjd, repetitions)
+       rms, npdf, mjd, repetitions, frame)
 
     IMPLICIT NONE
     INTEGER, INTENT(in) :: lu
@@ -2907,13 +2948,21 @@ CONTAINS
          rms, npdf
     INTEGER, INTENT(in), OPTIONAL :: repetitions
     LOGICAL, INTENT(in), OPTIONAL :: mjd
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: frame
 
     TYPE (Time) :: t
     CHARACTER(len=1024), DIMENSION(4) :: header
+    CHARACTER(len=32) :: frame_
     REAL(bp), DIMENSION(6,6) :: jacobian_matrix
     REAL(bp), DIMENSION(6) :: elements, stdev
     REAL(bp) :: day, jac, mjd_tt
     INTEGER :: year, month, err, indx, i, j
+
+    IF (PRESENT(frame)) THEN
+       frame_ = frame
+    ELSE
+       frame_ = "ecliptic"
+    END IF
 
     ! Define format for output and construct header:
     IF (print_header) THEN
@@ -2928,12 +2977,12 @@ CONTAINS
           IF (element_type_out == "keplerian") THEN
              header(1)(indx:indx+22) = "   Semimajor axis a   "
              header(2)(indx:indx+22) = "                      "
-             header(3)(indx:indx+22) = "         [AU]         "
+             header(3)(indx:indx+22) = "         [au]         "
              header(4)(indx:indx+22) = ">--------0002--------<"
           ELSE ! cometary
              header(1)(indx:indx+22) = " Periapsis distance q "
              header(2)(indx:indx+22) = "                      "
-             header(3)(indx:indx+22) = "         [AU]         "
+             header(3)(indx:indx+22) = "         [au]         "
              header(4)(indx:indx+22) = ">--------0075--------<"
           END IF
           indx = indx + 22
@@ -2972,32 +3021,32 @@ CONTAINS
        ELSE IF (element_type_out == "cartesian") THEN
           header(1)(indx:indx+22) = "      Ecliptic x      "
           header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "         [AU]         "
+          header(3)(indx:indx+22) = "         [au]         "
           header(4)(indx:indx+22) = ">--------0039--------<"
           indx = indx + 22
           header(1)(indx:indx+22) = "      Ecliptic y      "
           header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "         [AU]         "
+          header(3)(indx:indx+22) = "         [au]         "
           header(4)(indx:indx+22) = ">--------0040--------<"
           indx = indx + 22
           header(1)(indx:indx+22) = "      Ecliptic z      "
           header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "         [AU]         "
+          header(3)(indx:indx+22) = "         [au]         "
           header(4)(indx:indx+22) = ">--------0041--------<"
           indx = indx + 22
           header(1)(indx:indx+22) = "    Ecliptic dx/dt    "
           header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "        [AU/d]        "
+          header(3)(indx:indx+22) = "        [au/d]        "
           header(4)(indx:indx+22) = ">--------0042--------<"
           indx = indx + 22
           header(1)(indx:indx+22) = "    Ecliptic dy/dt    "
           header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "        [AU/d]        "
+          header(3)(indx:indx+22) = "        [au/d]        "
           header(4)(indx:indx+22) = ">--------0043--------<"
           indx = indx + 22
           header(1)(indx:indx+22) = "    Ecliptic dz/dt    "
           header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "        [AU/d]        "
+          header(3)(indx:indx+22) = "        [au/d]        "
           header(4)(indx:indx+22) = ">--------0044--------<"
           indx = indx + 22
        ELSE IF (element_type_out == "delaunay") THEN
@@ -3086,7 +3135,7 @@ CONTAINS
           !! Output equinoctial elements.
           header(1)(indx:indx+22) = "   Semimajor axis a   "
           header(2)(indx:indx+22) = "                      "
-          header(3)(indx:indx+22) = "         [AU]         "
+          header(3)(indx:indx+22) = "         [au]         "
           header(4)(indx:indx+22) = ">--------0057--------<"
           indx = indx + 22
           header(1)(indx:indx+22) = "           h          "
@@ -3352,7 +3401,7 @@ CONTAINS
        WRITE(lu, "(A)", iostat=err) TRIM(header(3))
        WRITE(lu, "(A)", iostat=err) TRIM(header(4))
     END IF
-    elements = getElements(orb, element_type_out, frame="ecliptic")
+    elements = getElements(orb, element_type_out, frame=TRIM(frame_))
     IF (error) THEN
        CALL errorMessage("io / writeOpenOrbOrbitFile", &
             "TRACE BACK (5)", 1)
@@ -4408,13 +4457,13 @@ CONTAINS
        frmt = "('#',3X,'ORBITAL-ELEMENT PDF' /" // &
             "'#',3X,' Epoch            = ',A,' = ',F13.5,' TDT'/" // &
             "'#',3X,' Maximum likelihood (ML) orbit' /" // &
-            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F17.10,1X)/" // &
             "'#',3X,' 68.27% credible intervals' /" // &
-            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
-            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F17.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F17.10,1X)/" // &
             "'#',3X,' 99.73% credible intervals' /" // &
-            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
-            "'#',3X,'  ',A15,6(F15.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F17.10,1X)/" // &
+            "'#',3X,'  ',A15,6(F17.10,1X)/" // &
             "'#',3X,'  ML value        =',E16.6/" // &
             "'#',3X,'  ML reduced chi2 =',E16.6/" // &
             "'#',3X,'  ML rms          =',E16.6,3X,'arcsec'/" // &            
@@ -4450,14 +4499,14 @@ CONTAINS
 
 
        frmt = "('#',3X,'BAYESIAN A PRIORI INFORMATION'/" // &
-            "'#',3X,'Semimajor axis (AU), min      = ',F15.9/" // &
-            "'#',3X,'                     max      = ',F15.9/" // &
-            "'#',3X,'Periapsis distance (AU),  min = ',F15.9/" // &
-            "'#',3X,'                          max = ',F15.9/" // &
-            "'#',3X,'Apoapsis distance (AU),   min = ',F15.9/" // &
-            "'#',3X,'                          max = ',F15.9/" // &
-            "'#',3X,'Topocentric range (AU),   min = ',F15.9/" // &
-            "'#',3X,'                          max = ',F15.9/" // &
+            "'#',3X,'Semimajor axis (au), min      = ',F16.9/" // &
+            "'#',3X,'                     max      = ',F16.9/" // &
+            "'#',3X,'Periapsis distance (au),  min = ',F16.9/" // &
+            "'#',3X,'                          max = ',F16.9/" // &
+            "'#',3X,'Apoapsis distance (au),   min = ',F16.9/" // &
+            "'#',3X,'                          max = ',F16.9/" // &
+            "'#',3X,'Topocentric range (au),   min = ',F16.9/" // &
+            "'#',3X,'                          max = ',F16.9/" // &
             "'#')"
        WRITE(lu,TRIM(frmt)) apriori_a_min_prm, &
             apriori_a_max_prm, &
@@ -4558,10 +4607,10 @@ CONTAINS
        frmt = "('#',3X,'GENERATION WINDOWS FOR RHO, R.A., AND DEC.' /" // &
             "'#',3X,'  Id. number of 1st observation  = ',A14/" // &
             "'#',3X,'  Id. number of 2nd observation  = ',A14/" // &
-            "'#',3X,'  Bound for rho1;      lower     = ',E14.4,3X,'AU'/" // &
-            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
-            "'#',3X,'  Bound for rho2-rho1; lower     = ',E14.4,3X,'AU'/" // &
-            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'  Bound for rho1;      lower     = ',E14.4,3X,'au'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'au'/" // &
+            "'#',3X,'  Bound for rho2-rho1; lower     = ',E14.4,3X,'au'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'au'/" // &
             "'#',3X,'  sigma multiplier               = ',E14.4/" // &
             "'#',3X,'  window shift for 1st R.A.      = ',E14.4,3X,'arcsec'/" // &
             "'#',3X,'                   1st Dec.      = ',E14.4,3X,'arcsec'/" // &
@@ -4584,10 +4633,10 @@ CONTAINS
 
        frmt = "('#',3X,'COMPUTED VALUES FOR RHO, R.A., AND DEC.'/" // &
             "'#',3X,'Computed, rho' /" // &
-            "'#',3X,'  Bound for rho1,      lower     = ',E14.4,3X,'AU'/" // &
-            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
-            "'#',3X,'  Bound for rho2-rho1, lower     = ',E14.4,3X,'AU'/" // &
-            "'#',3X,'                       upper     = ',E14.4,3X,'AU'/" // &
+            "'#',3X,'  Bound for rho1,      lower     = ',E14.4,3X,'au'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'au'/" // &
+            "'#',3X,'  Bound for rho2-rho1, lower     = ',E14.4,3X,'au'/" // &
+            "'#',3X,'                       upper     = ',E14.4,3X,'au'/" // &
             "'#',3X,'  Histogram flag                 = ',I14/" // &
             "'#',3X,'Computed, R.A. and Dec. residuals' /" // &
             "'#',3X,'  Fraction outside ref. ellipse, 1st obs =',E12.4/" // &
