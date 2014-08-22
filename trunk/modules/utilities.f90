@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2013,2014                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Independent utilities.
 !!
 !! @author  MG
-!! @version 2010-01-26
+!! @version 2014-08-22
 !!
 MODULE utilities
 
@@ -37,6 +37,7 @@ MODULE utilities
   PRIVATE :: integerToArray_ri8
   PRIVATE :: arrayToInteger_r8i8
   PRIVATE :: arrayToReal_r8r16
+  PRIVATE :: cumulativeDistribution_2d_r8
   PRIVATE :: realToArray_r16r8
   PRIVATE :: reallocate_ch_1
   PRIVATE :: reallocate_ch_2
@@ -71,6 +72,10 @@ MODULE utilities
   INTERFACE arrayToReal
      MODULE PROCEDURE arrayToReal_r8r16
   END INTERFACE arrayToReal
+
+  INTERFACE cumulativeDistribution
+     MODULE PROCEDURE cumulativeDistribution_2d_r8
+  END INTERFACE cumulativeDistribution
 
   INTERFACE integerToArray
      MODULE PROCEDURE integerToArray_ri8
@@ -558,6 +563,46 @@ CONTAINS
     is_downcase = ((d >= 'a') .AND. (d <= 'z'))
 
   END FUNCTION is_downcase
+
+
+
+
+
+  !! Description:
+  !!
+  !! This subroutine takes a 2D distribution and computes its
+  !! cumulative version as a function of rows and columns.
+  !!
+  !! Programming interface:
+  !!
+  !! Name         In/out  Type          Structure  Meaning
+  !!
+  !! in           in      real(8)       array      Incremental 2D distribution
+  !! out          out     real(8)       array      Cumulative 2D distribution
+  !!
+  !! Errors:
+  !!
+  !! No errors should occur and none are trapped.
+  !!
+  SUBROUTINE cumulativeDistribution_2d_r8(in, out)
+
+    IMPLICIT NONE
+    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: in
+    REAL(rprec8), DIMENSION(:,:), INTENT(out) :: out
+
+    INTEGER :: i, j
+
+    DO i=1,SIZE(in,dim=1)
+       DO j=1,SIZE(in,dim=2)
+          IF (i == 1) THEN
+             out(i,j) = SUM(in(i,:j))
+          ELSE
+             out(i,j) = SUM(in(i,:j)) + out(i-1,j)
+          END IF
+       END DO
+    END DO
+
+  END SUBROUTINE cumulativeDistribution_2d_r8
 
 
 
