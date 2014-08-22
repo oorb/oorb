@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2013,2014                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see Orbit_class
 !! 
 !! @author  MG, JV
-!! @version 2012-10-26
+!! @version 2014-08-22
 !!
 MODULE Time_cl
 
@@ -492,6 +492,12 @@ CONTAINS
        this%ut1 = -1.0_bp
     CASE ("tdt", "TDT", "et", "ET", "tt", "TT")
        this%tdt  = mjd
+       this%utc = -1.0_bp
+       this%tai = -1.0_bp
+       this%ut1 = -1.0_bp
+    CASE ("tcb", "TCB")
+       ! This assumes TT == TDB (error should be <2 millisecs)
+       this%tdt = mjd - 1.550505e-8_bp * (mjd - 43144.0_bp)
        this%utc = -1.0_bp
        this%tai = -1.0_bp
        this%ut1 = -1.0_bp
