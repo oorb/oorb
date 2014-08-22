@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2012,2013                                           !
+! Copyright 2002-2013,2014                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2013-04-14
+!! @version 2014-08-22
 !!  
 MODULE Observation_cl
 
@@ -171,6 +171,10 @@ MODULE Observation_cl
      MODULE PROCEDURE getObservatoryCode_Obs
   END INTERFACE getObservatoryCode
 
+  INTERFACE getSolarElongation
+     MODULE PROCEDURE getSolarElongation_Obs
+  END INTERFACE getSolarElongation
+
   INTERFACE getStandardDeviations
      MODULE PROCEDURE getStandardDeviations_Obs
   END INTERFACE getStandardDeviations
@@ -245,11 +249,13 @@ CONTAINS
     END IF
     this%obsy              = copy(obsy)
     this%obsy_ccoord       = copy(obsy_ccoord)
-    IF ((note2 == "S" .NEQV. PRESENT(satellite_ccoord)) .OR. &
-         (note2 == "S" .NEQV. PRESENT(coord_unit))) THEN
+    IF ((((note2 == "S") .NEQV. PRESENT(satellite_ccoord)) .OR. &
+         ((note2 == "S") .NEQV. PRESENT(coord_unit))) .AND. &
+         (((note2 == "V") .NEQV. PRESENT(satellite_ccoord)) .OR. &
+         ((note2 == "V") .NEQV. PRESENT(coord_unit)))) THEN
        error = .TRUE.
        CALL errorMessage("Observation / new", &
-            "Input of satellite (?) observation is inconsistent.", 1)
+            "Input of observation by satellite or roving observer is inconsistent.", 1)
        RETURN
     END IF
     IF (PRESENT(satellite_ccoord)) THEN
@@ -1784,7 +1790,7 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  REAL(bp) FUNCTION getSolarElongation(this)
+  REAL(bp) FUNCTION getSolarElongation_Obs(this)
 
     IMPLICIT NONE
     TYPE (Observation), INTENT(in) :: this
@@ -1808,10 +1814,10 @@ CONTAINS
     END IF
     coord2 = getCoordinates(scoord)
     CALL NULLIFY(scoord)
-    getSolarElongation = angularDistance(coord1(2), coord1(3), &
+    getSolarElongation_Obs = angularDistance(coord1(2), coord1(3), &
          coord2(2), coord2(3))
 
-  END FUNCTION getSolarElongation
+  END FUNCTION getSolarElongation_Obs
 
 
 
