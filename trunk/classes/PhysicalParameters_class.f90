@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2012,2013                                           !
+! Copyright 2002-2013,2014                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2013-03-07
+!! @version 2014-08-22
 !!
 MODULE PhysicalParameters_cl
 
@@ -214,6 +214,209 @@ CONTAINS
     exist_PP = this%is_initialized
 
   END FUNCTION exist_PP
+
+
+
+  !! *Description*:
+  !!
+  !! Compute blackbody spectrum in the wavelength domain. (Ref:
+  !! Tähtitieteen perusteet (eng. Fundamentals of Astronomy), pp. 159)
+  !!
+  !! Input: 
+  !!
+  !!  T          :: temperature [K] 
+  !!  lambda_min :: lower limit for wavelength [m]
+  !!  lambda_max :: upper limit for wavelength [m]
+  !!
+  !! Output:
+  !!
+  !!  B          :: blackbody spectrum [W m^-2 m^-1 sterad^-1]
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE blackbodyFluxWavelength(T, lambda_min, lambda_max, B)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: T, lambda_min, lambda_max
+    REAL(bp), DIMENSION(:), INTENT(out) :: B
+
+    REAL(bp) :: c, c1, c2, c3, dlambda, lambda
+    INTEGER :: i
+
+    ! speed of light [m/s]
+    c = sol * m_au / sec_day
+    ! 2hc^2 [J m^2 s^-1]
+    c1 = 2.0_bp * hPl * c**2
+    ! hc [J m] 
+    c2 = hPl * c
+    ! kT [J]
+    c3 = kB * T
+
+    dlambda = (lambda_max - lambda_min)/SIZE(B)
+    DO i=1,SIZE(B)
+       lambda = lambda_min + (i - 0.5_bp) * dlambda
+       B(i) = (c1/lambda**5) * 1.0_bp/(EXP(c2/(lambda*c3)) - 1.0_bp)
+    END DO
+
+  END SUBROUTINE blackbodyFluxWavelength
+
+
+
+
+  !! *Description*:
+  !!
+  !! Compute blackbody spectrum in the frequency domain. (Ref:
+  !! Tähtitieteen perusteet (eng. Fundamentals of Astronomy), pp. 159)
+  !!
+  !! Input: 
+  !!
+  !!  T          :: temperature [K] 
+  !!  nu_min     :: lower limit for frequency [Hz]
+  !!  nu_max     :: upper limit for frequency [Hz]
+  !!
+  !! Output:
+  !!
+  !!  B          :: blackbody spectrum [W m^-2 Hz^-1 sterad^-1]
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE blackbodyFluxFrequency(T, nu_min, nu_max, B)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: T, nu_min, nu_max
+    REAL(bp), DIMENSION(:), INTENT(out) :: B
+
+    REAL(bp) :: c, c1, c2, dnu, nu
+    INTEGER :: i
+
+    ! speed of light [m/s]
+    c = sol * m_au / sec_day
+    ! 2hc^-2 [J m^2 s^-1]
+    c1 = 2.0_bp * hPl / c**2
+    ! h/(kB T) [J m] 
+    c2 = hPl / (kB * T)
+
+    dnu = (nu_max - nu_min)/SIZE(B)
+    DO i=1,SIZE(B)
+       nu = nu_min + (i - 0.5_bp) * dnu
+       B(i) = (c1 * nu**3) * 1.0_bp/(EXP(c2 * nu) - 1.0_bp)
+    END DO
+
+  END SUBROUTINE blackbodyFluxFrequency
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Compute near-Earth-asteroid thermal model (NEATM) flux in the
+  !! wavelength domain. (Ref: Michael Mommert's PhD thesis 2013)
+  !!
+  !! Input: 
+  !!
+  !!  T           :: temperature [K] 
+  !!  lambda_min  :: lower limit for wavelength [m]
+  !!  lambda_max  :: upper limit for wavelength [m]
+  !!  phase_angle :: solar phase angle [rad]
+  !!
+  !! Output:
+  !!
+  !!  B           :: blackbody spectrum [W m^-2 m^-1 sterad^-1]
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE NEATMFluxWavelength(Tss, lambda_min, lambda_max, phase_angle, B)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: Tss, lambda_min, lambda_max, phase_angle
+    REAL(bp), DIMENSION(:), INTENT(out) :: B
+
+    REAL(bp) :: c, dlambda, lambda, theta, dtheta, phi, dphi, temp
+
+    INTEGER :: i, j, k
+
+    ! speed of light [m/s]
+    c = sol * m_au / sec_day
+
+    dtheta = (pi/2.0_bp)/10.0_bp
+    dphi = pi/20.0_bp
+    dlambda = (lambda_max - lambda_min)/SIZE(B)
+    DO k=1,SIZE(B)
+       lambda = lambda_min + (i - 0.5_bp) * dlambda
+       B(k) = 0.0_bp
+       DO i=1,10
+          theta = dtheta * (i-0.5)
+          DO j=1,20
+             phi = -(pi/2.0_bp) + phase_angle + dphi * (j-0.5)
+             IF (COS(phi)*COS(theta) >= 0.0_bp) THEN
+                temp = Tss * COS(phi)**0.25_bp * COS(theta)**0.25_bp
+                B(k) = B(k) + &
+                     COS(theta)**2 * COS(phi - phase_angle) / &
+                     (EXP((hPl*c)/(lambda*kB*temp)) - 1.0_bp) * &
+                     dtheta * dphi
+             END IF
+             !write(*,*) theta/rad_deg, phi/rad_deg, flux
+          END DO
+       END DO
+       ! Absolute flux at 1 au for 1-m body
+       B(:) = (hPl * c**2 / lambda**5) * B(:)
+    END DO
+
+  END SUBROUTINE NEATMFluxWavelength
+
+
+
+
+  !! *Description*:
+  !!
+  !! Compute fast-rotating [thermal] model (FRM) flux in the
+  !! wavelength domain. (Ref: Michael Mommert's PhD thesis 2013)
+  !!
+  !! Input: 
+  !!
+  !!  T          :: temperature [K] 
+  !!  lambda_min :: lower limit for wavelength [m]
+  !!  lambda_max :: upper limit for wavelength [m]
+  !!
+  !! Output:
+  !!
+  !!  B          :: blackbody spectrum [W m^-2 m^-1 sterad^-1]
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE FRMFluxWavelength(Tss, lambda_min, lambda_max, B)
+
+    IMPLICIT NONE
+    REAL(bp), INTENT(in) :: Tss, lambda_min, lambda_max
+    REAL(bp), DIMENSION(:), INTENT(out) :: B
+
+    REAL(bp) :: c, dlambda, lambda, theta, dtheta, temp
+
+    INTEGER :: i, k
+
+    ! speed of light [m/s]
+    c = sol * m_au / sec_day
+
+    dtheta = (pi/2.0_bp)/10.0_bp
+    dlambda = (lambda_max - lambda_min)/SIZE(B)
+    DO k=1,SIZE(B)
+       lambda = lambda_min + (i - 0.5_bp) * dlambda
+       B(k) = 0.0_bp
+       DO i=1,10
+          theta = dtheta * (i-0.5)
+          temp = Tss * COS(theta)**0.25_bp
+          B(k) = B(k) + &
+               COS(theta)**2 * SIN(theta) / &
+               (EXP((hPl*c)/(lambda*kB*temp)) - 1.0_bp) * &
+               dtheta
+       END DO
+       ! Absolute flux at 1 au for 1-m body
+       B(:) = (hPl * c**2 / lambda**5) * B(:)
+    END DO
+
+  END SUBROUTINE FRMFluxWavelength
+
 
 
 
@@ -650,9 +853,6 @@ CONTAINS
     phi = HGPhaseFunctions(phase_angle)
     getApparentHGMagnitude = H - 2.5_bp*LOG10((1.0_bp - G)*phi(1) + &
          G*phi(2)) + 5.0_bp*LOG10(r*Delta)
-
-    !write(*,*) 'asteroidal:', H, - 2.5_bp*LOG10((1.0_bp - G)*phi(1) + &
-    !         G*phi(2)), 5.0_bp*LOG10(r*Delta), 2.5_bp*(LOG10(r**2)+log10(Delta**2))
 
   END FUNCTION getApparentHGMagnitude
 
@@ -1228,6 +1428,7 @@ CONTAINS
     END DO
 
   END SUBROUTINE spline_coefs
+
 
 
 
