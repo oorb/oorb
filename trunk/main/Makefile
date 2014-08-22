@@ -1,6 +1,6 @@
 #====================================================================#
 #                                                                    #
-# Copyright 2002-2012,2013                                           #
+# Copyright 2002-2013,2014                                           #
 # Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      #
 # Dagmara Oszkiewicz                                                 #
 #                                                                    #
@@ -24,7 +24,7 @@
 # Makefile for main programs.
 #
 # Author: MG
-# Date:   2013-05-06
+# Date:   2014-08-22
 
 include ../make.config
 include ../Makefile.include
@@ -63,11 +63,16 @@ oorb4neossat : classes $(IOMOD).o oorb4neossat.f90
 	$(IOMOD).o ../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
 
-oorb4research : classes $(IOMOD).o neopop.o oorb4research.f90
+oorb4research : classes $(IOMOD).o neopop_module.o oorb4research.f90
 	$(FC) $(FCOPTIONS) oorb4research.f90 -o oorb4research \
 	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
-	$(IOMOD).o neopop.o ../$(CLASSPATH)/*.o \
+	$(IOMOD).o neopop_module.o ../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
+
+oorb4minimoons : classes $(IOMOD).o oorb4minimoons.f90
+	$(FC) $(FCOPTIONS) oorb4minimoons.f90 -o oorb4minimoons \
+	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
+	$(IOMOD).o ../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o
 
 neopop : classes $(IOMOD).o neopop_module.o neopop.f90
 	$(FC) $(FCOPTIONS) neopop.f90 -o neopop \
