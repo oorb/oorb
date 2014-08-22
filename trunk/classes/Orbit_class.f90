@@ -1,8 +1,8 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2012,2013                                           !
+! Copyright 2002-2013,2014                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
-! Dagmara Oszkiewicz                                                 !
+! Dagmara Oszkiewicz, Grigori Fedorets                               !
 !                                                                    !
 ! This file is part of OpenOrb.                                      !
 !                                                                    !
@@ -28,8 +28,8 @@
 !!
 !! @see StochasticOrbit_class 
 !!
-!! @author  MG, TL, KM, JV 
-!! @version 2013-04-14
+!! @author  MG, TL, KM, JV, GF
+!! @version 2014-08-22
 !!
 MODULE Orbit_cl
 
@@ -81,6 +81,7 @@ MODULE Orbit_cl
   PRIVATE :: rotateToEquatorial_Orb
   PRIVATE :: estimateCosDf
   PRIVATE :: setParameters_Orb
+  PRIVATE :: switchCenter_Orb
   !  PRIVATE :: solveKeplerEquation_stumpff
   !  PRIVATE :: solveKeplerEquation_newton
   PRIVATE :: toCartesian_Orb
@@ -96,7 +97,7 @@ MODULE Orbit_cl
      REAL(bp), DIMENSION(6)              :: elements
      LOGICAL                             :: is_initialized       = .FALSE.
      ! Central body, default is Sun (for body id's, see module planetary_data)
-     INTEGER                             :: central_body         = 11
+     INTEGER                             :: center         = 11
      ! Parameters for propagation:
      CHARACTER(len=DYN_MODEL_LEN)        :: dyn_model_prm        = "2-body"
      CHARACTER(len=INTEGRATOR_LEN)       :: integrator_prm       = "bulirsch-stoer"
@@ -131,6 +132,10 @@ MODULE Orbit_cl
      MODULE PROCEDURE exist_Orb
   END INTERFACE exist
 
+  INTERFACE GaussfgJacobian
+     MODULE PROCEDURE GaussfgJacobian_Orb
+  END INTERFACE GaussfgJacobian
+
   INTERFACE getApoapsisDistance
      MODULE PROCEDURE getApoapsisDistance_Orb
   END INTERFACE getApoapsisDistance
@@ -138,6 +143,16 @@ MODULE Orbit_cl
   INTERFACE getCCoord
      MODULE PROCEDURE getCCoord_Orb
   END INTERFACE getCCoord
+
+  INTERFACE getEphemeris
+     MODULE PROCEDURE getEphemeris_Orb_single
+     MODULE PROCEDURE getEphemeris_Orb_multiple
+  END INTERFACE getEphemeris
+
+  INTERFACE getEphemerides
+     MODULE PROCEDURE getEphemerides_Orb_single
+     MODULE PROCEDURE getEphemerides_Orb_multiple
+  END INTERFACE getEphemerides
 
   INTERFACE getFrame
      MODULE PROCEDURE getFrame_Orb
@@ -170,6 +185,10 @@ MODULE Orbit_cl
   INTERFACE getSCoord
      MODULE PROCEDURE getSCoord_Orb
   END INTERFACE getSCoord
+
+  INTERFACE getSolarElongation
+     MODULE PROCEDURE getSolarElongation_Orb
+  END INTERFACE getSolarElongation
 
   INTERFACE getTime
      MODULE PROCEDURE getTime_Orb
@@ -211,23 +230,13 @@ MODULE Orbit_cl
      MODULE PROCEDURE solveKeplerEquation_newton
   END INTERFACE solveKeplerEquation
 
+  INTERFACE switchCenter
+     MODULE PROCEDURE switchCenter_Orb
+  END INTERFACE switchCenter
+
   INTERFACE opposite
      MODULE PROCEDURE opposite_Orb
   END INTERFACE opposite
-
-  INTERFACE GaussfgJacobian
-     MODULE PROCEDURE GaussfgJacobian_Orb
-  END INTERFACE GaussfgJacobian
-
-  INTERFACE getEphemeris
-     MODULE PROCEDURE getEphemeris_Orb_single
-     MODULE PROCEDURE getEphemeris_Orb_multiple
-  END INTERFACE getEphemeris
-
-  INTERFACE getEphemerides
-     MODULE PROCEDURE getEphemerides_Orb_single
-     MODULE PROCEDURE getEphemerides_Orb_multiple
-  END INTERFACE getEphemerides
 
   INTERFACE toCartesian
      MODULE PROCEDURE toCartesian_Orb
@@ -271,7 +280,7 @@ CONTAINS
     this%element_type    = "cartesian"
     this%frame           = "equatorial"
     CALL NULLIFY(this%t)
-    this%central_body    = 11
+    this%center    = 11
     this%dyn_model_prm   = "2-body"
     this%finite_diff_prm = -1.0_bp
     this%is_initialized  = .TRUE.
@@ -290,12 +299,12 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE new_Orb_cartesian(this, ccoord, central_body)
+  SUBROUTINE new_Orb_cartesian(this, ccoord, center)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)             :: this
     TYPE (CartesianCoordinates), INTENT(in) :: ccoord
-    INTEGER, INTENT(in), OPTIONAL           :: central_body
+    INTEGER, INTENT(in), OPTIONAL           :: center
 
     IF (this%is_initialized) THEN
        error = .TRUE.
@@ -314,10 +323,10 @@ CONTAINS
     this%frame = getFrame(ccoord)
     NULLIFY(this%additional_perturbers)
     this%t = getTime(ccoord)
-    IF (PRESENT(central_body)) THEN
-       this%central_body = central_body
+    IF (PRESENT(center)) THEN
+       this%center = center
     ELSE
-       this%central_body = 11
+       this%center = 11
     END IF
     this%dyn_model_prm = "2-body"
     this%finite_diff_prm = -1.0_bp
@@ -337,14 +346,14 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE new_Orb_elements(this, elements, element_type, frame, t, central_body, mass)
+  SUBROUTINE new_Orb_elements(this, elements, element_type, frame, t, center, mass)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)        :: this
     REAL(bp), DIMENSION(6), INTENT(in) :: elements
     CHARACTER(len=*), INTENT(in)       :: element_type, frame
     TYPE (Time), INTENT(in)            :: t
-    INTEGER, INTENT(in), OPTIONAL      :: central_body
+    INTEGER, INTENT(in), OPTIONAL      :: center
     REAL(bp), INTENT(in), OPTIONAL     :: mass
 
     TYPE (SphericalCoordinates)        :: scoord
@@ -377,10 +386,10 @@ CONTAINS
     END IF
     this%element_type = TRIM(tmp)
 
-    IF (PRESENT(central_body)) THEN
-       this%central_body = central_body
+    IF (PRESENT(center)) THEN
+       this%center = center
     ELSE
-       this%central_body = 11
+       this%center = 11
     END IF
 
     IF (PRESENT(mass)) THEN
@@ -724,7 +733,7 @@ CONTAINS
   !!
   RECURSIVE SUBROUTINE new_Orb_2point(this, ccoord0, ccoord1, &
        method, smamax, ftol, iter, perturbers, integrator, &
-       integration_step, central_body)
+       integration_step, center)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(inout)                       :: this
@@ -736,7 +745,7 @@ CONTAINS
     LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL       :: perturbers
     CHARACTER(len=*), INTENT(in), OPTIONAL            :: integrator
     REAL(bp), INTENT(in), OPTIONAL                    :: integration_step
-    INTEGER, INTENT(in), OPTIONAL                     :: central_body
+    INTEGER, INTENT(in), OPTIONAL                     :: center
 
     REAL(bp), PARAMETER :: dp_init = 1.0_bp !1.0_bp
     REAL(bp), PARAMETER :: p_init = 1.0e-7_bp
@@ -763,7 +772,7 @@ CONTAINS
     REAL(bp) :: r0, r1, r01, cdf, sdf, diff1, diff2, p, p1, p2, dp, &
          cos_df, f, g, kappa, tau, h, cf, dcf, len_orbit_normal, ftol_
     INTEGER :: y, i, ntest, nsec, ntmax, nsmax, ihi, ilo, ndim, &
-         err_verb_tmp, iter_
+         err_verb_tmp, iter_, center_
 
     IF (this%is_initialized) THEN
        error = .TRUE.
@@ -830,8 +839,12 @@ CONTAINS
     ELSE
        this%integration_step_prm = 1.0_bp
     END IF
-    IF (PRESENT(central_body)) THEN
-       this%central_body = central_body
+    IF (PRESENT(center)) THEN
+       this%center = center
+       center_ = center
+    ELSE
+       this%center = 11
+       center_ = 11
     END IF
 
     method_ = method
@@ -985,7 +998,7 @@ CONTAINS
           END DO
           p = p2
           f = (r1/p)*(cdf - 1.0_bp) + 1.0_bp
-          g = ((r0*r1) / SQRT(planetary_mu(this%central_body)*p)) * sdf
+          g = ((r0*r1) / SQRT(planetary_mu(this%center)*p)) * sdf
 
           IF (g*y >= 0.0_bp) THEN
              ! Found correct orbital solution.
@@ -1016,6 +1029,7 @@ CONTAINS
           this%elements(4:6) = vel0
        END IF
 
+
     CASE ("continued fraction")
 
        !!
@@ -1029,7 +1043,7 @@ CONTAINS
        !!
 
        r01 = DOT_PRODUCT(pos0,pos1)
-       tau = SQRT(planetary_mu(this%central_body))*(getMJD(t1,"TT") - getMJD(t0,"TT"))
+       tau = SQRT(planetary_mu(this%center))*(getMJD(t1,"TT") - getMJD(t0,"TT"))
        IF (ABS(tau) < tol) THEN
           ! t0 and t1 practically the same.
           CALL errorMessage("Orbit / new", &
@@ -1056,7 +1070,7 @@ CONTAINS
        p = (len_orbit_normal*cf/tau)**2.0_bp
        f = (r1/p)*(cdf - 1.0_bp) + 1.0_bp
        sdf = SQRT(DOT_PRODUCT(orbit_normal,orbit_normal))/(r0*r1)
-       g = ((r0*r1) / SQRT(planetary_mu(this%central_body)*p)) * sdf
+       g = ((r0*r1) / SQRT(planetary_mu(this%center)*p)) * sdf
        IF (ABS(g) < TINY(g)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
@@ -1067,6 +1081,7 @@ CONTAINS
        vel0 = (pos1 - f*pos0)/g
        this%elements(1:3) = pos0
        this%elements(4:6) = vel0
+
 
     CASE ("2-body amoeba")
 
@@ -1092,7 +1107,7 @@ CONTAINS
           ftol_ = ftol_prm
        END IF
        elements = getCoordinates(ccoord0)
-       CALL NEW(orb_arr(1), elements, "cartesian", frame, t0)
+       CALL NEW(orb_arr(1), elements, "cartesian", frame, t0, center=center_)
        CALL setParameters(orb_arr(1), &
             dyn_model=this%dyn_model_prm, &
             perturbers=this%perturbers_prm, &
@@ -1121,7 +1136,7 @@ CONTAINS
        DO i=2,4
           p_matrix(i,1:3) = elements(4:6) + 0.1_bp*elements(4:6)
           elements(4:6) =  p_matrix(i,1:3)
-          CALL NEW(orb_arr(i), elements, "cartesian", frame, t0)
+          CALL NEW(orb_arr(i), elements, "cartesian", frame, t0, center=center_)
        END DO
        DO i=2,4
           CALL setParameters(orb_arr(i), &
@@ -1158,6 +1173,8 @@ CONTAINS
        this%elements(4:6) = p_matrix(ilo,1:3)
        this%dyn_model_prm = "2-body"
 
+       !write(*,*) "2-BODY AMOEBA ELEMENTS:", this%elements, center_, this%center
+
     CASE ("n-body amoeba")
 
        !! Minimization of the function func in N dimensions by the
@@ -1178,11 +1195,11 @@ CONTAINS
        this%dyn_model_prm = "n-body"
        err_verb_tmp = err_verb
        err_verb = 0
-       CALL NEW(orb, ccoord0, ccoord1, "continued fraction", smamax)
+       CALL NEW(orb, ccoord0, ccoord1, "continued fraction", smamax, center=center_)
        IF (error) THEN
           error = .FALSE.
           CALL NULLIFY(orb)
-          CALL NEW(orb, ccoord0, ccoord1, "p-iteration", smamax)          
+          CALL NEW(orb, ccoord0, ccoord1, "p-iteration", smamax, center=center_)          
        END IF
        err_verb = err_verb_tmp
        IF (error) THEN
@@ -1227,7 +1244,7 @@ CONTAINS
           CALL randomNumber(ran)
           p_matrix(i,1:3) = elements(4:6) + 0.01_bp*(2.0_bp*ran-1.0_bp)*elements(4:6)
           elements(4:6) =  p_matrix(i,1:3)
-          CALL NEW(orb_arr(i), elements, "cartesian", frame, t0)
+          CALL NEW(orb_arr(i), elements, "cartesian", frame, t0, center=center_)
        END DO
        DO i=2,4
           CALL setParameters(orb_arr(i), &
@@ -1263,6 +1280,7 @@ CONTAINS
        this%elements(1:3) = elements(1:3)
        this%elements(4:6) = p_matrix(ilo,1:3)
        this%dyn_model_prm = "n-body"
+       !write(*,*) "N-BODY AMOEBA ELEMENTS:", this%elements, center_, this%center
 
     CASE default 
 
@@ -1372,7 +1390,7 @@ CONTAINS
                DO i=1,ndim+1
                   IF (i /= ilo) THEN
                      elements(4:6) = p_matrix(i,:)
-                     CALL NEW(orb, elements, "cartesian", frame, t0)
+                     CALL NEW(orb, elements, "cartesian", frame, t0, center=center_)
                      IF (error) THEN
                         CALL errorMessage("Orbit / new", &
                              "TRACE BACK (45)", 1)
@@ -1498,7 +1516,7 @@ CONTAINS
                DO i=1,ndim+1
                   IF (i /= ilo) THEN
                      elements(4:6) = p_matrix(i,:)
-                     CALL NEW(orb, elements, "cartesian", frame, t0)
+                     CALL NEW(orb, elements, "cartesian", frame, t0, center=center_)
                      IF (error) THEN
                         CALL errorMessage("Orbit / new", &
                              "TRACE BACK (45)", 1)
@@ -1553,7 +1571,7 @@ CONTAINS
       ptry(:) = psum(:)*fac1-p_matrix(ihi,:)*fac2 
       ! Evaluate the function at the trial point.
       elements(4:6) = ptry
-      CALL NEW(orb, elements, "cartesian", frame, t0)
+      CALL NEW(orb, elements, "cartesian", frame, t0, center=center_)
       IF (error) THEN
          CALL errorMessage("Orbit / new", &
               "TRACE BACK (55)", 1)
@@ -1609,7 +1627,7 @@ CONTAINS
       ptry(:) = psum(:)*fac1-p_matrix(ihi,:)*fac2 
       ! Evaluate the function at the trial point.
       elements(4:6) = ptry
-      CALL NEW(orb, elements, "cartesian", frame, t0)
+      CALL NEW(orb, elements, "cartesian", frame, t0, center=center_)
       IF (error) THEN
          CALL errorMessage("Orbit / new", &
               "TRACE BACK (55)", 1)
@@ -1744,7 +1762,7 @@ CONTAINS
     this%dyn_model_prm = "2-body"
     this%finite_diff_prm = -1.0_bp
     this%is_initialized = .TRUE.
-    this%central_body = 11
+    this%center = 11
 
   END SUBROUTINE new_Orb_spherical
 
@@ -1776,7 +1794,7 @@ CONTAINS
        NULLIFY(this%additional_perturbers)
     END IF
     this%is_initialized = .FALSE.
-    this%central_body   = 11
+    this%center   = 11
 
   END SUBROUTINE nullify_Orb
 
@@ -1802,7 +1820,7 @@ CONTAINS
     copy_Orb%frame          = this%frame
     copy_Orb%mass_prm           = this%mass_prm
     copy_Orb%t              = copy(this%t)
-    copy_Orb%central_body   = this%central_body
+    copy_Orb%center   = this%center
     copy_Orb%dyn_model_prm  = this%dyn_model_prm
     copy_Orb%perturbers_prm(:) = this%perturbers_prm(:)
     IF (ASSOCIATED(this%additional_perturbers)) THEN
@@ -1957,7 +1975,7 @@ CONTAINS
 
     r = SQRT(DOT_PRODUCT(elements(1:3),elements(1:3)))
     ! alpha = rv^2/mu
-    alpha = r*DOT_PRODUCT(elements(4:6),elements(4:6))/planetary_mu(this%central_body)
+    alpha = r*DOT_PRODUCT(elements(4:6),elements(4:6))/planetary_mu(this%center)
     ! h = v^2/2 - mu/r and for elliptical orbits a = -mu/2h
     ! -> a = r / (2 - rv^2/mu)
     tmp = 2.0_bp - alpha
@@ -1973,7 +1991,7 @@ CONTAINS
 
     ! Make sure the semimajor axis is within the boundary values.
     ! Lower bound:
-    IF (a < planetary_radii(this%central_body)) THEN
+    IF (a < planetary_radii(this%center)) THEN
        boundOrbit = .FALSE.
        RETURN
     END IF
@@ -2081,7 +2099,7 @@ CONTAINS
     sdf = y * SQRT(ABS(1.0_bp - cdf**2))
 
     f = (r1/p)*(cdf - 1.0_bp) + 1.0_bp
-    g = ((r0*r1) / SQRT(planetary_mu(this%central_body)*p)) * sdf
+    g = ((r0*r1) / SQRT(planetary_mu(this%center)*p)) * sdf
     IF (ABS(g) < TINY(g)) THEN
        error = .TRUE.
        CALL errorMessage("Orbit / estimateCosDf", &
@@ -2146,7 +2164,7 @@ CONTAINS
     END IF
 
     ! Define mu parameter
-    mu_ = planetary_mu(this%central_body)
+    mu_ = planetary_mu(this%center)
 
     ! Partial derivatives of r0, dr0, and alpha.
     pr0(1:3)    = this%elements(1:3)/r0
@@ -2273,7 +2291,7 @@ CONTAINS
        vel = this_%elements(4:6)
        r = SQRT(DOT_PRODUCT(pos,pos))
        ! alpha = rv^2/mu
-       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this_%central_body)
+       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this_%center)
        IF (PRESENT(a)) THEN
           a_ = a
        ELSE
@@ -2294,7 +2312,7 @@ CONTAINS
           END IF
        END IF
        ! gamma = sqrt(mu*a)
-       gamma = SQRT(planetary_mu(this_%central_body)*a_)
+       gamma = SQRT(planetary_mu(this_%center)*a_)
        IF (ABS(gamma) < TINY(gamma)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getApoapsisDistance", &
@@ -2409,7 +2427,7 @@ CONTAINS
        celements(1:3) = (/ this%elements(1), 0.0_bp, 0.0_bp /)
        ! v^2 = mu * (2/r - 1/a) = mu * (1+e)/q
        celements(4:6) = (/ 0.0_bp, &
-            SQRT(planetary_mu(this%central_body) * &
+            SQRT(planetary_mu(this%center) * &
             (1.0_bp+this%elements(2))/this%elements(1)), 0.0_bp /)
 
        ! Orbital-plane Cartesian elements to ecliptical Cartesian
@@ -2486,9 +2504,8 @@ CONTAINS
        cea = COS(ea)
        sea = SIN(ea)
        b = this%elements(1) * SQRT(1.0_bp - this%elements(2)**2.0_bp)
-       dot_ea = SQRT(planetary_mu(this%central_body)/this%elements(1)**3.0_bp) / &
+       dot_ea = SQRT(planetary_mu(this%center)/this%elements(1)**3.0_bp) / &
             (1.0_bp - this%elements(2)*cea)
-
        ! Keplerian elements to polar Cartesian elements:
        ! -positions:
        celements(1) = this%elements(1)*(cea - this%elements(2))
@@ -2668,7 +2685,7 @@ CONTAINS
           ! Time of periapsis:
           mm = SQRT((this_%elements(1) / &
                (1.0_bp-this_%elements(2)))**3.0_bp / &
-               planetary_mu(this_%central_body))
+               planetary_mu(this_%center))
           mjd_tt = getMJD(this_%t,"TT")
           dt = ma * mm
           p = two_pi * mm
@@ -2692,7 +2709,7 @@ CONTAINS
        ! Time of periapsis:
        mm = SQRT(ABS(this_%elements(1) / &
             (1.0_bp-this_%elements(2)))**3.0_bp / &
-            planetary_mu(this_%central_body))
+            planetary_mu(this_%center))
        mjd_tt = getMJD(this_%t,"TT")
        dt = this%elements(6) * mm
        p = two_pi * mm
@@ -2713,7 +2730,7 @@ CONTAINS
        ! period p:
        mjd_tt = getMJD(this_%t,"TT")
        ! |a| is there to allow use with hyperbolic orbits
-       mm = SQRT(ABS(this_%elements(1))**3.0_bp / planetary_mu(this_%central_body))
+       mm = SQRT(ABS(this_%elements(1))**3.0_bp / planetary_mu(this_%center))
        dt = this_%elements(6) * mm
        p = two_pi * mm
        ! Remove full periods from dt:
@@ -2752,11 +2769,11 @@ CONTAINS
        ! -> a = r / (2 - rv^2/mu)
        ! Semimajor axis (a<0 for e>1 orbits):
        a = r0 / (2.0_bp - r0*DOT_PRODUCT(vel,vel) / &
-            planetary_mu(this_%central_body))
+            planetary_mu(this_%center))
        ! Angular momentum:
        k = cross_product(pos,vel)
        ! Eccentricity vector:
-       evec = cross_product(vel,k)/planetary_mu(this_%central_body) - pos/r0
+       evec = cross_product(vel,k)/planetary_mu(this_%center) - pos/r0
        ! Eccentricity:
        e = SQRT(DOT_PRODUCT(evec,evec))
        ! Periapsis distance (note that if e>1 then a<0):
@@ -2820,7 +2837,7 @@ CONTAINS
        END IF
 
        ! Time of periapsis
-       alpha = 2.0_bp*planetary_mu(this_%central_body)/r0 - &
+       alpha = 2.0_bp*planetary_mu(this_%center)/r0 - &
             DOT_PRODUCT(vel,vel)
        xv = DOT_PRODUCT(pos,vel)
        IF (alpha <= 0.0_bp) THEN
@@ -2860,10 +2877,10 @@ CONTAINS
           stumpff_cs(2) = stumpff_c(2) * s**2.0_bp
           stumpff_cs(3) = stumpff_c(3) * s**3.0_bp
           r = r0 * stumpff_cs(0) + xv * stumpff_cs(1) + &
-               planetary_mu(this_%central_body) * stumpff_cs(2)
-          rp = (-r0*alpha + planetary_mu(this_%central_body)) * &
+               planetary_mu(this_%center) * stumpff_cs(2)
+          rp = (-r0*alpha + planetary_mu(this_%center)) * &
                stumpff_cs(1) + xv * stumpff_cs(0)
-          rpp = (-r0*alpha + planetary_mu(this_%central_body)) * &
+          rpp = (-r0*alpha + planetary_mu(this_%center)) * &
                stumpff_cs(0) - xv * alpha * stumpff_cs(1)
           ds = -rp/rpp
           s = s + ds
@@ -2896,13 +2913,13 @@ CONTAINS
           RETURN          
        END IF
        dt = r0 * stumpff_cs(1) + xv * stumpff_cs(2) + &
-            planetary_mu(this_%central_body)*stumpff_cs(3)
+            planetary_mu(this_%center)*stumpff_cs(3)
        mjd_tt = getMJD(this_%t,"TT")
        ! Choose the time of perihelion closest to the epoch in case of
        ! an elliptic orbit:
        IF (e < 1.0_bp) THEN
           ! period p:
-          p = two_pi*SQRT(a**3.0_bp/planetary_mu(this_%central_body))
+          p = two_pi*SQRT(a**3.0_bp/planetary_mu(this_%center))
           ! Remove full periods from dt:
           IF (ABS(dt) > p) THEN
              dt = MODULO(dt,p)
@@ -2976,7 +2993,7 @@ CONTAINS
     getDelaunayElements(1) = kep(6)
     getDelaunayElements(2) = kep(5)
     getDelaunayElements(3) = kep(4)
-    getDelaunayElements(4) = SQRT(planetary_mu(this%central_body) * kep(1))
+    getDelaunayElements(4) = SQRT(planetary_mu(this%center) * kep(1))
     getDelaunayElements(5) = getDelaunayElements(4) * SQRT(1.0_bp - &
          kep(2)**2.0_bp)
     getDelaunayElements(6) = getDelaunayElements(5) * &
@@ -3022,6 +3039,8 @@ CONTAINS
     END IF
     SELECT CASE (element_type_)
     CASE ("cometary")
+       getElements = getCometaryElements(this)
+    CASE ("cometary_ta")
        getElements = getCometaryElements(this)
     CASE ("keplerian")
        getElements = getKeplerianElements(this)
@@ -4188,6 +4207,10 @@ CONTAINS
        END IF
        CALL NULLIFY(this_arr_(i))
        this_arr_(i) = copy(this_arr(i))
+       ! Ensure that the coordinate system is heliocentric:
+       IF (this_arr_(i)%center /= 11) THEN
+          CALL switchCenter(this_arr_(i),11)
+       END IF
     END DO
     IF (.NOT. exist(observer)) THEN
        error = .TRUE.
@@ -4824,6 +4847,11 @@ CONTAINS
     TYPE (Orbit), INTENT(in) :: this
     REAL(bp), DIMENSION(6)   :: getKeplerianElements
 
+    TYPE (CartesianCoordinates) :: ccoord
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(6)   :: elements, coordinates
+    REAL(bp) :: mjd
+
     TYPE (Orbit):: this_
     TYPE (Time) :: t
     REAL(bp), DIMENSION(3) :: pos, vel, k, fb, gb, evec, cos_angles
@@ -4841,7 +4869,7 @@ CONTAINS
     ! Return initial elements if error occurs:
     getKeplerianElements(1:6) = this%elements(1:6)
 
-    SELECT CASE (this%element_type)
+    SELECT CASE (TRIM(this%element_type))
 
     CASE ("keplerian")
 
@@ -4859,10 +4887,10 @@ CONTAINS
        ! Angular momentum:
        k = cross_product(pos,vel)
        ! Eccentricity vector:
-       evec = cross_product(vel,k)/planetary_mu(this_%central_body) - pos/r
+       evec = cross_product(vel,k)/planetary_mu(this_%center) - pos/r
 
        ! alpha = rv^2/mu
-       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this%central_body)
+       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this%center)
        ! h = v^2/2 - mu/r and for elliptical orbits a = -mu/2h
        ! -> a = r / (2 - rv^2/mu)
        IF (ABS(2.0_bp - alpha) < 10.0_bp*EPSILON(alpha)) THEN
@@ -4875,7 +4903,7 @@ CONTAINS
        ! gamma = sqrt(mu*a) 
        ! Note that we use |a| below in order to allow for hyperbolic
        ! orbits.
-       gamma = SQRT(planetary_mu(this%central_body)*ABS(a))
+       gamma = SQRT(planetary_mu(this%center)*ABS(a))
        IF (ABS(gamma) < TINY(gamma)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getKeplerianElements", &
@@ -4992,7 +5020,7 @@ CONTAINS
        mjd_tt = getMJD(t, "TT")
        CALL NULLIFY(t)
        getKeplerianElements(6) = &
-            SQRT(planetary_mu(this%central_body) / &
+            SQRT(planetary_mu(this%center) / &
             getKeplerianElements(1)**3.0_bp) * &
             (mjd_tt - this%elements(6))
        getKeplerianElements(6) = &
@@ -5632,7 +5660,7 @@ CONTAINS
        vel = this_%elements(4:6)
        r = SQRT(DOT_PRODUCT(pos,pos))
        ! alpha = rv^2/mu
-       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this_%central_body)
+       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this_%center)
        ! h = v^2/2 - mu/r and for elliptical orbits a = -mu/2h
        ! -> a = r / (2 - rv^2/mu)
        IF (ABS(2.0_bp - alpha) < 10.0_bp*EPSILON(alpha)) THEN
@@ -5776,7 +5804,7 @@ CONTAINS
        vel = this_%elements(4:6)
        r = SQRT(DOT_PRODUCT(pos,pos))
        ! alpha = rv^2/mu
-       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this_%central_body)
+       alpha = r*DOT_PRODUCT(vel,vel)/planetary_mu(this_%center)
        IF (PRESENT(a)) THEN
           a_ = a
        ELSE
@@ -5791,7 +5819,7 @@ CONTAINS
           a_ = r / (2.0_bp - alpha)
        END IF
        ! gamma = sqrt(mu*a)
-       gamma = SQRT(planetary_mu(this_%central_body)*a_)
+       gamma = SQRT(planetary_mu(this_%center)*a_)
        IF (ABS(gamma) < TINY(gamma)) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / getPeriapsisDistance", &
@@ -5881,7 +5909,7 @@ CONTAINS
        RETURN
     END IF
     CALL NULLIFY(t_)
-    mean_motion = SQRT(planetary_mu(this%central_body)/elements(1)**3.0_bp)
+    mean_motion = SQRT(planetary_mu(this%center)/elements(1)**3.0_bp)
     tt_mjd_periapsis = tt_mjd - elements(6)/mean_motion
 
     IF (PRESENT(t)) THEN
@@ -6253,7 +6281,7 @@ CONTAINS
        RETURN
     END IF
     CALL NULLIFY(t_)
-    mean_motion = SQRT(planetary_mu(this%central_body)/elements(1)**3.0_bp)
+    mean_motion = SQRT(planetary_mu(this%center)/elements(1)**3.0_bp)
     tt_mjd_planecrossing = tt_mjd - MODULO(SUM(elements(5:6)), two_pi)/mean_motion
 
     IF (PRESENT(t)) THEN
@@ -6450,6 +6478,65 @@ CONTAINS
     CALL NULLIFY(ccoord)
 
   END FUNCTION getSCoord_Orb
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the solar elongation for an object on this orbit at a given
+  !! epoch as seen from a given observer.
+  !!
+  !! Returns error.
+  !! 
+  REAL(bp) FUNCTION getSolarElongation_Orb(this, observer)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(inout)                   :: this
+    TYPE (CartesianCoordinates), INTENT(in)       :: observer
+
+    TYPE (CartesianCoordinates) :: observer_
+    REAL(bp), DIMENSION(3)      :: asteroid2sun, asteroid2observer
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / getSolarElongation", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT.exist(observer)) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / getSolarElongation", &
+            "Observer object has not been initialized.", 1)
+       RETURN
+    END IF
+
+    ! Ecliptic position vector from asteroid to the Sun:
+    asteroid2sun = -1.0_bp*getElements(this, "cartesian", "ecliptic")
+    IF (error) THEN
+       CALL errorMessage("Orbit / getSolarElongation", &
+            "TRACE BACK (5)", 1)
+       RETURN       
+    END IF
+
+    ! Ecliptic position vector from asteroid to the observer:
+    observer_ = copy(observer)
+    CALL rotateToEcliptic(observer_)
+    asteroid2observer = asteroid2sun + getPosition(observer_)
+    IF (error) THEN
+       CALL errorMessage("Orbit / getSolarElongation", &
+            "TRACE BACK (10)", 1)
+       RETURN       
+    END IF
+
+    ! Compute the solar elongation:
+    getSolarElongation_Orb = ACOS(DOT_PRODUCT(asteroid2sun,asteroid2observer) / &
+         (SQRT(DOT_PRODUCT(asteroid2sun,asteroid2sun)) * &
+         SQRT(DOT_PRODUCT(asteroid2observer,asteroid2observer))))
+
+  END FUNCTION getSolarElongation_Orb
 
 
 
@@ -7054,7 +7141,7 @@ CONTAINS
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
 
     ! Mean motion:
-    mm = SQRT(planetary_mu(this%central_body))/SQRT(ABS(kep_elements(1))**3.0_bp)
+    mm = SQRT(planetary_mu(this%center))/SQRT(ABS(kep_elements(1))**3.0_bp)
 
     ! Sines and cosines of the inclination, the longitude of the
     ! ascending node, and the argument of periapsis:
@@ -7213,7 +7300,7 @@ CONTAINS
     ! a
     partials(1,2) = elements(1)
     ! Inverse of mean motion:
-    partials(6,6) = SQRT(elements(1)**3.0_bp)/SQRT(planetary_mu(this%central_body))
+    partials(6,6) = SQRT(elements(1)**3.0_bp)/SQRT(planetary_mu(this%center))
 
   END SUBROUTINE partialsCometaryWrtKeplerian
 
@@ -7405,15 +7492,15 @@ CONTAINS
 
     ! Semimajor axis
     partials(1,1:6) = kep_elements(1)*(1.0_bp + &
-         kep_elements(1)*v**2/planetary_mu(this%central_body))*dr/r + &
-         2.0_bp*kep_elements(1)**2*v*dv/planetary_mu(this%central_body)
+         kep_elements(1)*v**2/planetary_mu(this%center))*dr/r + &
+         2.0_bp*kep_elements(1)**2*v*dv/planetary_mu(this%center)
 
     ! Eccentricity and mean anomaly
-    da      = v*(v*dr+2.0_bp*r*dv)/planetary_mu(this%central_body)
+    da      = v*(v*dr+2.0_bp*r*dv)/planetary_mu(this%center)
     db(1:3) = (car_elements(4:6)-rv*partials(1,1:3)/(2.0_bp*kep_elements(1))) / &
-         (SQRT(planetary_mu(this%central_body))*SQRT(kep_elements(1)))
+         (SQRT(planetary_mu(this%center))*SQRT(kep_elements(1)))
     db(4:6) = (car_elements(1:3)-rv*partials(1,4:6)/(2.0_bp*kep_elements(1))) / &
-         (SQRT(planetary_mu(this%central_body))*SQRT(kep_elements(1)))
+         (SQRT(planetary_mu(this%center))*SQRT(kep_elements(1)))
     dea     = (-sea*da+cea*db)/kep_elements(2)
 
     partials(2,1:6) = cea*da+sea*db
@@ -7569,7 +7656,7 @@ CONTAINS
     ! Semiminor axis:
     b = kep_elements(1) * SQRT(1.0_bp - kep_elements(2)**2)
     ! Mean motion:
-    mm = SQRT(planetary_mu(this%central_body))/SQRT(ABS(kep_elements(1))**3.0_bp)
+    mm = SQRT(planetary_mu(this%center))/SQRT(ABS(kep_elements(1))**3.0_bp)
 
     CALL solveKeplerEquation(this, this%t, ea)
     IF (error) THEN
@@ -8198,7 +8285,7 @@ CONTAINS
     REAL(bp), DIMENSION(3) :: pos, vel
     REAL(bp) :: mjd_tt, mjd_tt0, dt, r0, u, alpha, s, f, g, df, &
          dg, mean_motion, step, mu_, p
-    INTEGER :: i, j, err, nthis, central_body, naddit, nmassive
+    INTEGER :: i, j, err, nthis, center, naddit, nmassive
     LOGICAL :: multiple_t0
 
     nthis = SIZE(this_arr,dim=1)
@@ -8305,9 +8392,9 @@ CONTAINS
        RETURN
     END IF
 
-    central_body = this_arr(1)%central_body
+    center = this_arr(1)%center
     DO i=1,nthis
-       IF (central_body /= this_arr(i)%central_body) THEN
+       IF (center /= this_arr(i)%center) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / propagate (multiple)", &
                "All orbits do not share the same central body.", 1)
@@ -8318,7 +8405,7 @@ CONTAINS
        END IF
     END DO
     ! Define mu parameter
-    mu_ = planetary_mu(central_body)
+    mu_ = planetary_mu(center)
 
     ! Select dynamical model; either 2-body or n-body: 
     SELECT CASE (TRIM(dyn_model))
@@ -8359,7 +8446,7 @@ CONTAINS
              u       = DOT_PRODUCT(this_arr(i)%elements(1:3),this_arr(i)%elements(4:6)) 
              alpha   = 2.0_bp*mu_/r0 - DOT_PRODUCT(this_arr(i)%elements(4:6),this_arr(i)%elements(4:6)) ! 
              CALL solveKeplerEquation(r0, u, alpha, dt, stumpff_cs, ffs, s, &
-                  this_arr(i)%central_body)
+                  this_arr(i)%center)
              IF (error) THEN
                 CALL errorMessage("Orbit / propagate (multiple)", &
                      "2-body propagation using Stumpff-functions was unsuccessful.", 1)
@@ -8404,7 +8491,7 @@ CONTAINS
              END IF
              p = two_pi * SQRT((this_arr(i)%elements(1) / &
                   (1.0_bp-this_arr(i)%elements(2)))**3.0_bp / &
-                  planetary_mu(this_arr(i)%central_body))
+                  planetary_mu(this_arr(i)%center))
              ! Select time of perihelion closest to epoch:
              IF (ABS(MOD(dt,p)) <= 0.5*p) THEN
                 this_arr(i)%elements(6) = this_arr(i)%elements(6) + INT(dt/p)*p
@@ -8720,7 +8807,7 @@ CONTAINS
                      mjd_tt0, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, &
+                     ncenter=center, &
                      masses=this_arr(1)%additional_perturbers(:,8), &
                      info_verb=info_verb)
              END IF
@@ -8745,14 +8832,14 @@ CONTAINS
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
-                     jacobian=jacobian_, ncenter=central_body, &
+                     jacobian=jacobian_, ncenter=center, &
                      encounters=encounters, masses=masses, &
                      info_verb=info_verb)
              ELSE
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
-                     jacobian=jacobian_, ncenter=central_body, &
+                     jacobian=jacobian_, ncenter=center, &
                      masses=masses, info_verb=info_verb)
              END IF
              DO i=1,nthis+naddit
@@ -8766,7 +8853,7 @@ CONTAINS
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, &
+                     ncenter=center, &
                      encounters=encounters, &
                      masses=masses, &
                      info_verb=info_verb)
@@ -8774,7 +8861,7 @@ CONTAINS
                 CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
                      this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, masses=masses, &
+                     ncenter=center, masses=masses, &
                      info_verb=info_verb)
              END IF
           END IF
@@ -8831,7 +8918,7 @@ CONTAINS
                      elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), 12, &
                      2, this_arr(1)%perturbers_prm, error, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, &
+                     ncenter=center, &
                      masses=masses)
              END IF
              IF (info_verb >= 3) THEN
@@ -8860,14 +8947,14 @@ CONTAINS
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
                      error, jacobian=jacobian_, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, encounters=encounters, &
+                     ncenter=center, encounters=encounters, &
                      masses=masses)
              ELSE
                 CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
                      error, jacobian=jacobian_, &
                      step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, &
+                     ncenter=center, &
                      masses=masses)
              END IF
              DO i=1,nthis+naddit
@@ -8881,13 +8968,13 @@ CONTAINS
                 CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, encounters=encounters, &
+                     ncenter=center, encounters=encounters, &
                      masses=masses)
              ELSE
                 CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
-                     ncenter=central_body, &
+                     ncenter=center, &
                      masses=masses)
              END IF
           END IF
@@ -9606,7 +9693,7 @@ CONTAINS
     CALL NULLIFY(t_)
 
     ! Find initial guess:
-    ma = elements(6) + SQRT(planetary_mu(this%central_body)/elements(1)**3.0_bp)*(mjd_tt-mjd_tt0)
+    ma = elements(6) + SQRT(planetary_mu(this%center)/elements(1)**3.0_bp)*(mjd_tt-mjd_tt0)
     ma = MODULO(ma,two_pi)
     sigma = SIGN(1.0_bp,SIN(ma))
     x = ma + sigma*k*elements(2)
@@ -9634,6 +9721,7 @@ CONTAINS
        f     = x - esinx - ma
        i     = i + 1
     END DO
+
     ea = MODULO(x,two_pi)
 
   END SUBROUTINE solveKeplerEquation_newton
@@ -9653,13 +9741,13 @@ CONTAINS
   !! Danby, J. M.: Fundamentals of Celestial Mechanics, 2nd ed., 
   !!               rev. ed. Richmond, VA: Willmann-Bell, pp. 170-178, 1988
   !!
-  SUBROUTINE solveKeplerEquation_stumpff(r0, u, alpha, dt, stumpff_cs, ffs, s, central_body)
+  SUBROUTINE solveKeplerEquation_stumpff(r0, u, alpha, dt, stumpff_cs, ffs, s, center)
 
     IMPLICIT NONE
     REAL(bp), INTENT(in)                  :: r0, u, alpha
     REAL(bp), INTENT(inout)               :: dt
     REAL(bp), DIMENSION(0:3), INTENT(out) :: stumpff_cs, ffs
-    INTEGER, INTENT(in)                   :: central_body
+    INTEGER, INTENT(in)                   :: center
     REAL(bp), INTENT(out)                 :: s
     INTEGER,  PARAMETER                   :: nnew = 40 ! 8
     INTEGER,  PARAMETER                   :: nlag = 100 ! 20
@@ -9672,7 +9760,7 @@ CONTAINS
     INTEGER                               :: n
 
     ! Define mu parameter
-    mu_ = planetary_mu(central_body)
+    mu_ = planetary_mu(center)
 
     ! For small ds, equal initial guesses for elliptic and hyperbolic motion;
     ! for large ds, separate initial guesses:
@@ -9811,7 +9899,7 @@ CONTAINS
     n  = 0
     DO WHILE (n < nlag)
        n = n + 1
-       !write(*,*) "nlag", n, s, r0, u, alpha, dt, central_body, stumpff_cs(0:3), ffs(0:2)
+       !write(*,*) "nlag", n, s, r0, u, alpha, dt, center, stumpff_cs(0:3), ffs(0:2)
        !write(*,*) "nlag", n, s, stumpff_cs(0:3), ffs(0:2)
        x = s**2.0_bp * alpha
        CALL getStumpffFunctions(x, stumpff_c)
@@ -9856,6 +9944,152 @@ CONTAINS
          "Newton's and Laguerre's methods were unsuccessful.", 1)
 
   END SUBROUTINE solveKeplerEquation_stumpff
+
+
+
+
+  SUBROUTINE switchCenter_Orb(this, center)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(inout) :: this
+    INTEGER, INTENT(in) :: center
+
+    ! Scratch
+    TYPE (Time) ::  t
+    TYPE(CartesianCoordinates) :: ccoord
+    CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
+    CHARACTER(len=FRAME_LEN) :: frame
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(6) :: helioc_elements, plan_elements
+    REAL(bp) :: mjd_tt
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / switchCenter", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (center == this%center) THEN
+       RETURN
+    END IF
+
+    IF (center > 18) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / switchCenter", &
+            "An input new center is not specified.", 1)
+       RETURN
+    END IF
+
+    element_type = this%element_type
+    frame = this%frame
+    t = getTime(this)
+    mjd_tt = getMJD(t, "TT")    
+
+    ! Compute heliocentric equivalent of the old elements
+    IF (this%center /= 11) THEN
+       ! old elements not heliocentric
+       planeph => JPL_ephemeris(mjd_tt, this%center, 11, error)
+       CALL NEW(ccoord, planeph(1,1:6), "equatorial", t)
+       CALL rotateToEcliptic(ccoord)
+       plan_elements = getCoordinates(ccoord)
+       CALL NULLIFY(ccoord)
+       DEALLOCATE(planeph)   
+       helioc_elements = plan_elements + getElements(this, "cartesian", "ecliptic")
+    ELSE IF (this%center == 11) THEN
+       ! old elements heliocentric
+       helioc_elements = getElements(this, "cartesian", "ecliptic")
+    END IF
+
+    IF (center == 11) THEN
+       plan_elements = 0.0_bp
+    ELSE
+       ! coordinates for the new center
+       planeph => JPL_ephemeris(mjd_tt, center, 11, error)
+       CALL NEW(ccoord, planeph(1,1:6), "equatorial", t)
+       CALL rotateToEcliptic(ccoord)
+       plan_elements = getCoordinates(ccoord)
+       CALL NULLIFY(ccoord)
+       DEALLOCATE(planeph)   
+    END IF
+
+    ! change from heliocentric equivalent of the old elements to the
+    ! elements of the center
+    this%center = center
+    this%frame = "ecliptic"
+    this%element_type = "cartesian"
+    this%elements = helioc_elements - plan_elements
+
+    IF (frame == "equatorial") THEN
+       CALL rotateToEquatorial(this)       
+    END IF
+
+    ! Return to original element type
+    IF (element_type == "keplerian") THEN
+       CALL toKeplerian(this)
+    ELSE IF (element_type == "cometary") THEN
+       CALL toCometary(this)
+    END IF
+
+  END SUBROUTINE switchCenter_Orb
+
+
+
+
+
+  LOGICAL FUNCTION checkCapture_Orb(this, forCenter) 
+
+    IMPLICIT NONE
+    ! Input interface
+    TYPE (Orbit), INTENT(inout) :: this
+    INTEGER, INTENT(in) :: forCenter
+
+    ! PRIVATE
+    TYPE (Orbit) :: this_
+    REAL(bp) :: specific_energy
+    ! BEGIN
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / checkCapture", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+    this_ = copy(this)
+
+    IF (forCenter > 18) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / checkCapture", &
+            "An input center for which the check is performed is not specified.", 1)
+       RETURN
+    END IF
+
+    ! If cartesian, switch to cometary
+    IF (this_%element_type /= "cartesian") THEN
+       CALL toCartesian(this_, this_%frame)
+    END IF
+
+    ! Input orbit
+    ! Check center, if not same as forcenter, switchCenter to the right one
+    IF (this_%center /= forCenter) THEN
+       !WRITE(*,*) 'Switching center...'
+       CALL switchCenter(this_, forCenter)
+    END IF
+
+    ! Negative specific energy implies a bound orbit
+    specific_energy = 0.5_bp * &
+         DOT_PRODUCT(this_%elements(4:6),this_%elements(4:6)) - &
+         planetary_mu(this_%center) / &
+         SQRT(DOT_PRODUCT(this_%elements(4:6),this_%elements(4:6)))
+    IF (specific_energy < 0.0_bp) THEN
+       checkCapture_Orb = .TRUE.
+    ELSE
+       checkCapture_Orb = .FALSE.        
+    END IF
+
+    CALL NULLIFY(this_)
+
+  END FUNCTION checkCapture_Orb
 
 
 
