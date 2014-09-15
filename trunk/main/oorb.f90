@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2014-08-22
+!! @version 2014-09-15
 !!
 PROGRAM oorb
 
@@ -250,7 +250,7 @@ PROGRAM oorb
        apoapsis_distance, apriori_a_max, &
        apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
        apriori_periapsis_max,  apriori_periapsis_min, &
-       apriori_rho_min, &
+       apriori_rho_min, apriori_rho_max, &
        chi2_min_init, cos_nsigma, cos_obj_phase, &
        day0, day1, dDelta, ddec, dec, dra, dt, dt_, dt_fulfill_night, dchi2_max, &
        ephemeris_r2, &
@@ -1578,6 +1578,7 @@ PROGRAM oorb
      apriori_apoapsis_max = -1.0_bp
      apriori_apoapsis_min = -1.0_bp
      apriori_rho_min = -1.0_bp
+     apriori_rho_max = -1.0_bp
      sor_type_prm = -1
      sor_2point_method = " "
      sor_2point_method_sw = " "
@@ -1607,6 +1608,7 @@ PROGRAM oorb
           apriori_apoapsis_max=apriori_apoapsis_max, &
           apriori_apoapsis_min=apriori_apoapsis_min, &
           apriori_rho_min=apriori_rho_min, &
+          apriori_rho_max=apriori_rho_max, &
           sor_type=sor_type_prm, sor_2point_method=sor_2point_method, &
           sor_2point_method_sw=sor_2point_method_sw, &
           sor_norb=sor_norb, sor_norb_sw=sor_norb_sw, &
@@ -1668,6 +1670,7 @@ PROGRAM oorb
                    integration_step=integration_step_init, &
                    accept_multiplier=accwin_multiplier, &
                    apriori_rho_min=apriori_rho_min, &
+                   apriori_rho_max=apriori_rho_max, &
                    set_acceptance_window=.FALSE., &
                    center=center)
               IF (error) THEN
@@ -1759,6 +1762,7 @@ PROGRAM oorb
              apriori_apoapsis_max=apriori_apoapsis_max, &
              apriori_apoapsis_min=apriori_apoapsis_min, &
              apriori_rho_min=apriori_rho_min, &
+             apriori_rho_max=apriori_rho_max, &
              sor_2point_method=sor_2point_method, &
              sor_2point_method_sw=sor_2point_method_sw, &
              sor_norb=sor_norb, sor_ntrial=sor_ntrial, &
@@ -4626,7 +4630,7 @@ PROGRAM oorb
            END IF
            STOP
         END SELECT
-        IF (error .OR. getNrOfSampleOrbits(storb) < INT(0.5*vomcmc_norb)) THEN
+        IF (error) THEN! .OR. getNrOfSampleOrbits(storb) < INT(0.5*vomcmc_norb)) THEN
            WRITE(stderr,*) error, getNrOfSampleOrbits(storb), INT(0.5*vomcmc_norb)
            CALL errorMessage("oorb / vomcmc", &
                 "TRACE BACK (80)", 1)
