@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2014-08-22
+!! @version 2014-09-15
 !!  
 MODULE StochasticOrbit_cl
 
@@ -985,6 +985,7 @@ CONTAINS
     copy_SO%apriori_apoapsis_max_prm = this%apriori_apoapsis_max_prm
     copy_SO%apriori_apoapsis_min_prm = this%apriori_apoapsis_min_prm
     copy_SO%apriori_rho_min_prm = this%apriori_rho_min_prm
+    copy_SO%apriori_rho_max_prm = this%apriori_rho_max_prm
     copy_SO%informative_apriori_prm = this%informative_apriori_prm
 
     ! Propagation parameters
@@ -1894,7 +1895,7 @@ CONTAINS
                 ! Semimajor axis too small
                 IF (info_verb >= 5) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (semimajor axis too small: ", sma, " AU)"
+                        "Failed (semimajor axis too small: ", sma, " au)"
                 END IF
                 failed_flag(1) = failed_flag(1) + 1
                 CYCLE
@@ -1904,7 +1905,7 @@ CONTAINS
                 ! Semimajor axis too large
                 IF (info_verb >= 5) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (semimajor axis too large: ", sma, " AU)"
+                        "Failed (semimajor axis too large: ", sma, " au)"
                 END IF
                 failed_flag(2) = failed_flag(2) + 1
                 CYCLE
@@ -1935,7 +1936,7 @@ CONTAINS
                   elements(1) < this%apriori_periapsis_min_prm) THEN
                 IF (info_verb >= 5) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (periapsis distance too small: ", q, " AU)"
+                        "Failed (periapsis distance too small: ", q, " au)"
                 END IF
                 failed_flag(7) = failed_flag(7) + 1
                 CYCLE
@@ -1945,7 +1946,7 @@ CONTAINS
                   elements(1) > this%apriori_periapsis_max_prm) THEN
                 IF (info_verb >= 5) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (periapsis distance too large: ", q, " AU)"
+                        "Failed (periapsis distance too large: ", q, " au)"
                 END IF
                 failed_flag(8) = failed_flag(8) + 1
                 CYCLE
@@ -1960,7 +1961,7 @@ CONTAINS
                   Q < this%apriori_apoapsis_min_prm) THEN
                 IF (info_verb >= 5) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (apoapsis distance too small: ", Q, " AU)"
+                        "Failed (apoapsis distance too small: ", Q, " au)"
                 END IF
                 failed_flag(9) = failed_flag(9) + 1
                 CYCLE
@@ -1970,7 +1971,7 @@ CONTAINS
                   Q > this%apriori_apoapsis_max_prm) THEN
                 IF (info_verb >= 5) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (apoapsis distance too large: ", Q, " AU)"
+                        "Failed (apoapsis distance too large: ", Q, " au)"
                 END IF
                 failed_flag(10) = failed_flag(10) + 1
                 CYCLE
@@ -2042,7 +2043,7 @@ CONTAINS
                   "computed pos.", comp_coord(1:3)
              WRITE(stdout,"(2X,A,1X,A21,3"//TRIM(frmt)//")") &
                   "StochasticOrbit / covarianceSampling:", &
-                  "residuals [AU,arcsec]", residuals3(iorb+1,i,1), &
+                  "residuals [au,arcsec]", residuals3(iorb+1,i,1), &
                   residuals3(iorb+1,i,2:3)/rad_asec
           END IF
        END DO
@@ -3536,7 +3537,7 @@ CONTAINS
     groups(5) = "Aethra"
     mask_array = .FALSE.
     WHERE (periapsis > 1.3_bp .AND. &
-         periapsis <= 5.0_bp/3.0_bp .AND. & ! 1.6666... AU
+         periapsis <= 5.0_bp/3.0_bp .AND. & ! 1.6666... au
          mask_array_tot) mask_array = .TRUE.
     weights(5) = SUM(pdf,mask=mask_array)
     WHERE (mask_array) mask_array_tot = .FALSE.
@@ -3550,7 +3551,7 @@ CONTAINS
          elements(:,2) <= 0.16_bp .AND. &
          elements(:,3) >= 15.0_bp .AND. &
          elements(:,3) <= 35.0_bp .AND. &
-         periapsis > 5.0_bp/3.0_bp .AND. & ! 1.6666... AU
+         periapsis > 5.0_bp/3.0_bp .AND. & ! 1.6666... au
          mask_array_tot) mask_array = .TRUE.
     weights(6) = SUM(pdf,mask=mask_array)
     WHERE (mask_array) mask_array_tot = .FALSE.
@@ -3564,7 +3565,7 @@ CONTAINS
          elements(:,2) <= 0.3_bp .AND. &
          elements(:,3) >= 10.0_bp .AND. &
          elements(:,3) <= 30.0_bp .AND. &
-         periapsis > 5.0_bp/3.0_bp .AND. & ! 1.6666... AU
+         periapsis > 5.0_bp/3.0_bp .AND. & ! 1.6666... au
          mask_array_tot) mask_array = .TRUE.
     weights(7) = SUM(pdf,mask=mask_array)
     WHERE (mask_array) mask_array_tot = .FALSE.
@@ -3578,7 +3579,7 @@ CONTAINS
          elements(:,2) <= 0.35_bp .AND. &
          elements(:,3) >= 0.0_bp .AND. &
          elements(:,3) <= 35.0_bp .AND. &
-         periapsis > 5.0_bp/3.0_bp .AND. & ! 1.6666... AU
+         periapsis > 5.0_bp/3.0_bp .AND. & ! 1.6666... au
          periapsis <= 4.95_bp .AND. &
          mask_array_tot) mask_array = .TRUE.
     weights(8) = SUM(pdf,mask=mask_array)
@@ -3852,7 +3853,7 @@ CONTAINS
 
 
   !! Computes the probability of the target described by the sample
-  !! orbits being a PHA (MOID wrt. the Earth <= 0.05 AU) at a given  
+  !! orbits being a PHA (MOID wrt. the Earth <= 0.05 au) at a given  
   !! moment (determined by the epoch of the sample orbits). 
   !! Computations are done using the 2-body approximation.
   !!
@@ -6283,11 +6284,11 @@ CONTAINS
     proposal_density(5) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(2),2,2))
     proposal_density(6) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(2),3,3))
     IF (info_verb >= 2) THEN
-       WRITE(stdout,"(A)") "Proposal density for the first observation (y_l [AU], RA [as], Dec [as]): "
+       WRITE(stdout,"(A)") "Proposal density for the first observation (y_l [au], RA [as], Dec [as]): "
        WRITE(stdout,"(F15.7)") proposal_density(1)
        WRITE(stdout,"(F15.7)") proposal_density(2)/rad_asec
        WRITE(stdout,"(F15.7)") proposal_density(3)/rad_asec
-       WRITE(stdout,"(A)") "Proposal density for the second observation (y_r [AU], RA [as], Dec [as]): "
+       WRITE(stdout,"(A)") "Proposal density for the second observation (y_r [au], RA [as], Dec [as]): "
        WRITE(stdout,"(F15.7)") proposal_density(4)
        WRITE(stdout,"(F15.7)") proposal_density(5)/rad_asec
        WRITE(stdout,"(F15.7)") proposal_density(6)/rad_asec
@@ -6443,7 +6444,7 @@ CONTAINS
                 ! Semimajor axis too small
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (semimajor axis too small: ", a, " AU)"
+                        "Failed (semimajor axis too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -6452,7 +6453,7 @@ CONTAINS
                 ! Semimajor axis too large
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (semimajor axis too large: ", a, " AU)"
+                        "Failed (semimajor axis too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -6474,7 +6475,7 @@ CONTAINS
                   q < this%apriori_periapsis_min_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (periapsis distance too small: ", a, " AU)"
+                        "Failed (periapsis distance too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -6483,7 +6484,7 @@ CONTAINS
                   q > this%apriori_periapsis_max_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (periapsis distance too large: ", a, " AU)"
+                        "Failed (periapsis distance too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -6501,7 +6502,7 @@ CONTAINS
                   Q < this%apriori_apoapsis_min_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (apoapsis distance too small: ", a, " AU)"
+                        "Failed (apoapsis distance too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -6510,7 +6511,7 @@ CONTAINS
                   Q > this%apriori_apoapsis_max_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (apoapsis distance too large: ", a, " AU)"
+                        "Failed (apoapsis distance too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -7053,11 +7054,11 @@ CONTAINS
     proposal_density(5) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(2),2,2))
     proposal_density(6) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(2),3,3))
     IF (info_verb >= 2) THEN
-       WRITE(stdout,"(A)") "Proposal density for the first observation (range[AU], RA[as], dec[as]): "
+       WRITE(stdout,"(A)") "Proposal density for the first observation (range[au], RA[as], dec[as]): "
        WRITE(stdout,"(F15.7)") proposal_density(1)
        WRITE(stdout,"(F15.7)") proposal_density(2)/rad_asec
        WRITE(stdout,"(F15.7)") proposal_density(3)/rad_asec
-       WRITE(stdout,"(A)") "Proposal density for the second observation (drange[AU], RA[as], dec[as]): "
+       WRITE(stdout,"(A)") "Proposal density for the second observation (drange[au], RA[as], dec[as]): "
        WRITE(stdout,"(F15.7)") proposal_density(4)
        WRITE(stdout,"(F15.7)") proposal_density(5)/rad_asec
        WRITE(stdout,"(F15.7)") proposal_density(6)/rad_asec
@@ -7210,7 +7211,7 @@ CONTAINS
                 ! Semimajor axis too small
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (semimajor axis too small: ", a, " AU)"
+                        "Failed (semimajor axis too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -7219,7 +7220,7 @@ CONTAINS
                 ! Semimajor axis too large
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (semimajor axis too large: ", a, " AU)"
+                        "Failed (semimajor axis too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -7241,7 +7242,7 @@ CONTAINS
                   q < this%apriori_periapsis_min_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (periapsis distance too small: ", a, " AU)"
+                        "Failed (periapsis distance too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -7250,7 +7251,7 @@ CONTAINS
                   q > this%apriori_periapsis_max_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (periapsis distance too large: ", a, " AU)"
+                        "Failed (periapsis distance too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -7268,7 +7269,7 @@ CONTAINS
                   Q < this%apriori_apoapsis_min_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (apoapsis distance too small: ", a, " AU)"
+                        "Failed (apoapsis distance too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -7277,7 +7278,7 @@ CONTAINS
                   Q > this%apriori_apoapsis_max_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (apoapsis distance too large: ", a, " AU)"
+                        "Failed (apoapsis distance too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -11847,7 +11848,7 @@ CONTAINS
                 ! Semimajor axis too small
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (semimajor axis too small: ", a, " AU)"
+                        "Failed (semimajor axis too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -11856,7 +11857,7 @@ CONTAINS
                 ! Semimajor axis too large
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (semimajor axis too large: ", a, " AU)"
+                        "Failed (semimajor axis too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -11878,7 +11879,7 @@ CONTAINS
                   q < this%apriori_periapsis_min_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (periapsis distance too small: ", a, " AU)"
+                        "Failed (periapsis distance too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -11887,7 +11888,7 @@ CONTAINS
                   q > this%apriori_periapsis_max_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (periapsis distance too large: ", a, " AU)"
+                        "Failed (periapsis distance too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -11905,7 +11906,7 @@ CONTAINS
                   Q < this%apriori_apoapsis_min_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (apoapsis distance too small: ", a, " AU)"
+                        "Failed (apoapsis distance too small: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -11914,7 +11915,7 @@ CONTAINS
                   Q > this%apriori_apoapsis_max_prm) THEN
                 IF (info_verb >= 4) THEN
                    WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (apoapsis distance too large: ", a, " AU)"
+                        "Failed (apoapsis distance too large: ", a, " au)"
                 END IF
                 CYCLE
              END IF
@@ -11998,10 +11999,10 @@ CONTAINS
           END IF
        END IF
 
-       !       IF (info_verb >= 2 .AND. MOD(this%vomcmc_ntrial_cmp,5000) == 0) THEN
-       WRITE(stdout,"(2X,A,3(I0,1X))") "Nr of accepted orbits and trials: ", &
-            this%vomcmc_norb_cmp, this%vomcmc_ntrial_cmp
-       !       END IF
+       IF (info_verb >= 2 .AND. MOD(this%vomcmc_ntrial_cmp,500) == 0) THEN
+          WRITE(stdout,"(2X,A,3(I0,1X))") "Nr of accepted orbits and trials: ", &
+               this%vomcmc_norb_cmp, this%vomcmc_ntrial_cmp
+       END IF
 
     END DO
 
@@ -16642,7 +16643,7 @@ CONTAINS
        IF (this%sor_gaussian_pdf_prm) THEN
           WRITE(stdout,"(2X,A)") "Using Gaussian deviate for rho!"
        END IF
-       WRITE(stdout,"(2X,A,4(1X,E10.4))") "Initial rho bounds (AU) :", &
+       WRITE(stdout,"(2X,A,4(1X,E10.4))") "Initial rho bounds (au) :", &
             this%sor_rho_prm(1,1:2), this%sor_rho_prm(2,1:2)
 
        WRITE(stdout,"(1X)")
@@ -16873,9 +16874,29 @@ CONTAINS
              IF (info_verb >= 5) THEN
                 WRITE(stdout,"(2X,A,F10.7,A)") &
                      "Failed (rho1 smaller than the Earth radius: ", &
-                     rho1(i+1), " AU)"
+                     rho1(i+1), " au)"
              END IF
-             CYCLE
+             CYCLE sor_orb_gen
+          END IF
+          IF (this%informative_apriori_prm) THEN
+             IF (this%apriori_rho_min_prm >= 0.0_bp .AND. &
+                  rho1(i+1) < this%apriori_rho_min_prm) THEN
+                ! rho1 too small
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F13.7,A)") &
+                        "Failed (rho1 too small: ", a, " au)"
+                END IF
+                CYCLE sor_orb_gen
+             END IF
+             IF (this%apriori_rho_max_prm >= 0.0_bp .AND. &
+                  rho1(i+1) > this%apriori_rho_max_prm) THEN
+                ! rho1 too large
+                IF (info_verb >= 5) THEN
+                   WRITE(stdout,"(2X,A,F10.7,A)") &
+                        "Failed (rho1 too large: ", a, " au)"
+                END IF
+                CYCLE sor_orb_gen
+             END IF
           END IF
           rho_mid = 0.5_bp*(this%sor_rho_prm(2,1) + this%sor_rho_prm(2,2))
           bounds(1,1) = rho1(i+1) + rho_mid 
@@ -16883,14 +16904,14 @@ CONTAINS
              IF (info_verb >= 5) THEN
                 WRITE(stdout,"(2X,A,F10.7,A)") &
                      "Failed (Mean of rho2 smaller than the Earth radius: ", &
-                     bounds(1,1), " AU)"
+                     bounds(1,1), " au)"
              END IF
              CYCLE sor_orb_gen
           END IF
           bounds(2:3,1:2) = this%sor_deviates_prm(obs_pair_arr(i+1,2),2:3,1:2)
           rho2(i+1) = 0.0_bp
           ! Make sure rho2 is larger than zero length units
-          DO WHILE (rho2(i+1) <= EPSILON(rho2(i+1)))
+          DO WHILE (ABS(rho2(i+1)) <= EPSILON(rho2(i+1)))
              bounds(1,2) = 0.5_bp*ABS(this%sor_rho_prm(2,2) - this%sor_rho_prm(2,1))
              CALL NULLIFY(obs_scoord2)
              obs_scoord2 = copy(obs_scoords(obs_pair_arr(i+1,2)))
@@ -16976,6 +16997,26 @@ CONTAINS
                 CALL NULLIFY(obs_scoord1)
                 CALL NULLIFY(obs_scoord2)
                 RETURN
+             END IF
+             IF (this%informative_apriori_prm) THEN
+                IF (this%apriori_rho_min_prm >= 0.0_bp .AND. &
+                     rho2(i+1) < this%apriori_rho_min_prm) THEN
+                   ! rho2 too small
+                   IF (info_verb >= 5) THEN
+                      WRITE(stdout,"(2X,A,F13.7,A)") &
+                           "Failed (rho2 too small: ", a, " au)"
+                   END IF
+                   rho2(i+1) = 0.0_bp ! try again...
+                END IF
+                IF (this%apriori_rho_max_prm >= 0.0_bp .AND. &
+                     rho2(i+1) > this%apriori_rho_max_prm) THEN
+                   ! rho2 too large
+                   IF (info_verb >= 5) THEN
+                      WRITE(stdout,"(2X,A,F10.7,A)") &
+                           "Failed (rho2 too large: ", a, " au)"
+                   END IF
+                   rho2(i+1) = 0.0_bp ! try again...
+                END IF
              END IF
           END DO
           sphdev(i+1,2,:) = getPosition(obs_scoord2) - sphdev(i+1,2,:)
@@ -17293,7 +17334,7 @@ CONTAINS
                    ! Semimajor axis too small
                    IF (info_verb >= 5) THEN
                       WRITE(stdout,"(2X,A,F13.7,A)") &
-                           "Failed (semimajor axis too small: ", a, " AU)"
+                           "Failed (semimajor axis too small: ", a, " au)"
                    END IF
                    failed_flag(2) = failed_flag(2) + 1
                    CYCLE sor_orb_gen
@@ -17303,7 +17344,7 @@ CONTAINS
                    ! Semimajor axis too large
                    IF (info_verb >= 5) THEN
                       WRITE(stdout,"(2X,A,F10.7,A)") &
-                           "Failed (semimajor axis too large: ", a, " AU)"
+                           "Failed (semimajor axis too large: ", a, " au)"
                    END IF
                    failed_flag(3) = failed_flag(3) + 1
                    CYCLE sor_orb_gen
@@ -17326,7 +17367,7 @@ CONTAINS
                      q < this%apriori_periapsis_min_prm) THEN
                    IF (info_verb >= 5) THEN
                       WRITE(stdout,"(2X,A,F13.7,A)") &
-                           "Failed (periapsis distance too small: ", a, " AU)"
+                           "Failed (periapsis distance too small: ", a, " au)"
                    END IF
                    failed_flag(4) = failed_flag(4) + 1
                    CYCLE sor_orb_gen
@@ -17336,7 +17377,7 @@ CONTAINS
                      q > this%apriori_periapsis_max_prm) THEN
                    IF (info_verb >= 5) THEN
                       WRITE(stdout,"(2X,A,F10.7,A)") &
-                           "Failed (periapsis distance too large: ", a, " AU)"
+                           "Failed (periapsis distance too large: ", a, " au)"
                    END IF
                    failed_flag(5) = failed_flag(5) + 1
                    CYCLE sor_orb_gen
@@ -17355,7 +17396,7 @@ CONTAINS
                      Q < this%apriori_apoapsis_min_prm) THEN
                    IF (info_verb >= 5) THEN
                       WRITE(stdout,"(2X,A,F13.7,A)") &
-                           "Failed (apoapsis distance too small: ", a, " AU)"
+                           "Failed (apoapsis distance too small: ", a, " au)"
                    END IF
                    failed_flag(4) = failed_flag(4) + 1
                    CYCLE sor_orb_gen
@@ -17365,7 +17406,7 @@ CONTAINS
                      Q > this%apriori_apoapsis_max_prm) THEN
                    IF (info_verb >= 5) THEN
                       WRITE(stdout,"(2X,A,F10.7,A)") &
-                           "Failed (apoapsis distance too large: ", a, " AU)"
+                           "Failed (apoapsis distance too large: ", a, " au)"
                    END IF
                    failed_flag(5) = failed_flag(5) + 1
                    CYCLE sor_orb_gen
@@ -18344,7 +18385,7 @@ CONTAINS
        WRITE(stdout,"(2X,A,4(1X,E10.4))") "Min/max rhos, @ end    :" , &
             this%sor_rho_cmp(1,1:2), this%sor_rho_cmp(2,1:2)
        acc(2:3) = acc(2:3)/rad_asec
-       WRITE(stdout,"(2X,A,3(1X,E10.4),A)") "Accur. (rho/R.A./Dec.) :", acc, " (AU/as/as)"
+       WRITE(stdout,"(2X,A,3(1X,E10.4),A)") "Accur. (rho/R.A./Dec.) :", acc, " (au/as/as)"
        WRITE(stdout,"(2X,A)") ""
     END IF
 
@@ -18481,6 +18522,7 @@ CONTAINS
             apriori_apoapsis_max=this%apriori_apoapsis_max_prm, &
             apriori_apoapsis_min=this%apriori_apoapsis_min_prm, &
             apriori_rho_min=this%apriori_rho_min_prm, &
+            apriori_rho_max=this%apriori_rho_max_prm, &
             sor_norb=this%sor_norb_sw_prm, &
                                 ! Number of trial orbits increases with number of observations:
                                 !sor_ntrial=this%sor_ntrial_sw_prm*i, &
@@ -19000,7 +19042,7 @@ CONTAINS
     END IF
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A,1X,A)") "constrainRangeDistributions:", &
-            "Constrained (rho1,rho2-rho1) distribution [AU]: "
+            "Constrained (rho1,rho2-rho1) distribution [au]: "
     END IF
     j = 0
     DO i=1,SIZE(this%sor_rho_arr_cmp,dim=1)
