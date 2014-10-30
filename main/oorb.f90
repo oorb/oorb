@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2014-09-15
+!! @version 2014-10-30
 !!
 PROGRAM oorb
 
@@ -1627,6 +1627,17 @@ PROGRAM oorb
              "TRACE BACK (5)", 1)
         STOP
      END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / ranging", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END IF
 
      DEALLOCATE(HG_arr_storb_in, stat=err)
      ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),sor_norb,4))
@@ -2221,6 +2232,18 @@ PROGRAM oorb
              "TRACE BACK (5)", 1)
         STOP
      END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / mcmcranging", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END IF
+
      ! Print header before printing first orbit:
      first = .TRUE.
      DO i=1,SIZE(obss_sep,dim=1)
@@ -2716,6 +2739,17 @@ PROGRAM oorb
              "TRACE BACK (5)", 1)
         STOP
      END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / simplex", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END IF
 
      DEALLOCATE(HG_arr_storb_in, stat=err)
      ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),7,4))
@@ -3168,6 +3202,17 @@ PROGRAM oorb
         CALL errorMessage("oorb / observation_sampling", &
              "TRACE BACK (5)", 1)
         STOP
+     END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / observation_sampling", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
      END IF
 
      DEALLOCATE(HG_arr_storb_in, stat=err)
@@ -3769,6 +3814,17 @@ PROGRAM oorb
              "TRACE BACK (2)", 1)
         STOP
      END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / vov", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END IF
 
      DO i=j+1,SIZE(obss_sep,dim=1)
         id = getID(obss_sep(i))
@@ -3789,7 +3845,7 @@ PROGRAM oorb
                  IF (containsSampledPDF(storb_arr_in(j))) THEN
                     orb_arr => getSampleOrbits(storb_arr_in(j))
                     IF (error) THEN
-                       CALL errorMessage("oorb / lsl", &
+                       CALL errorMessage("oorb / vov", &
                             "TRACE BACK (35)", 1)
                        STOP
                     END IF
@@ -3799,7 +3855,7 @@ PROGRAM oorb
                     ALLOCATE(orb_arr(1))
                     orb_arr(1) = getNominalOrbit(storb_arr_in(j))
                     IF (error) THEN
-                       CALL errorMessage("oorb / lsl", &
+                       CALL errorMessage("oorb / vov", &
                             "TRACE BACK (35)", 1)
                        STOP
                     END IF
@@ -3809,7 +3865,7 @@ PROGRAM oorb
               END IF
            END DO
            IF (norb == 0) THEN
-              CALL errorMessage("oorb / lsl", &
+              CALL errorMessage("oorb / vov", &
                    "Initial orbit not available.", 1)
               STOP
            END IF
@@ -3824,14 +3880,14 @@ PROGRAM oorb
                  END IF
                  orb_arr(norb) = copy(orb_arr_in(j))
                  IF (error) THEN
-                    CALL errorMessage("oorb / lsl", &
+                    CALL errorMessage("oorb / vov", &
                          "TRACE BACK (35)", 1)
                     STOP
                  END IF
               END IF
            END DO
            IF (norb == 0) THEN
-              CALL errorMessage("oorb / lsl", &
+              CALL errorMessage("oorb / vov", &
                    "Initial orbit not available.", 1)
               STOP
            ELSE
@@ -3840,7 +3896,7 @@ PROGRAM oorb
         END IF
         dt = getObservationalTimespan(obss_sep(i))
         IF (error) THEN
-           CALL errorMessage("oorb / lsl", &
+           CALL errorMessage("oorb / vov", &
                 "TRACE BACK (40)", 1)
            STOP
         END IF
@@ -3848,20 +3904,20 @@ PROGRAM oorb
            CALL NULLIFY(t)
            obs = getObservation(obss_sep(i),1)
            IF (error) THEN
-              CALL errorMessage("oorb / lsl", &
+              CALL errorMessage("oorb / vov", &
                    "TRACE BACK (45)", 1)
               STOP
            END IF
            t = getTime(obs)
            IF (error) THEN
-              CALL errorMessage("oorb / lsl", &
+              CALL errorMessage("oorb / vov", &
                    "TRACE BACK (50)", 1)
               STOP
            END IF
            CALL NULLIFY(obs)
            mjd = getMJD(t, "tt")
            IF (error) THEN
-              CALL errorMessage("oorb / lsl", &
+              CALL errorMessage("oorb / vov", &
                    "TRACE BACK (65)", 1)
               STOP
            END IF
@@ -3869,7 +3925,7 @@ PROGRAM oorb
            mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
            CALL NEW(t, mjd, "tt")   
            IF (error) THEN
-              CALL errorMessage("oorb / lsl", &
+              CALL errorMessage("oorb / vov", &
                    "TRACE BACK (70)", 1)
               STOP
            END IF
@@ -5029,6 +5085,17 @@ PROGRAM oorb
              "TRACE BACK (5)", 1)
         STOP
      END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / lsl", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END IF
 
      DEALLOCATE(HG_arr_storb_in, stat=err)
      ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),1,4))
@@ -5724,6 +5791,17 @@ PROGRAM oorb
         CALL errorMessage("oorb / covariance_sampling", &
              "TRACE BACK (5)", 1)
         STOP
+     END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / covariance_sampling", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
      END IF
 
      DEALLOCATE(HG_arr_storb_in, stat=err)
@@ -9041,6 +9119,103 @@ PROGRAM oorb
      !! observations.
 
      WRITE(stdout,"(F20.6)") getObservationalTimespan(obss_in)
+
+  CASE ("uncertainty")
+
+     !! Fractional (dx/x) and absolute uncertainty (dx) on a,e,i;
+     !! where dx either covers 68.27% of the total probability mass or
+     !! is equal to the 1-sigma limits.
+
+     DO i=1,SIZE(storb_arr_in)
+        IF (containsSampledPDF(storb_arr_in(i))) THEN
+           orb_arr_in => getSampleOrbits(storb_arr_in(i), probability_mass=0.6827_bp)
+           ALLOCATE(elements_arr(SIZE(orb_arr_in),6))
+           DO j=1,SIZE(orb_arr_in)
+              elements_arr(j,:) = getElements(orb_arr_in(j), "keplerian")
+              elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
+              CALL NULLIFY(orb_arr_in(j))
+           END DO
+           pdf_arr_in => getPDFValues(storb_arr_in(i), "keplerian")
+           j = MAXLOC(pdf_arr_in,dim=1)
+           orb = getSampleOrbit(storb_arr_in(i),j)
+           elements = getElements(orb, "keplerian")
+           CALL NULLIFY(orb)
+           elements(3) = elements(3)/rad_deg
+           DO j=1,3
+              bounds(1) = MINVAL(elements_arr(:,j))
+              bounds(2) = MAXVAL(elements_arr(:,j))
+              WRITE(stdout,'(2(F12.6,1X))',advance="NO") &
+                   (bounds(2)-bounds(1))/elements(j), &
+                   bounds(2)-bounds(1)
+           END DO
+           WRITE(stdout,*)
+           DEALLOCATE(orb_arr_in, elements_arr, pdf_arr_in)
+        ELSE
+           orb = getNominalOrbit(storb_arr_in(i))
+           elements = getElements(orb, "keplerian")
+           elements(3:6) = elements(3:6)/rad_deg
+           CALL NULLIFY(orb)
+           cov = getCovarianceMatrix(storb_arr_in(i), "keplerian")
+           cov(:,3:) = cov(:,3:)/rad_deg
+           cov(3:,:) = cov(3:,:)/rad_deg
+           DO j=1,3
+              WRITE(stdout,'(2(F12.6,1X))',advance="NO") &
+                   (1.0_bp*2.0_bp*SQRT(cov(j,j)))/elements(j), &
+                   1.0_bp*2.0_bp*SQRT(cov(j,j))
+           END DO
+           WRITE(stdout,*)
+        END IF
+     END DO
+
+
+
+
+  CASE ("uncertainty.old")
+
+     !! Fractional (dx/x) and absolute uncertainty (dx) on a,e,i;
+     !! where dx either covers 68.27% of the total probability mass or
+     !! is equal to the 1-sigma limits.
+
+     DO i=1,SIZE(storb_arr_in)
+        IF (containsSampledPDF(storb_arr_in(i))) THEN
+           orb_arr_in => getSampleOrbits(storb_arr_in(i))
+           ALLOCATE(elements_arr(SIZE(orb_arr_in),6))
+           DO j=1,SIZE(orb_arr_in)
+              elements_arr(j,:) = getElements(orb_arr_in(j), "keplerian")
+              elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
+              CALL NULLIFY(orb_arr_in(j))
+           END DO
+           pdf_arr_in => getPDFValues(storb_arr_in(i), "keplerian")
+           DO j=1,3
+              CALL confidence_limits(elements_arr(:,j), pdf_arr_in, &
+                   probability_mass=0.6827_bp, peak=peak, bounds=bounds, &
+                   errstr=errstr)
+              WRITE(stdout,'(2(F12.6,1X))',advance="NO") &
+                   (bounds(2)-bounds(1))/peak, &
+                   bounds(2)-bounds(1)
+           END DO
+           WRITE(stdout,*)
+           DEALLOCATE(orb_arr_in, elements_arr, pdf_arr_in)
+        ELSE
+           orb = getNominalOrbit(storb_arr_in(i))
+           elements = getElements(orb, "keplerian")
+           elements(3:6) = elements(3:6)/rad_deg
+           CALL NULLIFY(orb)
+           cov = getCovarianceMatrix(storb_arr_in(i), "keplerian")
+           cov(:,3:) = cov(:,3:)/rad_deg
+           cov(3:,:) = cov(3:,:)/rad_deg
+           DO j=1,3
+              WRITE(stdout,'(2(F12.6,1X))',advance="NO") &
+                   (1.0_bp*2.0_bp*SQRT(cov(j,j)))/elements(j), &
+                   1.0_bp*2.0_bp*SQRT(cov(j,j))
+           END DO
+           WRITE(stdout,*)
+        END IF
+     END DO
+
+
+
+
 
   CASE ("afrac")
 
