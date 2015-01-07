@@ -272,7 +272,8 @@ PROGRAM oorb
        solar_elongation, solar_elon_min, solar_elon_max, &
        solar_alt, solar_alt_max, solelon_max, solelon_min, generat_multiplier, stdev, &
        step, sun_moon_r2, sunlat, sunlon, &
-       timespan, tlat, tlon, toclat, toclon, tsclat, tsclon
+       timespan, tlat, tlon, toclat, toclon, tsclat, tsclon, &
+       ta_s, ta_c, fak, ecc_anom, true_anom
   INTEGER, DIMENSION(:), POINTER :: &
        repetition_arr_cmp, &
        repetition_arr_in
@@ -7259,7 +7260,7 @@ PROGRAM oorb
            END IF
 
            IF (separately .OR. i == 1) THEN
-              WRITE(lu,'(A,A11,1X,A,1X,35(A18,1X))') "#", &
+              WRITE(lu,'(A,A11,1X,A,1X,37(A18,1X))') "#", &
                    "Designation", "Code", "MJD_UTC/UT1", "Delta", &
                    "RA", "Dec", "dDelta/dt", "dRA/dt", "dDec/dt", &
                    "VMag", "Alt", "Phase", "LunarElon", "LunarAlt", &
@@ -7269,7 +7270,7 @@ PROGRAM oorb
                    "TOppLat", "HEclObj_X", "HEclObj_Y", "HEclObj_Z", &
                    "HEclObj_dX/dt", "HEclObj_dY/dt", & 
                    "HEclObj_dZ/dt", "HEclObsy_X", "HEclObsy_Y", &
-                   "HEclObsy_Z" 
+                   "HEclObsy_Z", "EccAnom", "TrueAnom"
            END IF
 
            DO j=1,SIZE(observers)
@@ -7504,6 +7505,13 @@ PROGRAM oorb
               CALL NULLIFY(ccoord)
               CALL NULLIFY(obsy_ccoord)
 
+              elements = getElements(orb_arr_in(i), "keplerian")
+              call solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
+              ta_s = SIN(ecc_anom)
+              ta_c = COS(ecc_anom)
+              fak = SQRT(1 - elements(2) * elements(2))
+              true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
+
               IF (.NOT.radians) THEN 
                  ra = ra/rad_deg
                  dec = dec/rad_deg
@@ -7526,16 +7534,18 @@ PROGRAM oorb
                  hoclat = hoclat/rad_deg
                  opplon = opplon/rad_deg
                  opplat = opplat/rad_deg
+                 ecc_anom = ecc_anom/rad_deg
+                 true_anom = true_anom/rad_deg
               END IF
 
-              WRITE(lu,'(2(A,1X),35(F18.10,1X))') &
+              WRITE(lu,'(2(A,1X),37(F18.10,1X))') &
                    id_arr_in(i), TRIM(obsy_code_arr(j)), mjd_utc, Delta, &
                    ra, dec, dDelta, dra, ddec, obj_vmag, obj_alt, &
                    obj_phase, lunar_elongation, lunar_alt, &
                    lunar_phase, solar_elongation, solar_alt, hdist, &
                    hlon, hlat, tlon, tlat, toclon, toclat, hoclon, &
                    hoclat, opplon, opplat, h_ecl_car_coord_obj, &
-                   h_ecl_car_coord_obsy(1:3)
+                   h_ecl_car_coord_obsy(1:3),ecc_anom,true_anom
 
            END DO
 
