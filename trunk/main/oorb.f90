@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2014-10-30
+!! @version 2015-02-25
 !!
 PROGRAM oorb
 
@@ -207,6 +207,8 @@ PROGRAM oorb
   REAL(bp), DIMENSION(10) :: &
        tisserands_parameters,  &
        jacobi_constants
+  REAL(bp), DIMENSION(7) :: &
+       ran7
   REAL(bp), DIMENSION(6) :: &
        comp_coord, &
        coordinates, &
@@ -218,6 +220,7 @@ PROGRAM oorb
        upper_limit, &
        mean, &
        obs_stdev_arr_prm, &
+       ran6, &
        stdev_arr
   REAL(bp), DIMENSION(4) :: &
        sor_genwin_offset, &
@@ -244,19 +247,20 @@ PROGRAM oorb
   REAL(bp) :: &
        b1, b2, &
        Delta, diameter, &
-       H_max, H_value, H10_value, H, &
+       H_max, H_value, H10_value, H, Hmin, Hmax, &
        G_value, G12, &
-       accwin_multiplier, angular_distance_dec, angular_distance_ra, &
+       accwin_multiplier, amin, amax, &
+       angular_distance_dec, angular_distance_ra, &
        apoapsis_distance, apriori_a_max, &
        apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, apriori_rho_max, &
        chi2_min_init, cos_nsigma, cos_obj_phase, &
        day0, day1, dDelta, ddec, dec, dra, dt, dt_, dt_fulfill_night, dchi2_max, &
-       ephemeris_r2, &
+       emin, emax, ephemeris_r2, &
        geometric_albedo, &
        hdist, heliocentric_r2, hlat, hlon, hoclat, hoclon, &
-       i_min, i_max, integration_step, integration_step_init, &
+       i_min, i_max, imin, imax, integration_step, integration_step_init, &
        ls_correction_factor, ls_rchi2_acceptable, lunar_alt, lunar_alt_max, &
        lunar_elongation, lunar_elongation_min, lunar_phase, &
        lunar_phase_min, lunar_phase_max, &
@@ -7506,7 +7510,7 @@ PROGRAM oorb
               CALL NULLIFY(obsy_ccoord)
 
               elements = getElements(orb_arr_in(i), "keplerian")
-              call solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
+              CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
               ta_s = SIN(ecc_anom)
               ta_c = COS(ecc_anom)
               fak = SQRT(1 - elements(2) * elements(2))
@@ -9130,6 +9134,13 @@ PROGRAM oorb
 
      WRITE(stdout,"(F20.6)") getObservationalTimespan(obss_in)
 
+  CASE ("obs_angular_arc")
+
+     !! Returns the total observational angular arc of the input
+     !! observations (first to last).
+
+     WRITE(stdout,"(F14.10)") getObservationalAngularArc(obss_in)/rad_deg
+
   CASE ("uncertainty")
 
      !! Fractional (dx/x) and absolute uncertainty (dx) on a,e,i;
@@ -9507,6 +9518,32 @@ PROGRAM oorb
         DEALLOCATE(mean_arr, cov_arr)
      END DO
 
+
+  CASE ("synthetic_orbits")
+
+     norb = get_cl_option("--norb=", 10000)
+     amin = get_cl_option("--a-min=", 2.5_bp)
+     amax = get_cl_option("--a-max=", 2.6_bp)
+     emin = get_cl_option("--e-min=", 0.56_bp)
+     emax = get_cl_option("--e-max=", 0.6_bp)
+     imin = get_cl_option("--i-min=", 0.0_bp)
+     imax = get_cl_option("--i-max=", 4.0_bp)
+     imin = imin*rad_deg
+     imax = imax*rad_deg
+     Hmin = get_cl_option("--H-min=", 17.5_bp)
+     Hmax = get_cl_option("--H-max=", 18.0_bp)
+     DO i=1,norb
+        CALL randomNumber(ran7)
+        elements(1) = amin + (amax - amin)*ran7(1)
+        elements(2) = emin + (emax - emin)*ran7(2)
+        elements(3) = imin + (imax - imin)*ran7(3)
+        elements(4) = two_pi*ran7(4)
+        elements(5) = two_pi*ran7(5)
+        elements(6) = two_pi*ran7(6)
+        H = Hmin + (Hmax - Hmin)*ran7(7)
+        elements(3:6) = elements(3:6)/rad_deg
+        WRITE(*,*) i, "KEP", elements, H, "56000.0 1 6 -1 OpenOrb"
+     END DO
 
   CASE default
 
