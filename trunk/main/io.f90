@@ -1278,7 +1278,13 @@ CONTAINS
           END IF
        CASE ("sor.ran.obs")
           IF (PRESENT(sor_random_obs)) THEN
-             sor_random_obs = .TRUE.
+!             sor_random_obs = .TRUE.
+             READ(par_val, *, iostat=err) sor_random_obs
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (21).", 1)
+             END IF
           END IF
        CASE ("sor.rho.gauss")
           IF (PRESENT(sor_rho_gauss)) THEN
@@ -1375,7 +1381,6 @@ CONTAINS
                 CALL removeLeadingBlanks(par_val(indx1:))
              END DO
           END IF
-
           ! VOLUME-OF-VARIATION PARAMETERS:
        CASE ("vov.type")
           IF (PRESENT(vov_type)) THEN
@@ -4495,7 +4500,7 @@ CONTAINS
             TRIM(sor_2point_method), &
             TRIM(dyn_model_prm), &
             regularization_prm, &
-            dchi2_rejection_prm
+            .NOT.dchi2_rejection_prm
 
 
        frmt = "('#',3X,'BAYESIAN A PRIORI INFORMATION'/" // &
