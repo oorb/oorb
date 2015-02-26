@@ -1643,7 +1643,7 @@ PROGRAM oorb
            STOP
         END IF
      END IF
-
+     !print*,'oorb/ranging',random_obs
      DEALLOCATE(HG_arr_storb_in, stat=err)
      ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),sor_norb,4))
      HG_arr_storb_in = 99.9_bp
@@ -1785,7 +1785,9 @@ PROGRAM oorb
              sor_rho1_l=sor_rho_init(1), sor_rho1_u=sor_rho_init(2), &
              sor_rho2_l=sor_rho_init(3), sor_rho2_u=sor_rho_init(4), &
              sor_iterate_bounds=sor_iterate_bounds, &
-             sor_random_obs_selection=.FALSE., &
+!Note: at present, random selection cannot be used because of multiple orbit propagation scheme (assumes same starting epoch).
+             sor_random_obs_selection=random_obs, &
+!             sor_random_obs_selection=.FALSE., &
              gaussian_pdf=gaussian_rho, &
              generat_multiplier=generat_multiplier, &
              sor_generat_offset=sor_genwin_offset)
@@ -1932,6 +1934,7 @@ PROGRAM oorb
                    "TRACE BACK (190)", 1)
               STOP
            END IF
+
            IF (separately) THEN
               CALL NEW(out_file, TRIM(id) // ".orb")
               CALL OPEN(out_file)
@@ -2274,6 +2277,10 @@ PROGRAM oorb
                 "TRACE BACK (40)", 1)
            STOP
         END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(4X,A,1X,F5.2,1X,A)") &
+                "Observational arc: ", dt, "days"
+        END IF
         IF (sor_rho_init(3) > HUGE(sor_rho_init(3))/2) THEN
            ! Initialize the rho2-rho1 range based on the observational timespan.
            IF (dt > 10) THEN
@@ -2391,7 +2398,7 @@ PROGRAM oorb
              sor_norb=sor_norb, sor_ntrial=sor_ntrial, &
              sor_rho1_l=sor_rho_init(1), sor_rho1_u=sor_rho_init(2), &
              sor_rho2_l=sor_rho_init(3), sor_rho2_u=sor_rho_init(4), &
-             sor_iterate_bounds=sor_iterate_bounds, &
+             sor_niter=sor_niter, sor_iterate_bounds=sor_iterate_bounds, &
              sor_random_obs_selection=.FALSE., &
              gaussian_pdf=gaussian_rho, &
              generat_multiplier=generat_multiplier, &
@@ -2413,7 +2420,7 @@ PROGRAM oorb
 !!$                accept_multiplier=accwin_multiplier, &
 !!$                apriori_rho_min=apriori_rho_min, &
 !!$                set_acceptance_window=.FALSE.)
-           CALL autoMCMCRanging2(storb)
+           CALL autoMCMCRanging3(storb)
         CASE default
            CALL errorMessage("oorb / mcmcranging", &
                 "Unknown type of ranging:", 1)
@@ -2457,30 +2464,30 @@ PROGRAM oorb
               WRITE(stdout,"(3(1X,A))") "Mcmc inversion for object", &
                    TRIM(id), "is ready."
            END IF
-!!$           CALL NEW(out_file, TRIM(id) // ".sor")
-!!$           CALL OPEN(out_file)
-!!$           IF (error) THEN
-!!$              CALL errorMessage("oorb / mcmcranging", &
-!!$                   "TRACE BACK (105)", 1)
-!!$              STOP
-!!$           END IF
-!!$           ! WRITE OBSERVATIONS:
-!!$           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
-!!$                TRIM(observation_format_out)) 
-!!$           IF (error) THEN
-!!$              CALL errorMessage("oorb / mcmcranging", &
-!!$                   "TRACE BACK (110)", 1)
-!!$              STOP
-!!$           END IF
-!!$           WRITE(getUnit(out_file),"(A)") "#" 
-!!$           ! WRITE MCMC PARAMETERS
-!!$           CALL writeSORResults(storb, obss_sep(i), getUnit(out_file))
-!!$           IF (error) THEN
-!!$              CALL errorMessage("oorb / mcmcranging", &
-!!$                   "TRACE BACK (115)", 1)
-!!$              STOP
-!!$           END IF
-!!$           CALL NULLIFY(out_file) 
+           CALL NEW(out_file, TRIM(id) // ".sor")
+           CALL OPEN(out_file)
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (105)", 1)
+              STOP
+           END IF
+           ! WRITE OBSERVATIONS:
+           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                TRIM(observation_format_out)) 
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (110)", 1)
+              STOP
+           END IF
+           WRITE(getUnit(out_file),"(A)") "#" 
+           ! WRITE MCMC PARAMETERS
+           CALL writeSORResults(storb, obss_sep(i), getUnit(out_file))
+           IF (error) THEN
+              CALL errorMessage("oorb / mcmcranging", &
+                   "TRACE BACK (115)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(out_file) 
            ! WRITE ORBITAL-ELEMENT PDF
            orb_arr_cmp => getSampleOrbits(storb)
            IF (error) THEN
@@ -2636,30 +2643,31 @@ PROGRAM oorb
                  CALL NULLIFY(t)
               END DO
               CALL NULLIFY(tmp_file)
-!!$              CALL NEW(tmp_file, TRIM(str) // &
-!!$                   "_mcmcranging_sample_standard_deviations.out")
-!!$              CALL OPEN(tmp_file)
-!!$              IF (error) THEN
-!!$                 CALL errorMessage("oorb / mcmcranging ", &
-!!$                      "TRACE BACK (195)", 1)
-!!$                 STOP
-!!$              END IF
-!!$              WRITE(getUnit(tmp_file), "(F22.15,1X)", &
-!!$                   advance="no") &
-!!$                   getObservationalTimespan(obss_sep(i))
-!!$              IF (error) THEN
-!!$                 CALL errorMessage("oorb / mcmcranging ", &
-!!$                      "TRACE BACK (200)", 1)
-!!$                 STOP
-!!$              END IF
-!!$              DO j=1,6
-!!$                 CALL moments(elements_arr(:,j), &
-!!$                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
-!!$                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
-!!$                      advance="no") stdev
-!!$              END DO
-!!$              WRITE(getUnit(tmp_file),*)
-!!$              CALL NULLIFY(tmp_file)
+              CALL NEW(tmp_file, TRIM(str) // &
+                   "_mcmcranging_sample_standard_deviations.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging ", &
+                      "TRACE BACK (195)", 1)
+                 STOP
+              END IF
+              WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                   advance="no") &
+                   getObservationalTimespan(obss_sep(i))
+              IF (error) THEN
+                 CALL errorMessage("oorb / mcmcranging ", &
+                      "TRACE BACK (200)", 1)
+                 STOP
+              END IF
+              DO j=1,6
+                 CALL moments(elements_arr(:,j), &
+                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
+                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
+                      advance="no") stdev
+                 stdev_arr(j)=stdev
+              END DO
+              WRITE(getUnit(tmp_file),*)
+              CALL NULLIFY(tmp_file)
               DEALLOCATE(elements_arr, stat=err)
               IF (err /= 0) THEN
                  CALL errorMessage("oorb / mcmcranging", &
@@ -2672,7 +2680,11 @@ PROGRAM oorb
               IF (element_type_comp_prm == "cartesian") THEN
                  CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_car.gp")
               ELSE
-                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
+                 if (stdev_arr(1) < 1.0_bp) then
+                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep_nolog.gp")
+                 else
+                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
+                 end if
               END IF
               CALL system("cp sor_results.eps " // TRIM(str) // &
                    "_mcmcranging_" // TRIM(element_type_comp_prm) // &
