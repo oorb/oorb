@@ -1,6 +1,6 @@
 #====================================================================#
 #                                                                    #
-# Copyright 2002-2013,2014                                           #
+# Copyright 2002-2014,2015                                           #
 # Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      #
 # Dagmara Oszkiewicz                                                 #
 #                                                                    #
@@ -24,7 +24,7 @@
 # Makefile for main programs.
 #
 # Author: MG
-# Date:   2014-08-22
+# Date:   2015-02-26
 
 include ../make.config
 include ../Makefile.include
@@ -68,6 +68,11 @@ oorb4research : classes $(IOMOD).o neopop_module.o oorb4research.f90
 	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
 	$(IOMOD).o neopop_module.o ../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
+
+oorb4mass : classes $(IOMOD).o oorb4mass.f90
+	$(FC) $(FCOPTIONS) oorb4mass.f90 -o oorb4mass \
+	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
+	$(IOMOD).o ../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o
 
 oorb4minimoons : classes $(IOMOD).o oorb4minimoons.f90
 	$(FC) $(FCOPTIONS) oorb4minimoons.f90 -o oorb4minimoons \
