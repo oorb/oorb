@@ -40,11 +40,11 @@ Now you have a working executable called `oorb` in the `OORBROOT/main/` director
 
 === Planetary ephemerides ===
 
-The [http://ssd.jpl.nasa.gov/?planet_eph_export DE405] planetary ephemerides provided by the [http://ssd.jpl.nasa.gov/ Solar System Dynamics Group] at the Jet Propulsion Laboratory need to be converted to binary format (`de405.dat`) only once by doing
+The [http://ssd.jpl.nasa.gov/?planet_eph_export DE405] planetary ephemerides provided by the [http://ssd.jpl.nasa.gov/ Solar System Dynamics Group] at the Jet Propulsion Laboratory need to be converted to binary format (e.g., `de405.dat`) only once by doing
 
  `cd OORBROOT/data/JPL_ephemeris/`
 
- `make de405`
+ `make`
 
  `make test`
 
