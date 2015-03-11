@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2014-09-15
+!! @version 2015-03-11
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1192,6 +1192,21 @@ CONTAINS
        RETURN
     END IF
 
+    IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+       CALL constrainRangeDistributions(this, this%obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoStatisticalRanging", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       CALL setRangeBounds(this)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoStatisticalRanging", &
+               "TRACE BACK (10)", 1)
+          RETURN
+       END IF
+    END IF
+
     this%sor_niter_cmp = 0
     norb_prm = this%sor_norb_prm
     dchi2_rejection_prm = this%dchi2_rejection_prm    
@@ -1255,7 +1270,6 @@ CONTAINS
                "Additional iteration failed.", 1)
           RETURN
        END IF
-
        this%sor_niter_cmp = 3
        CALL updateRanging(this, automatic=.TRUE.)
     END IF
@@ -3994,19 +4008,19 @@ CONTAINS
     IF (PRESENT(ml_orbit)) THEN
        ml_orbit_ = ml_orbit
     ELSE
-       ml_orbit_ = .false.
+       ml_orbit_ = .FALSE.
     ENDIF
 
-    IF (.NOT. exist(this%orb_ml_cmp) .AND. .not. ml_orbit_) THEN
+    IF (.NOT. exist(this%orb_ml_cmp) .AND. .NOT. ml_orbit_) THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / getNominalOrbit", &
             "The nominal orbit is not available.", 1)
        RETURN
-    ELSE IF (ml_orbit_ .and. ASSOCIATED(this%pdf_arr_cmp) .AND. &
+    ELSE IF (ml_orbit_ .AND. ASSOCIATED(this%pdf_arr_cmp) .AND. &
          ASSOCIATED(this%orb_arr_cmp)) THEN
        indx_ml = MAXLOC(this%pdf_arr_cmp,dim=1)
        getNominalOrbit = copy(this%orb_arr_cmp(indx_ml))
-       print*,indx_ml, this%pdf_arr_cmp(indx_ml)
+       PRINT*,indx_ml, this%pdf_arr_cmp(indx_ml)
     ELSE
        getNominalOrbit = copy(this%orb_ml_cmp)
     END IF
@@ -6017,7 +6031,7 @@ CONTAINS
        WRITE(stdout,"(A)") "***************"
     END IF
     CALL MCMCRanging(storb)
-!    CALL MCMCRanging3(storb)
+    !    CALL MCMCRanging3(storb)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / autoMCMCRanging3", &
             "TRACE BACK (10)", 1)
@@ -6060,7 +6074,7 @@ CONTAINS
        WRITE(stdout,"(A)") "***************"
     END IF
     CALL MCMCRanging(storb)
-!    CALL MCMCRanging3(storb)
+    !    CALL MCMCRanging3(storb)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / autoMCMCRanging3", &
             "TRACE BACK (30)", 1)
@@ -6139,7 +6153,7 @@ CONTAINS
 
        dchi2 = MAXVAL(this%rchi2_arr_cmp) - MINVAL(this%rchi2_arr_cmp)
        ddchi2 = ABS(dchi2 - this%dchi2_prm)
-       print*,'ddchi2',ddchi2
+       PRINT*,'ddchi2',ddchi2
 
        storb=copy(this)
        CALL constrainRangeDistributions(storb, storb%obss)
@@ -6239,8 +6253,8 @@ CONTAINS
                "TRACE BACK (20)", 1)
           STOP
        END IF
-       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
-!        storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.TRUE.)
+       !        storb%orb_ml_prm=copy(storb%orb_ml_cmp)
        IF (info_verb >= 2) THEN
           WRITE(stdout,"(2X,A)") "***************"
           WRITE(stdout,"(2X,A)") "FIRST ITERATION"
@@ -6297,10 +6311,10 @@ CONTAINS
     sor_rho_init=getRangeBounds(storb)
     this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
     this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
-    print*,sor_rho_init
+    PRINT*,sor_rho_init
     ! Use ml orbit as the first trial in the MCMC chain
     this%orb_ml_prm=copy(storb%orb_ml_cmp)
-    call nullify(storb)
+    CALL NULLIFY(storb)
 
     ! Start actual Markov chain
     IF (info_verb >= 2) THEN
@@ -6322,7 +6336,7 @@ CONTAINS
             "TRACE BACK (20)", 1)
        STOP
     END IF
-    call nullify(storb)
+    CALL NULLIFY(storb)
 
   END SUBROUTINE autoMCMCRanging
 
@@ -6402,7 +6416,7 @@ CONTAINS
                "TRACE BACK (20)", 1)
           STOP
        END IF
-       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
+       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.TRUE.)
        IF (info_verb >= 2) THEN
           WRITE(stdout,"(2X,A)") "***************"
           WRITE(stdout,"(2X,A)") "FIRST ITERATION"
@@ -6429,7 +6443,7 @@ CONTAINS
                "TRACE BACK (20)", 1)
           STOP
        END IF
-       if (storb%chi2_min_prm > storb%chi2_min_cmp) storb%chi2_min_prm = storb%chi2_min_cmp
+       IF (storb%chi2_min_prm > storb%chi2_min_cmp) storb%chi2_min_prm = storb%chi2_min_cmp
        storb%orb_ml_prm=copy(storb%orb_ml_cmp)
 
        !Second iterarion
@@ -6461,9 +6475,9 @@ CONTAINS
     this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
     ! Use ml orbit as the first trial in the MCMC chain
     this%orb_ml_prm=copy(storb%orb_ml_cmp)
-    print*, 'Chi2min prm, cmp', storb%chi2_min_prm, storb%chi2_min_cmp
+    PRINT*, 'Chi2min prm, cmp', storb%chi2_min_prm, storb%chi2_min_cmp
     this%chi2_min_prm = storb%chi2_min_cmp
-    call nullify(storb)
+    CALL NULLIFY(storb)
 
     ! Start actual Markov chain
     IF (info_verb >= 2) THEN
@@ -6478,7 +6492,7 @@ CONTAINS
        STOP
     END IF
     this%sor_niter_cmp = 3
-    print*, 'Chi2min prm, cmp', this%chi2_min_prm, this%chi2_min_cmp
+    PRINT*, 'Chi2min prm, cmp', this%chi2_min_prm, this%chi2_min_cmp
     storb=copy(this)
     CALL setRangeBounds(storb)
     IF (error) THEN
@@ -6486,7 +6500,7 @@ CONTAINS
             "TRACE BACK (20)", 1)
        STOP
     END IF
-    call nullify(storb)
+    CALL NULLIFY(storb)
 
   END SUBROUTINE autoRandomWalkRanging
 
@@ -6532,18 +6546,18 @@ CONTAINS
     INTEGER, DIMENSION(6) :: n0, n0_
     INTEGER, DIMENSION(2) :: obs_pair
     INTEGER :: ndof, i, itrial, err, nobs, j, nsuccessive, norb_acc
-    INTEGER, parameter :: nsuccessive_max = 50    ! Make user-defined parameter? this%rms_prm
-    INTEGER, parameter :: burnin_max = 50    ! Make user-defined parameter? this%rms_prm
+    INTEGER, PARAMETER :: nsuccessive_max = 50    ! Make user-defined parameter? this%rms_prm
+    INTEGER, PARAMETER :: burnin_max = 50    ! Make user-defined parameter? this%rms_prm
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
-    LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., frst_found = .FALSE., ran_walk = .false., burnin_case=.false.
+    LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., frst_found = .FALSE., ran_walk = .FALSE., burnin_case=.FALSE.
 
     ! SWITCH TO RANDOM WALK RANGING (remnant: no need now when separated from mcmc)
-    ran_walk = .true.
+    ran_walk = .TRUE.
 
     IF (info_verb >= 2) THEN
        WRITE(*,*)"Starting MCMC ranging"
        IF (ran_walk)  WRITE(*,*)"..using random walk"
-   END IF
+    END IF
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -6707,16 +6721,16 @@ CONTAINS
        RETURN
     END IF
     ! Center the first trial to the ml orbit if available
-    IF (exist(this%orb_ml_prm)) then
+    IF (exist(this%orb_ml_prm)) THEN
        CALL getEphemerides(this%orb_ml_prm, obsy_ccoords, comp_scoords)
        state_(1)=getDistance(comp_scoords(obs_pair(1)))
        state_(4)=getDistance(comp_scoords(obs_pair(2)))
-       print*,state_(1), state_(4)
-    else
+       PRINT*,state_(1), state_(4)
+    ELSE
        state_(1) = (this%sor_rho_prm(1,2) + this%sor_rho_prm(1,1))/2.0_bp
        state_(4) = state_(1) + (this%sor_rho_prm(2,2) + this%sor_rho_prm(2,1))/2.0_bp
-    endif
-    print*,"...centered around ", state_(1), state_(4)
+    ENDIF
+    PRINT*,"...centered around ", state_(1), state_(4)
     !state_(1) = (this%sor_rho_prm(1,2) + this%sor_rho_prm(1,1))/2.0_bp
     !state_(4) = state_(1) + (this%sor_rho_prm(2,2) + this%sor_rho_prm(2,1))/2.0_bp
 
@@ -6727,10 +6741,10 @@ CONTAINS
     first = .TRUE.
     itrial = 0
 
-    print*,'Chi2min_prm ', this%chi2_min_prm
+    PRINT*,'Chi2min_prm ', this%chi2_min_prm
     norb_acc=0
     nsuccessive=0
-    burn_in = .true.
+    burn_in = .TRUE.
     DO WHILE (this%sor_norb_cmp < this%sor_norb_prm .AND. &
          this%sor_ntrial_cmp < this%sor_ntrial_prm)
 
@@ -7045,14 +7059,14 @@ CONTAINS
        !! MAKE DECISION WHETHER PROPOSED ORBIT IS ACCEPTED
        !! 
        dchi2=chi2-this%chi2_min_prm
-       IF (burn_in .OR. .not.ran_walk) THEN
+       IF (burn_in .OR. .NOT.ran_walk) THEN
           avalue = EXP(-0.5_bp*(chi2-chi2_))*jac_sph_inv_/jac_sph_inv
-       ELSE IF (ran_walk) then
-          avalue = this%dchi2_prm/abs(dchi2)
+       ELSE IF (ran_walk) THEN
+          avalue = this%dchi2_prm/ABS(dchi2)
        END IF
 
        ! JV 16.2.2015: for MCMC, do we ever go here???
-       IF (.not.ran_walk .AND. avalue > HUGE(avalue)) THEN
+       IF (.NOT.ran_walk .AND. avalue > HUGE(avalue)) THEN
           IF (info_verb >= 4) THEN
              WRITE(stdout,*) "huge avalue", MIN(chi2,chi2_)
           END IF
@@ -7071,7 +7085,7 @@ CONTAINS
                   "State:", state(1), state(2:3)/rad_deg, &
                   state(4), state(5:6)/rad_deg
           END IF
-       ELSE IF (.not. ran_walk .AND. .NOT. burn_in) THEN
+       ELSE IF (.NOT. ran_walk .AND. .NOT. burn_in) THEN
           CALL randomNumber(ran)
           IF (avalue > ran) THEN
              accepted = .TRUE.
@@ -7098,14 +7112,14 @@ CONTAINS
           ! - rms:
           rms = SQRT(SUM(residuals(:,:)**2.0_bp,dim=1,mask=this%obs_masks_prm)/n0_)
 
-          burnin_case = .false.
+          burnin_case = .FALSE.
           IF (burn_in) THEN
-             print*,norb_acc, chi2, this%chi2_min_prm, dchi2, chi2min_prm
+             PRINT*,norb_acc, chi2, this%chi2_min_prm, dchi2, chi2min_prm
 
              IF (ran_walk) THEN
                 ! RANDOM-WALK BURN IN: Require 10 (nsuccessive_max) subsequently accepted orbits.
-                burnin_case = (norb_acc <= burnin_max .and. dchi2 <= this%dchi2_prm)
-                if (chi2 <= chi2min_prm) chi2min_prm = chi2
+                burnin_case = (norb_acc <= burnin_max .AND. dchi2 <= this%dchi2_prm)
+                IF (chi2 <= chi2min_prm) chi2min_prm = chi2
              ELSE
                 ! MCMC BURN IN
                 ! CHECK residuals: if larger than acceptance windows, burn in is not over yet.
@@ -7115,19 +7129,19 @@ CONTAINS
              END IF
 
              IF (burnin_case) THEN
-                   burn_in = .FALSE.
-                   IF (.not. burn_in .and. info_verb >= 2) THEN
-                      WRITE(stdout,"(A,L1,1X,2(F5.1,1X))") 'BURN-IN OVER: ', burn_in, dchi2, this%dchi2_prm
-                      WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits '
-                      !WRITE(stdout,"(A,2(F5.2,1X))") ' against residual acceptance windows ',this%res_accept_prm(1,2:3)/rad_asec
-                      IF (.NOT. ran_walk) WRITE(stdout,"(A,4(F6.3,1X))") ' rms & residual acc.win. (as)', &
-                           rms(2:3)/rad_asec, this%res_accept_prm(1,2:3)/rad_asec
-                   END IF
-!             ELSE
-!                nsuccessive = nsuccessive + 1
+                burn_in = .FALSE.
+                IF (.NOT. burn_in .AND. info_verb >= 2) THEN
+                   WRITE(stdout,"(A,L1,1X,2(F5.1,1X))") 'BURN-IN OVER: ', burn_in, dchi2, this%dchi2_prm
+                   WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits '
+                   !WRITE(stdout,"(A,2(F5.2,1X))") ' against residual acceptance windows ',this%res_accept_prm(1,2:3)/rad_asec
+                   IF (.NOT. ran_walk) WRITE(stdout,"(A,4(F6.3,1X))") ' rms & residual acc.win. (as)', &
+                        rms(2:3)/rad_asec, this%res_accept_prm(1,2:3)/rad_asec
+                END IF
+                !             ELSE
+                !                nsuccessive = nsuccessive + 1
              END IF
 
-! VANHA BURN IN joka vielä käytössä MCMCRanging3:ssa: pitää tarkistaa toimisiko uusi burn in myös mcmc:lle (vrt. rms-tarkastelu)
+             ! VANHA BURN IN joka vielä käytössä MCMCRanging3:ssa: pitää tarkistaa toimisiko uusi burn in myös mcmc:lle (vrt. rms-tarkastelu)
 !!$             IF (burnin_case) THEN
 !!$                !          if (burn_in .and. rms(2) < this%res_accept_prm(1,2) .and. rms(3) < this%res_accept_prm(1,3) &
 !!$                !               .and. count_rms <= rms_prm) then
@@ -7152,7 +7166,7 @@ CONTAINS
 !!$                nsuccessive = 0
 !!$             END IF
 
-         END IF
+          END IF
 
           ! Only save orbits after burn_in is over:
           IF (.NOT.burn_in) THEN
@@ -7168,8 +7182,8 @@ CONTAINS
              ! "- generated distance to object at second epoch (NB! Relative
              !   to the distance at the first epoch.)"
              this%sor_rho_arr_cmp(this%sor_norb_cmp,2) = state(4) ! - state(4)
-!          ELSE IF (count_dchi2 > this%count_dchi2_prm) then
-!             burn_in = .FALSE.
+             !          ELSE IF (count_dchi2 > this%count_dchi2_prm) then
+             !             burn_in = .FALSE.
           END IF
           chi2_ = chi2
           state_ = state
@@ -7204,36 +7218,36 @@ CONTAINS
     this%pdf_arr_cmp => reallocate(this%pdf_arr_cmp, this%sor_norb_cmp)
     this%sor_rho_arr_cmp => reallocate(this%sor_rho_arr_cmp, this%sor_norb_cmp, 2)
 
-! IS THIS CORRECT?
+    ! IS THIS CORRECT?
     this%sor_rho_cmp(1,1)=MINVAL(this%sor_rho_arr_cmp(:,1),1)
     this%sor_rho_cmp(1,2)=MAXVAL(this%sor_rho_arr_cmp(:,1),1)
     this%sor_rho_cmp(2,1)=MINVAL(this%sor_rho_arr_cmp(:,2)-this%sor_rho_arr_cmp(:,1))
     this%sor_rho_cmp(2,2)=MAXVAL(this%sor_rho_arr_cmp(:,2)-this%sor_rho_arr_cmp(:,1))
 
     ! OTETAANKO POIS? JOS VOIDAAN LASKEA ORB-tiedostosta myöhemmin?
-!    print*,this%pdf_arr_cmp(1:100)
-    if (ran_walk) this%pdf_arr_cmp=this%pdf_arr_cmp*this%repetition_arr_cmp
-!    print*,this%pdf_arr_cmp(1:100)
+    !    print*,this%pdf_arr_cmp(1:100)
+    IF (ran_walk) this%pdf_arr_cmp=this%pdf_arr_cmp*this%repetition_arr_cmp
+    !    print*,this%pdf_arr_cmp(1:100)
 
     IF (this%sor_norb_cmp > 0) THEN
        CALL propagate(this%orb_arr_cmp, this%t_inv_prm)
-    i = MAXLOC(this%pdf_arr_cmp,dim=1)
-    this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
-    this%chi2_min_cmp = chi2min
-    IF (info_verb >= 2) THEN
-       WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
-            this%cov_type_prm, getElementType(this%orb_ml_cmp)
-       WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
-       WRITE(stdout,"(A,1X,I0)") "Final number of trials:", this%sor_ntrial_cmp
-       WRITE(stdout,"(A,1X,E7.2)") "Acceptance rate: ", &
-            REAL(this%sor_norb_cmp)/REAL(this%sor_ntrial_cmp)
-       WRITE(stdout,"(A,1X,E8.3)") "chi2 min: ", chi2min
-    END IF
+       i = MAXLOC(this%pdf_arr_cmp,dim=1)
+       this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
+       this%chi2_min_cmp = chi2min
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
+               this%cov_type_prm, getElementType(this%orb_ml_cmp)
+          WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
+          WRITE(stdout,"(A,1X,I0)") "Final number of trials:", this%sor_ntrial_cmp
+          WRITE(stdout,"(A,1X,E7.2)") "Acceptance rate: ", &
+               REAL(this%sor_norb_cmp)/REAL(this%sor_ntrial_cmp)
+          WRITE(stdout,"(A,1X,E8.3)") "chi2 min: ", chi2min
+       END IF
     ELSE
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "No sample orbits found!", 1)
-!       RETURN
+       !       RETURN
     END IF
 
     DO i=1,nobs
@@ -7297,7 +7311,7 @@ CONTAINS
     INTEGER, DIMENSION(6) :: n0, n0_
     INTEGER, DIMENSION(2) :: obs_pair
     INTEGER :: ndof, i, itrial, err, nobs, j, count_rms, norb_acc
-    INTEGER, parameter :: rms_prm = 10    ! Make user-defined parameter? this%rms_prm
+    INTEGER, PARAMETER :: rms_prm = 10    ! Make user-defined parameter? this%rms_prm
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., rms_found = .FALSE.
 
@@ -7467,16 +7481,16 @@ CONTAINS
        RETURN
     END IF
     ! Center the first trial to the ml orbit if available
-    IF (exist(this%orb_ml_prm)) then
+    IF (exist(this%orb_ml_prm)) THEN
        CALL getEphemerides(this%orb_ml_prm, obsy_ccoords, comp_scoords)
        state_(1)=getDistance(comp_scoords(obs_pair(1)))
        state_(4)=getDistance(comp_scoords(obs_pair(2)))
-       print*,state_(1), state_(4)
-    else
+       PRINT*,state_(1), state_(4)
+    ELSE
        state_(1) = (this%sor_rho_prm(1,2) + this%sor_rho_prm(1,1))/2.0_bp
        state_(4) = state_(1) + (this%sor_rho_prm(2,2) + this%sor_rho_prm(2,1))/2.0_bp
-    endif
-    print*,"...centered around ", state_(1), state_(4)
+    ENDIF
+    PRINT*,"...centered around ", state_(1), state_(4)
 
     ! set counter some parameters
     this%sor_norb_cmp = 0
@@ -7487,8 +7501,8 @@ CONTAINS
 
     norb_acc=0
     count_rms=0
-    burn_in = .true.
-!    burn_in = .false.
+    burn_in = .TRUE.
+    !    burn_in = .false.
     DO WHILE (this%sor_norb_cmp < this%sor_norb_prm .AND. &
          this%sor_ntrial_cmp < this%sor_ntrial_prm)
 
@@ -7845,27 +7859,27 @@ CONTAINS
 
           ! CHECK residuals: if larger than acceptance windows, burn in is not over yet.
           ! Require RMS_PRM (typically, 10) subsequently accepted orbits.
-          if (burn_in .and. rms(2) < this%res_accept_prm(1,2) .and. rms(3) < this%res_accept_prm(1,3) &
-               .and. count_rms <= rms_prm) then
-             select case (count_rms)
-                case(0) 
-                   rms_found = .true.
-                   count_rms = 1
-!                case (this%sor_burnin_prm)
-                case (rms_prm)
-                   burn_in = .false.
-                   IF (info_verb >= 2) THEN
-                      WRITE(stdout,"(A,2(L1,1X),I0,1X,2(F6.3))") 'BURN-IN OVER: ', burn_in,rms_found,count_rms,rms(2:3)/rad_asec
-                      WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits'
-                      WRITE(stdout,"(A,2(F5.2))") ' against residual acceptance windows ',this%res_accept_prm(1,2:3)/rad_asec
-                   END IF
-                case default
-                   if (rms_found) count_rms = count_rms + 1
-                end select
-          else
-            rms_found = .false.
-            count_rms = 0
-          end if
+          IF (burn_in .AND. rms(2) < this%res_accept_prm(1,2) .AND. rms(3) < this%res_accept_prm(1,3) &
+               .AND. count_rms <= rms_prm) THEN
+             SELECT CASE (count_rms)
+             CASE(0) 
+                rms_found = .TRUE.
+                count_rms = 1
+                !                case (this%sor_burnin_prm)
+             CASE (rms_prm)
+                burn_in = .FALSE.
+                IF (info_verb >= 2) THEN
+                   WRITE(stdout,"(A,2(L1,1X),I0,1X,2(F6.3))") 'BURN-IN OVER: ', burn_in,rms_found,count_rms,rms(2:3)/rad_asec
+                   WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits'
+                   WRITE(stdout,"(A,2(F5.2))") ' against residual acceptance windows ',this%res_accept_prm(1,2:3)/rad_asec
+                END IF
+             CASE default
+                IF (rms_found) count_rms = count_rms + 1
+             END SELECT
+          ELSE
+             rms_found = .FALSE.
+             count_rms = 0
+          END IF
 
           ! Only save orbits after burn_in is over:
           IF (.NOT.burn_in) THEN
@@ -7881,7 +7895,7 @@ CONTAINS
              ! "- generated distance to object at second epoch (NB! Relative
              !   to the distance at the first epoch.)"
              this%sor_rho_arr_cmp(this%sor_norb_cmp,2) = state(4) ! - state(1)
-!TEMP
+             !TEMP
 !!$          ELSE
 !!$             burn_in = .FALSE.
           END IF
@@ -7921,30 +7935,30 @@ CONTAINS
     ! MCMC weight = number of repetitions
     this%pdf_arr_cmp = REAL(this%repetition_arr_cmp, bp)
 
-! IS THIS CORRECT NOW?
+    ! IS THIS CORRECT NOW?
     this%sor_rho_cmp(1,1)=MINVAL(this%sor_rho_arr_cmp(:,1),1)
     this%sor_rho_cmp(1,2)=MAXVAL(this%sor_rho_arr_cmp(:,1),1)
     this%sor_rho_cmp(2,1)=MINVAL(this%sor_rho_arr_cmp(:,2)-this%sor_rho_arr_cmp(:,1))
     this%sor_rho_cmp(2,2)=MAXVAL(this%sor_rho_arr_cmp(:,2)-this%sor_rho_arr_cmp(:,1))
 
     IF (this%sor_norb_cmp > 0) THEN
-    CALL propagate(this%orb_arr_cmp, this%t_inv_prm)
-    i = MAXLOC(this%pdf_arr_cmp,dim=1)
-    this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
-    IF (info_verb >= 2) THEN
-       WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
-            this%cov_type_prm, getElementType(this%orb_ml_cmp)
-       WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
-       WRITE(stdout,"(A,1X,I0)") "Final number of trials:", this%sor_ntrial_cmp
-       WRITE(stdout,"(A,1X,E7.2)") "Acceptance rate: ", &
-            REAL(this%sor_norb_cmp)/REAL(this%sor_ntrial_cmp)
-       WRITE(stdout,"(A,1X,E8.3)") "chi2 min: ", chi2min
-    END IF
+       CALL propagate(this%orb_arr_cmp, this%t_inv_prm)
+       i = MAXLOC(this%pdf_arr_cmp,dim=1)
+       this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
+               this%cov_type_prm, getElementType(this%orb_ml_cmp)
+          WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
+          WRITE(stdout,"(A,1X,I0)") "Final number of trials:", this%sor_ntrial_cmp
+          WRITE(stdout,"(A,1X,E7.2)") "Acceptance rate: ", &
+               REAL(this%sor_norb_cmp)/REAL(this%sor_ntrial_cmp)
+          WRITE(stdout,"(A,1X,E8.3)") "chi2 min: ", chi2min
+       END IF
     ELSE
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "No sample orbits found!", 1)
-!       RETURN
+       !       RETURN
     END IF
 
     DO i=1,nobs
@@ -8673,7 +8687,7 @@ CONTAINS
             "TRACE BACK (50)", 1)
        STOP
     END IF
-   CALL constrainRangeDistributions(storb, storb%obss)
+    CALL constrainRangeDistributions(storb, storb%obss)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
             "TRACE BACK (55)", 1)
@@ -19067,7 +19081,7 @@ CONTAINS
                 errstr = ""
                 IF (err_verb >= 1) THEN
                    CALL matrix_print(information_matrix_elem, stderr, errstr)
-               END IF
+                END IF
                 errstr = ""
                 CYCLE
              END IF
@@ -19679,6 +19693,21 @@ CONTAINS
        CALL errorMessage("StochasticOrbit / stepwiseRanging", &
             "Object has not been initialized.", 1)
        RETURN
+    END IF
+
+    IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+       CALL constrainRangeDistributions(this, this%obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / stepwiseRanging", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+       CALL setRangeBounds(this)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / stepwiseRanging", &
+               "TRACE BACK (10)", 1)
+          RETURN
+       END IF
     END IF
 
     obs_arr => getObservations(this%obss)
