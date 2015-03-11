@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2015-02-25
+!! @version 2015-03-11
 !!
 PROGRAM oorb
 
@@ -112,6 +112,8 @@ PROGRAM oorb
        id_arr
   CHARACTER(len=2), DIMENSION(:), POINTER :: &
        filters
+  CHARACTER(len=1), DIMENSION(:), ALLOCATABLE :: &
+       strlen1
   CHARACTER(len=32), DIMENSION(:), ALLOCATABLE :: &
        str_arr
   CHARACTER(len=32), DIMENSION(6) :: &
@@ -121,6 +123,8 @@ PROGRAM oorb
        corr_str_arr
   CHARACTER(len=1024), DIMENSION(4) :: &
        header                                                       !! Generic header.
+  CHARACTER(len=4096) :: &
+       str1
   CHARACTER(len=FNAME_LEN) :: &
        conf_fname, &                                                !! Path to configuration file (incl. fname). 
        planetary_ephemeris_fname, &
@@ -145,6 +149,7 @@ PROGRAM oorb
        frame, &
        frame_
   CHARACTER(len=256) :: &
+       flavor, &
        frmt, &
        str, &
        suffix, &
@@ -869,6 +874,23 @@ PROGRAM oorb
 
   frame = get_cl_option("--frame=", "ecliptic")
 
+
+  ! Initialize random number generator using current working
+  ! directory and system clock
+  IF (.NOT.get_cl_option("--fixran",.FALSE.)) THEN
+     CALL GETCWD(str1)
+     ALLOCATE(strlen1(1:len_TRIM(str1)))
+     DO i=1,len_TRIM(str1)
+        strlen1(i) = str1(i:i)
+     END DO
+     CALL SYSTEM_CLOCK(i)
+     CALL initializeRandomNumberGenerator(-1*(i+SUM(ICHAR(strlen1))))
+     IF (info_verb >= 2) THEN
+        WRITE(stdout,"(A,I0)") "Random number generator initialized with ", &
+             -1*(i+SUM(ICHAR(strlen1)))
+     END IF
+  END IF
+
   SELECT CASE (task)
 
   CASE ("none")
@@ -1569,13 +1591,22 @@ PROGRAM oorb
      END DO
 
 
+
+
+
   CASE ("ranging")
 
-     ! Orbital inversion using statistical orbital ranging, that is,
-     ! without making any assumptions on the shape of the resulting
-     ! orbital-element pdf.
+     ! MCMC
+
+     ! Orbital inversion using various flavors of statistical
+     ! [orbital] ranging, that is, sampling in spherical topocentric
+     ! coordinates without making any assumptions on the shape of the
+     ! resulting orbital-element pdf.
 
      CALL NULLIFY(epoch)
+     dyn_model = " "
+     integrator = " "
+     integration_step = -1.0_bp
      apriori_a_max = -1.0_bp
      apriori_a_min = -1.0_bp
      apriori_periapsis_max = -1.0_bp
@@ -1583,7 +1614,6 @@ PROGRAM oorb
      apriori_apoapsis_max = -1.0_bp
      apriori_apoapsis_min = -1.0_bp
      apriori_rho_min = -1.0_bp
-     apriori_rho_max = -1.0_bp
      sor_type_prm = -1
      sor_2point_method = " "
      sor_2point_method_sw = " "
@@ -1600,9 +1630,12 @@ PROGRAM oorb
      gaussian_rho = .FALSE.
      regularized = .FALSE.
      write_residuals = .FALSE.
-     chi2_min_init = -1.0_bp
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
+          dyn_model=dyn_model, &
+          perturbers=perturbers, &
+          integrator=integrator, &
+          integration_step=integration_step, &
           dyn_model_init=dyn_model_init, &
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
@@ -1613,7 +1646,6 @@ PROGRAM oorb
           apriori_apoapsis_max=apriori_apoapsis_max, &
           apriori_apoapsis_min=apriori_apoapsis_min, &
           apriori_rho_min=apriori_rho_min, &
-          apriori_rho_max=apriori_rho_max, &
           sor_type=sor_type_prm, sor_2point_method=sor_2point_method, &
           sor_2point_method_sw=sor_2point_method_sw, &
           sor_norb=sor_norb, sor_norb_sw=sor_norb_sw, &
@@ -1626,7 +1658,11 @@ PROGRAM oorb
           regularized_pdf=regularized, &
           sor_random_obs=random_obs, sor_rho_gauss=gaussian_rho, &
           write_residuals=write_residuals, &
-          chi2_min=chi2_min_init)
+          ls_correction_factor=ls_correction_factor, &
+          ls_element_mask=ls_element_mask, &
+          ls_niter_major_max=ls_niter_major_max, &
+          ls_niter_major_min=ls_niter_major_min, &
+          ls_niter_minor=ls_niter_minor)
      IF (error) THEN
         CALL errorMessage("oorb / ranging", &
              "TRACE BACK (5)", 1)
@@ -1643,28 +1679,45 @@ PROGRAM oorb
            STOP
         END IF
      END IF
-     !print*,'oorb/ranging',random_obs
+
+     ! Print header before printing first orbit:
+     first = .TRUE.
+
+     ! Initialize H,G array
      DEALLOCATE(HG_arr_storb_in, stat=err)
      ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),sor_norb,4))
      HG_arr_storb_in = 99.9_bp
-     DO i=1,SIZE(obss_sep)
+
+     DO i=1,SIZE(obss_sep,dim=1)
         id = getID(obss_sep(i))
         IF (error) THEN
            CALL errorMessage("oorb / ranging", &
-                "TRACE BACK (25)", 1)
+                "TRACE BACK (15)", 1)
            STOP
         END IF
         IF (info_verb >= 2) THEN
-           WRITE(stdout,"(2(1X,A))") "Object:", TRIM(id)
+           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
+                ". observation set (", TRIM(id), ")."
+        END IF
+        nobs = getNrOfObservations(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / ranging", &
+                "TRACE BACK (20)", 1)
+           STOP
         END IF
         dt = getObservationalTimespan(obss_sep(i))
         IF (error) THEN
            CALL errorMessage("oorb / ranging", &
-                "TRACE BACK (27)", 1)
+                "TRACE BACK (40)", 1)
            STOP
         END IF
+        IF (info_verb >= 2) THEN
+           WRITE(stdout,"(4X,A,1X,F6.2,1X,A)") &
+                "Observational arc: ", dt, "days"
+        END IF
+
+        ! Initialize the rho2-rho1 range based on the observational timespan.
         IF (sor_rho_init(3) > HUGE(sor_rho_init(3))/2) THEN
-           ! Initialize the rho2-rho1 range based on the observational timespan.
            IF (dt > 10) THEN
               sor_rho_init(3) = -0.5_bp
            ELSE
@@ -1672,6 +1725,8 @@ PROGRAM oorb
            END IF
            sor_rho_init(4) = -sor_rho_init(3)
         END IF
+
+        ! Initialize StochasticOrbit
         IF (ASSOCIATED(id_arr_storb_in) .AND. ALLOCATED(storb_arr_in)) THEN
            DO j=1,SIZE(id_arr_storb_in)
               IF (TRIM(id) == TRIM(id_arr_storb_in(j))) THEN
@@ -1679,60 +1734,37 @@ PROGRAM oorb
               END IF
            END DO
            IF (j <= SIZE(id_arr_storb_in)) THEN
-              CALL setParameters(storb_arr_in(j), &
-                   dyn_model=dyn_model_init, &
-                   perturbers=perturbers, &
-                   integrator=integrator_init, &
-                   integration_step=integration_step_init, &
-                   accept_multiplier=accwin_multiplier, &
-                   apriori_rho_min=apriori_rho_min, &
-                   apriori_rho_max=apriori_rho_max, &
-                   set_acceptance_window=.FALSE., &
-                   center=center)
-              IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (30)", 1)
-                 STOP
-              END IF
-              CALL constrainRangeDistributions(storb_arr_in(j), obss_sep(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (31)", 1)
-                 STOP
-              END IF
-              CALL setRangeBounds(storb_arr_in(j))
-              IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (32)", 1)
-                 STOP
-              END IF
-              sor_rho_init(1:4) = getRangeBounds(storb_arr_in(j))
-              IF (error) THEN
-                 CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (33)", 1)
-                 STOP
-              END IF
+              storb = copy(storb_arr_in(j))
            END IF
+        ELSE
+           CALL NEW(storb, obss_sep(i))        
         END IF
+        IF (error) THEN
+           CALL errorMessage("oorb / ranging", &
+                "TRACE BACK (65)", 1)
+           STOP
+        END IF
+
+        ! Determine inversion epoch
         IF (.NOT.exist(epoch)) THEN
            CALL NULLIFY(t)
            obs = getObservation(obss_sep(i),1)
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (35)", 1)
+                   "TRACE BACK (45)", 1)
               STOP
            END IF
            t = getTime(obs)
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (40)", 1)
+                   "TRACE BACK (50)", 1)
               STOP
            END IF
            CALL NULLIFY(obs)
            mjd = getMJD(t, "tt")
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (45)", 1)
+                   "TRACE BACK (55)", 1)
               STOP
            END IF
            CALL NULLIFY(t)
@@ -1741,22 +1773,18 @@ PROGRAM oorb
            ELSE
               mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
            END IF
-           CALL NEW(t, mjd, "tt")
+           CALL NEW(t, mjd, "tt")   
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (50)", 1)
+                   "TRACE BACK (60)", 1)
               STOP
            END IF
         ELSE
            CALL NULLIFY(t)
            t = copy(epoch)
         END IF
-        CALL NEW(storb, obss_sep(i))
-        IF (error) THEN
-           CALL errorMessage("oorb / ranging", &
-                "TRACE BACK (55)", 1)
-           STOP
-        END IF
+
+        ! Set parameters for inversion
         CALL setParameters(storb, &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
@@ -1766,11 +1794,9 @@ PROGRAM oorb
              outlier_multiplier=outlier_multiplier_prm, &
              t_inv=t, &
              element_type=element_type_comp_prm, &
-             regularized_pdf = regularized, &
              dchi2_rejection = dchi2_rejection, &
              dchi2_max = dchi2_max, &
-             center=center, &
-             chi2_min=chi2_min_init, &
+             regularized_pdf = regularized, &
              accept_multiplier=accwin_multiplier, &
              apriori_a_max=apriori_a_max, apriori_a_min=apriori_a_min, &
              apriori_periapsis_max=apriori_periapsis_max, &
@@ -1778,29 +1804,38 @@ PROGRAM oorb
              apriori_apoapsis_max=apriori_apoapsis_max, &
              apriori_apoapsis_min=apriori_apoapsis_min, &
              apriori_rho_min=apriori_rho_min, &
-             apriori_rho_max=apriori_rho_max, &
              sor_2point_method=sor_2point_method, &
              sor_2point_method_sw=sor_2point_method_sw, &
+             sor_norb_sw=sor_norb_sw, sor_ntrial_sw=sor_ntrial_sw, &
              sor_norb=sor_norb, sor_ntrial=sor_ntrial, &
              sor_rho1_l=sor_rho_init(1), sor_rho1_u=sor_rho_init(2), &
              sor_rho2_l=sor_rho_init(3), sor_rho2_u=sor_rho_init(4), &
-             sor_iterate_bounds=sor_iterate_bounds, &
-!Note: at present, random selection cannot be used because of multiple orbit propagation scheme (assumes same starting epoch).
-             sor_random_obs_selection=random_obs, &
-!             sor_random_obs_selection=.FALSE., &
+             sor_niter=sor_niter, sor_iterate_bounds=sor_iterate_bounds, &
+             sor_random_obs_selection=.FALSE., &
              gaussian_pdf=gaussian_rho, &
              generat_multiplier=generat_multiplier, &
              sor_generat_offset=sor_genwin_offset)
         IF (error) THEN
            CALL errorMessage("oorb / ranging", &
-                "TRACE BACK (60)", 1)
+                "TRACE BACK (70)", 1)
            STOP
         END IF
 
-        SELECT CASE (sor_type_prm)
-        CASE (1)
-           CALL statisticalRanging(storb)
-        CASE (2)
+        ! These are here to provide partial backwards compatibility
+        IF (sor_type_prm == 2) THEN
+           flavor = "mc"
+        ELSE IF (sor_type_prm == 3) THEN
+           flavor = "stepwise-mc"
+        ELSE
+           flavor = "mc"
+        END IF
+
+        flavor = get_cl_option("--flavor=",flavor)
+
+        SELECT CASE (TRIM(flavor))
+
+        CASE ("mc")
+
            CALL setParameters(storb, &
                 sor_niter=sor_niter)
            IF (error) THEN
@@ -1809,7 +1844,9 @@ PROGRAM oorb
               STOP
            END IF
            CALL autoStatisticalRanging(storb)
-        CASE (3)
+
+        CASE ("stepwise-mc")
+
            CALL setParameters(storb, &
                 sor_norb_sw=sor_norb_sw, &
                 sor_ntrial_sw=sor_ntrial_sw, &
@@ -1820,18 +1857,41 @@ PROGRAM oorb
               STOP
            END IF
            CALL stepwiseRanging(storb, nobs_max=-1)
+
+        CASE ("random-walk")
+
+           ! Orbital inversion using random-walk ranging (Muinonen et
+           ! al. 2015), that is, unlike in MCMC ranging, the
+           ! acceptance value is based not on the quotient of proposal
+           ! p.d.f.:s, but on the comparison of difference of proposal
+           ! and previous chi^2 values to the predefined boundary
+           ! value, usually 20.1 (corresponding to 3*sigma).
+
+           CALL autoRandomWalkRanging(storb)
+
+        CASE ("mcmc")
+
+           CALL autoMCMCRanging(storb)
+
         CASE default
+
            CALL errorMessage("oorb / ranging", &
-                "Unknown type of ranging:", 1)
+                "Unknown flavor of ranging:", 1)
            IF (err_verb >= 1) THEN
-              WRITE(stderr,"(2X,I0)") sor_type_prm
+              WRITE(stderr,"(2X,A)") TRIM(flavor)
            END IF
            STOP              
+
         END SELECT
 
         IF (error) THEN
+
            CALL errorMessage("oorb / ranging", &
-                "TRACE BACK (115)", 1)
+                "Ranging failed:", 1)
+           IF (err_verb >= 1) THEN
+              WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
+                   " and number of observations: ", nobs
+           END IF
            error  = .FALSE.
            CALL NEW(out_file, "problematic_observation_sets" // "." // &
                 TRIM(observation_format_out))
@@ -1839,25 +1899,34 @@ PROGRAM oorb
            CALL OPEN(out_file)
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (130)", 1)
+                   "TRACE BACK (90)", 1)
               STOP
            END IF
            CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
                 TRIM(observation_format_out))
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (135)", 1)
+                   "TRACE BACK (95)", 1)
               STOP
            END IF
            CALL NULLIFY(out_file)
-           CALL NULLIFY(storb)
+           IF (error) THEN
+              CALL errorMessage("oorb / ranging", &
+                   "TRACE BACK (100)", 1)
+              STOP
+           END IF
+
         ELSE
+
            IF (info_verb >= 2) THEN
               WRITE(stdout,"(3(1X,A))") "Ranging for object", &
                    TRIM(id), "is ready."
            END IF
 
            IF (pp_H_estimation) THEN
+              IF (info_verb >= 2) THEN
+                 WRITE(stdout,"((1X,A))") "Start estimation of H and G."
+              END IF
               CALL NEW(physparam, storb)
               IF (pp_G > 99.0_bp) THEN
                  CALL estimateHAndG(physparam, obss_sep(i))
@@ -1866,126 +1935,165 @@ PROGRAM oorb
                       input_G=pp_G, input_delta_G=pp_G_unc)
               END IF
               HG_arr_in => getH0Distribution(physparam)
-              ALLOCATE(temp_arr(SIZE(HG_arr_in,dim=1),4))
-              temp_arr(:,1:2) = HG_arr_in(:,1:2)
-              DEALLOCATE(HG_arr_in)
-              HG_arr_in => getGDistribution(physparam)
-              temp_arr(:,3:4) = HG_arr_in(:,1:2)
-              DEALLOCATE(HG_arr_in)
-              HG_arr_storb_in(i,:,:) = temp_arr
-              DEALLOCATE(temp_arr)              
+              IF (.NOT.error) THEN
+                 ALLOCATE(temp_arr(SIZE(HG_arr_in,dim=1),4))
+                 temp_arr(:,1:2) = HG_arr_in(:,1:2)
+                 DEALLOCATE(HG_arr_in)
+                 HG_arr_in => getGDistribution(physparam)
+                 temp_arr(:,3:4) = HG_arr_in(:,1:2)
+                 DEALLOCATE(HG_arr_in)
+                 HG_arr_storb_in(i,:,:) = temp_arr
+                 DEALLOCATE(temp_arr)
+              ELSE
+                 error = .FALSE.
+                 NULLIFY(HG_arr_in)
+              END IF
               CALL NULLIFY(physparam)
+              IF (info_verb >= 2) THEN
+                 WRITE(stdout,"((1X,A))") "End estimation of H and G."
+              END IF
            END IF
 
+           ! WRITE RANGING OUTPUT FILE WITH
            CALL NEW(out_file, TRIM(id) // ".sor")
            CALL OPEN(out_file)
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (150)", 1)
+                   "TRACE BACK (105)", 1)
               STOP
            END IF
-           ! WRITE OBSERVATIONS:
+           ! 1) OBSERVATIONS AND
            CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
                 TRIM(observation_format_out)) 
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (155)", 1)
+                   "TRACE BACK (110)", 1)
               STOP
            END IF
            WRITE(getUnit(out_file),"(A)") "#" 
-           ! WRITE RANGING PARAMETERS
+           ! 2) RANGING PARAMETERS.
            CALL writeSORResults(storb, obss_sep(i), getUnit(out_file))
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (160)", 1)
+                   "TRACE BACK (115)", 1)
               STOP
            END IF
-           CALL NULLIFY(out_file) 
-           CALL getResults(storb, sor_rho_cmp=sor_rho_cmp)
-           IF (error) THEN
-              CALL errorMessage("oorb / ranging", &
-                   "TRACE BACK (170)", 1)
-              STOP
-           END IF
+           CALL NULLIFY(out_file)
+
            ! WRITE ORBITAL-ELEMENT PDF
            orb_arr_cmp => getSampleOrbits(storb)
            IF (error) THEN
               CALL errorMessage("oorb / ranging ", &
-                   "TRACE BACK (175)", 1)
+                   "TRACE BACK (125)", 1)
               STOP
            END IF
-           pdf_arr_cmp => getPDFValues(storb)
+           pdf_arr_cmp => getPDFValues(storb, element_type_comp_prm)
            IF (error) THEN
               CALL errorMessage("oorb / ranging ", &
-                   "TRACE BACK (180)", 1)
+                   "TRACE BACK (130)", 1)
               STOP
            END IF
            rchi2_arr_cmp => getReducedChi2Distribution(storb)
            IF (error) THEN
               CALL errorMessage("oorb / ranging ", &
-                   "TRACE BACK (185)", 1)
+                   "TRACE BACK (135)", 1)
               STOP
            END IF
-           CALL getResults(storb, &
-                reg_apr_arr=reg_apr_arr_cmp, &
-                jac_arr=jac_arr_cmp)
+           SELECT CASE (TRIM(flavor))
+           CASE ("mc", "stepwise-mc")
+              CALL getResults(storb, &
+                   reg_apr_arr=reg_apr_arr_cmp, &
+                   jac_arr=jac_arr_cmp)
+           CASE ("mcmc", "random-walk")
+              CALL getResults(storb, &
+                   repetition_arr_cmp=repetition_arr_cmp)
+           END SELECT
            IF (error) THEN
               CALL errorMessage("oorb / ranging ", &
-                   "TRACE BACK (190)", 1)
+                   "TRACE BACK (140)", 1)
               STOP
            END IF
-
            IF (separately) THEN
               CALL NEW(out_file, TRIM(id) // ".orb")
               CALL OPEN(out_file)
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (200)", 1)
+                      "TRACE BACK (145)", 1)
                  STOP
               END IF
               lu_orb_out = getUnit(out_file)
            END IF
            DO j=1,SIZE(orb_arr_cmp,dim=1)
               IF (orbit_format_out == "orb") THEN
-                 IF (ASSOCIATED(HG_arr_storb_in)) THEN
-                    CALL writeOpenOrbOrbitFile(lu_orb_out, &
-                         print_header=j==1, &
-                         element_type_out=element_type_out_prm, &
-                         id=id, &
-                         orb=orb_arr_cmp(j), &
-                         element_type_pdf=element_type_comp_prm, &
-                         pdf=pdf_arr_cmp(j), &
-                         rchi2=rchi2_arr_cmp(j), &
-                         reg_apr=reg_apr_arr_cmp(j), &
-                         jac_sph_inv=jac_arr_cmp(j,1), &
-                         jac_car_kep=jac_arr_cmp(j,2), &
-                         jac_equ_kep=jac_arr_cmp(j,3), &
-                         H=HG_arr_storb_in(i,j,1), &
-                         G=HG_arr_storb_in(i,j,3), &
-                         mjd=mjd_epoch)
+                 IF (HG_arr_storb_in(i,1,1) < 99.0_bp) THEN
+                    SELECT CASE (TRIM(flavor))
+                    CASE ("mc", "stepwise-mc")
+                       CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                            print_header=j==1, &
+                            element_type_out=element_type_out_prm, &
+                            id=id, &
+                            orb=orb_arr_cmp(j), &
+                            element_type_pdf=element_type_comp_prm, &
+                            pdf=pdf_arr_cmp(j), &
+                            rchi2=rchi2_arr_cmp(j), &
+                            reg_apr=reg_apr_arr_cmp(j), &
+                            jac_sph_inv=jac_arr_cmp(j,1), &
+                            jac_car_kep=jac_arr_cmp(j,2), &
+                            jac_equ_kep=jac_arr_cmp(j,3), &
+                            H=HG_arr_storb_in(i,j,1), &
+                            G=HG_arr_storb_in(i,j,3), &
+                            mjd=mjd_epoch)
+                    CASE ("mcmc", "random-walk")
+                       CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                            print_header=j==1, &
+                            element_type_out=element_type_out_prm, &
+                            id=id, &
+                            orb=orb_arr_cmp(j), &
+                            element_type_pdf=element_type_comp_prm, &
+                            pdf=pdf_arr_cmp(j), &
+                            rchi2=rchi2_arr_cmp(j), &
+                            repetitions=repetition_arr_cmp(j), &
+                            H=HG_arr_storb_in(i,j,1), &
+                            G=HG_arr_storb_in(i,j,3), &
+                            mjd=mjd_epoch)
+                    END SELECT
                  ELSE
-                    CALL writeOpenOrbOrbitFile(lu_orb_out, &
-                         print_header=j==1, &
-                         element_type_out=element_type_out_prm, &
-                         id=id, &
-                         orb=orb_arr_cmp(j), &
-                         element_type_pdf=element_type_comp_prm, &
-                         pdf=pdf_arr_cmp(j), &
-                         rchi2=rchi2_arr_cmp(j), &
-                         reg_apr=reg_apr_arr_cmp(j), &
-                         jac_sph_inv=jac_arr_cmp(j,1), &
-                         jac_car_kep=jac_arr_cmp(j,2), &
-                         jac_equ_kep=jac_arr_cmp(j,3), &
-                         mjd=mjd_epoch)
+                    SELECT CASE (TRIM(flavor))
+                    CASE ("mc", "stepwise-mc")
+                       CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                            print_header=j==1, &
+                            element_type_out=element_type_out_prm, &
+                            id=id, &
+                            orb=orb_arr_cmp(j), &
+                            element_type_pdf=element_type_comp_prm, &
+                            pdf=pdf_arr_cmp(j), &
+                            rchi2=rchi2_arr_cmp(j), &
+                            reg_apr=reg_apr_arr_cmp(j), &
+                            jac_sph_inv=jac_arr_cmp(j,1), &
+                            jac_car_kep=jac_arr_cmp(j,2), &
+                            jac_equ_kep=jac_arr_cmp(j,3), &
+                            mjd=mjd_epoch)
+                    CASE ("mcmc", "random-walk")
+                       CALL writeOpenOrbOrbitFile(lu_orb_out, &
+                            print_header=j==1, &
+                            element_type_out=element_type_out_prm, &
+                            id=id, &
+                            orb=orb_arr_cmp(j), &
+                            element_type_pdf=element_type_comp_prm, &
+                            pdf=pdf_arr_cmp(j), &
+                            rchi2=rchi2_arr_cmp(j), &
+                            repetitions=repetition_arr_cmp(j), &
+                            mjd=mjd_epoch)
+                    END SELECT
                  END IF
               ELSE IF (orbit_format_out == "des") THEN
                  CALL errorMessage("oorb / ranging ", &
-                      "DES format not yet supported for Ranging output.", 1)
+                      "DES format not yet supported for ranging output.", 1)
                  STOP                 
               END IF
               IF (error) THEN
                  CALL errorMessage("oorb / ranging ", &
-                      "TRACE BACK (205)", 1)
+                      "TRACE BACK (150)", 1)
                  STOP
               END IF
            END DO
@@ -1995,44 +2103,47 @@ PROGRAM oorb
                  CALL system("gzip -f " // TRIM(id) // ".orb")
               END IF
            END IF
-           ! WRITE RESIDUALS
+
+           ! WRITE RESIDUALS FILE
            IF (write_residuals) THEN
               CALL NEW(out_file, TRIM(out_fname) // ".res")
               CALL setPositionAppend(out_file)
               CALL OPEN(out_file)
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (225)", 1)
+                      "TRACE BACK (155)", 1)
                  STOP
               END IF
               CALL writeResiduals(storb, obss_sep(i), getUnit(out_file))
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (230)", 1)
+                      "TRACE BACK (160)", 1)
                  STOP
               END IF
               CALL NULLIFY(out_file)
            END IF
+
+           ! MAKE PLOTS
            IF (plot_results) THEN
               CALL toString(dt, str, error, frmt="(F10.2)")
               IF (error) THEN
                  CALL errorMessage("oorb / ranging ", &
-                      "TRACE BACK (235)", 1)
+                      "TRACE BACK (165)", 1)
                  STOP
               END IF
               str = TRIM(id) // "_"// TRIM(str)
               CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
-                   "_sor_residual_stamps.eps")
+                   "_ranging_residual_stamps.eps")
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
-                      "TRACE BACK (240)", 1)
+                      "TRACE BACK (170)", 1)
                  STOP
               END IF
               IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(str) // "_sor_residual_stamps.eps")
+                 CALL system("gzip -f " // TRIM(str) // "_ranging_residual_stamps.eps")
               END IF
               IF (plot_open) THEN
-                 CALL system("gv " // TRIM(str) // "_sor_residual_stamps.eps* &")
+                 CALL system("gv " // TRIM(str) // "_ranging_residual_stamps.eps* &")
               END IF
               ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
               IF (err /= 0) THEN
@@ -2040,11 +2151,11 @@ PROGRAM oorb
                       "Could not allocate memory (3).", 1)
                  STOP
               END IF
-              CALL NEW(tmp_file, TRIM(str)// "_sor_orbits.out")
+              CALL NEW(tmp_file, TRIM(str)// "_ranging_orbits.out")
               CALL OPEN(tmp_file)
               IF (error) THEN
                  CALL errorMessage("oorb / ranging ", &
-                      "TRACE BACK (250)", 1)
+                      "TRACE BACK (175)", 1)
                  STOP
               END IF
               DO j=1,SIZE(orb_arr_cmp,dim=1)
@@ -2054,7 +2165,7 @@ PROGRAM oorb
                  elements_arr(j,1:6) = getElements(orb_arr_cmp(j), element_type_comp_prm)
                  IF (error) THEN
                     CALL errorMessage("oorb / ranging", &
-                         "TRACE BACK (255)", 1)
+                         "TRACE BACK (180)", 1)
                     STOP
                  END IF
                  IF (element_type_comp_prm == "keplerian") THEN
@@ -2064,27 +2175,27 @@ PROGRAM oorb
                  t = getTime(orb_arr_cmp(j))
                  IF (error) THEN
                     CALL errorMessage("oorb / ranging ", &
-                         "TRACE BACK (260)", 1)
+                         "TRACE BACK (185)", 1)
                     STOP
                  END IF
-                 WRITE(getUnit(tmp_file),"(7(E23.15,1X),A)") &
+                 WRITE(getUnit(tmp_file),*) &
                       elements_arr(j,1:6), &
                       pdf_arr_cmp(j), &
                       getCalendarDateString(t,"tdt")
                  IF (error) THEN
                     CALL errorMessage("oorb / ranging ", &
-                         "TRACE BACK (265)", 1)
+                         "TRACE BACK (190)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(t)
               END DO
               CALL NULLIFY(tmp_file)
               CALL NEW(tmp_file, TRIM(str) // &
-                   "_sor_sample_standard_deviations.out")
+                   "_ranging_sample_standard_deviations.out")
               CALL OPEN(tmp_file)
               IF (error) THEN
                  CALL errorMessage("oorb / ranging ", &
-                      "TRACE BACK (275)", 1)
+                      "TRACE BACK (195)", 1)
                  STOP
               END IF
               WRITE(getUnit(tmp_file), "(F22.15,1X)", &
@@ -2092,19 +2203,15 @@ PROGRAM oorb
                    getObservationalTimespan(obss_sep(i))
               IF (error) THEN
                  CALL errorMessage("oorb / ranging ", &
-                      "TRACE BACK (280)", 1)
+                      "TRACE BACK (200)", 1)
                  STOP
               END IF
               DO j=1,6
                  CALL moments(elements_arr(:,j), &
                       pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
-                 IF (LEN_TRIM(errstr) /= 0) THEN
-                    CALL errorMessage("oorb / ranging", &
-                         "Could not compute moments. " // TRIM(errstr), 1)
-                    STOP
-                 END IF
                  WRITE(getUnit(tmp_file), "(F22.15,1X)", &
                       advance="no") stdev
+                 stdev_arr(j)=stdev
               END DO
               WRITE(getUnit(tmp_file),*)
               CALL NULLIFY(tmp_file)
@@ -2116,1213 +2223,43 @@ PROGRAM oorb
               END IF
               ! Make plot using gnuplot:
               CALL system("cp " // TRIM(str) // &
-                   "_sor_orbits.out sor_orbits.out")
+                   "_ranging_orbits.out sor_orbits.out")
               IF (element_type_comp_prm == "cartesian") THEN
                  CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_car.gp")
               ELSE
-                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
+                 IF (stdev_arr(1) < 1.0_bp) THEN
+                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep_nolog.gp")
+                 ELSE
+                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
+                 END IF
               END IF
               CALL system("cp sor_results.eps " // TRIM(str) // &
-                   "_sor_" // TRIM(element_type_comp_prm) // &
+                   "_ranging_" // TRIM(element_type_comp_prm) // &
                    "_results.eps")
               CALL system("rm -f sor_orbits.out sor_results.eps " // & 
-                   TRIM(str) // "_sor_orbits.out " // TRIM(str) // &
-                   "_sor_sample_standard_deviations.out")
+                   TRIM(str) // "_ranging_orbits.out ")
               IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(str) // "_sor_" // &
+                 CALL system("gzip -f " // TRIM(str) // "_ranging_" // &
                       TRIM(element_type_comp_prm) // "_results.eps")
               END IF
               IF (plot_open) THEN
-                 CALL system("gv " // TRIM(str) // "_sor_" // &
+                 CALL system("gv " // TRIM(str) // "_ranging_" // &
                       TRIM(element_type_comp_prm) // &
                       "_results.eps* &")
               END IF
            END IF
+
+           ! DEALLOCATE MEMORY
            DO j=1,SIZE(orb_arr_cmp)
               CALL NULLIFY(orb_arr_cmp(j))
            END DO
            DEALLOCATE(orb_arr_cmp, stat=err)
            DEALLOCATE(pdf_arr_cmp, stat=err)
            DEALLOCATE(rchi2_arr_cmp, stat=err)
+           DEALLOCATE(repetition_arr_cmp, stat=err)
            DEALLOCATE(reg_apr_arr_cmp, stat=err)
            DEALLOCATE(jac_arr_cmp, stat=err)
-           IF (err /= 0) THEN
-              CALL errorMessage("oorb / ranging", &
-                   "Could not deallocate memory (10).", 1)
-              STOP
-           END IF
-           IF (info_verb >= 2) THEN
-              WRITE(stdout,"(3(1X,A))") "Object", &
-                   TRIM(id), "successfully processed."
-           END IF
-        END IF
-        CALL NULLIFY(storb)
-        CALL NULLIFY(orb)
-        IF (info_verb >= 2) THEN
-           WRITE(stdout,*)
-           WRITE(stdout,*)
-        END IF
-        IF (ASSOCIATED(HG_arr_in)) THEN
-           DEALLOCATE(HG_arr_in, stat=err)
-        END IF
-     END DO
 
-
-
-  CASE ("mcmcranging")
-
-     ! Orbital inversion using MCMC ranging, that is, without making
-     ! any assumptions on the shape of the resulting orbital-element
-     ! pdf.
-
-     CALL NULLIFY(epoch)
-     dyn_model = " "
-     integrator = " "
-     integration_step = -1.0_bp
-     apriori_a_max = -1.0_bp
-     apriori_a_min = -1.0_bp
-     apriori_periapsis_max = -1.0_bp
-     apriori_periapsis_min = -1.0_bp
-     apriori_apoapsis_max = -1.0_bp
-     apriori_apoapsis_min = -1.0_bp
-     apriori_rho_min = -1.0_bp
-     sor_type_prm = -1
-     sor_2point_method = " "
-     sor_2point_method_sw = " "
-     sor_norb = -1
-     sor_norb_sw = -1
-     sor_ntrial = -1
-     sor_ntrial_sw = -1
-     sor_niter = -1
-     sor_rho_init = HUGE(sor_rho_init)
-     generat_multiplier = -1.0_bp
-     sor_genwin_offset = -1.0_bp
-     sor_iterate_bounds = .TRUE.
-     accwin_multiplier = -1.0_bp
-     gaussian_rho = .FALSE.
-     regularized = .FALSE.
-     write_residuals = .FALSE.
-     CALL readConfigurationFile(conf_file, &
-          t0=epoch, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step, &
-          dyn_model_init=dyn_model_init, &
-          integrator_init=integrator_init, &
-          integration_step_init=integration_step_init, &
-          apriori_a_max=apriori_a_max, &
-          apriori_a_min=apriori_a_min, &
-          apriori_periapsis_max=apriori_periapsis_max, &
-          apriori_periapsis_min=apriori_periapsis_min, &
-          apriori_apoapsis_max=apriori_apoapsis_max, &
-          apriori_apoapsis_min=apriori_apoapsis_min, &
-          apriori_rho_min=apriori_rho_min, &
-          sor_type=sor_type_prm, sor_2point_method=sor_2point_method, &
-          sor_2point_method_sw=sor_2point_method_sw, &
-          sor_norb=sor_norb, sor_norb_sw=sor_norb_sw, &
-          sor_ntrial=sor_ntrial, sor_ntrial_sw=sor_ntrial_sw, &
-          sor_niter=sor_niter, sor_rho_init=sor_rho_init, &
-          generat_multiplier=generat_multiplier, &
-          sor_genwin_offset=sor_genwin_offset, &
-          sor_iterate_bounds=sor_iterate_bounds, &
-          accwin_multiplier=accwin_multiplier, &
-          regularized_pdf=regularized, &
-          sor_random_obs=random_obs, sor_rho_gauss=gaussian_rho, &
-          write_residuals=write_residuals, &
-          ls_correction_factor=ls_correction_factor, &
-          ls_element_mask=ls_element_mask, &
-          ls_niter_major_max=ls_niter_major_max, &
-          ls_niter_major_min=ls_niter_major_min, &
-          ls_niter_minor=ls_niter_minor)
-     IF (error) THEN
-        CALL errorMessage("oorb / mcmcranging", &
-             "TRACE BACK (5)", 1)
-        STOP
-     END IF
-     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
-        CALL NULLIFY(epoch)
-        ! New epoch given as MJD TT
-        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
-        CALL NEW(epoch, mjd_tt, "TT")
-        IF (error) THEN
-           CALL errorMessage("oorb / mcmcranging", &
-                "TRACE BACK (10)", 1)
-           STOP
-        END IF
-     END IF
-
-     ! Print header before printing first orbit:
-     first = .TRUE.
-     DO i=1,SIZE(obss_sep,dim=1)
-        id = getID(obss_sep(i))
-        IF (error) THEN
-           CALL errorMessage("oorb / mcmcranging", &
-                "TRACE BACK (15)", 1)
-           STOP
-        END IF
-        IF (info_verb >= 2) THEN
-           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
-                ". observation set (", TRIM(id), ")."
-        END IF
-        nobs = getNrOfObservations(obss_sep(i))
-        IF (error) THEN
-           CALL errorMessage("oorb / mcmcranging", &
-                "TRACE BACK (20)", 1)
-           STOP
-        END IF
-        dt = getObservationalTimespan(obss_sep(i))
-        IF (error) THEN
-           CALL errorMessage("oorb / mcmcranging", &
-                "TRACE BACK (40)", 1)
-           STOP
-        END IF
-        IF (info_verb >= 2) THEN
-           WRITE(stdout,"(4X,A,1X,F6.2,1X,A)") &
-                "Observational arc: ", dt, "days"
-        END IF
-!Below not valid for mcmc?
-!!$        IF (sor_rho_init(3) > HUGE(sor_rho_init(3))/2) THEN
-!!$           ! Initialize the rho2-rho1 range based on the observational timespan.
-!!$           IF (dt > 10) THEN
-!!$              sor_rho_init(3) = -0.5_bp
-!!$           ELSE
-!!$              sor_rho_init(3) = -0.05_bp*dt
-!!$           END IF
-!!$           sor_rho_init(4) = -sor_rho_init(3)
-!!$        END IF
-
-        CALL NEW(storb, obss_sep(i))        
-        IF (error) THEN
-           CALL errorMessage("oorb / mcmcranging", &
-                "TRACE BACK (65)", 1)
-           STOP
-        END IF
-
-        IF (ASSOCIATED(id_arr_storb_in) .AND. ALLOCATED(storb_arr_in)) THEN
-           DO j=1,SIZE(id_arr_storb_in)
-              IF (TRIM(id) == TRIM(id_arr_storb_in(j))) THEN
-                 EXIT
-              END IF
-           END DO
-           IF (j <= SIZE(id_arr_storb_in)) THEN
-              CALL setParameters(storb_arr_in(j), &
-                   dyn_model=dyn_model_init, &
-                   perturbers=perturbers, &
-                   integrator=integrator_init, &
-                   integration_step=integration_step_init, &
-                   accept_multiplier=accwin_multiplier, &
-                   apriori_rho_min=apriori_rho_min, &
-                   set_acceptance_window=.FALSE.)
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (30)", 1)
-                 STOP
-              END IF
-              CALL constrainRangeDistributions(storb_arr_in(j), obss_sep(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (31)", 1)
-                 STOP
-              END IF
-              CALL setRangeBounds(storb_arr_in(j))
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (32)", 1)
-                 STOP
-              END IF
-              sor_rho_init(1:4) = getRangeBounds(storb_arr_in(j))
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (33)", 1)
-                 STOP
-              END IF
-              !ML orbit
-              ref_orb=getNominalOrbit(storb_arr_in(j), ml_orbit=.true.)
-              call setParameters(storb, orb_ml=ref_orb)
-              sor_iterate_bounds(:) = .false.
-           END IF
-        END IF
-        IF (.NOT.exist(epoch)) THEN
-           CALL NULLIFY(t)
-           obs = getObservation(obss_sep(i),1)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (45)", 1)
-              STOP
-           END IF
-           t = getTime(obs)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (50)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(obs)
-           mjd = getMJD(t, "tt")
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (55)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(t)
-           IF (get_cl_option("--exact-mid-epoch", .FALSE.)) THEN
-              mjd = mjd+dt/2.0_bp
-           ELSE
-              mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
-           END IF
-           CALL NEW(t, mjd, "tt")   
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (60)", 1)
-              STOP
-           END IF
-        ELSE
-           CALL NULLIFY(t)
-           t = copy(epoch)
-        END IF
-        CALL setParameters(storb, &
-             dyn_model=dyn_model, &
-             perturbers=perturbers, &
-             integrator=integrator, &
-             integration_step=integration_step, &
-             outlier_rejection=outlier_rejection_prm, &
-             outlier_multiplier=outlier_multiplier_prm, &
-             t_inv=t, &
-             element_type=element_type_comp_prm, &
-             dchi2_rejection = dchi2_rejection, &
-             dchi2_max = dchi2_max, &
-             regularized_pdf = regularized, &
-             accept_multiplier=accwin_multiplier, &
-             apriori_a_max=apriori_a_max, apriori_a_min=apriori_a_min, &
-             apriori_periapsis_max=apriori_periapsis_max, &
-             apriori_periapsis_min=apriori_periapsis_min, &
-             apriori_apoapsis_max=apriori_apoapsis_max, &
-             apriori_apoapsis_min=apriori_apoapsis_min, &
-             apriori_rho_min=apriori_rho_min, &
-             sor_2point_method=sor_2point_method, &
-             sor_2point_method_sw=sor_2point_method_sw, &
-             sor_norb_sw=sor_norb_sw, sor_ntrial_sw=sor_ntrial_sw, &
-             sor_norb=sor_norb, sor_ntrial=sor_ntrial, &
-             sor_rho1_l=sor_rho_init(1), sor_rho1_u=sor_rho_init(2), &
-             sor_rho2_l=sor_rho_init(3), sor_rho2_u=sor_rho_init(4), &
-             sor_niter=sor_niter, sor_iterate_bounds=sor_iterate_bounds, &
-             sor_random_obs_selection=.FALSE., &
-             gaussian_pdf=gaussian_rho, &
-             generat_multiplier=generat_multiplier, &
-             sor_generat_offset=sor_genwin_offset)
-        IF (error) THEN
-           CALL errorMessage("oorb / mcmcranging", &
-                "TRACE BACK (70)", 1)
-           STOP
-        END IF
-        SELECT CASE (sor_type_prm)
-        CASE (1)
-           CALL MCMCRanging3(storb) ! MCMCRanging3 = "basic" MCMC
-        CASE (2)
-!!$           CALL setParameters(storb, &
-!!$                dyn_model_init=dyn_model_init, &
-!!$                perturbers=perturbers, &
-!!$                integrator_init=integrator_init, &
-!!$                integration_step_init=integration_step_init, &
-!!$                accept_multiplier=accwin_multiplier, &
-!!$                apriori_rho_min=apriori_rho_min, &
-!!$                set_acceptance_window=.FALSE.)
-!           CALL autoMCMCRanging3(storb)
-           CALL autoMCMCRanging4(storb)
-        CASE default
-           CALL errorMessage("oorb / mcmcranging", &
-                "Unknown type of ranging:", 1)
-           IF (err_verb >= 1) THEN
-              WRITE(stderr,"(2X,I0)") sor_type_prm
-           END IF
-           STOP              
-        END SELECT
-        IF (error) THEN
-           CALL errorMessage("oorb / mcmcranging", &
-                "MCMC failed:", 1)
-           IF (err_verb >= 1) THEN
-              WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
-                   " and number of observations: ", nobs
-           END IF
-           error  = .FALSE.
-           CALL NEW(out_file, "problematic_observation_sets" // "." // &
-                TRIM(observation_format_out))
-           CALL setPositionAppend(out_file)
-           CALL OPEN(out_file)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (90)", 1)
-              STOP
-           END IF
-           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
-                TRIM(observation_format_out))
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (95)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(out_file)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (100)", 1)
-              STOP
-           END IF
-        ELSE
-           IF (info_verb >= 2) THEN
-              WRITE(stdout,"(3(1X,A))") "Mcmc inversion for object", &
-                   TRIM(id), "is ready."
-           END IF
-           CALL NEW(out_file, TRIM(id) // ".sor")
-           CALL OPEN(out_file)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (105)", 1)
-              STOP
-           END IF
-           ! WRITE OBSERVATIONS:
-           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
-                TRIM(observation_format_out)) 
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (110)", 1)
-              STOP
-           END IF
-           WRITE(getUnit(out_file),"(A)") "#" 
-           ! WRITE MCMC PARAMETERS
-           CALL writeSORResults(storb, obss_sep(i), getUnit(out_file))
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "TRACE BACK (115)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(out_file) 
-           ! WRITE ORBITAL-ELEMENT PDF
-           orb_arr_cmp => getSampleOrbits(storb)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging ", &
-                   "TRACE BACK (125)", 1)
-              STOP
-           END IF
-           pdf_arr_cmp => getPDFValues(storb, element_type_comp_prm)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging ", &
-                   "TRACE BACK (130)", 1)
-              STOP
-           END IF
-           rchi2_arr_cmp => getReducedChi2Distribution(storb)
-           IF (error) THEN
-              CALL errorMessage("oorb / mcmcranging ", &
-                   "TRACE BACK (135)", 1)
-              STOP
-           END IF
-           CALL getResults(storb, repetition_arr_cmp=repetition_arr_cmp)
-!!$           CALL getResults(storb, &
-!!$                reg_apr_arr=reg_apr_arr_cmp, &
-!!$                jac_arr=jac_arr_cmp)
-!!$           IF (error) THEN
-!!$              CALL errorMessage("oorb / mcmcranging ", &
-!!$                   "TRACE BACK (140)", 1)
-!!$              STOP
-!!$           END IF
-           IF (separately) THEN
-              CALL NEW(out_file, TRIM(id) // ".orb")
-              CALL OPEN(out_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (145)", 1)
-                 STOP
-              END IF
-              lu_orb_out = getUnit(out_file)
-           END IF
-           DO j=1,SIZE(orb_arr_cmp,dim=1)
-              IF (orbit_format_out == "orb") THEN
-                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
-                      print_header=j==1, &
-                      element_type_out=element_type_out_prm, &
-                      id=id, &
-                      orb=orb_arr_cmp(j), &
-                      element_type_pdf=element_type_comp_prm, &
-                      pdf=pdf_arr_cmp(j), &
-                      rchi2=rchi2_arr_cmp(j), &
-                      repetitions=repetition_arr_cmp(j), &
-                      mjd=mjd_epoch)
-!!$                   reg_apr=reg_apr_arr_cmp(j), &
-!!$                   jac_sph_inv=jac_arr_cmp(j,1), &
-!!$                   jac_car_kep=jac_arr_cmp(j,2), &
-!!$                   jac_equ_kep=jac_arr_cmp(j,3))
-              ELSE IF (orbit_format_out == "des") THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "DES format not yet supported for MCMC output.", 1)
-                 STOP                 
-              END IF
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging ", &
-                      "TRACE BACK (150)", 1)
-                 STOP
-              END IF
-           END DO
-           IF (separately) THEN
-              CALL NULLIFY(out_file)
-              IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(id) // ".orb")
-              END IF
-           END IF
-           ! WRITE RESIDUALS
-           IF (write_residuals) THEN
-              CALL NEW(out_file, TRIM(out_fname) // ".res")
-              CALL setPositionAppend(out_file)
-              CALL OPEN(out_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (155)", 1)
-                 STOP
-              END IF
-              CALL writeResiduals(storb, obss_sep(i), getUnit(out_file))
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (160)", 1)
-                 STOP
-              END IF
-              CALL NULLIFY(out_file)
-           END IF
-           IF (plot_results) THEN
-              CALL toString(dt, str, error, frmt="(F10.2)")
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging ", &
-                      "TRACE BACK (165)", 1)
-                 STOP
-              END IF
-              str = TRIM(id) // "_"// TRIM(str)
-              CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
-                   "_mcmcranging_residual_stamps.eps")
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "TRACE BACK (170)", 1)
-                 STOP
-              END IF
-              IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(str) // "_mcmcranging_residual_stamps.eps")
-              END IF
-              IF (plot_open) THEN
-                 CALL system("gv " // TRIM(str) // "_mcmcranging_residual_stamps.eps* &")
-              END IF
-              ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
-              IF (err /= 0) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "Could not allocate memory (3).", 1)
-                 STOP
-              END IF
-              CALL NEW(tmp_file, TRIM(str)// "_mcmcranging_orbits.out")
-              CALL OPEN(tmp_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging ", &
-                      "TRACE BACK (175)", 1)
-                 STOP
-              END IF
-              DO j=1,SIZE(orb_arr_cmp,dim=1)
-                 IF (element_type_comp_prm == "cartesian") THEN
-                    CALL rotateToEcliptic(orb_arr_cmp(j))
-                 END IF
-                 elements_arr(j,1:6) = getElements(orb_arr_cmp(j), element_type_comp_prm)
-                 IF (error) THEN
-                    CALL errorMessage("oorb / mcmcranging", &
-                         "TRACE BACK (180)", 1)
-                    STOP
-                 END IF
-                 IF (element_type_comp_prm == "keplerian") THEN
-                    elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
-                 END IF
-                 elements_arr(j,7) = pdf_arr_cmp(j)
-                 t = getTime(orb_arr_cmp(j))
-                 IF (error) THEN
-                    CALL errorMessage("oorb / mcmcranging ", &
-                         "TRACE BACK (185)", 1)
-                    STOP
-                 END IF
-                 WRITE(getUnit(tmp_file),*) &
-                      elements_arr(j,1:6), &
-                      pdf_arr_cmp(j), &
-                      getCalendarDateString(t,"tdt")
-                 IF (error) THEN
-                    CALL errorMessage("oorb / mcmcranging ", &
-                         "TRACE BACK (190)", 1)
-                    STOP
-                 END IF
-                 CALL NULLIFY(t)
-              END DO
-              CALL NULLIFY(tmp_file)
-              CALL NEW(tmp_file, TRIM(str) // &
-                   "_mcmcranging_sample_standard_deviations.out")
-              CALL OPEN(tmp_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging ", &
-                      "TRACE BACK (195)", 1)
-                 STOP
-              END IF
-              WRITE(getUnit(tmp_file), "(F22.15,1X)", &
-                   advance="no") &
-                   getObservationalTimespan(obss_sep(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / mcmcranging ", &
-                      "TRACE BACK (200)", 1)
-                 STOP
-              END IF
-              DO j=1,6
-                 CALL moments(elements_arr(:,j), &
-!                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
-                      pdf=repetition_arr_cmp, std_dev=stdev, errstr=errstr)
-                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
-                      advance="no") stdev
-                 stdev_arr(j)=stdev
-              END DO
-              WRITE(getUnit(tmp_file),*)
-              CALL NULLIFY(tmp_file)
-              DEALLOCATE(elements_arr, stat=err)
-              IF (err /= 0) THEN
-                 CALL errorMessage("oorb / mcmcranging", &
-                      "Could not deallocate memory (5).", 1)
-                 STOP
-              END IF
-              ! Make plot using gnuplot:
-              CALL system("cp " // TRIM(str) // &
-                   "_mcmcranging_orbits.out sor_orbits.out")
-              IF (element_type_comp_prm == "cartesian") THEN
-                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_car.gp")
-              ELSE
-                 if (stdev_arr(1) < 1.0_bp) then
-                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep_nolog.gp")
-                 else
-                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
-                 end if
-              END IF
-              CALL system("cp sor_results.eps " // TRIM(str) // &
-                   "_mcmcranging_" // TRIM(element_type_comp_prm) // &
-                   "_results.eps")
-              CALL system("rm -f sor_orbits.out sor_results.eps " // & 
-                   TRIM(str) // "_mcmcranging_orbits.out ")
-!!$              // TRIM(str) // &
-!!$                   "_mcmcranging_sample_standard_deviations.out")
-              IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(str) // "_mcmcranging_" // &
-                      TRIM(element_type_comp_prm) // "_results.eps")
-              END IF
-              IF (plot_open) THEN
-                 CALL system("gv " // TRIM(str) // "_mcmcranging_" // &
-                      TRIM(element_type_comp_prm) // &
-                      "_results.eps* &")
-              END IF
-           END IF
-           DO j=1,SIZE(orb_arr_cmp)
-              CALL NULLIFY(orb_arr_cmp(j))
-           END DO
-           DEALLOCATE(orb_arr_cmp, stat=err)
-           DEALLOCATE(pdf_arr_cmp, stat=err)
-           DEALLOCATE(rchi2_arr_cmp, stat=err)
-           DEALLOCATE(repetition_arr_cmp, stat=err)
-!!$           DEALLOCATE(reg_apr_arr_cmp, stat=err)
-!!$           DEALLOCATE(jac_arr_cmp, stat=err)
-           IF (err /= 0) THEN
-              CALL errorMessage("oorb / mcmcranging", &
-                   "Could not deallocate memory (10).", 1)
-              STOP
-           END IF
-           IF (info_verb >= 2) THEN
-              WRITE(stdout,"(3(1X,A))") "Object", &
-                   TRIM(id), "successfully processed."
-           END IF
-
-        END IF
-        CALL NULLIFY(storb)
-        CALL NULLIFY(orb)
-        IF (info_verb > 2) THEN
-           WRITE(stdout,*)
-           WRITE(stdout,*)
-        END IF
-     END DO
-
-CASE ("random-walk_ranging")
-
-     ! Orbital inversion using random-walk ranging (Muinonen et al. 2015), 
-     ! that is, unlike in MCMCRanging, the acceptance value is based not
-     ! on the quotient of proposal p.d.f.:s, but on the comparison of
-     ! difference of proposal and previous chi^2 values to the predefined
-     ! boundary value, usually 20.1 (corresponding to 3*sigma).
-     
-     ! To be done:
-     !    1. Decide where to put the ran_walk flag (currently in StOrb/MCMCRanging4)
-     !     and put it there.
-     !    2. Implement the "take-over" automatisation. If user-given initial parameters
-     !     fail to produce a decent orbit, assume own initial guesses for range values.
-     !     These values are 2.5 +/- 0.2 au (MBOs) or 2.8 +/- 2.8 au (also to include NEOs
-     !     and Jupiter Trojans) and 43 +/- 8 au (TNOs).  
-     
-     CALL NULLIFY(epoch)
-     dyn_model = " "
-     integrator = " "
-     integration_step = -1.0_bp
-     apriori_a_max = -1.0_bp
-     apriori_a_min = -1.0_bp
-     apriori_periapsis_max = -1.0_bp
-     apriori_periapsis_min = -1.0_bp
-     apriori_apoapsis_max = -1.0_bp
-     apriori_apoapsis_min = -1.0_bp
-     apriori_rho_min = -1.0_bp
-     sor_type_prm = -1
-     sor_2point_method = " "
-     sor_2point_method_sw = " "
-     sor_norb = -1
-     sor_norb_sw = -1
-     sor_ntrial = -1
-     sor_ntrial_sw = -1
-     sor_niter = -1
-     sor_rho_init = HUGE(sor_rho_init)
-     generat_multiplier = -1.0_bp
-     sor_genwin_offset = -1.0_bp
-     sor_iterate_bounds = .TRUE.
-     accwin_multiplier = -1.0_bp
-     gaussian_rho = .FALSE.
-     regularized = .FALSE.
-     write_residuals = .FALSE.
-     CALL readConfigurationFile(conf_file, &
-          t0=epoch, &
-          dyn_model=dyn_model, &
-          perturbers=perturbers, &
-          integrator=integrator, &
-          integration_step=integration_step, &
-          dyn_model_init=dyn_model_init, &
-          integrator_init=integrator_init, &
-          integration_step_init=integration_step_init, &
-          apriori_a_max=apriori_a_max, &
-          apriori_a_min=apriori_a_min, &
-          apriori_periapsis_max=apriori_periapsis_max, &
-          apriori_periapsis_min=apriori_periapsis_min, &
-          apriori_apoapsis_max=apriori_apoapsis_max, &
-          apriori_apoapsis_min=apriori_apoapsis_min, &
-          apriori_rho_min=apriori_rho_min, &
-          sor_type=sor_type_prm, sor_2point_method=sor_2point_method, &
-          sor_2point_method_sw=sor_2point_method_sw, &
-          sor_norb=sor_norb, sor_norb_sw=sor_norb_sw, &
-          sor_ntrial=sor_ntrial, sor_ntrial_sw=sor_ntrial_sw, &
-          sor_niter=sor_niter, sor_rho_init=sor_rho_init, &
-          generat_multiplier=generat_multiplier, &
-          sor_genwin_offset=sor_genwin_offset, &
-          sor_iterate_bounds=sor_iterate_bounds, &
-          accwin_multiplier=accwin_multiplier, &
-          regularized_pdf=regularized, &
-          sor_random_obs=random_obs, sor_rho_gauss=gaussian_rho, &
-          write_residuals=write_residuals, &
-          ls_correction_factor=ls_correction_factor, &
-          ls_element_mask=ls_element_mask, &
-          ls_niter_major_max=ls_niter_major_max, &
-          ls_niter_major_min=ls_niter_major_min, &
-          ls_niter_minor=ls_niter_minor)
-     IF (error) THEN
-        CALL errorMessage("oorb / random-walk_ranging", &
-             "TRACE BACK (5)", 1)
-        STOP
-     END IF
-     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
-        CALL NULLIFY(epoch)
-        ! New epoch given as MJD TT
-        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
-        CALL NEW(epoch, mjd_tt, "TT")
-        IF (error) THEN
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "TRACE BACK (10)", 1)
-           STOP
-        END IF
-     END IF
-
-     ! Print header before printing first orbit:
-     first = .TRUE.
-     DO i=1,SIZE(obss_sep,dim=1)
-        id = getID(obss_sep(i))
-        IF (error) THEN
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "TRACE BACK (15)", 1)
-           STOP
-        END IF
-        IF (info_verb >= 2) THEN
-           WRITE(stdout,"(1X,I0,3(A),1X,I0,A,I0)") i, &
-                ". observation set (", TRIM(id), ")."
-        END IF
-        nobs = getNrOfObservations(obss_sep(i))
-        IF (error) THEN
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "TRACE BACK (20)", 1)
-           STOP
-        END IF
-        dt = getObservationalTimespan(obss_sep(i))
-        IF (error) THEN
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "TRACE BACK (40)", 1)
-           STOP
-        END IF
-        IF (info_verb >= 2) THEN
-           WRITE(stdout,"(4X,A,1X,F5.2,1X,A)") &
-                "Observational arc: ", dt, "days"
-        END IF
-        IF (sor_rho_init(3) > HUGE(sor_rho_init(3))/2) THEN
-           ! Initialize the rho2-rho1 range based on the observational timespan.
-           IF (dt > 10) THEN
-              sor_rho_init(3) = -0.5_bp
-           ELSE
-              sor_rho_init(3) = -0.05_bp*dt
-           END IF
-           sor_rho_init(4) = -sor_rho_init(3)
-        END IF
-        !chi2_min assuming the error model is perfect
-        obs_masks => getObservationMasks(obss_sep(i))
-        chi2_min_init=REAL(COUNT(obs_masks), bp)
-        print*,"Chi2min_init ", chi2_min_init
-        IF (ASSOCIATED(id_arr_storb_in) .AND. ALLOCATED(storb_arr_in)) THEN
-           DO j=1,SIZE(id_arr_storb_in)
-              IF (TRIM(id) == TRIM(id_arr_storb_in(j))) THEN
-                 EXIT
-              END IF
-           END DO
-           IF (j <= SIZE(id_arr_storb_in)) THEN
-              CALL setParameters(storb_arr_in(j), &
-                   dyn_model=dyn_model_init, &
-                   perturbers=perturbers, &
-                   integrator=integrator_init, &
-                   integration_step=integration_step_init, &
-                   accept_multiplier=accwin_multiplier, &
-                   apriori_rho_min=apriori_rho_min, &
-                   set_acceptance_window=.FALSE.)
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (30)", 1)
-                 STOP
-              END IF
-              CALL constrainRangeDistributions(storb_arr_in(j), obss_sep(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (31)", 1)
-                 STOP
-              END IF
-              ! Allow user to decide whether rho bounds are updated from orbit file
-              ! (but always update chi2min if orbit file is present)
-              IF (ALL(sor_iterate_bounds)) then
-                 CALL setRangeBounds(storb_arr_in(j))
-                 IF (error) THEN
-                    CALL errorMessage("oorb / random-walk_ranging", &
-                         "TRACE BACK (32)", 1)
-                    STOP
-                 END IF
-
-                 sor_rho_init(1:4) = getRangeBounds(storb_arr_in(j))
-                 IF (error) THEN
-                    CALL errorMessage("oorb / random-walk_ranging", &
-                         "TRACE BACK (33)", 1)
-                    STOP
-                 END IF
-              end if
-              ! Initialize chi2min
-              orb_arr_cmp => getSampleOrbits(storb_arr_in(j))
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (34)", 1)
-                 STOP
-              END IF
-              chi2_min=HUGE(chi2_min)
-              DO k=1,SIZE(orb_arr_cmp,dim=1)
-                 chi2=getChi2(storb_arr_in(j), orb_arr_cmp(k))
-                 if (chi2 < chi2_min_init) chi2_min_init=chi2
-              END DO
-           END IF
-        END IF
-!        print*,chi2_min_init
-        IF (.NOT.exist(epoch)) THEN
-           CALL NULLIFY(t)
-           obs = getObservation(obss_sep(i),1)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (45)", 1)
-              STOP
-           END IF
-           t = getTime(obs)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (50)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(obs)
-           mjd = getMJD(t, "tt")
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (55)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(t)
-           IF (get_cl_option("--exact-mid-epoch", .FALSE.)) THEN
-              mjd = mjd+dt/2.0_bp
-           ELSE
-              mjd = REAL(NINT(mjd+dt/2.0_bp),bp)
-           END IF
-           CALL NEW(t, mjd, "tt")   
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (60)", 1)
-              STOP
-           END IF
-        ELSE
-           CALL NULLIFY(t)
-           t = copy(epoch)
-        END IF
-        CALL NEW(storb, obss_sep(i))        
-        IF (error) THEN
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "TRACE BACK (65)", 1)
-           STOP
-        END IF
-        CALL setParameters(storb, &
-             dyn_model=dyn_model, &
-             perturbers=perturbers, &
-             integrator=integrator, &
-             integration_step=integration_step, &
-             outlier_rejection=outlier_rejection_prm, &
-             outlier_multiplier=outlier_multiplier_prm, &
-             t_inv=t, &
-             element_type=element_type_comp_prm, &
-             dchi2_rejection = dchi2_rejection, &
-             dchi2_max = dchi2_max, &
-             regularized_pdf = regularized, &
-             accept_multiplier=accwin_multiplier, &
-             apriori_a_max=apriori_a_max, apriori_a_min=apriori_a_min, &
-             apriori_periapsis_max=apriori_periapsis_max, &
-             apriori_periapsis_min=apriori_periapsis_min, &
-             apriori_apoapsis_max=apriori_apoapsis_max, &
-             apriori_apoapsis_min=apriori_apoapsis_min, &
-             apriori_rho_min=apriori_rho_min, &
-             sor_2point_method=sor_2point_method, &
-             sor_2point_method_sw=sor_2point_method_sw, &
-             sor_norb_sw=sor_norb_sw, sor_ntrial_sw=sor_ntrial_sw, &
-             sor_norb=sor_norb, sor_ntrial=sor_ntrial, &
-             sor_rho1_l=sor_rho_init(1), sor_rho1_u=sor_rho_init(2), &
-             sor_rho2_l=sor_rho_init(3), sor_rho2_u=sor_rho_init(4), &
-             sor_niter=sor_niter, sor_iterate_bounds=sor_iterate_bounds, &
-             sor_random_obs_selection=.FALSE., &
-             gaussian_pdf=gaussian_rho, &
-             generat_multiplier=generat_multiplier, &
-             sor_generat_offset=sor_genwin_offset, &
-             chi2_min = chi2_min_init)
-        IF (error) THEN
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "TRACE BACK (70)", 1)
-           STOP
-        END IF
-        SELECT CASE (sor_type_prm)
-        CASE (1)
-           CALL MCMCRanging4(storb) ! MCMCRanging3 = "basic" MCMC
-        CASE (2)
-!!$           CALL setParameters(storb, &
-!!$                dyn_model_init=dyn_model_init, &
-!!$                perturbers=perturbers, &
-!!$                integrator_init=integrator_init, &
-!!$                integration_step_init=integration_step_init, &
-!!$                accept_multiplier=accwin_multiplier, &
-!!$                apriori_rho_min=apriori_rho_min, &
-!!$                set_acceptance_window=.FALSE.)
-           !CALL autoMCMCRanging3(storb)
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "Automatic ranging not implemented for random-walk_ranging:", 1)
-        CASE default
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "Unknown type of ranging:", 1)
-           IF (err_verb >= 1) THEN
-              WRITE(stderr,"(2X,I0)") sor_type_prm
-           END IF
-           STOP              
-        END SELECT
-        IF (error) THEN
-           CALL errorMessage("oorb / random-walk_ranging", &
-                "MCMC failed:", 1)
-           IF (err_verb >= 1) THEN
-              WRITE(stderr,"(3A,1X,I0)") "ID: ", TRIM(id), &
-                   " and number of observations: ", nobs
-           END IF
-           error  = .FALSE.
-           CALL NEW(out_file, "problematic_observation_sets" // "." // &
-                TRIM(observation_format_out))
-           CALL setPositionAppend(out_file)
-           CALL OPEN(out_file)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (90)", 1)
-              STOP
-           END IF
-           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
-                TRIM(observation_format_out))
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (95)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(out_file)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (100)", 1)
-              STOP
-           END IF
-        ELSE
-           IF (info_verb >= 2) THEN
-              WRITE(stdout,"(3(1X,A))") "Mcmc inversion for object", &
-                   TRIM(id), "is ready."
-           END IF
-           CALL NEW(out_file, TRIM(id) // ".sor")
-           CALL OPEN(out_file)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (105)", 1)
-              STOP
-           END IF
-           ! WRITE OBSERVATIONS:
-           CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
-                TRIM(observation_format_out)) 
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (110)", 1)
-              STOP
-           END IF
-           WRITE(getUnit(out_file),"(A)") "#" 
-           ! WRITE MCMC PARAMETERS
-           CALL writeSORResults(storb, obss_sep(i), getUnit(out_file))
-           IF (error) THEN
-              CALL errorMessage("oorb / mrandom-walk_ranging", &
-                   "TRACE BACK (115)", 1)
-              STOP
-           END IF
-           CALL NULLIFY(out_file) 
-           ! WRITE ORBITAL-ELEMENT PDF
-           orb_arr_cmp => getSampleOrbits(storb)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (125)", 1)
-              STOP
-           END IF
-           pdf_arr_cmp => getPDFValues(storb, element_type_comp_prm)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (130)", 1)
-              STOP
-           END IF
-           rchi2_arr_cmp => getReducedChi2Distribution(storb)
-           IF (error) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "TRACE BACK (135)", 1)
-              STOP
-           END IF
-           CALL getResults(storb, repetition_arr_cmp=repetition_arr_cmp)
-!!$           CALL getResults(storb, &
-!!$                reg_apr_arr=reg_apr_arr_cmp, &
-!!$                jac_arr=jac_arr_cmp)
-!!$           IF (error) THEN
-!!$              CALL errorMessage("oorb / mcmcranging ", &
-!!$                   "TRACE BACK (140)", 1)
-!!$              STOP
-!!$           END IF
-           IF (separately) THEN
-              CALL NEW(out_file, TRIM(id) // ".orb")
-              CALL OPEN(out_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (145)", 1)
-                 STOP
-              END IF
-              lu_orb_out = getUnit(out_file)
-           END IF
-           DO j=1,SIZE(orb_arr_cmp,dim=1)
-              IF (orbit_format_out == "orb") THEN
-                 CALL writeOpenOrbOrbitFile(lu_orb_out, &
-                      print_header=j==1, &
-                      element_type_out=element_type_out_prm, &
-                      id=id, &
-                      orb=orb_arr_cmp(j), &
-                      element_type_pdf=element_type_comp_prm, &
-                      pdf=pdf_arr_cmp(j), &
-                      rchi2=rchi2_arr_cmp(j), &
-                      repetitions=repetition_arr_cmp(j), &
-                      mjd=mjd_epoch)
-!!$                   reg_apr=reg_apr_arr_cmp(j), &
-!!$                   jac_sph_inv=jac_arr_cmp(j,1), &
-!!$                   jac_car_kep=jac_arr_cmp(j,2), &
-!!$                   jac_equ_kep=jac_arr_cmp(j,3))
-              ELSE IF (orbit_format_out == "des") THEN
-                 CALL errorMessage("oorb / random-walk_rangingg", &
-                      "DES format not yet supported for MCMC output.", 1)
-                 STOP                 
-              END IF
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (150)", 1)
-                 STOP
-              END IF
-           END DO
-           IF (separately) THEN
-              CALL NULLIFY(out_file)
-              IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(id) // ".orb")
-              END IF
-           END IF
-           ! WRITE RESIDUALS
-           IF (write_residuals) THEN
-              CALL NEW(out_file, TRIM(out_fname) // ".res")
-              CALL setPositionAppend(out_file)
-              CALL OPEN(out_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (155)", 1)
-                 STOP
-              END IF
-              CALL writeResiduals(storb, obss_sep(i), getUnit(out_file))
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (160)", 1)
-                 STOP
-              END IF
-              CALL NULLIFY(out_file)
-           END IF
-           IF (plot_results) THEN
-              CALL toString(dt, str, error, frmt="(F10.2)")
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (165)", 1)
-                 STOP
-              END IF
-              str = TRIM(id) // "_"// TRIM(str)
-              CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
-                   "_random-walk_ranging_residual_stamps.eps")
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "TRACE BACK (170)", 1)
-                 STOP
-              END IF
-              IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(str) // "_random-walk_ranging_residual_stamps.eps")
-              END IF
-              IF (plot_open) THEN
-                 CALL system("gv " // TRIM(str) // "_random-walk_ranging_residual_stamps.eps* &")
-              END IF
-              ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
-              IF (err /= 0) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "Could not allocate memory (3).", 1)
-                 STOP
-              END IF
-              CALL NEW(tmp_file, TRIM(str)// "_random-walk_ranging_orbits.out")
-              CALL OPEN(tmp_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging ", &
-                      "TRACE BACK (175)", 1)
-                 STOP
-              END IF
-              DO j=1,SIZE(orb_arr_cmp,dim=1)
-                 IF (element_type_comp_prm == "cartesian") THEN
-                    CALL rotateToEcliptic(orb_arr_cmp(j))
-                 END IF
-                 elements_arr(j,1:6) = getElements(orb_arr_cmp(j), element_type_comp_prm)
-                 IF (error) THEN
-                    CALL errorMessage("oorb / random-walk_ranging", &
-                         "TRACE BACK (180)", 1)
-                    STOP
-                 END IF
-                 IF (element_type_comp_prm == "keplerian") THEN
-                    elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
-                 END IF
-                 elements_arr(j,7) = pdf_arr_cmp(j)
-                 t = getTime(orb_arr_cmp(j))
-                 IF (error) THEN
-                    CALL errorMessage("oorb / random-walk_ranging ", &
-                         "TRACE BACK (185)", 1)
-                    STOP
-                 END IF
-                 WRITE(getUnit(tmp_file),*) &
-                      elements_arr(j,1:6), &
-                      pdf_arr_cmp(j), &
-                      getCalendarDateString(t,"tdt")
-                 IF (error) THEN
-                    CALL errorMessage("oorb / random-walk_ranging ", &
-                         "TRACE BACK (190)", 1)
-                    STOP
-                 END IF
-                 CALL NULLIFY(t)
-              END DO
-              CALL NULLIFY(tmp_file)
-              CALL NEW(tmp_file, TRIM(str) // &
-                   "_random-walk_ranging_sample_standard_deviations.out")
-              CALL OPEN(tmp_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging ", &
-                      "TRACE BACK (195)", 1)
-                 STOP
-              END IF
-              WRITE(getUnit(tmp_file), "(F22.15,1X)", &
-                   advance="no") &
-                   getObservationalTimespan(obss_sep(i))
-              IF (error) THEN
-                 CALL errorMessage("oorb / random-walk_ranging ", &
-                      "TRACE BACK (200)", 1)
-                 STOP
-              END IF
-              DO j=1,6
-                 CALL moments(elements_arr(:,j), &
-                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
-                 WRITE(getUnit(tmp_file), "(F22.15,1X)", &
-                      advance="no") stdev
-                 stdev_arr(j)=stdev
-              END DO
-              WRITE(getUnit(tmp_file),*)
-              CALL NULLIFY(tmp_file)
-              DEALLOCATE(elements_arr, stat=err)
-              IF (err /= 0) THEN
-                 CALL errorMessage("oorb / random-walk_ranging", &
-                      "Could not deallocate memory (5).", 1)
-                 STOP
-              END IF
-              ! Make plot using gnuplot:
-              CALL system("cp " // TRIM(str) // &
-                   "_random-walk_ranging_orbits.out sor_orbits.out")
-              IF (element_type_comp_prm == "cartesian") THEN
-                 CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_car.gp")
-              ELSE
-                 if (stdev_arr(1) < 1.0_bp) then
-                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep_nolog.gp")
-                 else
-                    CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_kep.gp")
-                 end if
-              END IF
-              CALL system("cp sor_results.eps " // TRIM(str) // &
-                   "_random-walk_ranging_" // TRIM(element_type_comp_prm) // &
-                   "_results.eps")
-              CALL system("rm -f sor_orbits.out sor_results.eps " // & 
-                   TRIM(str) // "_random-walk_ranging_orbits.out ")
-!!$              // TRIM(str) // &
-!!$                   "_random-walk_ranging_sample_standard_deviations.out")
-              IF (compress) THEN
-                 CALL system("gzip -f " // TRIM(str) // "_random-walk_ranging_" // &
-                      TRIM(element_type_comp_prm) // "_results.eps")
-              END IF
-              IF (plot_open) THEN
-                 CALL system("gv " // TRIM(str) // "_random-walk_ranging_" // &
-                      TRIM(element_type_comp_prm) // &
-                      "_results.eps* &")
-              END IF
-           END IF
-           DO j=1,SIZE(orb_arr_cmp)
-              CALL NULLIFY(orb_arr_cmp(j))
-           END DO
-           DEALLOCATE(orb_arr_cmp, stat=err)
-           DEALLOCATE(pdf_arr_cmp, stat=err)
-           DEALLOCATE(rchi2_arr_cmp, stat=err)
-           DEALLOCATE(repetition_arr_cmp, stat=err)
-!!$           DEALLOCATE(reg_apr_arr_cmp, stat=err)
-!!$           DEALLOCATE(jac_arr_cmp, stat=err)
-           IF (err /= 0) THEN
-              CALL errorMessage("oorb / random-walk_ranging", &
-                   "Could not deallocate memory (10).", 1)
-              STOP
-           END IF
            IF (info_verb >= 2) THEN
               WRITE(stdout,"(3(1X,A))") "Object", &
                    TRIM(id), "successfully processed."
@@ -3338,7 +2275,8 @@ CASE ("random-walk_ranging")
      END DO
 
 
-!*********************
+
+
 
   CASE ("simplex")
 
@@ -7107,25 +6045,25 @@ CASE ("random-walk_ranging")
               IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
                  CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
                  CALL getCalendarDate(epoch, "TT", year1, month1, day1)
-!~                  WRITE(stderr,'(A)') ""
-!~                  WRITE(stderr,'(A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
-!~                       "Planetary encounters by object " // TRIM(id_arr_storb_in(i)) // &
-!~                       " between ", year0, "-", month0, "-", day0, " and ", &
-!~                       year1, "-", month1, "-", day1, ":"
+                 WRITE(stderr,'(A)') ""
+                 WRITE(stderr,'(A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
+                      "Planetary encounters by object " // TRIM(id_arr_storb_in(i)) // &
+                      " between ", year0, "-", month0, "-", day0, " and ", &
+                      year1, "-", month1, "-", day1, ":"
                  DO j=1,SIZE(encounters,dim=1)
-!~                     WRITE(stderr,'(A,I0,A)') "Orbit #", j, ":"
+                    WRITE(stderr,'(A,I0,A)') "Orbit #", j, ":"
                     DO k=1,SIZE(encounters,dim=2)
                        IF (encounters(j,k,2) < 1.1_bp) THEN
                           WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F15.6,1X,A,1X,F0.6,1X,A)') &
                                "!! I-M-P-A-C-T !! with", planetary_locations(k), &
                                "at MJD", encounters(j,k,1), "TT given a stepsize of", &
                                encounters(j,k,4), "days."
-!~                        ELSE
-!~                           WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F15.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
-!~                                "Closest encounter with", planetary_locations(k), &
-!~                                "at MJD", encounters(j,k,1), &
-!~                                "TT at a distance of", encounters(j,k,3), &
-!~                                "AU given a stepsize of", encounters(j,k,4), "days."
+                       ELSE
+                          WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F15.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
+                               "Closest encounter with", planetary_locations(k), &
+                               "at MJD", encounters(j,k,1), &
+                               "TT at a distance of", encounters(j,k,3), &
+                               "AU given a stepsize of", encounters(j,k,4), "days."
                        END IF
                     END DO
                  END DO
@@ -7407,13 +6345,13 @@ CASE ("random-walk_ranging")
                  STOP
               END IF
               IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
-!~                  CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
-!~                  CALL getCalendarDate(epoch, "TT", year1, month1, day1)
-!~                  WRITE(stderr,'(A)') ""
-!~                  WRITE(stderr,'(A,I0,A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
-!~                       "Planetary encounters by object " // TRIM(id_arr_in(i)) // &
-!~                       " (orbit #", i, ") between ", year0, "-", month0, &
-!~                       "-", day0, " and ", year1, "-", month1, "-", day1, ":"
+                 CALL getCalendarDate(epoch0, "TT", year0, month0, day0)
+                 CALL getCalendarDate(epoch, "TT", year1, month1, day1)
+                 WRITE(stderr,'(A)') ""
+                 WRITE(stderr,'(A,I0,A,I0,A,I0,A,F0.5,A,I0,A,I0,A,F0.5,A)') &
+                      "Planetary encounters by object " // TRIM(id_arr_in(i)) // &
+                      " (orbit #", i, ") between ", year0, "-", month0, &
+                      "-", day0, " and ", year1, "-", month1, "-", day1, ":"
                  DO j=1,SIZE(encounters,dim=2)
                     IF (encounters(1,j,2) < 1.1_bp) THEN 
                        ! encounters(1,j,2) == 1 == impact
@@ -7421,11 +6359,11 @@ CASE ("random-walk_ranging")
                             "!! I-M-P-A-C-T !! with", planetary_locations(j), &
                             "at MJD", encounters(1,j,1), "TT given a stepsize of", &
                             encounters(1,j,4), "days."
-!~                     ELSE
-!~                        WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F15.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
-!~                             "Closest encounter with", planetary_locations(j), &
-!~                             "at MJD", encounters(1,j,1), "TT at a distance of", &
-!~                             encounters(1,j,3), "AU given a stepsize of", encounters(1,j,4), "days."
+                    ELSE
+                       WRITE(stderr,'(A22,1X,A7,1X,A6,1X,F15.6,1X,A,1X,F11.8,1X,A,1X,F0.6,1X,A)') &
+                            "Closest encounter with", planetary_locations(j), &
+                            "at MJD", encounters(1,j,1), "TT at a distance of", &
+                            encounters(1,j,3), "AU given a stepsize of", encounters(1,j,4), "days."
                     END IF
                  END DO
               END IF
