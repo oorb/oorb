@@ -4006,7 +4006,7 @@ CONTAINS
          ASSOCIATED(this%orb_arr_cmp)) THEN
        indx_ml = MAXLOC(this%pdf_arr_cmp,dim=1)
        getNominalOrbit = copy(this%orb_arr_cmp(indx_ml))
-       print*,indx_ml
+       print*,indx_ml, this%pdf_arr_cmp(indx_ml)
     ELSE
        getNominalOrbit = copy(this%orb_ml_cmp)
     END IF
@@ -5986,7 +5986,10 @@ CONTAINS
 
 
 
+
   SUBROUTINE autoMCMCRanging3(this)
+    !! Calls MCMCRanging (earlier: MCMCRanging3). Stable version.
+    !! NOTE: Combine with autoMCMCRanging (take parts from here e.g. stdevs).
 
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
@@ -6013,8 +6016,8 @@ CONTAINS
             storb%sor_ntrial_prm, "TRIALS..."
        WRITE(stdout,"(A)") "***************"
     END IF
-    CALL MCMCRanging3(storb)
-!    CALL MCMCRanging4(storb)
+    CALL MCMCRanging(storb)
+!    CALL MCMCRanging3(storb)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / autoMCMCRanging3", &
             "TRACE BACK (10)", 1)
@@ -6056,8 +6059,8 @@ CONTAINS
             storb%sor_norb_prm, "SAMPLE ORBITS..."
        WRITE(stdout,"(A)") "***************"
     END IF
-    CALL MCMCRanging3(storb)
-!    CALL MCMCRanging4(storb)
+    CALL MCMCRanging(storb)
+!    CALL MCMCRanging3(storb)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / autoMCMCRanging3", &
             "TRACE BACK (30)", 1)
@@ -6111,8 +6114,8 @@ CONTAINS
 
        this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
        this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
-       CALL MCMCRanging3(this)
-       !CALL MCMCRanging4(storb)
+       CALL MCMCRanging(this)
+       !CALL MCMCRanging3(storb)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / autoMCMCRanging3", &
                "TRACE BACK (50)", 1)
@@ -6163,10 +6166,11 @@ CONTAINS
 
 
 
-  SUBROUTINE autoMCMCRanging4(this)
-    ! Automated version for either mcmc or random-walk
+  SUBROUTINE autoMCMCRanging(this)
+    ! Automated version for mcmc. Stable version (pre-2015 version, see autoMCMCRanging2)
+    ! Calls MCMCRanging (earlier: MCMCRanging3).
     ! Using for initialization either
-    ! - chains with uniform proposal
+    ! - no a priori orbit information: Ranging (i.e. uniform proposal 
     ! - orbital distribution from input file
 
     IMPLICIT NONE
@@ -6174,8 +6178,7 @@ CONTAINS
     TYPE(StochasticOrbit) :: storb
     REAL(bp), DIMENSION(4) :: sor_rho_init
 
-    ! Only initialize if not already done (in oorb.f90 with input file)
-    IF (ALL(this%sor_iterate_bounds_prm)) THEN
+    IF (.NOT.ASSOCIATED(this%orb_arr_cmp) .OR. .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
 
        this%sor_niter_cmp = 0
        ! First iteration with Ranging and uniform sampling
@@ -6191,7 +6194,7 @@ CONTAINS
        END IF
        CALL statisticalRanging(storb)
        IF (error .OR. storb%sor_norb_cmp <= 1) THEN
-          CALL errorMessage("StochasticOrbit / autoMCMCRanging4", &
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
                "First iteration failed.", 1)
           RETURN
        END IF
@@ -6212,60 +6215,300 @@ CONTAINS
        END IF
        CALL statisticalRanging(storb)
        IF (error .OR. storb%sor_norb_cmp <= 1) THEN
-          CALL errorMessage("StochasticOrbit / autoMCMCRanging4", &
-               "First iteration failed.", 1)
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+               "Second iteration failed.", 1)
           RETURN
        END IF
        this%sor_niter_cmp = 2
        CALL updateRanging(storb, automatic=.TRUE.)
-       sor_rho_init=getRangeBounds(storb)
-       this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
-       this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
 
-       ! Use ml orbit as the first trial in the MCMC chain
-       this%orb_ml_prm=copy(storb%orb_ml_cmp)
-       call nullify(storb)
+    ELSE
+       storb = copy(this)
+       storb%sor_norb_prm = 50
+       storb%sor_ntrial_prm = this%sor_ntrial_sw_prm
+       ! Compute range distribution from orbit distribution
+       CALL constrainRangeDistributions(storb, storb%obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+               "TRACE BACK (15)", 1)
+          STOP
+       END IF
+       CALL setRangeBounds(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+               "TRACE BACK (20)", 1)
+          STOP
+       END IF
+       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
+!        storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A)") "***************"
+          WRITE(stdout,"(2X,A)") "FIRST ITERATION"
+          WRITE(stdout,"(2X,A)") "***************"
+       END IF
+       CALL MCMCRanging(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+               "TRACE BACK (10)", 1)
+          STOP
+       END IF
+       this%sor_niter_cmp = 1
+
+       ! Is this needed, since burn in in MCMC discards orbits based on their rms-values? 
+       !CALL constrainRangeDistributions(storb, storb%obss)
+       !IF (error) THEN
+       !   CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+       !        "TRACE BACK (15)", 1)
+       !   STOP
+       !END IF
+       CALL setRangeBounds(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+               "TRACE BACK (20)", 1)
+          STOP
+       END IF
+       storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+       !storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
+
+       !Second iterarion
+       storb%sor_norb_prm = this%sor_norb_sw_prm
+       storb%sor_ntrial_prm = this%sor_ntrial_sw_prm
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(1X)")
+          WRITE(stdout,"(2X,A)") "*****************"
+          WRITE(stdout,"(2X,A)") "SECOND ITERATION "
+          WRITE(stdout,"(2X,A)") "*****************"
+       END IF
+       CALL MCMCRanging(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+               "TRACE BACK (10)", 1)
+          STOP
+       END IF
+       this%sor_niter_cmp = 2
+       CALL setRangeBounds(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+               "TRACE BACK (20)", 1)
+          STOP
+       END IF
+
     ENDIF
+    sor_rho_init=getRangeBounds(storb)
+    this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
+    this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
+    print*,sor_rho_init
+    ! Use ml orbit as the first trial in the MCMC chain
+    this%orb_ml_prm=copy(storb%orb_ml_cmp)
+    call nullify(storb)
 
     ! Start actual Markov chain
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A)") "*****************"
-       WRITE(stdout,"(A,1X,I0,1X,A)") "FINAL SAMPLING FOR", this%sor_norb_prm, "SAMPLE ORBITS..."
+       WRITE(stdout,"(2X,A,1X,I0,1X,A)") "FINAL SAMPLING FOR", this%sor_norb_prm, "SAMPLE ORBITS..."
        WRITE(stdout,"(2X,A)") "*****************"
     END IF
-    CALL MCMCRanging3(this)
-
+    CALL MCMCRanging(this)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / autoMCMCRanging4", &
+       CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
             "TRACE BACK (50)", 1)
        STOP
     END IF
+    this%sor_niter_cmp = 3
+    storb=copy(this)
+    CALL setRangeBounds(storb)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
+            "TRACE BACK (20)", 1)
+       STOP
+    END IF
+    call nullify(storb)
 
-  END SUBROUTINE autoMCMCRanging4
+  END SUBROUTINE autoMCMCRanging
 
 
+
+
+  SUBROUTINE autoRandomWalkRanging(this)
+    ! Automated version for random walk. 
+    ! Calls randomWalkRanging.
+    ! Using for initialization either
+    ! - no a priori orbit information: Ranging (i.e. uniform proposal 
+    ! - orbital distribution from input file
+
+    IMPLICIT NONE
+    TYPE(StochasticOrbit), INTENT(inout) :: this
+    TYPE(StochasticOrbit) :: storb
+    REAL(bp), DIMENSION(4) :: sor_rho_init
+
+    IF (.NOT.ASSOCIATED(this%orb_arr_cmp) .OR. .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
+
+       this%sor_niter_cmp = 0
+       ! First iteration with Ranging and uniform sampling
+       storb = copy(this)
+       storb%sor_norb_prm = 20
+       storb%sor_ntrial_prm = this%sor_ntrial_sw_prm
+       storb%dchi2_rejection_prm = .FALSE.
+
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A)") "***************"
+          WRITE(stdout,"(2X,A)") "FIRST ITERATION"
+          WRITE(stdout,"(2X,A)") "***************"
+       END IF
+       CALL statisticalRanging(storb)
+       IF (error .OR. storb%sor_norb_cmp <= 1) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "First iteration failed.", 1)
+          RETURN
+       END IF
+       this%sor_niter_cmp = 1
+       CALL updateRanging(storb, automatic=.TRUE.)
+
+       !CALL NULLIFY(storb)
+
+       ! Second iteration
+       !storb = copy(this)
+       storb%sor_norb_prm = this%sor_norb_sw_prm
+       storb%sor_ntrial_prm = this%sor_ntrial_sw_prm    
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(1X)")
+          WRITE(stdout,"(2X,A)") "*****************"
+          WRITE(stdout,"(2X,A)") "SECOND ITERATION "
+          WRITE(stdout,"(2X,A)") "*****************"
+       END IF
+       CALL statisticalRanging(storb)
+       IF (error .OR. storb%sor_norb_cmp <= 1) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "Second iteration failed.", 1)
+          RETURN
+       END IF
+       this%sor_niter_cmp = 2
+       CALL updateRanging(storb, automatic=.TRUE.)
+
+    ELSE
+       storb = copy(this)
+       storb%sor_norb_prm = 50
+       storb%sor_ntrial_prm = this%sor_ntrial_sw_prm
+       ! Compute range distribution from orbit distribution
+       CALL constrainRangeDistributions(storb, storb%obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "TRACE BACK (15)", 1)
+          STOP
+       END IF
+       CALL setRangeBounds(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "TRACE BACK (20)", 1)
+          STOP
+       END IF
+       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A)") "***************"
+          WRITE(stdout,"(2X,A)") "FIRST ITERATION"
+          WRITE(stdout,"(2X,A)") "***************"
+       END IF
+       CALL randomWalkRanging(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "TRACE BACK (10)", 1)
+          STOP
+       END IF
+       this%sor_niter_cmp = 1
+
+       ! Is this needed, since burn in in MCMC discards orbits based on their rms-values? 
+       !CALL constrainRangeDistributions(storb, storb%obss)
+       !IF (error) THEN
+       !   CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+       !        "TRACE BACK (15)", 1)
+       !   STOP
+       !END IF
+       CALL setRangeBounds(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "TRACE BACK (20)", 1)
+          STOP
+       END IF
+       if (storb%chi2_min_prm > storb%chi2_min_cmp) storb%chi2_min_prm = storb%chi2_min_cmp
+       storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+
+       !Second iterarion
+       storb%sor_norb_prm = this%sor_norb_sw_prm
+       storb%sor_ntrial_prm = this%sor_ntrial_sw_prm
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(1X)")
+          WRITE(stdout,"(2X,A)") "*****************"
+          WRITE(stdout,"(2X,A)") "SECOND ITERATION "
+          WRITE(stdout,"(2X,A)") "*****************"
+       END IF
+       CALL randomWalkRanging(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "TRACE BACK (10)", 1)
+          STOP
+       END IF
+       this%sor_niter_cmp = 2
+       CALL setRangeBounds(storb)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+               "TRACE BACK (20)", 1)
+          STOP
+       END IF
+
+    ENDIF
+    sor_rho_init=getRangeBounds(storb)
+    this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
+    this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
+    ! Use ml orbit as the first trial in the MCMC chain
+    this%orb_ml_prm=copy(storb%orb_ml_cmp)
+    print*, 'Chi2min prm, cmp', storb%chi2_min_prm, storb%chi2_min_cmp
+    this%chi2_min_prm = storb%chi2_min_cmp
+    call nullify(storb)
+
+    ! Start actual Markov chain
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(2X,A)") "*****************"
+       WRITE(stdout,"(2X,A,1X,I0,1X,A)") "FINAL SAMPLING FOR", this%sor_norb_prm, "SAMPLE ORBITS..."
+       WRITE(stdout,"(2X,A)") "*****************"
+    END IF
+    CALL randomWalkRanging(this)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+            "TRACE BACK (50)", 1)
+       STOP
+    END IF
+    this%sor_niter_cmp = 3
+    print*, 'Chi2min prm, cmp', this%chi2_min_prm, this%chi2_min_cmp
+    storb=copy(this)
+    CALL setRangeBounds(storb)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
+            "TRACE BACK (20)", 1)
+       STOP
+    END IF
+    call nullify(storb)
+
+  END SUBROUTINE autoRandomWalkRanging
 
 
 
 
   !! *Description:*
   !!
-  !! Markov Chain Monte Carlo ranging method.
-  !!   - Burn in phase: discard accepted orbits until (R.A., Dec.) residual rms are reasonable.
-  !!   - Random-walk option (ran_walk) NOTE: parameter should be made accessible from conf!
+  !! Random-walk ranging method.
+  !!   - Burn in phase: discard accepted orbits until first chi2 in the phase-space are 
+  !!     defined by dchi2.
+  !!   - Random-walk option (ran_walk) can be turned off, which reverts the routine to 
+  !!     a version of MCMC ranging
   !!
   !! Returns error.
   !!
-  SUBROUTINE MCMCRanging4(this)
+  SUBROUTINE randomWalkRanging(this)
 
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
     TYPE(Orbit) :: orb
-    TYPE(SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords, comp_scoords !observed
-    !and
-    !computed
-    !sky
-    !positions
+    TYPE(SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords, comp_scoords
     TYPE(SphericalCoordinates) :: obs_scoord1, obs_scoord2, obs_help
     TYPE(CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
     TYPE(CartesianCoordinates) :: obs_ccoord_helio1, &
@@ -6294,7 +6537,7 @@ CONTAINS
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., frst_found = .FALSE., ran_walk = .false., burnin_case=.false.
 
-    ! SWITCH TO RANDOM WALK RANGING (-> move later to conf)
+    ! SWITCH TO RANDOM WALK RANGING (remnant: no need now when separated from mcmc)
     ran_walk = .true.
 
     IF (info_verb >= 2) THEN
@@ -6304,7 +6547,7 @@ CONTAINS
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "Object has not yet been initialized.", 1)
        RETURN
     END IF
@@ -6314,7 +6557,7 @@ CONTAINS
        DEALLOCATE(this%orb_arr_cmp, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "Could not deallocate memory (5).", 1)
           RETURN
        END IF
@@ -6322,7 +6565,7 @@ CONTAINS
     ALLOCATE(this%orb_arr_cmp(this%sor_norb_prm), stat=err) 
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "Could not allocate memory (5).", 1)
        RETURN
     END IF
@@ -6340,7 +6583,7 @@ CONTAINS
          stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "Could not allocate memory (10).", 1)
        RETURN 
     END IF
@@ -6350,7 +6593,7 @@ CONTAINS
        DEALLOCATE(this%pdf_arr_cmp, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "Could not deallocate memory (10).", 1)
           RETURN
        END IF
@@ -6358,7 +6601,7 @@ CONTAINS
     ALLOCATE(this%pdf_arr_cmp(this%sor_norb_prm), stat=err) 
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "Could not allocate memory (15).", 1)
        RETURN
     END IF
@@ -6368,7 +6611,7 @@ CONTAINS
     ! Get observed sky positions (original observational data) 
     obs_scoords => getObservationSCoords(this%obss) 
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "TRACE BACK (5)", 1)
        RETURN
     END IF
@@ -6377,7 +6620,7 @@ CONTAINS
        CALL rotateToEquatorial(obs_scoords(i))
        obs_coords(i,:) = getCoordinates(obs_scoords(i))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (10)", 1)
           CALL NULLIFY(obs_scoords(i))
           RETURN
@@ -6388,7 +6631,7 @@ CONTAINS
 
     obs_masks => getObservationMasks(this%obss)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "TRACE BACK (15)", 1)
        RETURN
     END IF
@@ -6401,7 +6644,7 @@ CONTAINS
 
     information_matrix_obs => getBlockDiagInformationMatrix(this%obss)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "TRACE BACK (20)", 1)
        DEALLOCATE(obsy_ccoords, stat=err)
        DEALLOCATE(residuals, stat=err)
@@ -6413,7 +6656,7 @@ CONTAINS
 
     obsy_ccoords => getObservatoryCCoords(this%obss) 
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "TRACE BACK (25)", 1)
        RETURN
     END IF
@@ -6423,7 +6666,7 @@ CONTAINS
        obs_pair = RESHAPE(this%sor_pair_arr_prm, (/ 2 /))
     ELSE
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "Use of random observation pairs not accepted.", 1)
        RETURN
     END IF
@@ -6431,7 +6674,7 @@ CONTAINS
     obs_scoord1 = copy(obs_scoords(obs_pair(1)))
     obs_scoord2 = copy(obs_scoords(obs_pair(2)))
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "TRACE BACK (30)", 1)
        RETURN
     END IF
@@ -6458,19 +6701,24 @@ CONTAINS
     state_(1:3) = getPosition(obs_scoord1)
     state_(4:6) = getPosition(obs_scoord2)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "TRACE BACK (50)", 1)
        DEALLOCATE(obs_masks, stat=err)
        RETURN
     END IF
     ! Center the first trial to the ml orbit if available
-    !if (exist(this%orb_ml_cmp)) then
-    !CALL getEphemerides(this%orb_ml_cmp, obsy_ccoords, comp_scoords)
-    !state_(1)=comp_scoords(obs_pair(1),1)
-    !state_(4)=comp_scoords(obs_pair(2),1)
-    ! else
-    state_(1) = (this%sor_rho_prm(1,2) + this%sor_rho_prm(1,1))/2.0_bp
-    state_(4) = state_(1) + (this%sor_rho_prm(2,2) + this%sor_rho_prm(2,1))/2.0_bp
+    IF (exist(this%orb_ml_prm)) then
+       CALL getEphemerides(this%orb_ml_prm, obsy_ccoords, comp_scoords)
+       state_(1)=getDistance(comp_scoords(obs_pair(1)))
+       state_(4)=getDistance(comp_scoords(obs_pair(2)))
+       print*,state_(1), state_(4)
+    else
+       state_(1) = (this%sor_rho_prm(1,2) + this%sor_rho_prm(1,1))/2.0_bp
+       state_(4) = state_(1) + (this%sor_rho_prm(2,2) + this%sor_rho_prm(2,1))/2.0_bp
+    endif
+    print*,"...centered around ", state_(1), state_(4)
+    !state_(1) = (this%sor_rho_prm(1,2) + this%sor_rho_prm(1,1))/2.0_bp
+    !state_(4) = state_(1) + (this%sor_rho_prm(2,2) + this%sor_rho_prm(2,1))/2.0_bp
 
     ! set counter some parameters
     this%sor_norb_cmp = 0
@@ -6523,7 +6771,7 @@ CONTAINS
        CALL NEW(obs_scoord1, state(1), state(2), state(3), getTime(obsy_ccoords(obs_pair(1))))
        CALL NEW(obs_scoord2, state(4), state(5), state(6), getTime(obsy_ccoords(obs_pair(2))))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (65)", 1)
           RETURN
        END IF
@@ -6534,7 +6782,7 @@ CONTAINS
        CALL NEW(obs_ccoord_topo1, obs_scoord1) 
        CALL NEW(obs_ccoord_topo2, obs_scoord2) 
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (70)", 1)
           RETURN
        END IF
@@ -6545,7 +6793,7 @@ CONTAINS
        CALL rotateToEcliptic(obsy_ccoords(obs_pair(1)))
        CALL rotateToEcliptic(obsy_ccoords(obs_pair(2)))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (75)", 1)
           RETURN
        END IF
@@ -6556,7 +6804,7 @@ CONTAINS
        obs_ccoord_helio1 = copy(obsy_ccoords(obs_pair(1)) + obs_ccoord_topo1)
        obs_ccoord_helio2 = copy(obsy_ccoords(obs_pair(2)) + obs_ccoord_topo2)
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (80)", 1)
           RETURN
        END IF
@@ -6564,7 +6812,7 @@ CONTAINS
        CALL estimateLightTime(obs_ccoord_helio1, state(1))! changed from 3 and 6
        CALL estimateLightTime(obs_ccoord_helio2, state(1)+state(4))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (85)", 1)
           RETURN
        END IF
@@ -6580,7 +6828,7 @@ CONTAINS
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
        IF (error) THEN 
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (86)", 1)
           error = .FALSE.
           CYCLE
@@ -6612,7 +6860,7 @@ CONTAINS
              END IF
           END IF
           IF (error) THEN 
-             CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+             CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                   "TRACE BACK (xx)", 1)
              error = .FALSE.
              CYCLE
@@ -6687,7 +6935,7 @@ CONTAINS
        IF (.NOT. equal(this%t_inv_prm,getTime(orb))) THEN
           CALL propagate(orb, this%t_inv_prm)
           IF (error) THEN 
-             CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+             CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                   "TRACE BACK (90)", 1)
              error = .FALSE.
              CYCLE
@@ -6706,7 +6954,7 @@ CONTAINS
        ! get computed sky positions - spherical coordinates
        CALL getEphemerides(orb, obsy_ccoords, comp_scoords, partials_arr=partials_arr)
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (45)", 1)
           DEALLOCATE(comp_scoords, stat=err)
           DEALLOCATE(partials_arr, stat=err)
@@ -6727,7 +6975,7 @@ CONTAINS
           CALL rotateToEquatorial(comp_scoords(i))
           comp_coords(i,:) = getCoordinates(comp_scoords(i))
           IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+             CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                   "TRACE BACK (55)", 1)
              DEALLOCATE(obsy_ccoords, stat=err)
              DEALLOCATE(obs_masks, stat=err)
@@ -6759,7 +7007,7 @@ CONTAINS
 
        chi2 = chi_square(residuals, information_matrix_obs, errstr=errstr)
        IF (LEN_TRIM(errstr) /= 0) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (60)", 1)
           DEALLOCATE(obs_masks, stat=err)
           RETURN
@@ -6777,7 +7025,7 @@ CONTAINS
        DEALLOCATE(partials_arr, stat=err)
        jac_sph_inv = ABS(determinant(jacobian_matrix, errstr))
        IF (LEN_TRIM(errstr) /= 0) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "Unsuccessful computation of determinant of orbital element " // &
                "jacobian matrix: " // TRIM(errstr), 1)
           CALL matrix_print(jacobian_matrix, stderr, errstr)
@@ -6919,7 +7167,7 @@ CONTAINS
              ! From ranging:
              ! "- generated distance to object at second epoch (NB! Relative
              !   to the distance at the first epoch.)"
-             this%sor_rho_arr_cmp(this%sor_norb_cmp,2) = state(1) - state(4)
+             this%sor_rho_arr_cmp(this%sor_norb_cmp,2) = state(4) ! - state(4)
 !          ELSE IF (count_dchi2 > this%count_dchi2_prm) then
 !             burn_in = .FALSE.
           END IF
@@ -6971,6 +7219,7 @@ CONTAINS
        CALL propagate(this%orb_arr_cmp, this%t_inv_prm)
     i = MAXLOC(this%pdf_arr_cmp,dim=1)
     this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
+    this%chi2_min_cmp = chi2min
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
             this%cov_type_prm, getElementType(this%orb_ml_cmp)
@@ -6982,7 +7231,7 @@ CONTAINS
     END IF
     ELSE
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "No sample orbits found!", 1)
 !       RETURN
     END IF
@@ -6996,12 +7245,12 @@ CONTAINS
          information_matrix_obs, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / randomWalkRanging", &
             "Could not deallocate memory (20).", 1)
        RETURN
     END IF
 
-  END SUBROUTINE MCMCRanging4
+  END SUBROUTINE randomWalkRanging
 
 
 
@@ -7009,12 +7258,13 @@ CONTAINS
 
   !! *Description:*
   !!
-  !! Markov Chain Monte Carlo ranging method.
+  !! Markov Chain Monte Carlo ranging method. 
+  !!   - Currently stable version! (Pre-2015 version, see MCMCRanging2)
   !!   - Burn in phase: discard accepted orbits until (R.A., Dec.) residual rms are reasonable.
   !!
   !! Returns error.
   !!
-  SUBROUTINE MCMCRanging3(this)
+  SUBROUTINE MCMCRanging(this)
 
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
@@ -7057,7 +7307,7 @@ CONTAINS
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "Object has not yet been initialized.", 1)
        RETURN
     END IF
@@ -7067,7 +7317,7 @@ CONTAINS
        DEALLOCATE(this%orb_arr_cmp, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "Could not deallocate memory (5).", 1)
           RETURN
        END IF
@@ -7075,7 +7325,7 @@ CONTAINS
     ALLOCATE(this%orb_arr_cmp(this%sor_norb_prm), stat=err) 
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "Could not allocate memory (5).", 1)
        RETURN
     END IF
@@ -7093,7 +7343,7 @@ CONTAINS
          stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "Could not allocate memory (10).", 1)
        RETURN 
     END IF
@@ -7103,7 +7353,7 @@ CONTAINS
        DEALLOCATE(this%pdf_arr_cmp, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "Could not deallocate memory (10).", 1)
           RETURN
        END IF
@@ -7111,7 +7361,7 @@ CONTAINS
     ALLOCATE(this%pdf_arr_cmp(this%sor_norb_prm), stat=err) 
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "Could not allocate memory (15).", 1)
        RETURN
     END IF
@@ -7121,7 +7371,7 @@ CONTAINS
     ! Get observed sky positions (original observational data) 
     obs_scoords => getObservationSCoords(this%obss) 
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "TRACE BACK (5)", 1)
        RETURN
     END IF
@@ -7130,7 +7380,7 @@ CONTAINS
        CALL rotateToEquatorial(obs_scoords(i))
        obs_coords(i,:) = getCoordinates(obs_scoords(i))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (10)", 1)
           CALL NULLIFY(obs_scoords(i))
           RETURN
@@ -7141,7 +7391,7 @@ CONTAINS
 
     obs_masks => getObservationMasks(this%obss)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "TRACE BACK (15)", 1)
        RETURN
     END IF
@@ -7154,7 +7404,7 @@ CONTAINS
 
     information_matrix_obs => getBlockDiagInformationMatrix(this%obss)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "TRACE BACK (20)", 1)
        DEALLOCATE(obsy_ccoords, stat=err)
        DEALLOCATE(residuals, stat=err)
@@ -7166,7 +7416,7 @@ CONTAINS
 
     obsy_ccoords => getObservatoryCCoords(this%obss) 
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "TRACE BACK (25)", 1)
        RETURN
     END IF
@@ -7176,7 +7426,7 @@ CONTAINS
        obs_pair = RESHAPE(this%sor_pair_arr_prm, (/ 2 /))
     ELSE
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "Use of random observation pairs not accepted.", 1)
        RETURN
     END IF
@@ -7184,7 +7434,7 @@ CONTAINS
     obs_scoord1 = copy(obs_scoords(obs_pair(1)))
     obs_scoord2 = copy(obs_scoords(obs_pair(2)))
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "TRACE BACK (30)", 1)
        RETURN
     END IF
@@ -7211,12 +7461,12 @@ CONTAINS
     state_(1:3) = getPosition(obs_scoord1)
     state_(4:6) = getPosition(obs_scoord2)
     IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "TRACE BACK (50)", 1)
        DEALLOCATE(obs_masks, stat=err)
        RETURN
     END IF
-    ! Center the first trial to the ml orbit if available -> this could be taken outside mcmcranging?
+    ! Center the first trial to the ml orbit if available
     IF (exist(this%orb_ml_prm)) then
        CALL getEphemerides(this%orb_ml_prm, obsy_ccoords, comp_scoords)
        state_(1)=getDistance(comp_scoords(obs_pair(1)))
@@ -7279,7 +7529,7 @@ CONTAINS
        CALL NEW(obs_scoord1, state(1), state(2), state(3), getTime(obsy_ccoords(obs_pair(1))))
        CALL NEW(obs_scoord2, state(4), state(5), state(6), getTime(obsy_ccoords(obs_pair(2))))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (65)", 1)
           RETURN
        END IF
@@ -7290,7 +7540,7 @@ CONTAINS
        CALL NEW(obs_ccoord_topo1, obs_scoord1) 
        CALL NEW(obs_ccoord_topo2, obs_scoord2) 
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (70)", 1)
           RETURN
        END IF
@@ -7301,7 +7551,7 @@ CONTAINS
        CALL rotateToEcliptic(obsy_ccoords(obs_pair(1)))
        CALL rotateToEcliptic(obsy_ccoords(obs_pair(2)))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (75)", 1)
           RETURN
        END IF
@@ -7312,7 +7562,7 @@ CONTAINS
        obs_ccoord_helio1 = copy(obsy_ccoords(obs_pair(1)) + obs_ccoord_topo1)
        obs_ccoord_helio2 = copy(obsy_ccoords(obs_pair(2)) + obs_ccoord_topo2)
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (80)", 1)
           RETURN
        END IF
@@ -7320,7 +7570,7 @@ CONTAINS
        CALL estimateLightTime(obs_ccoord_helio1, state(1))! changed from 3 and 6
        CALL estimateLightTime(obs_ccoord_helio2, state(1)+state(4))
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (85)", 1)
           RETURN
        END IF
@@ -7336,7 +7586,7 @@ CONTAINS
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
        IF (error) THEN 
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (86)", 1)
           error = .FALSE.
           CYCLE
@@ -7437,7 +7687,7 @@ CONTAINS
        IF (.NOT. equal(this%t_inv_prm,getTime(orb))) THEN
           CALL propagate(orb, this%t_inv_prm)
           IF (error) THEN 
-             CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+             CALL errorMessage("StochasticOrbit / MCMCRanging", &
                   "TRACE BACK (90)", 1)
              error = .FALSE.
              CYCLE
@@ -7456,7 +7706,7 @@ CONTAINS
        ! get computed sky positions - spherical coordinates
        CALL getEphemerides(orb, obsy_ccoords, comp_scoords, partials_arr=partials_arr)
        IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (45)", 1)
           DEALLOCATE(comp_scoords, stat=err)
           DEALLOCATE(partials_arr, stat=err)
@@ -7477,7 +7727,7 @@ CONTAINS
           CALL rotateToEquatorial(comp_scoords(i))
           comp_coords(i,:) = getCoordinates(comp_scoords(i))
           IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+             CALL errorMessage("StochasticOrbit / MCMCRanging", &
                   "TRACE BACK (55)", 1)
              DEALLOCATE(obsy_ccoords, stat=err)
              DEALLOCATE(obs_masks, stat=err)
@@ -7509,7 +7759,7 @@ CONTAINS
 
        chi2 = chi_square(residuals, information_matrix_obs, errstr=errstr)
        IF (LEN_TRIM(errstr) /= 0) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (60)", 1)
           DEALLOCATE(obs_masks, stat=err)
           RETURN
@@ -7527,7 +7777,7 @@ CONTAINS
        DEALLOCATE(partials_arr, stat=err)
        jac_sph_inv = ABS(determinant(jacobian_matrix, errstr))
        IF (LEN_TRIM(errstr) /= 0) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+          CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "Unsuccessful computation of determinant of orbital element " // &
                "jacobian matrix: " // TRIM(errstr), 1)
           CALL matrix_print(jacobian_matrix, stderr, errstr)
@@ -7646,7 +7896,7 @@ CONTAINS
 
        END IF
 
-       IF (this%sor_norb_cmp > 1) THEN
+       IF (this%sor_norb_cmp >= 1) THEN
           this%repetition_arr_cmp(this%sor_norb_cmp) = this%repetition_arr_cmp(this%sor_norb_cmp) + 1 
           !print*,this%sor_norb_cmp, this%repetition_arr_cmp(this%sor_norb_cmp)
        END IF
@@ -7692,7 +7942,7 @@ CONTAINS
     END IF
     ELSE
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "No sample orbits found!", 1)
 !       RETURN
     END IF
@@ -7706,17 +7956,19 @@ CONTAINS
          information_matrix_obs, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging3", &
+       CALL errorMessage("StochasticOrbit / MCMCRanging", &
             "Could not deallocate memory (20).", 1)
        RETURN
     END IF
 
-  END SUBROUTINE MCMCRanging3
+  END SUBROUTINE MCMCRanging
+
+
 
 
   !! *Description:*
   !!
-  !! Markov Chain Monte Carlo ranging method.
+  !! Markov Chain Monte Carlo ranging method. Obsolete?
   !!
   !! Returns error.
   !!
@@ -8355,7 +8607,8 @@ CONTAINS
 
 
 
-  SUBROUTINE autoMCMCRanging(this)
+  SUBROUTINE autoMCMCRanging2(this)
+    !! Calls autoMCMCRanging2 (obsolete version)
 
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
@@ -8373,7 +8626,7 @@ CONTAINS
             storb%sor_norb_prm, "SAMPLE ORBITS WITH MAX", &
             storb%sor_ntrial_prm, "TRIALS..."
     END IF
-    CALL MCMCRanging(storb)
+    CALL MCMCRanging2(storb)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
             "TRACE BACK (30)", 1)
@@ -8414,7 +8667,7 @@ CONTAINS
        WRITE(stdout,"(A,1X,I0,1X,A)") "SECOND SAMPLING FOR", &
             storb%sor_norb_prm, "SAMPLE ORBITS..."
     END IF
-    CALL MCMCRanging(storb)
+    CALL MCMCRanging2(storb)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
             "TRACE BACK (50)", 1)
@@ -8483,640 +8736,11 @@ CONTAINS
     END IF
     this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
     this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
-    CALL MCMCRanging(this)
+    CALL MCMCRanging2(this)
 
-  END SUBROUTINE autoMCMCRanging
-
-
+  END SUBROUTINE autoMCMCRanging2
 
 
-
-  !! *Description:*
-  !!
-  !! Markov Chain Monte Carlo ranging method.
-  !!
-  !! Returns error.
-  !!
-  SUBROUTINE MCMCRanging(this)
-
-    IMPLICIT NONE
-    TYPE(StochasticOrbit), INTENT(inout) :: this
-    TYPE(Orbit) :: orb
-    TYPE(SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords, comp_scoords !observed
-    !and
-    !computed
-    !sky
-    !positions
-    TYPE(SphericalCoordinates) :: obs_scoord1, obs_scoord2, obs_help
-    TYPE(CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
-    TYPE(CartesianCoordinates) :: obs_ccoord_helio1, &
-         obs_ccoord_helio2, obs_ccoord_topo1, obs_ccoord_topo2
-    TYPE(Time) :: tt
-    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix_obs, &
-         partials_arr
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: residuals, &
-         comp_coords, &
-         obs_coords, &
-         jacobians
-    REAL(bp), DIMENSION(:), ALLOCATABLE :: cosdec0
-    REAL(bp), DIMENSION(6,6):: information_matrix_elem, &
-         jacobian_matrix
-    REAL(bp), DIMENSION(6) :: elements, rans, state, state_, &
-         proposal_density
-    REAL(bp), DIMENSION(3) :: pos
-    REAL(bp) :: chi2, ran, t1, t2, obs_coord, jac_sph_inv, &
-         jac_sph_inv_, chi2_, chi2min, avalue, a, q
-    INTEGER, DIMENSION(:,:), POINTER :: obs_pair_arr
-    INTEGER, DIMENSION(6) :: n0, n0_
-    INTEGER, DIMENSION(2) :: obs_pair
-    INTEGER :: ndof, i, itrial, err, nobs, j
-    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
-    LOGICAL :: accepted, first = .TRUE., burn_in = .FALSE.
-
-    IF (info_verb >= 2) THEN
-       WRITE(*,*)"Starting MCMC ranging"
-    END IF
-
-    IF (.NOT. this%is_initialized_prm) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "Object has not yet been initialized.", 1)
-       RETURN
-    END IF
-
-    ! Allocate memory for solution storing - orbits
-    IF (ASSOCIATED(this%orb_arr_cmp)) THEN
-       DEALLOCATE(this%orb_arr_cmp, stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "Could not deallocate memory (5).", 1)
-          RETURN
-       END IF
-    END IF
-    ALLOCATE(this%orb_arr_cmp(this%sor_norb_prm), stat=err) 
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "Could not allocate memory (5).", 1)
-       RETURN
-    END IF
-    nobs = getNrOfObservations(this%obss)
-    ALLOCATE(this%res_arr_cmp(this%sor_norb_prm,nobs,6), &
-         this%pdf_arr_cmp(this%sor_norb_prm), &
-         residuals(nobs,6), obs_coords(nobs,6), &
-         comp_coords(nobs, 6), cosdec0(nobs), &
-         this%reg_apr_arr_cmp(this%sor_norb_prm), &
-         this%jac_arr_cmp(this%sor_norb_prm,3), &
-         this%rchi2_arr_cmp(this%sor_norb_prm), &
-         this%rms_arr_cmp(this%sor_norb_prm,6), &
-         this%repetition_arr_cmp(this%sor_norb_prm), &
-         stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "Could not allocate memory (10).", 1)
-       RETURN 
-    END IF
-    this%repetition_arr_cmp = 0
-    ! Allocate memory for solution storing - pdf 
-    IF (ASSOCIATED(this%pdf_arr_cmp)) THEN
-       DEALLOCATE(this%pdf_arr_cmp, stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "Could not deallocate memory (10).", 1)
-          RETURN
-       END IF
-    END IF
-    ALLOCATE(this%pdf_arr_cmp(this%sor_norb_prm), stat=err) 
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "Could not allocate memory (15).", 1)
-       RETURN
-    END IF
-
-    ! Get observed sky positions (original observational data) 
-    obs_scoords => getObservationSCoords(this%obss) 
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "TRACE BACK (5)", 1)
-       RETURN
-    END IF
-    obs_coords = 0.0_bp
-    DO i=1,nobs
-       CALL rotateToEquatorial(obs_scoords(i))
-       obs_coords(i,:) = getCoordinates(obs_scoords(i))
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (10)", 1)
-          CALL NULLIFY(obs_scoords(i))
-          RETURN
-       END IF
-       ! CALL NULLIFY(obs_scoords(i))
-       cosdec0(i) = COS(obs_coords(i,3))
-    END DO
-
-    obs_masks => getObservationMasks(this%obss)
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "TRACE BACK (15)", 1)
-       RETURN
-    END IF
-    ! Observation number counter (observation mask must be up-to-date!), 
-    ! construct cosine array:
-    DO i=1,6
-       n0(i) = COUNT(obs_masks(:,i))
-    END DO
-    ndof = COUNT(obs_masks) - 6
-
-    information_matrix_obs => getBlockDiagInformationMatrix(this%obss)
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "TRACE BACK (20)", 1)
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(residuals, stat=err)
-       DEALLOCATE(information_matrix_obs, stat=err)
-       DEALLOCATE(obs_coords, stat=err)
-       DEALLOCATE(comp_coords, stat=err)
-       RETURN
-    END IF
-
-    obsy_ccoords => getObservatoryCCoords(this%obss) 
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "TRACE BACK (25)", 1)
-       RETURN
-    END IF
-
-    ! Use predefined observation pair if not using random selection
-    IF (.NOT. this%sor_random_obs_prm) THEN
-       obs_pair = RESHAPE(this%sor_pair_arr_prm, (/ 2 /))
-    ELSE
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "Use of random observation pairs not accepted.", 1)
-       RETURN
-    END IF
-    ! Copy observation pair
-    obs_scoord1 = copy(obs_scoords(obs_pair(1)))
-    obs_scoord2 = copy(obs_scoords(obs_pair(2)))
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "TRACE BACK (30)", 1)
-       RETURN
-    END IF
-
-    ! proposal density
-    proposal_density(1) = (this%sor_rho_prm(1,2) - this%sor_rho_prm(1,1))/6.0_bp 
-    proposal_density(2) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(1),2,2))
-    proposal_density(3) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(1),3,3))
-    proposal_density(4) = (this%sor_rho_prm(2,2) - this%sor_rho_prm(2,1))/6.0_bp 
-    proposal_density(5) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(2),2,2))
-    proposal_density(6) = 1.0_bp / SQRT(information_matrix_obs(obs_pair(2),3,3))
-    IF (info_verb >= 2) THEN
-       WRITE(stdout,"(A)") "Proposal density for the first observation (range[au], RA[as], dec[as]): "
-       WRITE(stdout,"(F15.7)") proposal_density(1)
-       WRITE(stdout,"(F15.7)") proposal_density(2)/rad_asec
-       WRITE(stdout,"(F15.7)") proposal_density(3)/rad_asec
-       WRITE(stdout,"(A)") "Proposal density for the second observation (drange[au], RA[as], dec[as]): "
-       WRITE(stdout,"(F15.7)") proposal_density(4)
-       WRITE(stdout,"(F15.7)") proposal_density(5)/rad_asec
-       WRITE(stdout,"(F15.7)") proposal_density(6)/rad_asec
-    END IF
-
-    ! rho1, RA1, Dec1, drho12, RA2, Dec2 of the proposed orbit
-    state_(1:3) = getPosition(obs_scoord1)
-    state_(4:6) = getPosition(obs_scoord2)
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "TRACE BACK (50)", 1)
-       DEALLOCATE(obs_masks, stat=err)
-       RETURN
-    END IF
-    state_(1) = (this%sor_rho_prm(1,2) + this%sor_rho_prm(1,1))/2.0_bp
-    state_(4) = (this%sor_rho_prm(2,2) + this%sor_rho_prm(2,1))/2.0_bp
-
-    ! set counter some parameters
-    this%sor_norb_cmp = 0
-    this%sor_ntrial_cmp = -1 ! first loop is setting the parameters
-    chi2min = HUGE(chi2min)
-    first = .TRUE.
-    itrial = 0
-
-    DO WHILE (this%sor_norb_cmp < this%sor_norb_prm .AND. &
-         this%sor_ntrial_cmp < this%sor_ntrial_prm)
-
-       ! Get next state(topocentric distances and sky positions for
-       ! the two observations) around the previous computed state
-       IF (itrial == 0 .AND. info_verb >= 3) THEN
-          WRITE(stdout,"(A)") "Generating new state..."
-       END IF
-
-       this%sor_ntrial_cmp = this%sor_ntrial_cmp + 1
-       itrial = itrial + 1
-       IF (info_verb >= 4) THEN
-          WRITE(stdout,"(A,I0)") "Trial state #", itrial
-       END IF
-
-       IF (first) THEN
-          state = state_
-       ELSE
-          CALL randomGaussian(rans)
-          state = state_ + rans * proposal_density
-       END IF
-
-       ! Check if the distances are negative
-       IF (state(1) <= 0.0_bp .OR. state(1)+state(4) <= 0.0_bp) THEN
-          IF (info_verb >= 5) THEN
-             WRITE(stdout,"(2X,A,F10.7,A)") &
-                  "Failed (One or both topocentric distances smaller than the Earth radius.)" 
-          END IF
-          CYCLE
-       END IF
-
-       ! Create new spherical coordinates with generated states in equatorial frame
-       CALL NULLIFY(obs_scoord1)
-       CALL NULLIFY(obs_scoord2)
-       CALL NEW(obs_scoord1, state(1), state(2), state(3), getTime(obsy_ccoords(obs_pair(1))))
-       CALL NEW(obs_scoord2, state(1)+state(4), state(5), state(6), getTime(obsy_ccoords(obs_pair(2))))
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (65)", 1)
-          RETURN
-       END IF
-
-       ! Create new topocentric cartesian coordinates of the observations in equatorial frame
-       CALL NULLIFY(obs_ccoord_topo1)
-       CALL NULLIFY(obs_ccoord_topo2)
-       CALL NEW(obs_ccoord_topo1, obs_scoord1) 
-       CALL NEW(obs_ccoord_topo2, obs_scoord2) 
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (70)", 1)
-          RETURN
-       END IF
-
-       ! Rotate to ecliptic
-       CALL rotateToEcliptic(obs_ccoord_topo1)
-       CALL rotateToEcliptic(obs_ccoord_topo2)
-       CALL rotateToEcliptic(obsy_ccoords(obs_pair(1)))
-       CALL rotateToEcliptic(obsy_ccoords(obs_pair(2)))
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (75)", 1)
-          RETURN
-       END IF
-
-       ! Cartesian heliocentric coordinates
-       CALL NULLIFY(obs_ccoord_helio1)
-       CALL NULLIFY(obs_ccoord_helio2)
-       obs_ccoord_helio1 = copy(obsy_ccoords(obs_pair(1)) + obs_ccoord_topo1)
-       obs_ccoord_helio2 = copy(obsy_ccoords(obs_pair(2)) + obs_ccoord_topo2)
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (80)", 1)
-          RETURN
-       END IF
-
-       CALL estimateLightTime(obs_ccoord_helio1, state(1))! changed from 3 and 6
-       CALL estimateLightTime(obs_ccoord_helio2, state(1)+state(4))
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (85)", 1)
-          RETURN
-       END IF
-
-       ! Find orbit candidate at the epoch of the first observation by
-       ! using the chosen method to solve the 2-point boundary value
-       ! problem:
-       CALL NULLIFY(orb)
-       CALL NEW(orb, obs_ccoord_helio1, obs_ccoord_helio2, &
-            this%sor_2point_method_prm, this%apriori_a_max_prm, &
-            center=this%center_prm, &
-            perturbers=this%perturbers_prm, &
-            integrator=this%integrator_prm, &
-            integration_step=this%integration_step_prm)
-       IF (error) THEN 
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (86)", 1)
-          error = .FALSE.
-          CYCLE
-       END IF
-
-       CALL setParameters(orb, &
-            dyn_model=this%dyn_model_prm, &
-            perturbers=this%perturbers_prm, &
-            integrator=this%integrator_prm, &
-            integration_step=this%integration_step_prm)
-
-       ! checking if the epochs are the same
-       IF (.NOT. equal(this%t_inv_prm,getTime(orb))) THEN
-          CALL propagate(orb, this%t_inv_prm)
-          IF (error) THEN 
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (90)", 1)
-             error = .FALSE.
-             CYCLE
-          END IF
-       END IF
-
-       IF (this%informative_apriori_prm .AND. .NOT. first) THEN
-          ! Semimajor axis:
-          a = -1.0_bp
-          IF (this%apriori_a_min_prm >= 0.0_bp .OR. &
-               this%apriori_a_max_prm >= 0.0_bp) THEN
-             a = getSemimajorAxis(orb)
-             IF (this%apriori_a_min_prm >= 0.0_bp .AND. &
-                  a < this%apriori_a_min_prm) THEN
-                ! Semimajor axis too small
-                IF (info_verb >= 4) THEN
-                   WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (semimajor axis too small: ", a, " au)"
-                END IF
-                CYCLE
-             END IF
-             IF (this%apriori_a_max_prm >= 0.0_bp .AND. &
-                  a > this%apriori_a_max_prm) THEN
-                ! Semimajor axis too large
-                IF (info_verb >= 4) THEN
-                   WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (semimajor axis too large: ", a, " au)"
-                END IF
-                CYCLE
-             END IF
-          END IF
-          ! Periapsis distance:
-          IF (this%apriori_periapsis_min_prm >= 0.0_bp .OR. &
-               this%apriori_periapsis_max_prm >= 0.0_bp) THEN
-             IF (a >= 0.0_bp) THEN
-                CALL getPeriapsisDistance(orb, q, a)
-             ELSE
-                CALL getPeriapsisDistance(orb, q)
-             END IF
-             IF (error) THEN
-                error = .FALSE.
-                CYCLE
-             END IF
-             ! Periapsis distance too small:
-             IF (this%apriori_periapsis_min_prm >= 0.0_bp .AND. &
-                  q < this%apriori_periapsis_min_prm) THEN
-                IF (info_verb >= 4) THEN
-                   WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (periapsis distance too small: ", a, " au)"
-                END IF
-                CYCLE
-             END IF
-             ! Periapsis distance too large:
-             IF (this%apriori_periapsis_max_prm >= 0.0_bp .AND. &
-                  q > this%apriori_periapsis_max_prm) THEN
-                IF (info_verb >= 4) THEN
-                   WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (periapsis distance too large: ", a, " au)"
-                END IF
-                CYCLE
-             END IF
-          END IF
-          ! Apoapsis distance:
-          IF (this%apriori_apoapsis_min_prm >= 0.0_bp .OR. &
-               this%apriori_apoapsis_max_prm >= 0.0_bp) THEN
-             IF (a >= 0.0_bp) THEN
-                CALL getApoapsisDistance(orb, Q, a)
-             ELSE
-                CALL getApoapsisDistance(orb, Q)
-             END IF
-             ! Apoapsis distance too small:
-             IF (this%apriori_apoapsis_min_prm >= 0.0_bp .AND. &
-                  Q < this%apriori_apoapsis_min_prm) THEN
-                IF (info_verb >= 4) THEN
-                   WRITE(stdout,"(2X,A,F13.7,A)") &
-                        "Failed (apoapsis distance too small: ", a, " au)"
-                END IF
-                CYCLE
-             END IF
-             ! Apoapsis distance too large:
-             IF (this%apriori_apoapsis_max_prm >= 0.0_bp .AND. &
-                  Q > this%apriori_apoapsis_max_prm) THEN
-                IF (info_verb >= 4) THEN
-                   WRITE(stdout,"(2X,A,F10.7,A)") &
-                        "Failed (apoapsis distance too large: ", a, " au)"
-                END IF
-                CYCLE
-             END IF
-          END IF
-       END IF
-
-       IF (info_verb >= 3) THEN
-          WRITE(stdout,"(A,1X,I0,1X,A)") "New state generated using", itrial, "trials."
-       END IF
-       itrial = 0
-
-       !! 
-       !! COMPUTE CHI2 AND PDF FOR PROPOSED ORBIT
-       !!
-
-       ! get computed sky positions - spherical coordinates
-       CALL getEphemerides(orb, obsy_ccoords, comp_scoords, partials_arr=partials_arr)
-       IF (error) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (45)", 1)
-          DEALLOCATE(comp_scoords, stat=err)
-          DEALLOCATE(partials_arr, stat=err)
-          !DEALLOCATE(obsy_ccoords, stat=err)
-          !DEALLOCATE(obs_masks, stat=err)
-          !DEALLOCATE(residuals, stat=err)
-          !DEALLOCATE(information_matrix_obs, stat=err)
-          !DEALLOCATE(obs_coords, stat=err)         
-          !DEALLOCATE(comp_coords, stat=err)
-          !RETURN
-          error = .FALSE.
-          CYCLE
-       END IF
-
-       ! Residuals
-       comp_coords = 0.0_bp
-       DO i=1,nobs
-          CALL rotateToEquatorial(comp_scoords(i))
-          comp_coords(i,:) = getCoordinates(comp_scoords(i))
-          IF (error) THEN
-             CALL errorMessage("StochasticOrbit / MCMCRanging", &
-                  "TRACE BACK (55)", 1)
-             DEALLOCATE(obsy_ccoords, stat=err)
-             DEALLOCATE(obs_masks, stat=err)
-             DEALLOCATE(residuals, stat=err)
-             DEALLOCATE(information_matrix_obs, stat=err)
-             DEALLOCATE(obs_coords, stat=err)
-             DEALLOCATE(comp_coords, stat=err)
-             RETURN
-          END IF
-          CALL NULLIFY(comp_scoords(i))
-       END DO
-       DEALLOCATE(comp_scoords)
-       residuals(1:nobs,1:6) = obs_coords(1:nobs,1:6) - &
-            comp_coords(1:nobs,1:6)        
-       residuals(1:nobs,2) = residuals(1:nobs,2) * &
-            COS(obs_coords(1:nobs,3))
-       DO i=1,nobs
-          IF (ABS(residuals(i,2)) > pi) THEN
-             obs_coord = obs_coords(i,2)
-             IF (obs_coord < comp_coords(i,2)) THEN
-                obs_coord = obs_coord + two_pi
-             ELSE
-                comp_coords(i,2) = comp_coords(i,2) + two_pi
-             END IF
-             residuals(i,2) = (obs_coord - &
-                  comp_coords(i,2)) * COS(obs_coords(i,3))
-          END IF
-       END DO
-
-       chi2 = chi_square(residuals, information_matrix_obs, errstr=errstr)
-       IF (LEN_TRIM(errstr) /= 0) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "TRACE BACK (60)", 1)
-          DEALLOCATE(obs_masks, stat=err)
-          RETURN
-       END IF
-
-       ! Jacobians
-       ! Determinant of Jacobian between topocentric
-       ! coordinates (inverse problem coordinates)
-       ! and orbital parameters required for output
-       ! ("Topocentric Wrt Cartesian/Keplerian"):
-       jacobian_matrix(1:3,:) = partials_arr(1:3,:,obs_pair(1)) / &
-            cosdec0(obs_pair(1))
-       jacobian_matrix(4:6,:) = partials_arr(1:3,:,obs_pair(2)) / &
-            cosdec0(obs_pair(2))
-       DEALLOCATE(partials_arr, stat=err)
-       jac_sph_inv = ABS(determinant(jacobian_matrix, errstr))
-       IF (LEN_TRIM(errstr) /= 0) THEN
-          CALL errorMessage("StochasticOrbit / MCMCRanging", &
-               "Unsuccessful computation of determinant of orbital element " // &
-               "jacobian matrix: " // TRIM(errstr), 1)
-          CALL matrix_print(jacobian_matrix, stderr, errstr)
-          errstr = ""
-          CYCLE ! main loop
-       END IF
-
-       IF (first) THEN
-          chi2_ = chi2
-          jac_sph_inv_ = jac_sph_inv
-          first = .FALSE.
-          CYCLE ! start MCMC loop
-       END IF
-
-       !!
-       !! MAKE DECISION WHETHER PROPOSED ORBIT IS ACCEPTED
-       !! 
-       avalue = EXP(-0.5_bp*(chi2-chi2_))*jac_sph_inv_/jac_sph_inv
-       IF (avalue > HUGE(avalue)) THEN
-          IF (info_verb >= 4) THEN
-             WRITE(stdout,*) "huge avalue", MIN(chi2,chi2_)
-          END IF
-          avalue = chi2_/chi2
-          burn_in = .TRUE.
-       END IF
-
-       ! Decision making accept or reeject depending on pdf
-       IF (avalue >= 1.0_bp) THEN
-          accepted = .TRUE.
-          IF (info_verb >= 3) THEN
-             WRITE(stdout,"(A,1X,I0,1X,A,1X,E12.4,2X,A,6(1X,F20.10))") &
-                  "Orbit", this%sor_norb_cmp  + 1, &
-                  "accepted. pdf higher:", avalue, &
-                  "State:", state(1), state(2:3)/rad_deg, &
-                  state(4), state(5:6)/rad_deg
-          END IF
-       ELSE IF (.NOT. burn_in) THEN
-          CALL randomNumber(ran)
-          IF (avalue > ran) THEN
-             accepted = .TRUE.
-             IF (info_verb >= 3) THEN
-                WRITE(stdout,"(A,1X,I0,1X,A,1X,E12.4,2X,A,6(1X,F20.10))") &
-                     "Orbit", this%sor_norb_cmp  + 1, &
-                     "accepted. pdf random:", avalue, &
-                     "State:", state(1), state(2:3)/rad_deg, &
-                     state(4), state(5:6)/rad_deg
-             END IF
-          END IF
-       END IF
-
-       IF (accepted) THEN
-          WRITE(*,*) "ANALYSIS", chi2, chi2_, jac_sph_inv_, jac_sph_inv, jac_sph_inv_/jac_sph_inv, avalue, ran, accepted
-          !!
-          !! PROPOSED ORBIT ACCEPTED
-          !!
-
-          IF (.NOT.burn_in) THEN
-             this%sor_norb_cmp = this%sor_norb_cmp  + 1
-             this%rchi2_arr_cmp(this%sor_norb_cmp) = chi2 - REAL(ndof,bp)
-             this%pdf_arr_cmp(this%sor_norb_cmp) =  &
-                  EXP(-0.5_bp * (chi2 - REAL(ndof,bp))) / &
-                  jac_sph_inv
-             this%res_arr_cmp(this%sor_norb_cmp,1:nobs,1:6) = residuals(1:nobs,1:6)
-             this%orb_arr_cmp(this%sor_norb_cmp) = copy(orb)
-          ELSE
-             burn_in = .FALSE.
-          END IF
-          chi2_ = chi2
-          state_ = state
-          jac_sph_inv_ = jac_sph_inv
-
-          IF (chi2min > chi2) THEN
-             chi2min = chi2
-          END IF
-          accepted = .FALSE.
-
-       END IF
-
-       IF (this%sor_norb_cmp > 1) THEN
-          this%repetition_arr_cmp(this%sor_norb_cmp) = this%repetition_arr_cmp(this%sor_norb_cmp) + 1 
-       END IF
-
-       IF (info_verb >= 2 .AND. MOD(this%sor_ntrial_cmp,5000) == 0) THEN
-          WRITE(stdout,"(2X,A,3(I0,1X))") "Nr of accepted orbits and trials: ", &
-               this%sor_norb_cmp, this%sor_ntrial_cmp
-       END IF
-
-    END DO
-    IF (info_verb >= 2) THEN
-       WRITE(stdout,"(A)") "END OF MCMC RANGING"
-    END IF
-
-    this%orb_arr_cmp => reallocate(this%orb_arr_cmp, this%sor_norb_cmp)
-    this%repetition_arr_cmp => reallocate(this%repetition_arr_cmp, this%sor_norb_cmp)
-    this%res_arr_cmp => reallocate(this%res_arr_cmp, this%sor_norb_cmp, nobs, 6)
-    this%rchi2_arr_cmp => reallocate(this%rchi2_arr_cmp, this%sor_norb_cmp)
-    this%pdf_arr_cmp => reallocate(this%pdf_arr_cmp, this%sor_norb_cmp)
-
-    CALL propagate(this%orb_arr_cmp, this%t_inv_prm)
-    i = MAXLOC(this%pdf_arr_cmp,dim=1)
-    this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
-    IF (info_verb >= 2) THEN
-       WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
-            this%cov_type_prm, getElementType(this%orb_ml_cmp)
-       WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
-       WRITE(stdout,"(A,1X,I0)") "Final number of trials:", this%sor_ntrial_cmp
-       WRITE(stdout,"(A,1X,E7.2)") "Acceptance rate: ", &
-            REAL(this%sor_norb_cmp)/REAL(this%sor_ntrial_cmp)
-       WRITE(stdout,"(A,1X,E8.3)") "chi2 min: ", chi2min
-    END IF
-
-    DO i=1,nobs
-       CALL NULLIFY(obs_scoords(i))
-       CALL NULLIFY(obsy_ccoords(i))
-    END DO
-    DEALLOCATE(obs_masks, obs_coords, comp_coords, cosdec0, &
-         residuals, obs_scoords, obsy_ccoords, &
-         information_matrix_obs, stat=err)
-    IF (err /= 0) THEN
-       error = .TRUE.
-       CALL errorMessage("StochasticOrbit / MCMCRanging", &
-            "Could not deallocate memory (20).", 1)
-       RETURN
-    END IF
-
-  END SUBROUTINE MCMCRanging
 
 
 
@@ -17149,7 +16773,6 @@ CONTAINS
   !!
   !! Determines the new range bounds from the 3-sigma cutoff values of
   !! the a posteriori range probability density.
-  !! - optionally set also rho mean to the maximumlikelihood orbi
   !!
   !! Returns error.
   !!
@@ -17164,7 +16787,6 @@ CONTAINS
     REAL(bp)                                 :: rhomin1, rhomax1, &
          rhomin2, rhomax2
     INTEGER                                  :: grid_num, err
-!    LOGICAL, INTENT(in), optional            :: set_mean
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -17176,19 +16798,6 @@ CONTAINS
     rho_ = this%sor_rho_prm
     this%sor_rho_histo_cmp = 0
     grid_num   = 40
-    
-       
-!!$    IF (exist(this%orb_ml_cmp)) then
-!!$       CALL getEphemerides(this%orb_ml_cmp, obsy_ccoords, comp_scoords)
-!!$    else
-!!$       IF (error) THEN
-!!$          CALL errorMessage("StochasticOrbit / setRangeBounds", &
-!!$               "ML orbit not available.", 1)
-!!$          RETURN
-!!$       END IF
-!!$    END IF
-
-
     IF (ANY(this%sor_iterate_bounds_prm(1:2))) THEN
 
        ! Compute mean and std for first topocentric range,
@@ -17211,7 +16820,7 @@ CONTAINS
                "Could not allocate memory.", 1)
           RETURN
        END IF
-       CALL histogram(this%(:,1), histo)
+       CALL histogram(this%sor_rho_arr_cmp(:,1), histo)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / setRangeBounds", &
                "TRACE BACK", 1)
@@ -19904,7 +19513,6 @@ CONTAINS
        i = MAXLOC(this%pdf_arr_cmp,dim=1)
        CALL NULLIFY(this%orb_ml_cmp)
        this%orb_ml_cmp        = copy(this%orb_arr_cmp(i)) 
-       print*,exist(this%orb_ml_cmp)
        this%pdf_arr_cmp       = pdf_arr(1:iorb)
        this%reg_apr_arr_cmp   = reg_apriori_arr(1:iorb)
        this%jac_arr_cmp       = jacobians(1:iorb,1:3)
