@@ -1954,8 +1954,16 @@ PROGRAM oorb
               END IF
            END IF
 
+           CALL toString(dt, str, error, frmt="(F10.2)")
+           IF (error) THEN
+              CALL errorMessage("oorb / ranging ", &
+                   "TRACE BACK (165)", 1)
+              STOP
+           END IF
+           str = TRIM(id) // "_"// TRIM(str)
            ! WRITE RANGING OUTPUT FILE WITH
            CALL NEW(out_file, TRIM(id) // ".sor")
+!           CALL NEW(out_file, TRIM(str) // ".sor")
            CALL OPEN(out_file)
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
@@ -2015,6 +2023,7 @@ PROGRAM oorb
            END IF
            IF (separately) THEN
               CALL NEW(out_file, TRIM(id) // ".orb")
+!              CALL NEW(out_file, TRIM(str) // ".orb")
               CALL OPEN(out_file)
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
@@ -2207,8 +2216,14 @@ PROGRAM oorb
                  STOP
               END IF
               DO j=1,6
-                 CALL moments(elements_arr(:,j), &
-                      pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
+                 SELECT CASE (TRIM(flavor))
+                 CASE ("mc", "random-walk")
+                    CALL moments(elements_arr(:,j), &
+                         pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
+                 CASE ("mcmc")
+                    CALL moments(elements_arr(:,j), &
+                      std_dev=stdev, errstr=errstr)
+                 END SELECT
                  WRITE(getUnit(tmp_file), "(F22.15,1X)", &
                       advance="no") stdev
                  stdev_arr(j)=stdev
