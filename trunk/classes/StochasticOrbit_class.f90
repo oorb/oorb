@@ -6241,7 +6241,10 @@ CONTAINS
        storb%sor_norb_prm = 50
        storb%sor_ntrial_prm = this%sor_ntrial_sw_prm
        ! Compute range distribution from orbit distribution
-       CALL constrainRangeDistributions(storb, storb%obss)
+       ! - this version updates this%orb_ml_cmp to the best-fit orbit 
+       ! (based on the chi2 values of the new observations)
+       ! - needed because for mcmc, orbital p.d.f = 1
+       CALL constrainRangeDistributions2(storb, storb%obss)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / autoMCMCRanging", &
                "TRACE BACK (15)", 1)
@@ -6253,8 +6256,10 @@ CONTAINS
                "TRACE BACK (20)", 1)
           STOP
        END IF
-       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.TRUE.)
-       !        storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+       !       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
+       ! Optionally, use ML-orbit to start the next chain (TO BE TESTED!)
+       IF (this%sor_iterate_bounds_prm(1)) storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+
        IF (info_verb >= 2) THEN
           WRITE(stdout,"(2X,A)") "***************"
           WRITE(stdout,"(2X,A)") "FIRST ITERATION"
@@ -6281,7 +6286,8 @@ CONTAINS
                "TRACE BACK (20)", 1)
           STOP
        END IF
-       storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+       ! Optionally, use ML-orbit to start the next chain (TO BE TESTED!)
+       IF (this%sor_iterate_bounds_prm(1)) storb%orb_ml_prm=copy(storb%orb_ml_cmp)
        !storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
 
        !Second iterarion
@@ -6311,9 +6317,9 @@ CONTAINS
     sor_rho_init=getRangeBounds(storb)
     this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
     this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
-    PRINT*,sor_rho_init
-    ! Use ml orbit as the first trial in the MCMC chain
-    this%orb_ml_prm=copy(storb%orb_ml_cmp)
+    !print*,sor_rho_init
+    ! Optionally, use ML-orbit to start the next chain (TO BE TESTED!)
+    IF (this%sor_iterate_bounds_prm(1)) this%orb_ml_prm=copy(storb%orb_ml_cmp)
     CALL NULLIFY(storb)
 
     ! Start actual Markov chain
@@ -6343,6 +6349,7 @@ CONTAINS
 
 
 
+
   SUBROUTINE autoRandomWalkRanging(this)
     ! Automated version for random walk. 
     ! Calls randomWalkRanging.
@@ -6354,6 +6361,8 @@ CONTAINS
     TYPE(StochasticOrbit), INTENT(inout) :: this
     TYPE(StochasticOrbit) :: storb
     REAL(bp), DIMENSION(4) :: sor_rho_init
+    LOGICAL, DIMENSION(:,:), POINTER :: &
+         obs_masks
 
     IF (.NOT.ASSOCIATED(this%orb_arr_cmp) .OR. .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
 
@@ -6403,8 +6412,10 @@ CONTAINS
        storb = copy(this)
        storb%sor_norb_prm = 50
        storb%sor_ntrial_prm = this%sor_ntrial_sw_prm
+       obs_masks => getObservationMasks(storb%obss)
+       storb%chi2_min_prm = REAL(COUNT(obs_masks), bp)
        ! Compute range distribution from orbit distribution
-       CALL constrainRangeDistributions(storb, storb%obss)
+       CALL constrainRangeDistributions2(storb, storb%obss)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / autoRandomWalkRanging", &
                "TRACE BACK (15)", 1)
@@ -6416,7 +6427,10 @@ CONTAINS
                "TRACE BACK (20)", 1)
           STOP
        END IF
-       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.TRUE.)
+!       storb%orb_ml_prm=getNominalOrbit(storb, ml_orbit=.true.)
+       ! Optionally, use ML-orbit to start the next chain (TO BE TESTED!)
+       IF (this%sor_iterate_bounds_prm(1)) storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+
        IF (info_verb >= 2) THEN
           WRITE(stdout,"(2X,A)") "***************"
           WRITE(stdout,"(2X,A)") "FIRST ITERATION"
@@ -6444,7 +6458,8 @@ CONTAINS
           STOP
        END IF
        IF (storb%chi2_min_prm > storb%chi2_min_cmp) storb%chi2_min_prm = storb%chi2_min_cmp
-       storb%orb_ml_prm=copy(storb%orb_ml_cmp)
+       ! Optionally, use ML-orbit to start the next chain (TO BE TESTED!)
+       IF (this%sor_iterate_bounds_prm(1)) storb%orb_ml_prm=copy(storb%orb_ml_cmp)
 
        !Second iterarion
        storb%sor_norb_prm = this%sor_norb_sw_prm
@@ -6473,9 +6488,9 @@ CONTAINS
     sor_rho_init=getRangeBounds(storb)
     this%sor_rho_prm(1,1:2) = sor_rho_init(1:2)
     this%sor_rho_prm(2,1:2) = sor_rho_init(3:4)
-    ! Use ml orbit as the first trial in the MCMC chain
-    this%orb_ml_prm=copy(storb%orb_ml_cmp)
-    PRINT*, 'Chi2min prm, cmp', storb%chi2_min_prm, storb%chi2_min_cmp
+    ! Optionally, use ML-orbit to start the next chain (TO BE TESTED!)
+    IF (this%sor_iterate_bounds_prm(1)) this%orb_ml_prm=copy(storb%orb_ml_cmp)
+    !PRINT*, 'Chi2min prm, cmp', storb%chi2_min_prm, storb%chi2_min_cmp
     this%chi2_min_prm = storb%chi2_min_cmp
     CALL NULLIFY(storb)
 
@@ -6510,7 +6525,7 @@ CONTAINS
   !! *Description:*
   !!
   !! Random-walk ranging method.
-  !!   - Burn in phase: discard accepted orbits until first chi2 in the phase-space are 
+  !!   - Burn in phase: discard accepted orbits until first chi2 in the phase-space area 
   !!     defined by dchi2.
   !!   - Random-walk option (ran_walk) can be turned off, which reverts the routine to 
   !!     a version of MCMC ranging
@@ -6546,8 +6561,8 @@ CONTAINS
     INTEGER, DIMENSION(6) :: n0, n0_
     INTEGER, DIMENSION(2) :: obs_pair
     INTEGER :: ndof, i, itrial, err, nobs, j, nsuccessive, norb_acc
-    INTEGER, PARAMETER :: nsuccessive_max = 50    ! Make user-defined parameter? this%rms_prm
-    INTEGER, PARAMETER :: burnin_max = 50    ! Make user-defined parameter? this%rms_prm
+!    INTEGER, parameter :: nsuccessive_max = 50    ! Make user-defined parameter?
+    INTEGER, PARAMETER :: burnin_max = 50    ! Make user-defined parameter? 
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., frst_found = .FALSE., ran_walk = .FALSE., burnin_case=.FALSE.
 
@@ -6555,8 +6570,8 @@ CONTAINS
     ran_walk = .TRUE.
 
     IF (info_verb >= 2) THEN
-       WRITE(*,*)"Starting MCMC ranging"
-       IF (ran_walk)  WRITE(*,*)"..using random walk"
+       WRITE(*,*)"Starting MCMC ranging using random walk"
+       !IF (ran_walk)  WRITE(*,*)""
     END IF
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -6741,7 +6756,7 @@ CONTAINS
     first = .TRUE.
     itrial = 0
 
-    PRINT*,'Chi2min_prm ', this%chi2_min_prm
+    !PRINT*,'Chi2min_prm ', this%chi2_min_prm
     norb_acc=0
     nsuccessive=0
     burn_in = .TRUE.
@@ -7114,58 +7129,29 @@ CONTAINS
 
           burnin_case = .FALSE.
           IF (burn_in) THEN
-             PRINT*,norb_acc, chi2, this%chi2_min_prm, dchi2, chi2min_prm
+             IF (norb_acc == 1) WRITE(stdout,"(A)") "Burn-in: norb_acc, chi2, chi2min, dchi2" 
+             WRITE(stdout,"(10X,I2,1X,3(F5.1,1X))") norb_acc, chi2, this%chi2_min_prm, dchi2 !, chi2min_prm
 
              IF (ran_walk) THEN
-                ! RANDOM-WALK BURN IN: Require 10 (nsuccessive_max) subsequently accepted orbits.
-                burnin_case = (norb_acc <= burnin_max .AND. dchi2 <= this%dchi2_prm)
+                ! RANDOM-WALK BURN IN: Require one accepted orbit in the area defined by dchi2_prm.
+                burnin_case = (dchi2 <= this%dchi2_prm)
                 IF (chi2 <= chi2min_prm) chi2min_prm = chi2
-             ELSE
-                ! MCMC BURN IN
-                ! CHECK residuals: if larger than acceptance windows, burn in is not over yet.
-                ! Require 10 (nsuccessive_max) subsequently accepted orbits.
-                burnin_case = (rms(2) < this%res_accept_prm(1,2) .AND. rms(3) < this%res_accept_prm(1,3) &
-                     .AND. norb_acc <= burnin_max)
+!!$             ELSE
+!!$                ! MCMC BURN IN
+!!$                ! CHECK residuals: if larger than acceptance windows, burn in is not over yet.
+!!$                ! Require 10 (nsuccessive_max) subsequently accepted orbits.
+!!$                burnin_case = (rms(2) < this%res_accept_prm(1,2) .AND. rms(3) < this%res_accept_prm(1,3) &
+!!$                     .AND. norb_acc <= burnin_max)
              END IF
 
              IF (burnin_case) THEN
                 burn_in = .FALSE.
-                IF (.NOT. burn_in .AND. info_verb >= 2) THEN
-                   WRITE(stdout,"(A,L1,1X,2(F5.1,1X))") 'BURN-IN OVER: ', burn_in, dchi2, this%dchi2_prm
+                IF (info_verb >= 2) THEN
+                   WRITE(stdout,"(A,2(F5.1,1X))") 'BURN-IN OVER (dchi2, dchi2_prm): ', &
+                        dchi2, this%dchi2_prm
                    WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits '
-                   !WRITE(stdout,"(A,2(F5.2,1X))") ' against residual acceptance windows ',this%res_accept_prm(1,2:3)/rad_asec
-                   IF (.NOT. ran_walk) WRITE(stdout,"(A,4(F6.3,1X))") ' rms & residual acc.win. (as)', &
-                        rms(2:3)/rad_asec, this%res_accept_prm(1,2:3)/rad_asec
                 END IF
-                !             ELSE
-                !                nsuccessive = nsuccessive + 1
              END IF
-
-             ! VANHA BURN IN joka vielä käytössä MCMCRanging3:ssa: pitää tarkistaa toimisiko uusi burn in myös mcmc:lle (vrt. rms-tarkastelu)
-!!$             IF (burnin_case) THEN
-!!$                !          if (burn_in .and. rms(2) < this%res_accept_prm(1,2) .and. rms(3) < this%res_accept_prm(1,3) &
-!!$                !               .and. count_rms <= rms_prm) then
-!!$                SELECT CASE (nsuccessive)
-!!$                CASE(0) 
-!!$                   frst_found = .TRUE.
-!!$                   nsuccessive = 1
-!!$                CASE (nsuccessive_max)
-!!$                   burn_in = .FALSE.
-!!$                   IF (info_verb >= 2) THEN
-!!$                      WRITE(stdout,"(A,2(L1,1X),I0)") 'BURN-IN OVER: ', burn_in,frst_found,nsuccessive
-!!$                      WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits'
-!!$                      !WRITE(stdout,"(A,2(F5.2,1X))") ' against residual acceptance windows ',this%res_accept_prm(1,2:3)/rad_asec
-!!$                      IF (.NOT. ran_walk) WRITE(stdout,"(A,4(F6.3,1X))") ' rms & residual acc.win. (as)', &
-!!$                           rms(2:3)/rad_asec, this%res_accept_prm(1,2:3)/rad_asec
-!!$                   END IF
-!!$                CASE default
-!!$                   IF (frst_found) nsuccessive = nsuccessive + 1
-!!$                END SELECT
-!!$             ELSE
-!!$                frst_found = .FALSE.
-!!$                nsuccessive = 0
-!!$             END IF
-
           END IF
 
           ! Only save orbits after burn_in is over:
@@ -7182,8 +7168,11 @@ CONTAINS
              ! "- generated distance to object at second epoch (NB! Relative
              !   to the distance at the first epoch.)"
              this%sor_rho_arr_cmp(this%sor_norb_cmp,2) = state(4) ! - state(4)
-             !          ELSE IF (count_dchi2 > this%count_dchi2_prm) then
-             !             burn_in = .FALSE.
+          ELSE IF (norb_acc > burnin_max) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / randomWalkRanging", &
+                  "Burn in failed!", 1)
+             RETURN
           END IF
           chi2_ = chi2
           state_ = state
@@ -7311,7 +7300,8 @@ CONTAINS
     INTEGER, DIMENSION(6) :: n0, n0_
     INTEGER, DIMENSION(2) :: obs_pair
     INTEGER :: ndof, i, itrial, err, nobs, j, count_rms, norb_acc
-    INTEGER, PARAMETER :: rms_prm = 10    ! Make user-defined parameter? this%rms_prm
+    INTEGER, PARAMETER :: rms_prm = 3    ! 3 or 5? Make user-defined parameter? this%rms_prm
+    INTEGER, PARAMETER :: burnin_max = 50    ! Make user-defined parameter?
     LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
     LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., rms_found = .FALSE.
 
@@ -7810,6 +7800,7 @@ CONTAINS
        !! MAKE DECISION WHETHER PROPOSED ORBIT IS ACCEPTED
        !! 
        avalue = EXP(-0.5_bp*(chi2-chi2_))*jac_sph_inv_/jac_sph_inv
+
        ! JV 16.2.2015: do we ever go here???
        IF (avalue > HUGE(avalue)) THEN
           IF (info_verb >= 4) THEN
@@ -7858,28 +7849,32 @@ CONTAINS
           rms = SQRT(SUM(residuals(:,:)**2.0_bp,dim=1,mask=this%obs_masks_prm)/n0_)
 
           ! CHECK residuals: if larger than acceptance windows, burn in is not over yet.
-          ! Require RMS_PRM (typically, 10) subsequently accepted orbits.
+          ! Require RMS_PRM (typically, 3-5) subsequently accepted orbits.
           IF (burn_in .AND. rms(2) < this%res_accept_prm(1,2) .AND. rms(3) < this%res_accept_prm(1,3) &
-               .AND. count_rms <= rms_prm) THEN
+               .AND. count_rms < rms_prm) THEN
+             count_rms = count_rms + 1
              SELECT CASE (count_rms)
-             CASE(0) 
-                rms_found = .TRUE.
-                count_rms = 1
-                !                case (this%sor_burnin_prm)
-             CASE (rms_prm)
-                burn_in = .FALSE.
-                IF (info_verb >= 2) THEN
-                   WRITE(stdout,"(A,2(L1,1X),I0,1X,2(F6.3))") 'BURN-IN OVER: ', burn_in,rms_found,count_rms,rms(2:3)/rad_asec
-                   WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits'
-                   WRITE(stdout,"(A,2(F5.2))") ' against residual acceptance windows ',this%res_accept_prm(1,2:3)/rad_asec
-                END IF
-             CASE default
-                IF (rms_found) count_rms = count_rms + 1
-             END SELECT
+                CASE(1) 
+                   rms_found = .TRUE.
+!                   count_rms = 1
+                CASE (rms_prm)
+                   burn_in = .FALSE.
+                   IF (info_verb >= 2) THEN
+                      WRITE(stdout,"(A,2(L1,1X),I0,1X,2(F6.3))") 'BURN-IN OVER: ', burn_in,rms_found, &
+                           count_rms,rms(2:3)/rad_asec
+                      WRITE(stdout,"(A,I0,1X,A)") ' after checking ',norb_acc,'accepted orbits'
+                      WRITE(stdout,"(A,2(F5.2))") ' against residual acceptance windows ',&
+                           this%res_accept_prm(1,2:3)/rad_asec
+                   END IF
+ !               CASE default
+ !                  IF (rms_found) count_rms = count_rms + 1
+                END SELECT
           ELSE
-             rms_found = .FALSE.
-             count_rms = 0
+            rms_found = .FALSE.
+            count_rms = 0
           END IF
+          IF (burn_in) WRITE(stdout,"(A,3(I0,1X),2(F6.3,1X))") "Burn in: ", norb_acc, &
+               this%sor_ntrial_cmp, count_rms, rms(2:3)/rad_asec
 
           ! Only save orbits after burn_in is over:
           IF (.NOT.burn_in) THEN
@@ -7895,10 +7890,13 @@ CONTAINS
              ! "- generated distance to object at second epoch (NB! Relative
              !   to the distance at the first epoch.)"
              this%sor_rho_arr_cmp(this%sor_norb_cmp,2) = state(4) ! - state(1)
-             !TEMP
-!!$          ELSE
-!!$             burn_in = .FALSE.
+          ELSE IF (norb_acc > burnin_max) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / MCMCRanging", &
+                  "Burn in failed!", 1)
+             RETURN
           END IF
+
           chi2_ = chi2
           state_ = state
           jac_sph_inv_ = jac_sph_inv
@@ -7932,8 +7930,9 @@ CONTAINS
     this%pdf_arr_cmp => reallocate(this%pdf_arr_cmp, this%sor_norb_cmp)
     this%sor_rho_arr_cmp => reallocate(this%sor_rho_arr_cmp, this%sor_norb_cmp, 2)
 
-    ! MCMC weight = number of repetitions
-    this%pdf_arr_cmp = REAL(this%repetition_arr_cmp, bp)
+    ! MCMC weight = 1 (not number of repetitions)
+    this%pdf_arr_cmp = 1.0_bp
+    !REAL(this%repetition_arr_cmp, bp)
 
     ! IS THIS CORRECT NOW?
     this%sor_rho_cmp(1,1)=MINVAL(this%sor_rho_arr_cmp(:,1),1)
@@ -7942,18 +7941,21 @@ CONTAINS
     this%sor_rho_cmp(2,2)=MAXVAL(this%sor_rho_arr_cmp(:,2)-this%sor_rho_arr_cmp(:,1))
 
     IF (this%sor_norb_cmp > 0) THEN
-       CALL propagate(this%orb_arr_cmp, this%t_inv_prm)
-       i = MAXLOC(this%pdf_arr_cmp,dim=1)
-       this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
-       IF (info_verb >= 2) THEN
-          WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
-               this%cov_type_prm, getElementType(this%orb_ml_cmp)
-          WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
-          WRITE(stdout,"(A,1X,I0)") "Final number of trials:", this%sor_ntrial_cmp
-          WRITE(stdout,"(A,1X,E7.2)") "Acceptance rate: ", &
-               REAL(this%sor_norb_cmp)/REAL(this%sor_ntrial_cmp)
-          WRITE(stdout,"(A,1X,E8.3)") "chi2 min: ", chi2min
-       END IF
+    CALL propagate(this%orb_arr_cmp, this%t_inv_prm)
+    !    i = MAXLOC(this%pdf_arr_cmp,dim=1)
+    ! USE best fitting i.e. min chi2 orbit?
+    i = MINLOC(this%rchi2_arr_cmp,dim=1)
+    !print*,i,this%rchi2_arr_cmp(i)+REAL(ndof,bp)
+    this%orb_ml_cmp = copy(this%orb_arr_cmp(i))
+    IF (info_verb >= 2) THEN
+       WRITE(stdout,"(3(A,1X))") "Element types for covariance matrix and ML orbit:", &
+            this%cov_type_prm, getElementType(this%orb_ml_cmp)
+       WRITE(stdout,"(A,1X,I0)") "Final number of orbits:", this%sor_norb_cmp
+       WRITE(stdout,"(A,1X,I0)") "Final number of trials:", this%sor_ntrial_cmp
+       WRITE(stdout,"(A,1X,E7.2)") "Acceptance rate: ", &
+            REAL(this%sor_norb_cmp)/REAL(this%sor_ntrial_cmp)
+       WRITE(stdout,"(A,1X,E8.3)") "chi2 min: ", chi2min
+    END IF
     ELSE
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / MCMCRanging", &
@@ -19961,6 +19963,427 @@ CONTAINS
 
 
 
+
+
+  !! *Description*:
+  !!
+  !! Optimizes the range distribution corresponding to the first and
+  !! last observation of a set of observations which is a combination
+  !! of this%obss and the additional observations supplied with this
+  !! subroutine. For the estimation of the ranges the algorithm
+  !! selects all orbits which reproduce the observations with
+  !! acceptable residuals (limit is set by the 1-sigma astrometric
+  !! uncertainty multiplied by this%accept_multiplier_prm) or, if i<10
+  !! orbits with acceptable residuals are found, selects the 10-i
+  !! orbits that produce the smallest rchi2 values.
+  !!
+  !! Also updates orb_ml
+  !! Sets error=.TRUE. if an error occurs.
+  !!
+  SUBROUTINE constrainRangeDistributions2(this, obss)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout)  :: this
+    TYPE (Observations), INTENT(in) :: obss
+
+    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr
+    TYPE (Observations) :: obss_
+    TYPE (Observation) :: obs
+    TYPE (CartesianCoordinates), DIMENSION(2) :: observers
+    TYPE (SphericalCoordinates) , DIMENSION(:,:), POINTER :: ephemerides
+    REAL(bp), DIMENSION(:,:,:), POINTER :: residuals, &
+         information_matrix_obs
+    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: sor_rho_arr_cmp
+    REAL(bp), DIMENSION(:), POINTER :: dates_orig, dates_add
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: chi2_arr
+    INTEGER :: err, i, j, norb, imin
+    LOGICAL, DIMENSION(:), ALLOCATABLE :: mask, mask_
+
+    ! Get residuals between predicted positions and additional
+    ! observations:
+    residuals => getResiduals(this, obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "TRACE BACK (5)", 1)
+       DEALLOCATE(residuals, stat=err)
+       RETURN
+    END IF
+
+    ! Get astrometric uncertainty for additional observations:
+    stdevs => getStandardDeviations(obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "TRACE BACK (10)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(stdevs, stat=err)
+       RETURN
+    END IF
+
+    ! Find out which orbits reproduce the additional observations
+    ! within the set limits:
+    norb = SIZE(residuals,dim=2)
+    ALLOCATE(mask(norb), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not allocate memory (5)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(stdevs, stat=err)
+       DEALLOCATE(mask, stat=err)
+       RETURN
+    END IF
+
+    mask = .TRUE.
+    DO i=1,norb
+       ! Note that RA,Dec is hardwired here
+       IF (ANY(ABS(residuals(:,i,2:3)) > this%accept_multiplier_prm*stdevs(:,2:3))) THEN
+          mask(i) = .FALSE.
+       END IF
+    END DO
+    DEALLOCATE(stdevs, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not deallocate memory (5)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       RETURN
+    END IF
+    IF (info_verb >= 2 .AND. COUNT(mask) > 0) THEN
+       WRITE(stdout,"(2X,2(A,1X),I0,1X,A)") "constrainRangeDistributions2:", &
+            "RA,Dec residuals corresponding to the", COUNT(mask), &
+            "orbits having residuals smaller than the acceptance window [asec]:"
+       DO i=1,SIZE(mask)
+          IF (info_verb >= 3 .AND. mask(i)) THEN
+             DO j=1,SIZE(residuals,dim=1)
+                WRITE(stdout,"(2X,2(A,1X,I0,1X),A,2(1X,F10.3))") &
+                     "Orbit #", i, "& observation #", j, ":", residuals(j,i,2:3)/rad_asec
+             END DO
+          END IF
+       END DO
+    END IF
+
+! Always compute chi2 
+    information_matrix_obs => getBlockDiagInformationMatrix(obss)
+    IF (error) THEN
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "TRACE BACK (15)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       RETURN
+    END IF
+    ALLOCATE(chi2_arr(norb), mask_(norb), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not allocate memory (10)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(information_matrix_obs, stat=err)
+       DEALLOCATE(chi2_arr, stat=err)
+       DEALLOCATE(mask_, stat=err)
+       RETURN
+    END IF
+    mask_ = mask
+    DO i=1,norb
+       chi2_arr(i) = chi_square(residuals(:,i,:), information_matrix_obs, errstr=errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               TRIM(errstr), 1)             
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(chi2_arr, stat=err)
+          DEALLOCATE(mask_, stat=err)
+          RETURN
+       END IF
+    END DO
+    ! Find best-fit orbit
+    imin = MINLOC(chi2_arr, dim=1)
+    PRINT*,' constrainRangeDistribution2: Best chi2',imin,chi2_arr(imin)
+
+    ! If less than 10 orbits acceptably reproduce the additional
+    ! observations, then select (10 - norb) orbits that have the
+    ! smallest chi2 wrt the additional observations:
+    IF (COUNT(mask) < 10) THEN
+       j = COUNT(mask)
+       DO WHILE (COUNT(mask) < 10 .AND. j < norb)
+          j = j + 1
+          i = MINLOC(chi2_arr,1,.NOT.mask)
+          mask(i) = .TRUE.
+       END DO
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A,1X,I0,1X,A)") "constrainRangeDistributions2:", &
+               "RA,Dec residuals corresponding to the", 10-COUNT(mask_), &
+               "additional orbits included [asec]:"
+          DO i=1,SIZE(mask)
+             IF (info_verb >= 3 .AND. mask(i) .AND. .NOT.mask_(i)) THEN
+                DO j=1,SIZE(residuals,dim=1)
+                   WRITE(stdout,"(2X,2(A,1X,I0,1X),A,2(1X,F10.3))") &
+                        "Orbit #", i, "& observation #", j, ":", residuals(j,i,2:3)/rad_asec
+                END DO
+             END IF
+          END DO
+       END IF
+       DEALLOCATE(information_matrix_obs, chi2_arr, mask_, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "Could not deallocate memory (10)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(information_matrix_obs, stat=err)
+          DEALLOCATE(chi2_arr, stat=err)
+          DEALLOCATE(mask_, stat=err)
+          RETURN
+       END IF
+    END IF
+
+    ! Get observation dates for original data and additional data
+    IF (exist(this%obss)) THEN
+       dates_orig => getDates(this%obss)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "TRACE BACK (20)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          RETURN
+       END IF
+       dates_add => getDates(obss)       
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "TRACE BACK (25)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          RETURN
+       END IF
+    ELSE
+       ALLOCATE(dates_orig(1), dates_add(1), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "Could not allocate memory (15)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          RETURN
+       END IF
+       dates_orig = 1.0_bp
+       dates_add  = 0.0_bp
+    END IF
+
+    ! Re-calculate this%sor_rho_arr_cmp if...
+    IF (& 
+                                ! ...rhos don't exist:
+         .NOT.ASSOCIATED(this%sor_rho_arr_cmp) .OR. & 
+                                ! ...previous observations don't exist -> no way to find out if
+                                ! update needed:
+         .NOT.exist(this%obss) .OR. & 
+                                ! ...additional data earlier than original data:
+         MINVAL(dates_add) < MINVAL(dates_orig) .OR. & 
+                                ! ...additional data later than original data
+         MAXVAL(dates_add) > MAXVAL(dates_orig)) THEN 
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A)") "constrainRangeDistributions2:", &
+               "Re-calculating the rho1 and rho2 distributions..."
+       END IF
+       IF (.NOT.exist(this%obss)) THEN
+          obs = getObservation(obss,1)
+          observers(1) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+          obs = getObservation(obss,getNrOfObservations(obss))
+          observers(2) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+       ELSE
+          obss_ = this%obss + obss
+          obs = getObservation(obss_,1)
+          observers(1) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+          obs = getObservation(obss_,getNrOfObservations(obss_))
+          observers(2) = getObservatoryCCoord(obs)
+          CALL NULLIFY(obs)
+          CALL NULLIFY(obss_)
+       END IF
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "TRACE BACK (30)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          RETURN
+       END IF
+       orb_arr => getSampleOrbits(this)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "TRACE BACK (35)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err) 
+          DEALLOCATE(orb_arr, stat=err)         
+          RETURN
+       END IF
+       ! Save best-fit orbit (only if not already defined)
+       PRINT*,' constrainRangeDistribution2: Orb ML exist?',exist(this%orb_ml_cmp)
+       IF (.NOT.exist(this%orb_ml_cmp)) this%orb_ml_cmp=copy(orb_arr(imin))
+
+       CALL getEphemerides(orb_arr, observers, ephemerides)
+       IF (error) THEN
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "TRACE BACK (40)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          DEALLOCATE(orb_arr, stat=err)         
+          DEALLOCATE(ephemerides, stat=err)         
+          RETURN
+       END IF
+       IF (ASSOCIATED(this%sor_rho_arr_cmp)) THEN
+          DEALLOCATE(this%sor_rho_arr_cmp, stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+                  "Could not deallocate memory (15)", 1)
+             DEALLOCATE(residuals, stat=err)
+             DEALLOCATE(mask, stat=err)
+             DEALLOCATE(dates_orig, stat=err)
+             DEALLOCATE(dates_add, stat=err)
+             DEALLOCATE(orb_arr, stat=err)         
+             DEALLOCATE(ephemerides, stat=err)         
+             RETURN
+          END IF
+       END IF
+       ALLOCATE(this%sor_rho_arr_cmp(norb,2), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "Could not allocate memory (20)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          DEALLOCATE(orb_arr, stat=err)         
+          DEALLOCATE(ephemerides, stat=err)         
+          RETURN
+       END IF
+       DO i=1,norb
+          this%sor_rho_arr_cmp(i,1) = getDistance(ephemerides(i,1))
+          this%sor_rho_arr_cmp(i,2) = getDistance(ephemerides(i,2))
+          CALL NULLIFY(ephemerides(i,1))
+          CALL NULLIFY(ephemerides(i,2))
+          CALL NULLIFY(orb_arr(i))
+          IF (error) THEN
+             CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+                  "TRACE BACK (45)", 1)
+             DEALLOCATE(residuals, stat=err)
+             DEALLOCATE(mask, stat=err)
+             DEALLOCATE(dates_orig, stat=err)
+             DEALLOCATE(dates_add, stat=err)
+             DEALLOCATE(orb_arr, stat=err)         
+             DEALLOCATE(ephemerides, stat=err)         
+             RETURN
+          END IF
+       END DO
+       CALL NULLIFY(observers(1))
+       CALL NULLIFY(observers(2))
+       DEALLOCATE(ephemerides, orb_arr, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+               "Could not deallocate memory (20)", 1)
+          DEALLOCATE(residuals, stat=err)
+          DEALLOCATE(mask, stat=err)
+          DEALLOCATE(dates_orig, stat=err)
+          DEALLOCATE(dates_add, stat=err)
+          DEALLOCATE(orb_arr, stat=err)         
+          DEALLOCATE(ephemerides, stat=err)         
+          RETURN
+       END IF
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A)") "constrainRangeDistributions2:", &
+               "Re-calculating the rho1 and rho2 distributions... done"
+       END IF
+    END IF
+    DEALLOCATE(dates_orig, dates_add, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not deallocate memory (25)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(dates_orig, stat=err)
+       DEALLOCATE(dates_add, stat=err)
+       RETURN
+    END IF
+
+    ! Rewrite sor_rho_arr_cmp (N.B. The size of the 1st dimension of
+    ! sor_rho_arr_cmp is no longer necessary equal to norb!)
+    ALLOCATE(sor_rho_arr_cmp(COUNT(mask),2), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not allocate memory (25)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(sor_rho_arr_cmp, stat=err)
+       RETURN
+    END IF
+    IF (info_verb >= 3) THEN
+       WRITE(stdout,"(2X,A,1X,A)") "constrainRangeDistributions2:", &
+            "Constrained (rho1,rho2-rho1) distribution [au]: "
+    END IF
+    j = 0
+    DO i=1,SIZE(this%sor_rho_arr_cmp,dim=1)
+       IF (mask(i)) THEN
+          IF (info_verb >= 3) THEN
+             WRITE(stdout,"(2X,2(1X,F11.7))") &
+                  this%sor_rho_arr_cmp(i,1), &
+                  this%sor_rho_arr_cmp(i,2)-this%sor_rho_arr_cmp(i,1)
+          END IF
+          j = j + 1
+          sor_rho_arr_cmp(j,:) = this%sor_rho_arr_cmp(i,:)
+       END IF
+    END DO
+    DEALLOCATE(this%sor_rho_arr_cmp, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not deallocate memory (30)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(sor_rho_arr_cmp, stat=err)
+       RETURN
+    END IF
+    ALLOCATE(this%sor_rho_arr_cmp(COUNT(mask),2), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not allocate memory (30)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       RETURN
+    END IF
+    this%sor_rho_arr_cmp = sor_rho_arr_cmp
+    DEALLOCATE(sor_rho_arr_cmp, residuals, mask, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / constrainRangeDistributions2", &
+            "Could not deallocate memory (35)", 1)
+       DEALLOCATE(residuals, stat=err)
+       DEALLOCATE(mask, stat=err)
+       DEALLOCATE(sor_rho_arr_cmp, stat=err)
+       RETURN
+    END IF
+
+  END SUBROUTINE constrainRangeDistributions2
 
 
   !! *Description*:
