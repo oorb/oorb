@@ -100,7 +100,8 @@ PROGRAM oorb
        orb_in_file, &                                               !! Input orbit file.
        orb_out_file, &                                              !! Output orbit file.
        out_file, &                                                  !! Generic output file.
-       tmp_file                                                     !! Generic temporary file.
+       tmp_file, &                                                     !! Generic temporary file.
+       tmp_file2
   CHARACTER(len=ELEMENT_TYPE_LEN), DIMENSION(:), ALLOCATABLE :: &
        element_type_pdf_arr_in                                      !! Element type of input orbital-element PDF.
   CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: &
@@ -177,14 +178,16 @@ PROGRAM oorb
        periapsis_distance_pdf, &
        planeph, &
        vov_map, &
-       vomcmc_map
+       vomcmc_map, &
+       sor_rho_arr
   REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
        elements_arr, &
        ephem_, &
        hist, &
        jac_arr_in, &
        mean_arr, &
-       temp_arr
+       temp_arr, &
+       histo1, histo2
   REAL(bp), DIMENSION(6,6) :: &
        corr, &
        cov, &
@@ -879,8 +882,8 @@ PROGRAM oorb
   ! directory and system clock
   IF (.NOT.get_cl_option("--fixran",.FALSE.)) THEN
      CALL GETCWD(str1)
-     ALLOCATE(strlen1(1:len_TRIM(str1)))
-     DO i=1,len_TRIM(str1)
+     ALLOCATE(strlen1(1:LEN_TRIM(str1)))
+     DO i=1,LEN_TRIM(str1)
         strlen1(i) = str1(i:i)
      END DO
      CALL SYSTEM_CLOCK(i)
@@ -2143,12 +2146,15 @@ PROGRAM oorb
               str = TRIM(id) // "_"// TRIM(str)
               CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
                    "_ranging_residual_stamps.eps")
+              !CALL makeResidualStamps(storb, obss_sep(i), TRIM(str) // &
+              !     "_" // TRIM(flavor) //"_residual_stamps.eps")
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
                       "TRACE BACK (170)", 1)
                  STOP
               END IF
               IF (compress) THEN
+
                  CALL system("gzip -f " // TRIM(str) // "_ranging_residual_stamps.eps")
               END IF
               IF (plot_open) THEN
@@ -2160,6 +2166,30 @@ PROGRAM oorb
                       "Could not allocate memory (3).", 1)
                  STOP
               END IF
+
+             ! Topocentric ranges
+              CALL NEW(tmp_file, "sor_histo.out")
+              CALL OPEN(tmp_file)
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging ", &
+                      "TRACE BACK (175)", 1)
+                 STOP
+              END IF
+              CALL getResults(storb, sor_rho_arr_cmp=sor_rho_arr)
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging ", &
+                      "TRACE BACK (201)", 1)
+                 STOP
+              END IF
+              ALLOCATE(histo1(50,2), histo2(50,2), stat=err)
+              CALL histogram(sor_rho_arr(:,1), histo1)
+              CALL histogram(sor_rho_arr(:,1), histo2, pdf=pdf_arr_cmp)
+              DO j=1,50
+                 WRITE(getUnit(tmp_file),*) histo1(j,1:2), histo2(j,2)
+              END DO
+              DEALLOCATE(histo1,histo2, stat=err)
+              CALL NULLIFY(tmp_file)
+
               CALL NEW(tmp_file, TRIM(str)// "_ranging_orbits.out")
               CALL OPEN(tmp_file)
               IF (error) THEN
@@ -2167,6 +2197,14 @@ PROGRAM oorb
                       "TRACE BACK (175)", 1)
                  STOP
               END IF
+              CALL NEW(tmp_file2, TRIM(str)// "_ranging_ranges.out")
+              CALL OPEN(tmp_file2)
+              IF (error) THEN
+                 CALL errorMessage("oorb / ranging ", &
+                      "TRACE BACK (176)", 1)
+                 STOP
+              END IF
+
               DO j=1,SIZE(orb_arr_cmp,dim=1)
                  IF (element_type_comp_prm == "cartesian") THEN
                     CALL rotateToEcliptic(orb_arr_cmp(j))
@@ -2197,8 +2235,10 @@ PROGRAM oorb
                     STOP
                  END IF
                  CALL NULLIFY(t)
+                 WRITE(getUnit(tmp_file2),*) sor_rho_arr(j,1:2)
               END DO
               CALL NULLIFY(tmp_file)
+              CALL NULLIFY(tmp_file2)
               CALL NEW(tmp_file, TRIM(str) // &
                    "_ranging_sample_standard_deviations.out")
               CALL OPEN(tmp_file)
@@ -2236,6 +2276,7 @@ PROGRAM oorb
                       "Could not deallocate memory (5).", 1)
                  STOP
               END IF
+
               ! Make plot using gnuplot:
               CALL system("cp " // TRIM(str) // &
                    "_ranging_orbits.out sor_orbits.out")
@@ -2262,6 +2303,12 @@ PROGRAM oorb
                       TRIM(element_type_comp_prm) // &
                       "_results.eps* &")
               END IF
+!              CALL system("cp " // TRIM(str) // &
+!                   "_ranging_ranges.out sor_ranges.out")
+              CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_range.gp")
+              CALL system("cp sor_ranges.eps " // TRIM(str) // &
+                   "_ranging_ranges.eps")
+              CALL system("rm -f sor_histo.out sor_ranges.eps")
            END IF
 
            ! DEALLOCATE MEMORY
