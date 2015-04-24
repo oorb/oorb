@@ -29,6 +29,8 @@
 
 include make.config
 
+PREFIX ?= /opt/oorb
+
 # Write back-up:
 backup:
 	$(SHELL) -c "if test -d ../backup_$(PROJNAME); then true; else mkdir ../backup_$(PROJNAME); fi"
@@ -45,6 +47,14 @@ all_clean: clean
 	cd $(MAINPATH)   ; $(MAKE) clean
 	cd $(PYTHONPATH) ; $(MAKE) clean
 	cd $(LIBPATH)    ; $(MAKE) clean
+
+install:
+	mkdir -p $(PREFIX)/{bin,etc,lib,data,python}
+	cp -a main/oorb $(PREFIX)/bin/
+	cp -a main/oorb.conf $(PREFIX)/etc/
+	cp -a lib/* $(PREFIX)/lib/
+	cp -a data/* $(PREFIX)/data/
+	cp -a python/* $(PREFIX)/python/
 
 # Remove library and modules:
 clean:
