@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2014-08-22
+!! @version 2015-06-15
 !!
 MODULE PhysicalParameters_cl
 
@@ -700,6 +700,12 @@ CONTAINS
        END IF
     END DO
     obsy_ccoord_arr => reallocate(obsy_ccoord_arr)
+    IF (.NOT.ASSOCIATED(obsy_ccoord_arr)) THEN
+       CALL warningMessage("PhysicalParameters / estimateHAndG", &
+            "0 observations contain brightness information -> " // &
+            "estimation of H and G is impossible.", 1)
+       RETURN
+    END IF
     nmag = SIZE(obsy_ccoord_arr)
     ALLOCATE(obs_mag_arr_(nmag), filter_arr_(nmag), obs_mag_unc_arr_(nmag))
     j = 0

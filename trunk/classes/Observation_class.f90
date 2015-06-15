@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2014-08-22
+!! @version 2015-06-15
 !!  
 MODULE Observation_cl
 
@@ -537,12 +537,15 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE addMultinormalDeviate_Obs(this, mean, covariance)
+  SUBROUTINE addMultinormalDeviate_Obs(this, mean, covariance, combined_covariance)
 
     IMPLICIT NONE
     TYPE (Observation), INTENT(inout)    :: this
     REAL(bp), DIMENSION(6), INTENT(in)   :: mean
     REAL(bp), DIMENSION(6,6), INTENT(in) :: covariance
+    LOGICAL, OPTIONAL, INTENT(in)        :: combined_covariance
+
+    LOGICAL :: combined_covariance_
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -551,14 +554,28 @@ CONTAINS
        RETURN
     END IF
 
+    IF (PRESENT(combined_covariance)) THEN
+       combined_covariance_ = combined_covariance
+    ELSE
+       combined_covariance_ = .TRUE.
+    END IF
+
     CALL addMultinormalDeviate(this%obs_scoord, mean, covariance)
     IF (error) THEN
        CALL errorMessage("Observation / addMultinormalDeviate", &
             "TRACE BACK", 1)
        RETURN
     END IF
-    ! New noise estimate = old noise estimate + added noise
-    this%covariance = this%covariance + covariance
+
+    IF (combined_covariance_) THEN
+       ! New noise covariance = old noise covariance + added noise covariance
+       this%covariance = this%covariance + covariance
+    ELSE
+       ! New noise covariance = added noise covariance
+       !
+       ! (this is aimed for cases when noise is added to noiseless synthetic astrometry)
+       this%covariance = covariance       
+    END IF
 
   END SUBROUTINE addMultinormalDeviate_Obs
 

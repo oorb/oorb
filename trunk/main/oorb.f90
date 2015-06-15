@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2015-03-11
+!! @version 2015-06-15
 !!
 PROGRAM oorb
 
@@ -876,7 +876,6 @@ PROGRAM oorb
   END IF
 
   frame = get_cl_option("--frame=", "ecliptic")
-
 
   ! Initialize random number generator using current working
   ! directory and system clock
@@ -1966,7 +1965,7 @@ PROGRAM oorb
            str = TRIM(id) // "_"// TRIM(str)
            ! WRITE RANGING OUTPUT FILE WITH
            CALL NEW(out_file, TRIM(id) // ".sor")
-!           CALL NEW(out_file, TRIM(str) // ".sor")
+           !           CALL NEW(out_file, TRIM(str) // ".sor")
            CALL OPEN(out_file)
            IF (error) THEN
               CALL errorMessage("oorb / ranging", &
@@ -2026,7 +2025,7 @@ PROGRAM oorb
            END IF
            IF (separately) THEN
               CALL NEW(out_file, TRIM(id) // ".orb")
-!              CALL NEW(out_file, TRIM(str) // ".orb")
+              !              CALL NEW(out_file, TRIM(str) // ".orb")
               CALL OPEN(out_file)
               IF (error) THEN
                  CALL errorMessage("oorb / ranging", &
@@ -2154,7 +2153,6 @@ PROGRAM oorb
                  STOP
               END IF
               IF (compress) THEN
-
                  CALL system("gzip -f " // TRIM(str) // "_ranging_residual_stamps.eps")
               END IF
               IF (plot_open) THEN
@@ -2167,7 +2165,7 @@ PROGRAM oorb
                  STOP
               END IF
 
-             ! Topocentric ranges
+              ! Topocentric ranges
               CALL NEW(tmp_file, "sor_histo.out")
               CALL OPEN(tmp_file)
               IF (error) THEN
@@ -2204,7 +2202,6 @@ PROGRAM oorb
                       "TRACE BACK (176)", 1)
                  STOP
               END IF
-
               DO j=1,SIZE(orb_arr_cmp,dim=1)
                  IF (element_type_comp_prm == "cartesian") THEN
                     CALL rotateToEcliptic(orb_arr_cmp(j))
@@ -2262,7 +2259,7 @@ PROGRAM oorb
                          pdf=pdf_arr_cmp, std_dev=stdev, errstr=errstr)
                  CASE ("mcmc")
                     CALL moments(elements_arr(:,j), &
-                      std_dev=stdev, errstr=errstr)
+                         std_dev=stdev, errstr=errstr)
                  END SELECT
                  WRITE(getUnit(tmp_file), "(F22.15,1X)", &
                       advance="no") stdev
@@ -2303,8 +2300,8 @@ PROGRAM oorb
                       TRIM(element_type_comp_prm) // &
                       "_results.eps* &")
               END IF
-!              CALL system("cp " // TRIM(str) // &
-!                   "_ranging_ranges.out sor_ranges.out")
+              !              CALL system("cp " // TRIM(str) // &
+              !                   "_ranging_ranges.out sor_ranges.out")
               CALL system("gnuplot " // TRIM(gnuplot_scripts_dir) // "/sor_plot_range.gp")
               CALL system("cp sor_ranges.eps " // TRIM(str) // &
                    "_ranging_ranges.eps")
@@ -2326,7 +2323,6 @@ PROGRAM oorb
               WRITE(stdout,"(3(1X,A))") "Object", &
                    TRIM(id), "successfully processed."
            END IF
-
         END IF
         CALL NULLIFY(storb)
         CALL NULLIFY(orb)
@@ -2335,7 +2331,6 @@ PROGRAM oorb
            WRITE(stdout,*)
         END IF
      END DO
-
 
 
 
@@ -7368,7 +7363,6 @@ PROGRAM oorb
            mag = mags(j) - 5.0_bp*LOG10(SQRT(heliocentric_r2*ephemeris_r2))
 
            ! Filter transformations to V:
-           !
            IF (obsy_code_arr(j) == "F51") THEN
 
               ! PS1SC internal analysis by A. Fitzsimmons 08-11-2011.

@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2014-08-22
+!! @version 2015-06-15
 !!
 MODULE io
 
@@ -1278,7 +1278,7 @@ CONTAINS
           END IF
        CASE ("sor.ran.obs")
           IF (PRESENT(sor_random_obs)) THEN
-!             sor_random_obs = .TRUE.
+             !             sor_random_obs = .TRUE.
              READ(par_val, *, iostat=err) sor_random_obs
              IF (err /= 0) THEN
                 error = .TRUE.

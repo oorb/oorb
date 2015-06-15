@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! Pluto are included.
 !!
 !! @author  MG
-!! @version 2010-01-21
+!! @version 2015-06-15
 !!
 PROGRAM ephtester
 
@@ -69,7 +69,8 @@ PROGRAM ephtester
         END IF
      END IF
      i = i + 1
-     IF (ncenter == 0 .OR. ncenter > 11 .OR. ntarget > 11) THEN
+     !     IF (ncenter == 0 .OR. ncenter > 11 .OR. ntarget > 11) THEN
+     IF (ncenter == 0 .OR. ncenter > 13 .OR. ntarget > 13) THEN
         CYCLE
      END IF
      mjd_tt = jd_tt - 2400000.5_rprec8
@@ -79,11 +80,19 @@ PROGRAM ephtester
         WRITE(0,*) "***** PREVIOUS NOT AN ERROR IN SW BUT IN JPL TEST FILE *****"
         CYCLE
      END IF
-     IF (ABS(ephemeris(1,ncoord)-correct_value) > 10.0E-13_rprec8) THEN
-        WRITE(0,*) "***** COMPARISON ERROR OCCURRED *****"
-        STOP
+
+     WRITE(*,"(I0,1X,A,1X,F10.2,3(1X,I2),3(1X,F20.15))") &
+          ieph_type, TRIM(str), jd_tt, ntarget, ncenter, ncoord, &
+          correct_value, ephemeris(1,ncoord), &
+          ephemeris(1,ncoord)-correct_value
+
+     !     IF (ABS(ephemeris(1,ncoord)-correct_value) > 10.0E-13_rprec8) THEN
+     !        WRITE(0,*) "***** COMPARISON ERROR OCCURRED *****"
+     !        STOP
+     !     END IF
+     IF (ASSOCIATED(ephemeris)) THEN
+        DEALLOCATE(ephemeris,stat=err)
      END IF
-     DEALLOCATE(ephemeris)
   END DO
   CLOSE(12)
   CALL JPL_ephemeris_nullify()
