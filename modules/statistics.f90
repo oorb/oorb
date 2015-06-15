@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2011-11-30
+!! @version 2015-06-15
 !!
 MODULE statistics
 
@@ -203,7 +203,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:), INTENT(in), OPTIONAL :: pdf
     LOGICAL, DIMENSION(:), OPTIONAL, INTENT(in)      :: mask
     REAL(rprec8), OPTIONAL, INTENT(out)              :: mean, std_dev, skew, kurt
-    CHARACTER(len=*), INTENT(inout)                           :: errstr
+    CHARACTER(len=*), INTENT(inout)                  :: errstr
 
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: pdf_
     REAL(rprec8) :: mean_, std_dev_

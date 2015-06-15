@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012   !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -66,7 +66,7 @@
 !! </pre>
 !!
 !! @author  MG
-!! @version 2012-01-17
+!! @version 2015-06-15
 !! 
 !! @see Observations_class
 !! @see Time_class
@@ -437,7 +437,7 @@ CONTAINS
 
     i = 0
     DO WHILE (LEN_TRIM(line) /= 0)
-       Line_ = " "
+       line_ = " "
        IF (line(1:1) /= " ") THEN
           i = i + 1
           indx = INDEX(line," ")

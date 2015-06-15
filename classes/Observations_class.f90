@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2012,2013                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2013-04-16
+!! @version 2015-06-15
 !!  
 MODULE Observations_cl
 
@@ -3104,18 +3104,20 @@ CONTAINS
     CHARACTER(len=132) :: record
     CHARACTER(len=124) :: line1, line2, line_, str, filter, obstype
     CHARACTER(len=7) :: nr_str
-    CHARACTER(len=4) :: timescale, obsy_code
+    CHARACTER(len=4) :: timescale, obsy_code, strk_class
     REAL(bp), DIMENSION(:,:), POINTER :: planeph
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr
     REAL(bp), DIMENSION(6,6) :: covariance
     REAL(bp), DIMENSION(6) :: coordinates, stdev_, mean
-    REAL(bp), DIMENSION(3) :: position, velocity
+    REAL(bp), DIMENSION(3) :: position, velocity, pos1, pos2
     REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd_utc, dt, &
          ecl_lon, ecl_lat, angscan, pos_unc_along, pos_unc_across, &
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
-         rmin, rarcmin, mag_unc, s2n, mjd_tt
+         rmin, rarcmin, mag_unc, s2n, mjd_tt, mjd_tcb, strk_len, &
+         strk_len_unc, strk_direction, strk_direction_unc
     INTEGER :: i, j, err, year, month, hour, min, deg, arcmin, &
-         nlines, coord_unit, indx, iobs, irecord, norb, ccd
+         nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
+         border1, border2
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat
 
@@ -4257,8 +4259,8 @@ CONTAINS
        obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
 
        ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
-       mjd_utc = 55197.0_bp
-       i = 0
+       mjd_tcb = 55197.0_bp
+       i = 0 
        DO
 
           READ(getUnit(obsf), "(A)", iostat=err) line
@@ -4283,9 +4285,6 @@ CONTAINS
           END IF
           covariance(3,2) = covariance(2,3)
 
-          covariance(2,:) = covariance(2,:) * COS(position(3))
-          covariance(:,2) = covariance(:,2) * COS(position(3))
-
           i = i + 1
           IF (i == 1) THEN
              discovery = .TRUE.
@@ -4293,7 +4292,7 @@ CONTAINS
              discovery = .FALSE.
           END IF
 
-          CALL NEW(t, mjd_utc + dt, "utc")
+          CALL NEW(t, mjd_tcb + dt, "TCB")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
@@ -4360,6 +4359,243 @@ CONTAINS
 
        END DO
 
+    CASE ("geo")
+
+       covariance = 0.0_bp
+       position = 0.0_bp
+       velocity = 0.0_bp
+       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+       i = 0
+       DO
+
+          READ(getUnit(obsf), "(A)", iostat=err) line
+          IF (err > 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (1).", 1)
+             RETURN
+          ELSE IF (err < 0) THEN ! end-of-file
+             EXIT
+          ELSE IF (line(1:1) == "#") THEN
+             CYCLE
+          END IF
+          READ(line, *, iostat=err) number, obsy_code, mjd_utc, position(2), &
+               position(3), covariance(2,2), covariance(3,3), coordinates(1:6)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (2).", 1)
+             RETURN
+          END IF
+
+          i = i + 1
+          IF (i == 1) THEN
+             discovery = .TRUE.
+          ELSE
+             discovery = .FALSE.
+          END IF
+
+          CALL NEW(t, mjd_utc, "UTC")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+          obsy = getObservatory(obsies, "247")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (120)", 1)
+             RETURN
+          END IF
+          ! Transform geocentric spacecraft coordinates to
+          ! heliocentric spacecraft coordinates
+          mjd_tt = getMJD(t, "TT")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (121)", 1)
+             RETURN
+          END IF
+          planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (122)", 1)
+             RETURN
+          END IF
+          CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (125)", 1)
+             RETURN
+          END IF
+          DEALLOCATE(planeph, stat=err)
+          CALL NEW(obs_scoord, position, velocity, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (130)", 1)
+             RETURN
+          END IF
+          satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
+          CALL rotateToEquatorial(satellite_ccoord)
+          CALL rotateToEquatorial(obsy_ccoord)
+          coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+          CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+          CALL NULLIFY(this%obs_arr(i))
+          CALL NEW(this%obs_arr(i), number=number, designation=" ", &
+               discovery=discovery, note1=" ", note2="V", &
+               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
+               obsy=obsy, obsy_ccoord=obsy_ccoord, &
+               satellite_ccoord=satellite_ccoord, &
+               coord_unit=2)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (135)", 1)
+             RETURN
+          END IF
+
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+
+       END DO
+
+    CASE ("strk")
+
+
+       DEALLOCATE(this%obs_arr, this%obs_note_arr, stat=err)
+       ALLOCATE(this%obs_arr(2*nlines), this%obs_note_arr(2*nlines), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / readObservationFile", &
+               "Could not allocate memory.", 1)
+          RETURN
+       END IF
+       this%obs_note_arr = " "
+
+       number = ""
+       covariance = 0.0_bp
+       position = 0.0_bp
+       velocity = 0.0_bp
+       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+       i = 0
+       DO
+
+          READ(getUnit(obsf), "(A)", iostat=err) line
+          IF (err > 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (1).", 1)
+             RETURN
+          ELSE IF (err < 0) THEN ! end-of-file
+             EXIT
+          ELSE IF (line(1:1) == "#") THEN
+             CYCLE
+          END IF
+          READ(line, *, iostat=err) designation, mjd_utc, dt, &
+               obsy_code, position(2), covariance(2,2), position(3), &
+               covariance(3,3), covariance(2,3), strk_len, &
+               strk_len_unc, strk_direction, strk_direction_unc, &
+               mag, mag_unc, pos1(2), pos1(3), border1, pos2(2), &
+               pos2(3), border2, strk_class
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (2).", 1)
+             RETURN
+          END IF
+
+          ! Change correlation to covariance
+          covariance(2,3) = covariance(2,3) * covariance(2,2) * covariance(3,3)
+          covariance(3,2) = covariance(2,3)
+          ! Change standard deviations to variances
+          covariance(2,2) = covariance(2,2)**2
+          covariance(3,3) = covariance(3,3)**2
+          ! Change degrees to radians
+          position = position*rad_deg
+          covariance = covariance*(rad_deg**2)
+          pos1 = pos1*rad_deg
+          pos2 = pos2*rad_deg
+          strk_len = strk_len*rad_deg
+          strk_len_unc = strk_len_unc*rad_deg
+          strk_direction = strk_direction*rad_deg
+          strk_direction_unc = strk_direction_unc*rad_deg
+
+          ! Streak start point
+          i = i + 1
+          discovery = .FALSE.
+          CALL NEW(t, mjd_utc-dt/2.0_bp, "UTC")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+          CALL NEW(obs_scoord, pos1, velocity, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (130)", 1)
+             RETURN
+          END IF
+          obsy = getObservatory(obsies, obsy_code)
+          obsy_ccoord = getObservatoryCCoord(obsies, obsy_code, t)
+          CALL NULLIFY(this%obs_arr(i))
+          CALL NEW(this%obs_arr(i), number=number, designation=designation, &
+               discovery=discovery, note1=" ", note2="C", &
+               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_mask=obs_mask, mag=mag, filter=" ", &
+               obsy=obsy, obsy_ccoord=obsy_ccoord)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (135)", 1)
+             RETURN
+          END IF
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+
+          ! Streak end point
+          i = i + 1
+          discovery = .FALSE.
+          CALL NEW(t, mjd_utc+dt/2.0_bp, "UTC")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+          CALL NEW(obs_scoord, pos2, velocity, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (130)", 1)
+             RETURN
+          END IF
+          obsy = getObservatory(obsies, obsy_code)
+          obsy_ccoord = getObservatoryCCoord(obsies, obsy_code, t)
+          CALL NULLIFY(this%obs_arr(i))
+          CALL NEW(this%obs_arr(i), number=number, designation=designation, &
+               discovery=discovery, note1=" ", note2="C", &
+               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_mask=obs_mask, mag=mag, filter=" ", &
+               obsy=obsy, obsy_ccoord=obsy_ccoord)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (135)", 1)
+             RETURN
+          END IF
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+
+       END DO
+
+
+
+
     CASE ("sentinel")
 
        covariance = 0.0_bp
@@ -4393,9 +4629,6 @@ CONTAINS
              RETURN
           END IF
           covariance(3,2) = covariance(2,3)
-
-          covariance(2,:) = covariance(2,:) * COS(position(3))
-          covariance(:,2) = covariance(:,2) * COS(position(3))
 
           i = i + 1
           IF (i == 1) THEN
