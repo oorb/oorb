@@ -1,6 +1,6 @@
 #====================================================================#
 #                                                                    #
-# Copyright 2002-2014,2015                                           #
+# Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             #
 # Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      #
 # Dagmara Oszkiewicz                                                 #
 #                                                                    #
@@ -24,7 +24,7 @@
 # This is a makefile for Jet Propulsion Laboratory's planetary ephemeris.
 #
 # Author:  MG
-# Version: 2015-06-16
+# Version: 2010-01-21
 
 include ../../make.config
 include ../../Makefile.include
@@ -32,7 +32,7 @@ include ../../Makefile.include
 # TYPE OF EPHEMERIS [405|406]
 EPH_TYPE = 405
 # FTP client
-FTP_CLIENT = wget
+FTP_CLIENT = ncftpget
 # Output name of the program: 
 EPH_BIN = de$(EPH_TYPE).dat
 # Name of ascii-to-binary converter program source file:
