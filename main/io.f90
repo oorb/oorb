@@ -2676,7 +2676,7 @@ CONTAINS
           RETURN
        END SELECT
     END IF
-    WRITE(lu,"(2(A,1X),8(E22.15,1X),2(I0,1X),E22.15,1X,A)",iostat=err) &
+    WRITE(lu,"(2(A,1X),7(E22.15,1X),1(E22.10,1X),2(I0,1X),E22.15,1X,A)",iostat=err) &
          TRIM(id), TRIM(frmt), elements, H, mjd_tt, indx_, npar_, &
          moid_, TRIM(compcode_)
     IF (err /= 0) THEN
@@ -3432,7 +3432,7 @@ CONTAINS
     IF (PRESENT(mjd)) THEN
        IF (mjd) THEN
           mjd_tt = getMJD(t, "TT")
-          WRITE(lu, "(A16,6(1X,E21.14),1X,F16.8)", &
+          WRITE(lu, "(A16,6(1X,E21.14),1X,F16.6)", &
                advance="no", iostat=err) id, elements(1:6), mjd_tt
           IF (err /= 0) THEN
              error = .TRUE.
