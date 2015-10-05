@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2015-06-15
+!! @version 2015-10-05
 !!
 MODULE io
 
@@ -733,7 +733,12 @@ CONTAINS
           END IF
        CASE ("write.residuals")
           IF (PRESENT(write_residuals)) THEN
-             write_residuals = .TRUE.
+             READ(par_val, *, iostat=err) write_residuals
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (10).", 1)
+             END IF
           END IF
        CASE ("plot.results")
           IF (PRESENT(plot_results)) THEN
@@ -741,7 +746,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (23).", 1)
+                     "Could not read parameter value (20).", 1)
              END IF
           END IF
        CASE ("plot.open")
@@ -750,7 +755,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (23).", 1)
+                     "Could not read parameter value (30).", 1)
              END IF
           END IF
        CASE ("element_type_out")
@@ -868,7 +873,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (23).", 1)
+                     "Could not read parameter value (40).", 1)
              END IF
           END IF
        CASE ("accwin.multiplier")
@@ -1177,7 +1182,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (21).", 1)
+                     "Could not read parameter value (50).", 1)
              END IF
           END IF
        CASE ("dchi2.max")
@@ -1190,7 +1195,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (21).", 1)
+                     "Could not read parameter value (60).", 1)
              END IF
           END IF
        CASE ("obs.mask")
@@ -1199,7 +1204,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (21).", 1)
+                     "Could not read parameter value (70).", 1)
              END IF
           END IF
        CASE ("chi2_min.init")
@@ -1283,7 +1288,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (21).", 1)
+                     "Could not read parameter value (80).", 1)
              END IF
           END IF
        CASE ("sor.rho.gauss")
@@ -1417,7 +1422,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (5).", 1)
+                     "Could not read parameter value (90).", 1)
              END IF
           END IF
        CASE ("vov.scaling.lo")
@@ -1426,7 +1431,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (10).", 1)
+                     "Could not read parameter value (100).", 1)
              END IF
           END IF
        CASE ("vov.scaling.hi")
@@ -1435,7 +1440,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (15).", 1)
+                     "Could not read parameter value (110).", 1)
              END IF
           END IF
 
@@ -1476,7 +1481,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (5).", 1)
+                     "Could not read parameter value (120).", 1)
              END IF
           END IF
        CASE ("vomcmc.scaling.lo")
@@ -1485,7 +1490,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (10).", 1)
+                     "Could not read parameter value (130).", 1)
              END IF
           END IF
        CASE ("vomcmc.scaling.hi")
@@ -1494,7 +1499,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (15).", 1)
+                     "Could not read parameter value (140).", 1)
              END IF
           END IF
 
@@ -1519,7 +1524,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (20).", 1)
+                     "Could not read parameter value (150).", 1)
              END IF
           END IF
        CASE ("ls.niter_major.max")
@@ -1555,7 +1560,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (21).", 1)
+                     "Could not read parameter value (160).", 1)
              END IF
           END IF
 
@@ -1575,7 +1580,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (22).", 1)
+                     "Could not read parameter value (170).", 1)
              END IF
           END IF
        CASE ("smplx.similarity.tol")
@@ -1606,7 +1611,7 @@ CONTAINS
              IF (err /= 0) THEN
                 error = .TRUE.
                 CALL errorMessage("io / readConfigurationFile", &
-                     "Could not read parameter value (25).", 1)
+                     "Could not read parameter value (180).", 1)
              END IF
           END IF
        CASE ("pp.G")
@@ -1784,7 +1789,7 @@ CONTAINS
                 IF (err /= 0) THEN
                    error = .TRUE.
                    CALL errorMessage("io / readConfigurationFile", &
-                        "Could not read parameter value (30).", 1)
+                        "Could not read parameter value (190).", 1)
                    RETURN
                 END IF
                 ! Move starting index to the next parameter 
