@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2015-06-15
+!! @version 2015-10-05
 !!
 PROGRAM oorb
 
@@ -54,37 +54,37 @@ PROGRAM oorb
   TYPE (StochasticOrbit) :: &
        storb
   TYPE (Orbit), DIMENSION(:,:), POINTER :: &
-       orb_lt_corr_arr2
+       orb_lt_corr_arr2 => NULL()
   TYPE (Orbit), DIMENSION(:), POINTER :: &
-       orb_arr_in
+       orb_arr_in => NULL()
   TYPE (Orbit), DIMENSION(:), POINTER :: &
-       orb_arr, &
-       orb_arr_, &       
-       orb_arr_cmp, &
-       orb_lt_corr_arr
+       orb_arr => NULL(), &
+       orb_arr_ => NULL(), &       
+       orb_arr_cmp => NULL(), &
+       orb_lt_corr_arr => NULL()
   TYPE (Orbit) :: &
        orb, &
        ref_orb
   TYPE (Observations), DIMENSION(:), POINTER :: &
-       obss_sep
+       obss_sep => NULL()
   TYPE (Observations) :: &
        obss, &
        obss_in  
   TYPE (Observation) :: &
        obs
   TYPE (Observation), DIMENSION(:), POINTER :: &
-       obs_arr
+       obs_arr => NULL()
   TYPE (Observatories) :: &
        obsies
   TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: &
-       ephemerides_arr
+       ephemerides_arr => NULL()
   TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
-       ephemerides
+       ephemerides => NULL()
   TYPE (SphericalCoordinates) :: &
        ephemeris, &
        scoord
   TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
-       observers
+       observers => NULL()
   TYPE (CartesianCoordinates) :: &
        ccoord, &
        obsy_ccoord, &
@@ -105,14 +105,14 @@ PROGRAM oorb
   CHARACTER(len=ELEMENT_TYPE_LEN), DIMENSION(:), ALLOCATABLE :: &
        element_type_pdf_arr_in                                      !! Element type of input orbital-element PDF.
   CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: &
-       obsy_code_arr                                                !! IAU/MPC designated observatory code.
+       obsy_code_arr => NULL()                                      !! IAU/MPC designated observatory code.
   CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: &
-       group_name_arr, &
-       id_arr_storb_in, &
-       id_arr_in, &
-       id_arr
+       group_name_arr => NULL(), &
+       id_arr_storb_in => NULL(), &
+       id_arr_in => NULL(), &
+       id_arr => NULL()
   CHARACTER(len=2), DIMENSION(:), POINTER :: &
-       filters
+       filters => NULL()
   CHARACTER(len=1), DIMENSION(:), ALLOCATABLE :: &
        strlen1
   CHARACTER(len=32), DIMENSION(:), ALLOCATABLE :: &
@@ -166,20 +166,20 @@ PROGRAM oorb
   CHARACTER(len=OBSY_CODE_LEN) :: &
        obsy_code                                                    !! IAU/MPC designated observatory code.
   REAL(bp), DIMENSION(:,:,:), POINTER :: &
-       cov_arr, &
-       cov_arr_in, &                                                !! Input array of covariance matrices.
-       encounters, &
-       HG_arr_storb_in
+       cov_arr => NULL(), &
+       cov_arr_in => NULL(), &                                                !! Input array of covariance matrices.
+       encounters => NULL(), &
+       HG_arr_storb_in => NULL()
   REAL(bp), DIMENSION(:,:), POINTER :: &
-       apoapsis_distance_pdf, &
-       HG_arr_in, &
-       jac_arr_cmp, &
-       pdfs_arr, &
-       periapsis_distance_pdf, &
-       planeph, &
-       vov_map, &
-       vomcmc_map, &
-       sor_rho_arr
+       apoapsis_distance_pdf => NULL(), &
+       HG_arr_in => NULL(), &
+       jac_arr_cmp => NULL(), &
+       pdfs_arr => NULL(), &
+       periapsis_distance_pdf => NULL(), &
+       planeph => NULL(), &
+       vov_map => NULL(), &
+       vomcmc_map => NULL(), &
+       sor_rho_arr => NULL()
   REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
        elements_arr, &
        ephem_, &
@@ -200,13 +200,13 @@ PROGRAM oorb
   REAL(bp), DIMENSION(2,2) :: &
        sor_rho_cmp
   REAL(bp), DIMENSION(:), POINTER :: &
-       mags, &
-       pdf_arr, &
-       pdf_arr_cmp, &
-       pdf_arr_in, &
-       rchi2_arr_cmp, &
-       reg_apr_arr_cmp, &
-       weight_arr
+       mags => NULL(), &
+       pdf_arr => NULL(), &
+       pdf_arr_cmp => NULL(), &
+       pdf_arr_in => NULL(), &
+       rchi2_arr_cmp => NULL(), &
+       reg_apr_arr_cmp => NULL(), &
+       weight_arr => NULL()
   REAL(bp), DIMENSION(:), ALLOCATABLE :: &
        arc_arr, &
        rchi2_arr_in, &
@@ -287,8 +287,8 @@ PROGRAM oorb
        timespan, tlat, tlon, toclat, toclon, tsclat, tsclon, &
        ta_s, ta_c, fak, ecc_anom, true_anom, chi2, chi2_min
   INTEGER, DIMENSION(:), POINTER :: &
-       repetition_arr_cmp, &
-       repetition_arr_in
+       repetition_arr_cmp => NULL(), &
+       repetition_arr_in => NULL()
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
        indx_arr, &
        int_arr
@@ -324,9 +324,9 @@ PROGRAM oorb
        vomcmc_norb_iter, vomcmc_ntrial_iter, vomcmc_nmap, &
        year, year0, year1
   LOGICAL, DIMENSION(:,:), POINTER :: &
-       obs_masks
+       obs_masks => NULL()
   LOGICAL, DIMENSION(:), POINTER :: &
-       perturbers
+       perturbers => NULL()
   LOGICAL, DIMENSION(6) :: &
        ls_element_mask, &
        vov_mapping_mask, &
@@ -341,6 +341,7 @@ PROGRAM oorb
        force_pdf, &
        gaussian_rho, &
        generat_gaussian_deviates, &
+       interval, &
        mjd_epoch, &
        noise, &
        outlier_rejection_prm, &
@@ -388,7 +389,6 @@ PROGRAM oorb
   pp_G_unc = 99.9_bp
   mjd_epoch = .TRUE.
   smplx_force = .FALSE.
-  !write_residuals = .TRUE.
   write_residuals = .FALSE.
 
   IF (get_cl_option("--version",.FALSE.)) THEN
@@ -6043,15 +6043,18 @@ PROGRAM oorb
            ! How frequently should the elements be reported? Default is to
            ! only report them for the last epoch (output_interval < 0).
            output_interval = get_cl_option("--output-interval-days=", -1.0_bp)
-           IF (output_interval > 0.0_bp .AND. output_interval >= integration_step) THEN
+           IF (output_interval < 0.0_bp) THEN
+              interval = .FALSE.
+           ELSE
+              interval = .TRUE.
+           END IF
+           IF (interval .AND. output_interval >= integration_step) THEN
               output_interval = SIGN(output_interval,mjd1-mjd0)
-           ELSE IF (output_interval > 0.0_bp .AND. output_interval < integration_step) THEN
+           ELSE IF (interval .AND. output_interval < integration_step) THEN
               integration_step = output_interval
               output_interval = SIGN(output_interval,mjd1-mjd0)
-           ELSE
-              output_interval = mjd1 - mjd0
            END IF
-
+           
            ! Set integration parameters
            CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
                 perturbers=perturbers, integrator=integrator, &
@@ -6075,17 +6078,17 @@ PROGRAM oorb
 
            ! Loop over the integration interval and output
            ! intermediate results during each step if requested
-           DO WHILE ((output_interval > 0.0_bp .AND. mjd < mjd1) .OR. &
-                (output_interval < 0.0_bp .AND. mjd > mjd1))
-
-              IF ((output_interval > 0.0_bp .AND. mjd + output_interval >= mjd1) .OR. &
-                   (output_interval < 0.0_bp .AND. mjd + output_interval <= mjd1)) THEN
+           integration_interval_storb: DO 
+              IF ((interval .AND. output_interval < 0.0_bp .AND. &
+                   mjd + output_interval <= mjd1) .OR. &
+                   (interval .AND. output_interval > 0.0_bp .AND. &
+                   mjd + output_interval >= mjd1) .OR. &
+                   .NOT.interval) THEN
                  mjd = mjd1
               ELSE
                  mjd = mjd + output_interval
               END IF
               CALL NEW(epoch, mjd, "TT")
-
 
               ! Propagate orbital-element pdf from one epoch (=input) to another:
               IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
@@ -6125,6 +6128,19 @@ PROGRAM oorb
                     END DO
                  END DO
               END IF
+
+              IF (get_cl_option("--discard-impactors", .FALSE.)) THEN
+                 DO j=1,SIZE(encounters,dim=2)
+                    IF (encounters(1,j,2) < 1.1_bp) THEN 
+                       DEALLOCATE(encounters, stat=err)
+                       CALL NULLIFY(epoch0)
+                       CALL NULLIFY(epoch1)
+                       CALL NULLIFY(epoch)
+                       EXIT integration_interval_storb
+                    END IF
+                 END DO
+              END IF
+
               DEALLOCATE(encounters, stat=err)
               CALL NULLIFY(epoch0)
               IF (info_verb >= 2 .AND. dyn_model /= "2-body") THEN
@@ -6232,7 +6248,11 @@ PROGRAM oorb
                  separately_ = .FALSE.
               END IF
 
-           END DO
+              IF ((interval .AND. ABS(mjd-mjd1) < EPSILON(mjd)) .OR. .NOT.interval) THEN
+                 EXIT
+              END IF
+              
+           END DO integration_interval_storb
 
            IF (separately) THEN
               CALL NULLIFY(out_file)
@@ -6360,9 +6380,14 @@ PROGRAM oorb
            ! How frequently should the elements be reported? Default is to
            ! only report them for the last epoch (output_interval < 0).
            output_interval = get_cl_option("--output-interval-days=", -1.0_bp)
-           IF (output_interval > 0.0_bp .AND. output_interval >= integration_step) THEN
+           IF (output_interval < 0.0_bp) THEN
+              interval = .FALSE.
+           ELSE
+              interval = .TRUE.
+           END IF
+           IF (interval .AND. output_interval >= integration_step) THEN
               output_interval = SIGN(output_interval,mjd1-mjd0)
-           ELSE IF (output_interval > 0.0_bp .AND. output_interval < integration_step) THEN
+           ELSE IF (interval .AND. output_interval < integration_step) THEN
               integration_step = output_interval
               output_interval = SIGN(output_interval,mjd1-mjd0)
            END IF
@@ -6379,11 +6404,12 @@ PROGRAM oorb
 
            ! Loop over the integration interval and output
            ! intermediate results during each step if requested
-           integration_interval: DO 
-              !write(*,*) 'propagation 1:', orb_arr_in(1)%center, orb_arr_in(1)%element_type, &
-              !     orb_arr_in(1)%elements(1:2),  orb_arr_in(1)%elements(3:6)/rad_deg
-              IF ((output_interval > 0.0_bp .AND. mjd + output_interval >= mjd1) .OR. &
-                   output_interval < 0.0_bp) THEN
+           integration_interval_orb: DO 
+              IF ((interval .AND. output_interval < 0.0_bp .AND. &
+                   mjd + output_interval <= mjd1) .OR. &
+                   (interval .AND. output_interval > 0.0_bp .AND. &
+                   mjd + output_interval >= mjd1) .OR. &
+                   .NOT.interval) THEN
                  mjd = mjd1
               ELSE
                  mjd = mjd + output_interval
@@ -6431,7 +6457,7 @@ PROGRAM oorb
                        CALL NULLIFY(epoch0)
                        CALL NULLIFY(epoch1)
                        CALL NULLIFY(epoch)
-                       EXIT integration_interval
+                       EXIT integration_interval_orb
                     END IF
                  END DO
               END IF
@@ -6475,12 +6501,11 @@ PROGRAM oorb
                  STOP              
               END IF
               first = .FALSE.
-              IF ((output_interval > 0.0_bp .AND. ABS(mjd-mjd1) < EPSILON(mjd)) .OR. &
-                   output_interval < 0.0_bp) THEN
+              IF ((interval .AND. ABS(mjd-mjd1) < EPSILON(mjd)) .OR. .NOT.interval) THEN
                  EXIT
               END IF
 
-           END DO integration_interval
+           END DO integration_interval_orb
 
            IF (.NOT.(get_cl_option("--epoch-mjd-tt=", .FALSE.) .OR. &
                 get_cl_option("--epoch-mjd-utc=", .FALSE.))) THEN
