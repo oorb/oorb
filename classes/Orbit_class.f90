@@ -6498,7 +6498,8 @@ CONTAINS
 
     TYPE (CartesianCoordinates) :: observer_
     REAL(bp), DIMENSION(3)      :: asteroid2sun, asteroid2observer
-
+    REAL(bp), DIMENSION(6)      :: asteroidelems
+    
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
        CALL errorMessage("Orbit / getSolarElongation", &
@@ -6514,7 +6515,9 @@ CONTAINS
     END IF
 
     ! Ecliptic position vector from asteroid to the Sun:
-    asteroid2sun = -1.0_bp*getElements(this, "cartesian", "ecliptic")
+    asteroidelems = -1.0_bp*getElements(this, "cartesian", "ecliptic")
+    asteroid2sun = asteroidelems(1:3)
+    
     IF (error) THEN
        CALL errorMessage("Orbit / getSolarElongation", &
             "TRACE BACK (5)", 1)
