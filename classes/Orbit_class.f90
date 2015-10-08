@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Grigori Fedorets                               !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2014-08-22
+!! @version 2015-10-08
 !!
 MODULE Orbit_cl
 
@@ -462,37 +462,37 @@ CONTAINS
           this%elements(2) = elements(2)
        END IF
 
-       IF (elements(3) < 0.0_bp .OR. elements(3) >= pi) THEN
+       IF (elements(3) < 0.0_bp .OR. elements(3) > pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Inclination is outside the range [0,pi[.", 1)
+               "Inclination is outside the range [0,pi].", 1)
           RETURN
        ELSE
           this%elements(3) = elements(3)
        END IF
 
-       IF (elements(4) < 0.0_bp .OR. elements(4) >= two_pi) THEN
+       IF (elements(4) < 0.0_bp .OR. elements(4) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Longitude of Ascending Node is outside the range [0,two_pi[.", 1)
+               "Longitude of Ascending Node is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(4) = elements(4)
        END IF
 
-       IF (elements(5) < 0.0_bp .OR. elements(5) >= two_pi) THEN
+       IF (elements(5) < 0.0_bp .OR. elements(5) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Argument of Perihelion is outside the range [0,two_pi[.", 1)
+               "Argument of Perihelion is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(5) = elements(5)
        END IF
 
-       IF (elements(6) < 0.0_bp .OR. elements(6) >= two_pi) THEN
+       IF (elements(6) < 0.0_bp .OR. elements(6) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Mean Anomaly is outside the range [0,two_pi[.", 1)
+               "Mean Anomaly is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(6) = elements(6)
@@ -528,28 +528,28 @@ CONTAINS
           this%elements(2) = elements(2)
        END IF
 
-       IF (elements(3) < 0.0_bp .OR. elements(3) >= pi) THEN
+       IF (elements(3) < 0.0_bp .OR. elements(3) > pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Inclination is outside the range [0,pi[.", 1)
+               "Inclination is outside the range [0,pi].", 1)
           RETURN
        ELSE
           this%elements(3) = elements(3)
        END IF
 
-       IF (elements(4) < 0.0_bp .OR. elements(4) >= two_pi) THEN
+       IF (elements(4) < 0.0_bp .OR. elements(4) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Longitude of Ascending Node is outside the range [0,two_pi[.", 1)
+               "Longitude of Ascending Node is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(4) = elements(4)
        END IF
 
-       IF (elements(5) < 0.0_bp .OR. elements(5) >= two_pi) THEN
+       IF (elements(5) < 0.0_bp .OR. elements(5) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Argument of Perihelion is outside the range [0,two_pi[.", 1)
+               "Argument of Perihelion is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(5) = elements(5)
@@ -591,37 +591,37 @@ CONTAINS
           this%elements(2) = elements(2)
        END IF
 
-       IF (elements(3) < 0.0_bp .OR. elements(3) >= pi) THEN
+       IF (elements(3) < 0.0_bp .OR. elements(3) > pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Inclination is outside the range [0,pi[.", 1)
+               "Inclination is outside the range [0,pi].", 1)
           RETURN
        ELSE
           this%elements(3) = elements(3)
        END IF
 
-       IF (elements(4) < 0.0_bp .OR. elements(4) >= two_pi) THEN
+       IF (elements(4) < 0.0_bp .OR. elements(4) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Longitude of Ascending Node is outside the range [0,two_pi[.", 1)
+               "Longitude of Ascending Node is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(4) = elements(4)
        END IF
 
-       IF (elements(5) < 0.0_bp .OR. elements(5) >= two_pi) THEN
+       IF (elements(5) < 0.0_bp .OR. elements(5) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Argument of Perihelion is outside the range [0,two_pi[.", 1)
+               "Argument of Perihelion is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(5) = elements(5)
        END IF
 
-       IF (elements(6) < 0.0_bp .OR. elements(6) >= two_pi) THEN
+       IF (elements(6) < 0.0_bp .OR. elements(6) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "True Anomaly is outside the range [0,two_pi[.", 1)
+               "True Anomaly is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(6) = elements(6)
@@ -660,37 +660,37 @@ CONTAINS
           this%elements(2) = elements(2)
        END IF
 
-       IF (elements(3) < 0.0_bp .OR. elements(3) >= pi) THEN
+       IF (elements(3) < 0.0_bp .OR. elements(3) > pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Inclination is outside the range [0,pi[.", 1)
+               "Inclination is outside the range [0,pi].", 1)
           RETURN
        ELSE
           this%elements(3) = elements(3)
        END IF
 
-       IF (elements(4) < 0.0_bp .OR. elements(4) >= two_pi) THEN
+       IF (elements(4) < 0.0_bp .OR. elements(4) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Longitude of Ascending Node is outside the range [0,two_pi[.", 1)
+               "Longitude of Ascending Node is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(4) = elements(4)
        END IF
 
-       IF (elements(5) < 0.0_bp .OR. elements(5) >= two_pi) THEN
+       IF (elements(5) < 0.0_bp .OR. elements(5) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Argument of Perihelion is outside the range [0,two_pi[.", 1)
+               "Argument of Perihelion is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(5) = elements(5)
        END IF
 
-       IF (elements(6) < 0.0_bp .OR. elements(6) >= two_pi) THEN
+       IF (elements(6) < 0.0_bp .OR. elements(6) > two_pi) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / new", &
-               "Mean Anomaly is outside the range [0,two_pi[.", 1)
+               "Mean Anomaly is outside the range [0,two_pi].", 1)
           RETURN
        ELSE
           this%elements(6) = elements(6)
