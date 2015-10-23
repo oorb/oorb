@@ -30,7 +30,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2015-06-15
+!! @version 2015-10-23
 !!
 MODULE PhysicalParameters_cl
 
@@ -58,13 +58,13 @@ MODULE PhysicalParameters_cl
   TYPE PhysicalParameters
 
      PRIVATE
-     REAL(bp), DIMENSION(:,:), POINTER :: H0_arr
+     REAL(bp), DIMENSION(:,:), POINTER :: H0_arr => NULL()
      REAL(bp)                          :: H0_nominal
      REAL(bp)                          :: H0_unc
-     REAL(bp), DIMENSION(:,:), POINTER :: G_arr
+     REAL(bp), DIMENSION(:,:), POINTER :: G_arr => NULL()
      REAL(bp)                          :: G_nominal
      REAL(bp)                          :: G_unc
-     REAL(bp), DIMENSION(:,:), POINTER :: m_arr
+     REAL(bp), DIMENSION(:,:), POINTER :: m_arr => NULL()
      REAL(bp)                          :: m_nominal
      REAL(bp)                          :: m_unc     
      TYPE (StochasticOrbit)            :: storb
@@ -442,20 +442,35 @@ CONTAINS
     TYPE (Observations), INTENT(in) :: obss
     REAL(bp), INTENT(in) :: input_G
 
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoord_arr 
-    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides_arr  
-    TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr 
-    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr 
-    CHARACTER(len=2), DIMENSION(:), POINTER :: filter_arr
-    CHARACTER(len=2), DIMENSION(:), ALLOCATABLE :: filter_arr_
-    REAL(bp), DIMENSION(:,:,:), POINTER :: cov_arr
-    REAL(bp), DIMENSION(:,:), POINTER :: pdfs_arr, phase_angle_arr
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: helio_dist_arr, topo_dist_arr
-    REAL(bp), DIMENSION(:), POINTER :: obs_mag_arr
-    REAL(bp), DIMENSION(:), ALLOCATABLE :: H_arr, &
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoord_arr => NULL() 
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: &
+         ephemerides_arr => NULL()
+    TYPE (Orbit), DIMENSION(:,:), POINTER :: &
+         orb_lt_corr_arr => NULL()
+    TYPE (Orbit), DIMENSION(:), POINTER :: &
+         orb_arr => NULL()
+    CHARACTER(len=2), DIMENSION(:), POINTER :: &
+         filter_arr => NULL()
+    CHARACTER(len=2), DIMENSION(:), ALLOCATABLE :: &
+         filter_arr_
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         cov_arr => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         pdfs_arr => NULL(), &
+         phase_angle_arr => NULL()
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         helio_dist_arr, &
+         topo_dist_arr
+    REAL(bp), DIMENSION(:), POINTER :: &
+         obs_mag_arr => NULL()
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: &
+         H_arr, &
          obs_mag_arr_
-    REAL(bp), DIMENSION(6) :: coordinates
-    INTEGER :: err, i, j, nobs, norb, nmag
+    REAL(bp), DIMENSION(6) :: &
+         coordinates
+    INTEGER :: &
+         err, i, j, nobs, norb, nmag
 
     IF (.NOT.this%is_initialized) THEN
        error = .TRUE.
@@ -640,19 +655,34 @@ CONTAINS
     TYPE (Observations), INTENT(in) :: obss
     REAL(bp), INTENT(in), OPTIONAL :: input_G, input_delta_G
 
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoord_arr 
-    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides_arr  
-    TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr 
-    CHARACTER(len=2), DIMENSION(:), POINTER :: filter_arr
-    CHARACTER(len=2), DIMENSION(:), ALLOCATABLE :: filter_arr_
-    REAL(bp), DIMENSION(:,:,:), POINTER :: cov_arr
-    REAL(bp), DIMENSION(:,:), POINTER :: pdfs_arr, phase_angle_arr
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: helio_dist_arr, topo_dist_arr
-    REAL(bp), DIMENSION(:), POINTER :: obs_mag_arr, obs_mag_unc_arr
-    REAL(bp), DIMENSION(:), ALLOCATABLE :: obs_mag_arr_, &
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoord_arr => NULL() 
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: &
+         ephemerides_arr => NULL()  
+    TYPE (Orbit), DIMENSION(:,:), POINTER :: &
+         orb_lt_corr_arr => NULL() 
+    CHARACTER(len=2), DIMENSION(:), POINTER :: &
+         filter_arr => NULL()
+    CHARACTER(len=2), DIMENSION(:), ALLOCATABLE :: &
+         filter_arr_
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         cov_arr => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         pdfs_arr => NULL(), &
+         phase_angle_arr => NULL()
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         helio_dist_arr, &
+         topo_dist_arr
+    REAL(bp), DIMENSION(:), POINTER :: &
+         obs_mag_arr => NULL(), &
+         obs_mag_unc_arr => NULL()
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: &
+         obs_mag_arr_, &
          obs_mag_unc_arr_
-    REAL(bp), DIMENSION(6) :: coordinates
-    INTEGER :: err, i, j, nmag, norb, nobs
+    REAL(bp), DIMENSION(6) :: &
+         coordinates
+    INTEGER :: &
+         err, i, j, nmag, norb, nobs
 
     IF (.NOT.this%is_initialized) THEN
        error = .TRUE.

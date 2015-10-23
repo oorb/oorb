@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2015-06-15
+!! @version 2015-10-23
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1435,20 +1435,21 @@ CONTAINS
          orb_nominal, &
          orb
     TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
-         comp_scoords, obs_scoords
+         comp_scoords => NULL(), &
+         obs_scoords => NULL()
     TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
-         obsy_ccoords
+         obsy_ccoords => NULL()
     CHARACTER(len=FRAME_LEN) :: frame
     CHARACTER(len=12) :: str1, str2
     CHARACTER(len=64) :: &
          frmt = "(F20.15,1X)", &
          efrmt = "(E11.4,1X)"
     REAL(bp), DIMENSION(:,:,:), POINTER :: &
-         residuals3, &
-         partials_arr, &
-         information_matrix_obs
+         residuals3 => NULL(), &
+         partials_arr => NULL(), &
+         information_matrix_obs => NULL()
     REAL(bp), DIMENSION(:,:), POINTER :: &
-         stdev_arr_measur
+         stdev_arr_measur => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
          jacobian_arr, &
          obs_coords, &
@@ -1498,8 +1499,8 @@ CONTAINS
          nfailed, &
          nrotation
     LOGICAL, DIMENSION(:,:), POINTER :: &
-         mask_arr, &
-         mask_measur
+         mask_arr => NULL(), &
+         mask_measur => NULL()
 
     iorb = 0
     itrial = 0
@@ -2506,7 +2507,7 @@ CONTAINS
 
     TYPE (Orbit) :: orb
     REAL(bp), DIMENSION(6,6) :: partials, covariance1, covariance2
-    REAL(bp), DIMENSION(:), POINTER :: pdf_arr
+    REAL(bp), DIMENSION(:), POINTER :: pdf_arr => NULL()
     REAL(bp) :: jac
     INTEGER :: i, err
 
@@ -2669,7 +2670,8 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(in)  :: this
     REAL(bp), DIMENSION(:,:), OPTIONAL  :: apriori
     TYPE (Orbit)                        :: getBestFittingSampleOrbit
-    REAL(bp), DIMENSION(:), POINTER     :: apriori_pdf
+
+    REAL(bp), DIMENSION(:), POINTER     :: apriori_pdf => NULL()
     REAL(bp), DIMENSION(:), ALLOCATABLE :: pdf
     INTEGER                             :: norb, err, indx 
 
@@ -2751,8 +2753,8 @@ CONTAINS
     TYPE (Orbit), INTENT(in) :: orb
     LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: obs_masks
 
-    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix
-    REAL(bp), DIMENSION(:,:), POINTER :: residuals
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: residuals => NULL()
     INTEGER :: err, i
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -3028,10 +3030,10 @@ CONTAINS
     REAL(bp), DIMENSION(:,:), POINTER, OPTIONAL           :: pdfs_arr
     TYPE (Orbit), DIMENSION(:,:), POINTER, OPTIONAL       :: this_lt_corr_arr
 
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemerides_arr_
-    TYPE (Orbit), DIMENSION(:), POINTER                :: this_lt_corr_arr_
-    REAL(bp), DIMENSION(:,:,:,:), POINTER              :: partials_arr4 
-    REAL(bp), DIMENSION(:,:,:), POINTER                :: partials_arr3
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemerides_arr_ => NULL()
+    TYPE (Orbit), DIMENSION(:), POINTER                :: this_lt_corr_arr_ => NULL()
+    REAL(bp), DIMENSION(:,:,:,:), POINTER              :: partials_arr4 => NULL()
+    REAL(bp), DIMENSION(:,:,:), POINTER                :: partials_arr3 => NULL()
     REAL(bp), DIMENSION(6,6)                           :: cov_elm
     REAL(bp)                                           :: det
     INTEGER                                            :: i, j, err, norb, nobs
@@ -3232,8 +3234,9 @@ CONTAINS
     REAL(bp), DIMENSION(6,6), INTENT(out), OPTIONAL    :: cov_lt_corr
     REAL(bp), DIMENSION(:), POINTER, OPTIONAL          :: pdf_lt_corr_arr
 
-    REAL(bp), DIMENSION(:,:,:), POINTER :: partials_arr, &
-         jacobian_lt_corr_arr, jacobian_prop_arr
+    REAL(bp), DIMENSION(:,:,:), POINTER :: partials_arr => NULL(), &
+         jacobian_lt_corr_arr => NULL(), &
+         jacobian_prop_arr => NULL()
     REAL(bp), DIMENSION(6,6)            :: cov_elm, partials, &
          jacobian_lt_corr, jacobian_prop, jacobian
     REAL(bp)                            :: det
@@ -3456,7 +3459,8 @@ CONTAINS
 
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: elements
     REAL(bp), DIMENSION(:), ALLOCATABLE :: periapsis, apoapsis, pdf
-    LOGICAL, DIMENSION(:), POINTER :: mask_array, mask_array_tot
+    LOGICAL, DIMENSION(:), POINTER :: mask_array => NULL(), &
+         mask_array_tot => NULL()
     INTEGER :: norb, err, i, ngroup
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -3782,7 +3786,7 @@ CONTAINS
 
     TYPE (Orbit) :: orb
     REAL(bp), DIMENSION(6,6) :: partials, covariance1, covariance2
-    REAL(bp), DIMENSION(:), POINTER :: pdf_arr
+    REAL(bp), DIMENSION(:), POINTER :: pdf_arr => NULL()
     REAL(bp) :: jac
     INTEGER :: i, err
 
@@ -3885,10 +3889,11 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in)  :: this
+
     TYPE (Orbit)                        :: orbit_earth
     TYPE (Time)                         :: t
     REAL(bp), DIMENSION(:), ALLOCATABLE :: moid, pdf
-    REAL(bp), DIMENSION(:,:), POINTER   :: elem
+    REAL(bp), DIMENSION(:,:), POINTER   :: elem => NULL()
     REAL(bp)                            :: mjd_tdt
     INTEGER                             :: norb, err, i
 
@@ -3994,6 +3999,7 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(in) :: this
     TYPE (Orbit)                       :: getNominalOrbit
     LOGICAL, INTENT(in), OPTIONAL      :: ml_orbit
+
     LOGICAL                            :: ml_orbit_
     INTEGER                            :: indx_ml
 
@@ -4073,6 +4079,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in) :: this
     LOGICAL, DIMENSION(:,:), POINTER   :: obs_masks
+
     INTEGER                            :: err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -4562,6 +4569,7 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(in) :: this
     REAL(bp), DIMENSION(:), POINTER    :: getPDFValues
     CHARACTER(len=*), INTENT(in), OPTIONAL :: element_type
+
     REAL(bp), DIMENSION(:), ALLOCATABLE :: jac
     INTEGER                            :: err
 
@@ -4641,7 +4649,7 @@ CONTAINS
     REAL(bp), DIMENSION(:,:), POINTER             :: phase_angle_pdf
 
     REAL(bp), DIMENSION(6,6) :: partials
-    REAL(bp), DIMENSION(:), POINTER :: pdf_arr
+    REAL(bp), DIMENSION(:), POINTER :: pdf_arr => NULL()
     REAL(bp) :: jac
     INTEGER :: i, err
 
@@ -4733,7 +4741,7 @@ CONTAINS
     TYPE (CartesianCoordinates), DIMENSION(:), INTENT(in) :: observers
     REAL(bp), DIMENSION(:,:), POINTER                     :: phase_angles
 
-    REAL(bp), DIMENSION(:), POINTER :: phase_angles_
+    REAL(bp), DIMENSION(:), POINTER :: phase_angles_ => NULL()
     INTEGER :: i, err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -4888,6 +4896,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in) :: this
     REAL(bp), DIMENSION(:,:), POINTER  :: getPositionDistribution
+
     INTEGER                            :: i, err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -4968,6 +4977,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in) :: this
     REAL(bp), DIMENSION(:), POINTER    :: getReducedChi2Distribution
+
     INTEGER                            :: err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -5010,6 +5020,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in)  :: this
     REAL(bp), DIMENSION(:,:,:), POINTER :: getResidualDistribution
+
     INTEGER                             :: err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -5050,9 +5061,10 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(in)                   :: this
     TYPE (Observations), INTENT(in)                      :: obss
     REAL(bp), DIMENSION(:,:,:), POINTER                  :: getResiduals_SO_obss
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER   :: obsy_ccoords
-    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: computed_scoords
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER   :: observed_scoords
+
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER   :: obsy_ccoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: computed_scoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER   :: observed_scoords => NULL()
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE              :: computed_coords
     REAL(bp), DIMENSION(:,:), ALLOCATABLE                :: observed_coords
     INTEGER                                              :: err, i, j, nobs, norb
@@ -5184,9 +5196,10 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(in)                 :: this
     TYPE (Orbit), INTENT(in)                           :: orb
     REAL(bp), DIMENSION(:,:), POINTER                  :: getResiduals_SO_orb
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: computed_scoords, &
-         observed_scoords
+
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: computed_scoords => NULL(), &
+         observed_scoords => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE              :: observed_coords, &
          computed_coords
     INTEGER                                            :: err, i, nobs
@@ -5334,6 +5347,7 @@ CONTAINS
     INTEGER, INTENT(out), OPTIONAL                  :: vomcmc_ntrial_cmp
     INTEGER, INTENT(out), OPTIONAL                  :: vomcmc_niter_cmp
     LOGICAL, DIMENSION(6,2), INTENT(out), OPTIONAL  :: vomcmc_scaling_ready_cmp
+
     INTEGER :: err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -5510,6 +5524,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in) :: this
     REAL(bp), DIMENSION(:,:), POINTER  :: getRhoDistribution
+
     INTEGER                            :: err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -5548,7 +5563,8 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(in) :: this
     TYPE (Orbit), INTENT(inout)        :: orb
     REAL(bp), DIMENSION(6)             :: getRMS_single
-    REAL(bp), DIMENSION(:,:), POINTER  :: residuals
+
+    REAL(bp), DIMENSION(:,:), POINTER  :: residuals => NULL()
     INTEGER                            :: i, nobs, err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -5596,6 +5612,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in)  :: this
     REAL(bp), DIMENSION(:,:), POINTER   :: getRMSDistribution
+
     INTEGER                             :: err
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -5641,7 +5658,8 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in) :: this
-    REAL(bp), DIMENSION(:), POINTER  :: getRMSValues
+    REAL(bp), DIMENSION(:), POINTER :: getRMSValues
+
     INTEGER                            :: i
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -5798,8 +5816,9 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(in) :: this
     REAL(bp), DIMENSION(6)             :: getStandardDeviations_SO, stdev
     CHARACTER(len=*), INTENT(in), OPTIONAL :: element_type
+
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr
-    REAL(bp), DIMENSION(:), POINTER :: pdf
+    REAL(bp), DIMENSION(:), POINTER :: pdf => NULL()
     CHARACTER(len=ELEMENT_TYPE_LEN)    :: element_type_
     INTEGER                            :: i, err
 
@@ -6187,10 +6206,11 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
+
     TYPE(StochasticOrbit) :: storb
     REAL(bp), DIMENSION(4) :: sor_rho_init
     LOGICAL, DIMENSION(:,:), POINTER :: &
-         obs_masks
+         obs_masks => NULL()
 
     IF (.NOT.ASSOCIATED(this%orb_arr_cmp) .OR. .NOT.ASSOCIATED(this%pdf_arr_cmp)) THEN
 
@@ -6359,15 +6379,18 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
+
     TYPE(Orbit) :: orb
-    TYPE(SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords, comp_scoords
+    TYPE(SphericalCoordinates), DIMENSION(:), POINTER :: &
+         obs_scoords => NULL(), &
+         comp_scoords => NULL()
     TYPE(SphericalCoordinates) :: obs_scoord1, obs_scoord2, obs_help
-    TYPE(CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
+    TYPE(CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords => NULL()
     TYPE(CartesianCoordinates) :: obs_ccoord_helio1, &
          obs_ccoord_helio2, obs_ccoord_topo1, obs_ccoord_topo2
     TYPE(Time) :: tt
-    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix_obs, &
-         partials_arr
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix_obs => NULL(), &
+         partials_arr => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: residuals, &
          comp_coords, &
          obs_coords, &
@@ -6380,12 +6403,12 @@ CONTAINS
     REAL(bp), DIMENSION(3) :: pos, rms
     REAL(bp) :: chi2, ran, t1, t2, obs_coord, jac_sph_inv, &
          jac_sph_inv_, chi2_, chi2min, avalue, a, q, e, dchi2, chi2min_prm
-    INTEGER, DIMENSION(:,:), POINTER :: obs_pair_arr
+    INTEGER, DIMENSION(:,:), POINTER :: obs_pair_arr => NULL()
     INTEGER, DIMENSION(6) :: n0, n0_
     INTEGER, DIMENSION(2) :: obs_pair
     INTEGER :: ndof, i, itrial, err, nobs, j, norb_acc
     INTEGER, PARAMETER :: burnin_max = 50    ! Make user-defined parameter? 
-    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks => NULL()
     LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., frst_found = .FALSE., burnin_case=.FALSE.
 
     IF (info_verb >= 2) THEN
@@ -7059,19 +7082,19 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
+
     TYPE(Orbit) :: orb
-    TYPE(SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords, comp_scoords !observed
-    !and
-    !computed
-    !sky
+    TYPE(SphericalCoordinates), DIMENSION(:), POINTER :: &
+         obs_scoords => NULL(), comp_scoords => NULL() !observed and
+    !computed sky
     !positions
     TYPE(SphericalCoordinates) :: obs_scoord1, obs_scoord2, obs_help
-    TYPE(CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
+    TYPE(CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords => NULL()
     TYPE(CartesianCoordinates) :: obs_ccoord_helio1, &
          obs_ccoord_helio2, obs_ccoord_topo1, obs_ccoord_topo2
     TYPE(Time) :: tt
-    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix_obs, &
-         partials_arr
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix_obs => NULL(), &
+         partials_arr => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: residuals, &
          comp_coords, &
          obs_coords, &
@@ -7084,13 +7107,13 @@ CONTAINS
     REAL(bp), DIMENSION(3) :: pos
     REAL(bp) :: chi2, ran, t1, t2, obs_coord, jac_sph_inv, &
          jac_sph_inv_, chi2_, chi2min, avalue, a, q
-    INTEGER, DIMENSION(:,:), POINTER :: obs_pair_arr
+    INTEGER, DIMENSION(:,:), POINTER :: obs_pair_arr => NULL()
     INTEGER, DIMENSION(6) :: n0, n0_
     INTEGER, DIMENSION(2) :: obs_pair
     INTEGER :: ndof, i, itrial, err, nobs, j, count_rms, norb_acc
     INTEGER, PARAMETER :: rms_prm = 3    ! 3 or 5? Make user-defined parameter? this%rms_prm
     INTEGER, PARAMETER :: burnin_max = 50    ! Make user-defined parameter?
-    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks => NULL()
     LOGICAL :: accepted, first = .TRUE., burn_in = .TRUE., rms_found = .FALSE.
 
     IF (info_verb >= 2) THEN
@@ -7777,7 +7800,7 @@ CONTAINS
 
     TYPE (StochasticOrbit) :: storb
     TYPE (Observations) :: obss
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: scoord_arr
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: scoord_arr => NULL()
     TYPE (Time) :: t
     TYPE (Orbit), DIMENSION(:), ALLOCATABLE :: orb_arr_init
     TYPE (Orbit), DIMENSION(7) :: orb_arr_tmp
@@ -7786,8 +7809,10 @@ CONTAINS
     CHARACTER(len=DYN_MODEL_LEN) :: dyn_model, dyn_model_
     CHARACTER(len=INTEGRATOR_LEN) :: orb_integrator
     CHARACTER(len=32) :: str
-    REAL(bp), DIMENSION(:,:,:), POINTER :: cov_mat_obs, center_and_absbound_arr
-    REAL(bp), DIMENSION(:,:), POINTER :: orb_additional_perturbers, stddev_arr
+    REAL(bp), DIMENSION(:,:,:), POINTER :: cov_mat_obs => NULL(), &
+         center_and_absbound_arr => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: orb_additional_perturbers => NULL(), &
+         stddev_arr => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: mean_arr, coordinates_arr
     REAL(bp), DIMENSION(6) :: elements, elements_, coordinates, coordinates_
     REAL(bp) :: sigma_multiplier_rms, orb_integration_step, a_r, &
@@ -8683,11 +8708,12 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
     TYPE (Orbit), INTENT(in)              :: preliminary_orbit
+
     TYPE (Time) :: &
          t0, &
          t
     TYPE (Orbit), DIMENSION(:), POINTER :: &
-         orb_arr
+         orb_arr => NULL()
     TYPE (Orbit), DIMENSION(this%vov_norb_prm) :: &
          orb_accepted
     TYPE (Orbit) :: &
@@ -8695,11 +8721,11 @@ CONTAINS
          orb_global, &
          orb_local
     TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: &
-         comp_scoords
+         comp_scoords => NULL()
     TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
-         obs_scoords
+         obs_scoords => NULL()
     TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
-         obsy_ccoords
+         obsy_ccoords => NULL()
     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
     CHARACTER(len=FRAME_LEN) :: frame
     CHARACTER(len=DYN_MODEL_LEN) :: &
@@ -8714,14 +8740,14 @@ CONTAINS
     CHARACTER(len=64) :: &
          str
     REAL(bp), DIMENSION(:,:,:,:), POINTER :: &
-         partials4
+         partials4 => NULL()
     REAL(bp), DIMENSION(:,:,:), POINTER :: &
-         residuals3, &
+         residuals3 => NULL(), &
          information_matrix_obs
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: &
          principal_axes
     REAL(bp), DIMENSION(:,:), POINTER :: &
-         residuals2
+         residuals2 => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
          obs_coords, &
          jac_arr, &
@@ -8809,7 +8835,7 @@ CONTAINS
          info_verb_, &
          err_verb_
     LOGICAL, DIMENSION(:,:), POINTER :: &
-         mask_arr2
+         mask_arr2 => NULL()
     LOGICAL, DIMENSION(6) :: &
          element_mask
     LOGICAL :: &
@@ -11142,12 +11168,13 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout)  :: this
     TYPE (Orbit), DIMENSION(:), INTENT(in) :: orb_arr_in
+
     TYPE (Time) :: &
          t0, &
          t
     TYPE (Orbit), DIMENSION(:), POINTER :: &
-         orb_accepted, &
-         orb_arr
+         orb_accepted => NULL(), &
+         orb_arr => NULL()
     TYPE (Orbit) :: &
          orb
     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
@@ -11166,10 +11193,10 @@ CONTAINS
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: &
          principal_axes
     REAL(bp), DIMENSION(:,:), POINTER :: &
-         elements_arr, &
-         elements_arr_, &
-         elements_mean, &
-         elements_running_mean
+         elements_arr => NULL(), &
+         elements_arr_ => NULL(), &
+         elements_mean => NULL(), &
+         elements_running_mean => NULL()
     REAL(bp), DIMENSION(:), ALLOCATABLE :: &
          rchi2_arr, &
          sampling_volume_arr, &
@@ -11863,7 +11890,7 @@ CONTAINS
     TYPE (Time) :: &
          t0
     TYPE (Orbit), DIMENSION(:), POINTER :: &
-         orb_arr
+         orb_arr => NULL()
     TYPE (Orbit) :: &
          orb
     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
@@ -11880,7 +11907,7 @@ CONTAINS
     CHARACTER(len=64) :: &
          str
     REAL(bp), DIMENSION(:,:), POINTER :: &
-         elements_arr
+         elements_arr => NULL()
     REAL(bp), DIMENSION(3) :: &
          ran_arr
     REAL(bp), DIMENSION(6) :: &
@@ -12325,21 +12352,30 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(inout) :: this
     TYPE (Orbit), INTENT(in)              :: preliminary_orbit    
 
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords, ephemerides
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+         obs_scoords => NULL(), &
+         ephemerides => NULL()
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoords => NULL()
     TYPE (Time) :: t, t_
     TYPE (Orbit) :: orb
-    CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: obsy_codes
+    CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: &
+         obsy_codes => NULL()
     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type, element_type_ls
     CHARACTER(len=FRAME_LEN) :: frame
     CHARACTER(len=DYN_MODEL_LEN) :: dyn_model, dyn_model_
     CHARACTER(len=INTEGRATOR_LEN) :: orb_integrator
     CHARACTER(len=32) :: str
-    REAL(bp), DIMENSION(:,:,:), POINTER :: partials_arr, &
-         cov_mat_obs, inform_mat_obs_bd
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         partials_arr => NULL(), &
+         cov_mat_obs => NULL(), &
+         inform_mat_obs_bd => NULL()
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: design_mat ! (data,obs,parameter)
-    REAL(bp), DIMENSION(:,:), POINTER :: stdev_arr_obs, &
-         elements_iter_arr, rmss_iter_arr, orb_additional_perturbers
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         stdev_arr_obs => NULL(), &
+         elements_iter_arr => NULL(), &
+         rmss_iter_arr => NULL(), &
+         orb_additional_perturbers => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: observed, & ! incl. cos(dec)
          computed, & ! incl. cos(dec)
          residuals
@@ -13766,18 +13802,23 @@ CONTAINS
     TYPE (Orbit), INTENT(in)              :: preliminary_orbit    
 
     INTEGER, PARAMETER :: niter_size = 3
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: obs_scoords
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: obsy_ccoords
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+         obs_scoords => NULL()
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoords => NULL()
     TYPE (Time) :: t, t_
     TYPE (Orbit) :: orb
-    CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: obsy_codes
+    CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: &
+         obsy_codes => NULL()
     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type_
     CHARACTER(len=FRAME_LEN) :: frame_
     CHARACTER(len=DYN_MODEL_LEN) :: dyn_model_
     CHARACTER(len=INTEGRATOR_LEN) :: integrator_
     CHARACTER(len=32) :: str
-    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix_measur
-    REAL(bp), DIMENSION(:,:), POINTER :: stdev_arr_measur
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         information_matrix_measur => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         stdev_arr_measur => NULL()
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: jacobians
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: measur, & ! incl. cos(dec)
          residuals, &
@@ -14398,8 +14439,10 @@ CONTAINS
       REAL(bp), INTENT(out) :: rchi2
 
       TYPE (Orbit) :: orb
-      TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemerides
-      REAL(bp), DIMENSION(:,:,:), POINTER :: partials_arr
+      TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+           ephemerides => NULL()
+      REAL(bp), DIMENSION(:,:,:), POINTER :: &
+           partials_arr => NULL()
       REAL(bp), DIMENSION(SIZE(residuals,dim=1),SIZE(residuals,dim=2)) :: computed
       REAL(bp) :: chi2
       INTEGER :: j
@@ -14556,6 +14599,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(StochasticOrbit), INTENT(inout) :: this
     INTEGER, DIMENSION(:,:), POINTER     :: idx_pair
+
     INTEGER, DIMENSION(:,:), ALLOCATABLE :: idx_pair_
     REAL(bp)                             :: x
     INTEGER                              :: nobs, nobs_orig, n1, n2, ncomb
@@ -14649,7 +14693,7 @@ CONTAINS
     TYPE (Time), INTENT(inout)                    :: t
     REAL(bp), DIMENSION(:,:,:), POINTER, OPTIONAL :: encounters 
 
-    REAL(bp), DIMENSION(:,:,:), POINTER    :: jacobians
+    REAL(bp), DIMENSION(:,:,:), POINTER    :: jacobians => NULL()
     REAL(bp), DIMENSION(6,6)               :: jacobian, cov
     REAL(bp)                               :: det
     INTEGER                                :: i, err
@@ -14742,7 +14786,8 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
     REAL(bp), INTENT(in), OPTIONAL :: accept_multiplier
-    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
+
+    REAL(bp), DIMENSION(:,:), POINTER :: stdevs => NULL()
     REAL(bp) :: accept_multiplier_
     INTEGER :: nobs, err
 
@@ -14830,7 +14875,8 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
     REAL(bp), DIMENSION(:), INTENT(in), OPTIONAL :: offset
-    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
+
+    REAL(bp), DIMENSION(:,:), POINTER :: stdevs => NULL()
     REAL(bp) :: mean
     INTEGER :: i, j, nobs, err
 
@@ -15755,7 +15801,8 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout) :: this
-    INTEGER, DIMENSION(:,:), POINTER      :: idx_pair
+
+    INTEGER, DIMENSION(:,:), POINTER      :: idx_pair => NULL()
     INTEGER                               :: err
 
     IF (.NOT.this%is_initialized_prm) THEN
@@ -16542,11 +16589,12 @@ CONTAINS
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout)                :: this
-    TYPE (Orbit), DIMENSION(:), POINTER                  :: orb_arr_
-    TYPE (Orbit), DIMENSION(:), POINTER                  :: orb_arr
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER   :: obsies_ccoords
-    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: scoords
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER   :: obs_scoords
+
+    TYPE (Orbit), DIMENSION(:), POINTER                  :: orb_arr_ => NULL()
+    TYPE (Orbit), DIMENSION(:), POINTER                  :: orb_arr => NULL()
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER   :: obsies_ccoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: scoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER   :: obs_scoords => NULL()
     TYPE (CartesianCoordinates)                          :: obs_ccoord_topo1, &
          obs_ccoord_focus1, obs_ccoord_topo2, obs_ccoord_focus2
     TYPE (SphericalCoordinates)                          :: obs_scoord1, &
@@ -16554,14 +16602,17 @@ CONTAINS
     TYPE (Time)                                          :: t1, t2
     CHARACTER(len=DYN_MODEL_LEN)                         :: dyn_model
     CHARACTER(len=INTEGRATOR_LEN)                        :: integrator
-    REAL(bp), DIMENSION(:,:,:,:), POINTER                :: partials_arr
-    REAL(bp), DIMENSION(:,:,:), POINTER                  :: cov_matrices, &
-         sphdev
+    REAL(bp), DIMENSION(:,:,:,:), POINTER                :: partials_arr => NULL()
+    REAL(bp), DIMENSION(:,:,:), POINTER                  :: cov_matrices => NULL(), &
+         sphdev => NULL()
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE              :: residuals
-    REAL(bp), DIMENSION(:,:,:), POINTER                  :: information_matrix_obs
+    REAL(bp), DIMENSION(:,:,:), POINTER                  :: information_matrix_obs => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE                :: rms, &
          rho_distribution, jacobians
-    REAL(bp), DIMENSION(:), POINTER                      :: rho1, rho2, mjd_lt
+    REAL(bp), DIMENSION(:), POINTER                      :: &
+         rho1 => NULL(), &
+         rho2 => NULL(), &
+         mjd_lt => NULL()
     REAL(bp), DIMENSION(:), ALLOCATABLE                  :: cosdec0_arr, &
          pdf_arr, reg_apriori_arr, rchi2_arr, residual_vector
     REAL(bp), DIMENSION(6,6)                             :: information_matrix_elem, &
@@ -16576,7 +16627,8 @@ CONTAINS
          rho_mid, a, ran, tmp, chi2, dchi2, integration_step, &
          trials_per_orb, jac_car_kep, jac_equ_kep, obs_arc, &
          rang, distance, q, ftol
-    INTEGER, DIMENSION(:,:), POINTER                     :: obs_pair_arr
+    INTEGER, DIMENSION(:,:), POINTER                     :: &
+         obs_pair_arr => NULL()
     INTEGER, DIMENSION(:), ALLOCATABLE                   :: pair_histogram
     INTEGER, DIMENSION(6)                                :: n0, n0_
     INTEGER, DIMENSION(7)                                :: failed_flag
@@ -18693,7 +18745,7 @@ CONTAINS
     INTEGER, INTENT(in)                       :: nobs_max
 
     TYPE (Observations)                       :: obss, obss_next
-    TYPE (Observation), DIMENSION(:), POINTER :: obs_arr
+    TYPE (Observation), DIMENSION(:), POINTER :: obs_arr => NULL()
     TYPE (Observation)                        :: obs_next
     TYPE (StochasticOrbit)                    :: storb
     CHARACTER(len=4)                          :: str1, str2
@@ -18998,16 +19050,22 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(inout)  :: this
     TYPE (Observations), INTENT(in) :: obss
 
-    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr
+    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr => NULL()
     TYPE (Observations) :: obss_
     TYPE (Observation) :: obs
     TYPE (CartesianCoordinates), DIMENSION(2) :: observers
-    TYPE (SphericalCoordinates) , DIMENSION(:,:), POINTER :: ephemerides
-    REAL(bp), DIMENSION(:,:,:), POINTER :: residuals, &
-         information_matrix_obs
-    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: sor_rho_arr_cmp
-    REAL(bp), DIMENSION(:), POINTER :: dates_orig, dates_add
+    TYPE (SphericalCoordinates) , DIMENSION(:,:), POINTER :: &
+         ephemerides => NULL()
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         residuals => NULL(), &
+         information_matrix_obs => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         stdevs => NULL()
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         sor_rho_arr_cmp
+    REAL(bp), DIMENSION(:), POINTER :: &
+         dates_orig => NULL(), &
+         dates_add => NULL()
     REAL(bp), DIMENSION(:), ALLOCATABLE :: chi2_arr
     INTEGER :: err, i, j, norb, imin
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask, mask_
@@ -19418,16 +19476,21 @@ CONTAINS
     TYPE (StochasticOrbit), INTENT(inout)  :: this
     TYPE (Observations), INTENT(in) :: obss
 
-    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr
+    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr => NULL()
     TYPE (Observations) :: obss_
     TYPE (Observation) :: obs
     TYPE (CartesianCoordinates), DIMENSION(2) :: observers
-    TYPE (SphericalCoordinates) , DIMENSION(:,:), POINTER :: ephemerides
-    REAL(bp), DIMENSION(:,:,:), POINTER :: residuals, &
-         information_matrix_obs
-    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
+    TYPE (SphericalCoordinates) , DIMENSION(:,:), POINTER :: &
+         ephemerides => NULL()
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         residuals => NULL(), &
+         information_matrix_obs => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         stdevs => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: sor_rho_arr_cmp
-    REAL(bp), DIMENSION(:), POINTER :: dates_orig, dates_add
+    REAL(bp), DIMENSION(:), POINTER :: &
+         dates_orig => NULL(), &
+         dates_add => NULL()
     REAL(bp), DIMENSION(:), ALLOCATABLE :: chi2_arr
     INTEGER :: err, i, j, norb
     LOGICAL, DIMENSION(:), ALLOCATABLE :: mask, mask_
@@ -19819,7 +19882,7 @@ CONTAINS
     CHARACTER(len=*), INTENT(in) :: frame
 
     CHARACTER(len=FRAME_LEN) :: frame_
-    REAL(bp), DIMENSION(:), POINTER :: pdf_arr
+    REAL(bp), DIMENSION(:), POINTER :: pdf_arr => NULL()
     INTEGER :: i
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -19903,7 +19966,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout)  :: this
 
-    REAL(bp), DIMENSION(:), POINTER :: pdf_arr
+    REAL(bp), DIMENSION(:), POINTER :: pdf_arr => NULL()
     INTEGER :: i
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -19961,7 +20024,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout)  :: this
 
-    REAL(bp), DIMENSION(:), POINTER :: pdf_arr
+    REAL(bp), DIMENSION(:), POINTER :: pdf_arr => NULL()
     INTEGER :: i
 
     IF (.NOT. this%is_initialized_prm) THEN
@@ -20035,12 +20098,12 @@ CONTAINS
     LOGICAL, INTENT(in), OPTIONAL         :: automatic
 
     CHARACTER(len=128) :: str, frmt
-    REAL(bp), DIMENSION(:,:), POINTER :: stdevs
+    REAL(bp), DIMENSION(:,:), POINTER :: stdevs => NULL()
     REAL(bp), DIMENSION(:), ALLOCATABLE :: ra_mean, dec_mean
     REAL(bp) :: ra_std, dec_std
     INTEGER, DIMENSION(:), ALLOCATABLE :: nr_array
     INTEGER :: i, nobs, err, nr_of_omitted
-    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks => NULL()
     LOGICAL, DIMENSION(:), ALLOCATABLE :: maskarr
     LOGICAL :: automatic_
 

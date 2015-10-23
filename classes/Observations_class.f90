@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2015-06-15
+!! @version 2015-10-23
 !!  
 MODULE Observations_cl
 
@@ -1213,7 +1213,7 @@ CONTAINS
     TYPE (Observations), INTENT(in)     :: this
     REAL(bp), DIMENSION(:,:,:), POINTER :: getBlockDiagInformationMatrix
 
-    REAL(bp), DIMENSION(:,:,:), POINTER :: covariance_matrices
+    REAL(bp), DIMENSION(:,:,:), POINTER :: covariance_matrices => NULL()
     INTEGER :: i, j, err
     LOGICAL, DIMENSION(6) :: obs_mask
 
@@ -1315,6 +1315,7 @@ CONTAINS
 
     TYPE (Observations), INTENT(in)     :: this
     REAL(bp), DIMENSION(:,:,:), POINTER :: getCovarianceMatrices
+
     INTEGER                             :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -1366,6 +1367,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in) :: this
     REAL(bp), DIMENSION(:), POINTER :: getDates_Obss
+
     TYPE (Time)                     :: t
     INTEGER                         :: i, err
 
@@ -1420,6 +1422,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in) :: this
     REAL(bp), DIMENSION(:), POINTER :: getDeclinations_Obss
+
     INTEGER                         :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -1471,6 +1474,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)                       :: this
     CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: getDesignations
+
     INTEGER                                               :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -1524,7 +1528,8 @@ CONTAINS
     TYPE (Observations), INTENT(in) :: this
     CHARACTER(len=DESIGNATION_LEN)  :: getDesignation_Obss
 
-    CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: designations
+    CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: &
+         designations => NULL()
     INTEGER                                               :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -1581,6 +1586,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)         :: this
     CHARACTER(len=2), DIMENSION(:), POINTER :: getFilters
+
     INTEGER                                 :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -1677,7 +1683,9 @@ CONTAINS
 
     TYPE (Observations), INTENT(in)     :: this
     REAL(bp), DIMENSION(:,:), POINTER   :: getInformationMatrix
-    REAL(bp), DIMENSION(:,:,:), POINTER :: covariance_matrices
+
+    REAL(bp), DIMENSION(:,:,:), POINTER :: &
+         covariance_matrices => NULL()
     INTEGER                             :: i, j, k, err
     LOGICAL, DIMENSION(6)               :: obs_mask
 
@@ -1778,6 +1786,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in) :: this
     REAL(bp), DIMENSION(:), POINTER :: getMagnitudes
+
     INTEGER                         :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -1833,6 +1842,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in) :: this
     REAL(bp), DIMENSION(:), POINTER :: getMagnitudeUncertainties
+
     INTEGER                         :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -1906,6 +1916,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)       :: this
     REAL(bp), DIMENSION(:,:), POINTER     :: getMinAndMaxValues_Obss
+
     TYPE (Time)                           :: t
     TYPE (CartesianCoordinates)           :: ccoord
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: obs_arr
@@ -2263,6 +2274,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout)                    :: this
     CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: getObjects 
+
     INTEGER                                               :: err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2433,6 +2445,7 @@ CONTAINS
     LOGICAL, INTENT(in), OPTIONAL    :: use_notes
     LOGICAL, DIMENSION(:,:), POINTER :: getObservationMasks_Obss
     LOGICAL                          :: use_notes_
+
     INTEGER                          :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2500,6 +2513,7 @@ CONTAINS
 
     TYPE (Observations), INTENT(in)  :: this
     CHARACTER(4), DIMENSION(:), POINTER :: getObservationNotes
+
     INTEGER                          :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2549,6 +2563,7 @@ CONTAINS
 
     TYPE (Observations), INTENT(in)           :: this
     TYPE (Observation), DIMENSION(:), POINTER :: getObservations
+
     INTEGER                                   :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2621,6 +2636,7 @@ CONTAINS
 
     TYPE (Observations), INTENT(in)   :: this
     REAL(bp), DIMENSION(:,:), POINTER :: getObservationWeights
+
     REAL(bp)                          :: stdev_min
     INTEGER                           :: i, err
 
@@ -2677,6 +2693,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)                    :: this
     TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: getObservationSCoords
+
     INTEGER                                            :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2735,6 +2752,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)                    :: this
     TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: getObservatoryCCoords
+
     INTEGER                                            :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2790,6 +2808,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)                    :: this
     CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: getObservatoryCodes_Obss
+
     INTEGER                                            :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2855,6 +2874,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout)         :: this
     TYPE (Observations), DIMENSION(:), POINTER :: getSeparatedSets
+
     CHARACTER(len=DESIGNATION_LEN)             :: number, id
     INTEGER                                    :: i, j, err
 
@@ -2943,6 +2963,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (Observations), INTENT(in)   :: this
     REAL(bp), DIMENSION(:,:), POINTER :: getStandardDeviations_Obss
+
     INTEGER                           :: i, err
 
     IF (.NOT. this%is_initialized) THEN
@@ -2998,6 +3019,7 @@ CONTAINS
     INTEGER, INTENT(in) :: nobs_max
     TYPE (Observations), DIMENSION(:), POINTER :: obss_arr
     REAL(bp), DIMENSION(:,:), POINTER :: tdt_arr
+
     REAL(bp) :: tdt_, tdt_sum 
     INTEGER  :: i, j, nobs, nobs_max_, err
 
@@ -3105,7 +3127,7 @@ CONTAINS
     CHARACTER(len=124) :: line1, line2, line_, str, filter, obstype
     CHARACTER(len=7) :: nr_str
     CHARACTER(len=4) :: timescale, obsy_code, strk_class
-    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr
     REAL(bp), DIMENSION(6,6) :: covariance
     REAL(bp), DIMENSION(6) :: coordinates, stdev_, mean
@@ -5574,7 +5596,9 @@ CONTAINS
     CHARACTER(len=*)                :: frmt
     INTEGER, INTENT(in)             :: lu         
     CHARACTER(len=*), INTENT(in), OPTIONAL :: number
-    CHARACTER(len=OBS_RECORD_LEN), DIMENSION(:), POINTER :: records
+
+    CHARACTER(len=OBS_RECORD_LEN), DIMENSION(:), POINTER :: &
+         records => NULL()
     CHARACTER(len=2)                :: note
     INTEGER                         :: i, j, err
 
