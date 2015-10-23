@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2015-10-08
+!! @version 2015-10-23
 !!
 MODULE Orbit_cl
 
@@ -3133,9 +3133,9 @@ CONTAINS
     TYPE (Orbit), DIMENSION(:), POINTER, OPTIONAL         :: this_lt_corr_arr
 
     TYPE (Orbit), DIMENSION(1)                           :: this_arr
-    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides_arr
-    REAL(bp), DIMENSION(:,:,:,:), POINTER                :: partials_arr_
-    TYPE (Orbit), DIMENSION(:,:), POINTER                :: this_lt_corr_arr_
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides_arr => NULL()
+    REAL(bp), DIMENSION(:,:,:,:), POINTER                :: partials_arr_ => NULL()
+    TYPE (Orbit), DIMENSION(:,:), POINTER                :: this_lt_corr_arr_ => NULL()
     INTEGER                                              :: i, err, nobsy
     LOGICAL                                              :: lt_corr_
 
@@ -3320,13 +3320,14 @@ CONTAINS
     REAL(bp), DIMENSION(:,:,:,:), POINTER, OPTIONAL       :: partials_arr
     TYPE (Orbit), DIMENSION(:,:), POINTER, OPTIONAL       :: this_lt_corr_arr
 
-    TYPE (Orbit), DIMENSION(:), POINTER                 :: this_prop_arr_next
+    TYPE (Orbit), DIMENSION(:), POINTER                 :: this_prop_arr_next => NULL()
     TYPE (Orbit), DIMENSION(:), ALLOCATABLE             :: this_prop_arr_current
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER  :: ephemerides_
-    TYPE (Orbit), DIMENSION(:), POINTER                 :: this_lt_corr_arr_
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER  :: ephemerides_ => NULL()
+    TYPE (Orbit), DIMENSION(:), POINTER                 :: this_lt_corr_arr_ => NULL()
     TYPE (Time)                                         :: t
     CHARACTER(len=FRAME_LEN), DIMENSION(:), ALLOCATABLE :: frames
-    REAL(bp), DIMENSION(:,:,:), POINTER                 :: partials_arr_, jacobian_prop_arr
+    REAL(bp), DIMENSION(:,:,:), POINTER                 :: partials_arr_ => NULL(), &
+         jacobian_prop_arr => NULL()
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE             :: jacobian_arr
     REAL(bp), DIMENSION(:), ALLOCATABLE                 :: mjd_tt_arr
     REAL(bp)                                            :: mjd_tt_orb
@@ -3822,12 +3823,12 @@ CONTAINS
     REAL(bp), DIMENSION(6,6), INTENT(out), OPTIONAL :: jacobian_lt_corr
 
     TYPE (Orbit), DIMENSION(1)                         :: this_arr
-    TYPE (Orbit), DIMENSION(:), POINTER                :: this_prop_arr
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemeris_arr
-    TYPE (Orbit), DIMENSION(:), POINTER                :: this_lt_corr_arr
-    REAL(bp), DIMENSION(:,:,:), POINTER                :: partials_arr
-    REAL(bp), DIMENSION(:,:,:), POINTER                :: jacobian_prop_arr, &
-         jacobian_lt_corr_arr
+    TYPE (Orbit), DIMENSION(:), POINTER                :: this_prop_arr => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemeris_arr => NULL()
+    TYPE (Orbit), DIMENSION(:), POINTER                :: this_lt_corr_arr => NULL()
+    REAL(bp), DIMENSION(:,:,:), POINTER                :: partials_arr => NULL()
+    REAL(bp), DIMENSION(:,:,:), POINTER                :: jacobian_prop_arr => NULL(), &
+         jacobian_lt_corr_arr => NULL()
     INTEGER :: i, err
     LOGICAL :: lt_corr_
 
@@ -4181,7 +4182,7 @@ CONTAINS
     TYPE (CartesianCoordinates)             :: observer_
     TYPE (Time)                             :: t_, t_observer
     CHARACTER(len=FRAME_LEN)                :: frame
-    REAL(bp), DIMENSION(:,:,:), POINTER     :: jacobian_prop_arr_
+    REAL(bp), DIMENSION(:,:,:), POINTER     :: jacobian_prop_arr_ => NULL()
     REAL(bp), DIMENSION(6,6)                :: jacobian, jacobian_lt_corr
     REAL(bp), DIMENSION(6,6)                :: scoord_partials
     REAL(bp), DIMENSION(6)                  :: observer_coordinates, elements
@@ -4848,7 +4849,7 @@ CONTAINS
     REAL(bp), DIMENSION(6)   :: getKeplerianElements
 
     TYPE (CartesianCoordinates) :: ccoord
-    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
     REAL(bp), DIMENSION(6)   :: elements, coordinates
     REAL(bp) :: mjd
 
@@ -6105,9 +6106,10 @@ CONTAINS
     TYPE (CartesianCoordinates), DIMENSION(:), INTENT(in) :: observers
     REAL(bp), DIMENSION(:), POINTER                       :: phase_angles
 
-    TYPE (Orbit), DIMENSION(:), POINTER :: this_lt_corr_arr
+    TYPE (Orbit), DIMENSION(:), POINTER :: this_lt_corr_arr => NULL()
     TYPE (CartesianCoordinates) :: ephemeris_ccoord, observer_
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: ephemerides
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+         ephemerides => NULL()
 !!$    REAL(bp), DIMENSION(:,:,:), POINTER :: jacobian_lt_corr_arr, jacobian_prop_arr
 !!$    REAL(bp), DIMENSION(6,6) :: jacobian
 !!$    REAL(bp), DIMENSION(1,6) :: partials_
@@ -6499,7 +6501,7 @@ CONTAINS
     TYPE (CartesianCoordinates) :: observer_
     REAL(bp), DIMENSION(3)      :: asteroid2sun, asteroid2observer
     REAL(bp), DIMENSION(6)      :: asteroidelems
-    
+
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
        CALL errorMessage("Orbit / getSolarElongation", &
@@ -6517,7 +6519,7 @@ CONTAINS
     ! Ecliptic position vector from asteroid to the Sun:
     asteroidelems = -1.0_bp*getElements(this, "cartesian", "ecliptic")
     asteroid2sun = asteroidelems(1:3)
-    
+
     IF (error) THEN
        CALL errorMessage("Orbit / getSolarElongation", &
             "TRACE BACK (5)", 1)
@@ -6643,7 +6645,7 @@ CONTAINS
 
     TYPE (Orbit) :: orb
     TYPE (Time) :: t
-    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
     REAL(bp), DIMENSION(6) :: elements, elements_
     REAL(bp) :: mjd_tt
     INTEGER :: i
@@ -6692,7 +6694,7 @@ CONTAINS
 
     TYPE (Orbit) :: orb
     TYPE (Time) :: t
-    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
     REAL(bp), DIMENSION(6) :: elements, elements_, coordinates, &
          coordinates_
     REAL(bp) :: mjd_tt, d, mass_ratio
@@ -8145,7 +8147,7 @@ CONTAINS
     REAL(bp), DIMENSION(:,:,:), POINTER, OPTIONAL   :: encounters
 
     TYPE (Orbit), DIMENSION(1)                      :: this_
-    REAL(bp), DIMENSION(:,:,:), POINTER             :: jacobian_
+    REAL(bp), DIMENSION(:,:,:), POINTER             :: jacobian_ => NULL()
     INTEGER :: err
 
     IF (.NOT. this%is_initialized) THEN
@@ -8281,7 +8283,7 @@ CONTAINS
     CHARACTER(len=DYN_MODEL_LEN) :: dyn_model
     CHARACTER(len=INTEGRATOR_LEN) :: integrator
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: partials0, jacobian_
-    REAL(bp), DIMENSION(:,:), POINTER :: elm_arr
+    REAL(bp), DIMENSION(:,:), POINTER :: elm_arr => NULL()
     REAL(bp), DIMENSION(:), ALLOCATABLE :: masses
     REAL(bp), DIMENSION(6,6) :: partials1
     REAL(bp), DIMENSION(0:3) :: stumpff_cs, ffs
@@ -9962,7 +9964,7 @@ CONTAINS
     TYPE(CartesianCoordinates) :: ccoord
     CHARACTER(len=ELEMENT_TYPE_LEN) :: element_type
     CHARACTER(len=FRAME_LEN) :: frame
-    REAL(bp), DIMENSION(:,:), POINTER :: planeph
+    REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
     REAL(bp), DIMENSION(6) :: helioc_elements, plan_elements
     REAL(bp) :: mjd_tt
 

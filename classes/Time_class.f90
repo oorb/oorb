@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see Orbit_class
 !! 
 !! @author  MG, JV
-!! @version 2014-08-22
+!! @version 2015-10-23
 !!
 MODULE Time_cl
 
@@ -45,10 +45,10 @@ MODULE Time_cl
   ! Max number of iterations:
   INTEGER, PARAMETER, PRIVATE                  :: nitmax = 5
   INTEGER, PARAMETER, PRIVATE                  :: nitutc = 20
-  REAL(bp), DIMENSION(:), POINTER, PRIVATE     :: tv
-  REAL(bp), DIMENSION(:), POINTER, PRIVATE     :: dtv
-  INTEGER, DIMENSION(:), POINTER, PRIVATE      :: mjdv
-  INTEGER, DIMENSION(:), POINTER, PRIVATE      :: idv
+  REAL(bp), DIMENSION(:), POINTER, PRIVATE     :: tv => NULL()
+  REAL(bp), DIMENSION(:), POINTER, PRIVATE     :: dtv => NULL()
+  INTEGER, DIMENSION(:), POINTER, PRIVATE      :: mjdv => NULL()
+  INTEGER, DIMENSION(:), POINTER, PRIVATE      :: idv => NULL()
   INTEGER, PRIVATE                             :: jp
   INTEGER, PRIVATE                             :: ipos
   INTEGER, PRIVATE                             :: taiut_size
