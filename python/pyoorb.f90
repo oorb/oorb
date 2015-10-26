@@ -619,7 +619,7 @@ CONTAINS
 
 
 
-          vmag = getApparentMagnitude(H=in_orbits(i,11), &
+          vmag = getApparentHGMagnitude(H=in_orbits(i,11), &
                G=in_orbits(i,12), r=SQRT(heliocentric_r2), &
                Delta=coordinates(1), phase_angle=phase)
           IF (error) THEN
@@ -909,7 +909,7 @@ CONTAINS
                observer_r2) / (SQRT(heliocentric_r2) * &
                SQRT(ephemeris_r2))
           phase = ACOS(cos_phase)
-          vmag = getApparentMagnitude(H=in_orbits(i,11), &
+          vmag = getApparentHGMagnitude(H=in_orbits(i,11), &
                G=in_orbits(i,12), r=SQRT(heliocentric_r2), &
                Delta=coordinates(1), phase_angle=phase)
           IF (error) THEN

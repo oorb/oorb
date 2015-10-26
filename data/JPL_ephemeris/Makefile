@@ -77,7 +77,7 @@ eph : $(CONVERTER) $(EPH_INPUT)
 	cp $(EPH_BIN) ../
 
 test : $(TESTER)
-	$(TESTER) --eph-type=$(EPH_TYPE)
+	./$(TESTER) --eph-type=$(EPH_TYPE)
 
 # Compile ascii-to-binary converter:
 $(CONVERTER): modules $(CONV_SRC)

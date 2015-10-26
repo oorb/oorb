@@ -46,7 +46,7 @@ liboorb.$(LIBEXT): modules classes main wrapper.o liboorb.o
 	../$(MODULEPATH)/*.o
 
 pyoorb: liboorb
-	f2py2.6 -m pyoorb pyoorb.f90 --build-dir ./build -c --noarch -loorb -L../lib \
+	f2py -m pyoorb pyoorb.f90 --build-dir ./build -c --noarch -loorb -L../lib \
 	--f90exec=$(FC) --f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH)" 
 
 pyoorb.o: liboorb
