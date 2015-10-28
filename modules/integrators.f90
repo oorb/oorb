@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2012-02-15
+!! @version 2015-10-28
 !!
 MODULE integrators
 
@@ -1964,7 +1964,7 @@ CONTAINS
     INTEGER :: NS
 
     ! Coordinates for the massive bodies.
-    REAL(prec), DIMENSION(:,:), POINTER :: wc
+    REAL(prec), DIMENSION(:,:), POINTER :: wc => NULL()
 
     ! Various distances.
     REAL(prec), DIMENSION(3,SIZE(perturbers)) :: drs 
@@ -2298,7 +2298,7 @@ CONTAINS
     INTEGER            :: NS
 
     ! Coordinates for the massive bodies.
-    REAL(prec), DIMENSION(:,:), POINTER :: wc_sun
+    REAL(prec), DIMENSION(:,:), POINTER :: wc_sun => NULL()
     REAL(prec), DIMENSION(:,:), ALLOCATABLE :: wc
     !REAL(prec), DIMENSION(10,6) :: wc
 

@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2015-06-15
+!! @version 2015-10-28
 !!
 MODULE planetary_data
 
@@ -707,11 +707,12 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(rprec16), INTENT(in)              :: mjd_tt
-    INTEGER, INTENT(in)               :: ntarget, ncenter
-    LOGICAL, INTENT(inout)            :: error
-    LOGICAL, OPTIONAL, INTENT(in)     :: km
+    INTEGER, INTENT(in)                    :: ntarget, ncenter
+    LOGICAL, INTENT(inout)                 :: error
+    LOGICAL, OPTIONAL, INTENT(in)          :: km
     REAL(rprec16), DIMENSION(:,:), POINTER :: JPL_ephemeris_r16
-    REAL(rprec8), DIMENSION(:,:), POINTER  :: tmp
+
+    REAL(rprec8), DIMENSION(:,:), POINTER  :: tmp => NULL()
     INTEGER :: err
 
     IF (PRESENT(km)) THEN
@@ -904,7 +905,8 @@ CONTAINS
     LOGICAL, INTENT(inout)                 :: error
     LOGICAL, OPTIONAL, INTENT(in)          :: km
     REAL(rprec16), DIMENSION(:,:), POINTER :: JPL_ephemeris_perturbers_r16
-    REAL(rprec8), DIMENSION(:,:), POINTER  :: tmp
+
+    REAL(rprec8), DIMENSION(:,:), POINTER  :: tmp => NULL()
     INTEGER :: err
 
     IF (PRESENT(km)) THEN
