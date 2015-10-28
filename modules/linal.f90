@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010,2011        !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -105,7 +105,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2011-10-13
+!! @version 2015-10-28
 !!
 MODULE linal
 
@@ -1227,7 +1227,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(SIZE(a,1)) :: dumc
     INTEGER, DIMENSION(2), TARGET :: irc
     INTEGER :: i,l,n
-    INTEGER, POINTER :: irow,icol
+    INTEGER, POINTER :: irow => NULL(), icol => NULL()
 
     n = SIZE(a,dim=1)
     irow => irc(1)
