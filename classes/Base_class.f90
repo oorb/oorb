@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2014-08-22
+!! @version 2015-10-30
 !!
 MODULE Base_cl
 
@@ -97,9 +97,8 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: sol      = 173.14463272_bp         !! Speed of light (AU/d).
   !REAL(bp), PARAMETER :: eps = 23.439280833_bp*rad_deg     !! Obliquity of ecliptic (J2000.0) 
   !!                                                           Gaia 2006 (84381.41100asec).
-  !REAL(bp), PARAMETER :: eps      = 23.439291111_bp*rad_deg !! Obliquity of ecliptic (J2000.0) Danby 1992.
-  REAL(bp), PARAMETER :: eps      = 23.439281111_bp*rad_deg !! Obliquity of ecliptic (J2000.0) JPL 2005.
-  !REAL(bp), PARAMETER :: eps      = 23.43929111111_bp*rad_deg !! Obliquity of ecliptic (J2000.0), old code
+  REAL(bp), PARAMETER :: eps = 23.43929111111111_bp*rad_deg !! Obliquity of ecliptic (J2000.0), IAU 1976
+  !!                                                           (used by Horizon, MPC, OrbFit)
   REAL(bp), PARAMETER :: r_earth  = 6378.140_bp/km_au       !! Earth equatorial radius (not mean!).
   REAL(bp), PARAMETER :: smamax   = 500.0_bp                !! Maximum for semimajor axis (AU).
   REAL(bp), PARAMETER :: rmoon    = 2.57e-3_bp              !! Earth-Moon mean distance (AU).
