@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2015-10-28
+!! @version 2015-11-04
 !!
 MODULE planetary_data
 
@@ -61,11 +61,15 @@ MODULE planetary_data
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4
   INTEGER, PARAMETER            :: RECORD_SIZE_405 =  2036
   INTEGER, PARAMETER            :: RECORD_SIZE_406 =  1456
+  INTEGER, PARAMETER            :: RECORD_SIZE_430 =  2036
+  INTEGER, PARAMETER            :: RECORD_SIZE_431 =  2036
   INTEGER, PARAMETER            :: RECORD_SIZE_INPOP10B =  1876
   INTEGER, PARAMETER            :: NCOEFF_405 = 1018
   INTEGER, PARAMETER            :: NCOEFF_406 = 728
+  INTEGER, PARAMETER            :: NCOEFF_430 = 1018
+  INTEGER, PARAMETER            :: NCOEFF_431 = 1018
   INTEGER, PARAMETER            :: NCOEFF_INPOP10B = 938
-  INTEGER, PARAMETER            :: NRECORD_MAX = 35000 ! Fits all of de405 and de406
+  INTEGER, PARAMETER            :: NRECORD_MAX = 250000 ! Fits all of de40x and de43x
   REAL(rprec8), PARAMETER       :: kgm3_smau3 = (1.4959787066e8_rprec8)**3/1.989100e30
 
   ! Planets' GMs are read from the ephemeris file 
@@ -203,8 +207,8 @@ CONTAINS
   !! *Description*:
   !!
   !! If used for the first time during execution, this routine reads
-  !! the JPL Planetary Ephemerides from a given file (known as
-  !! de405.dat at JPL) and stores the data in an array.
+  !! the JPL Planetary Ephemerides from a given file (e.g., de405.dat
+  !! at JPL) and stores the data in an array.
   !!
   !! Returns error.
   !!
@@ -276,12 +280,18 @@ CONTAINS
     ELSE IF (INDEX(fname,"406") /= 0) THEN
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_406, action='READ', iostat=err)
+    ELSE IF (INDEX(fname,"430") /= 0) THEN
+       OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
+            recl=RECORD_LENGTH*RECORD_SIZE_430, action='READ', iostat=err)
+    ELSE IF (INDEX(fname,"431") /= 0) THEN
+       OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
+            recl=RECORD_LENGTH*RECORD_SIZE_431, action='READ', iostat=err)
     ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_INPOP10B, action='READ', iostat=err)
     ELSE
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could select correct record length for file '" &
+       WRITE(0,*) "JPL_ephemeris_init(): Could not select correct record length for file '" &
             // TRIM(fname) // "'."
        RETURN
     END IF
@@ -310,6 +320,10 @@ CONTAINS
        ALLOCATE(tmp(NCOEFF_405,NRECORD_MAX), stat=err)
     ELSE IF (INDEX(fname,"406") /= 0) THEN
        ALLOCATE(tmp(NCOEFF_406,NRECORD_MAX), stat=err)
+    ELSE IF (INDEX(fname,"430") /= 0) THEN
+       ALLOCATE(tmp(NCOEFF_430,NRECORD_MAX), stat=err)
+    ELSE IF (INDEX(fname,"431") /= 0) THEN
+       ALLOCATE(tmp(NCOEFF_431,NRECORD_MAX), stat=err)
     ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
        ALLOCATE(tmp(NCOEFF_INPOP10B,NRECORD_MAX), stat=err)
     ELSE
@@ -356,7 +370,8 @@ CONTAINS
        !  (9) Pluto,
        planetary_mu(1:9) = cval(9:17)
        ! remove Moon from EMS's GM to get Earth's GM
-       planetary_mu(3) = planetary_mu(3)*(1.0_rprec8 - 1.0_rprec8/emrat) 
+       emrat = cval(8)
+       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat) 
        ! (10) Moon,
        planetary_mu(10) = planetary_mu(3)/emrat
        ! (11) Sun,
@@ -365,6 +380,30 @@ CONTAINS
        planetary_mu(12) = SUM(planetary_mu(1:11))
        ! (13) Earth-Moon barycenter,
        planetary_mu(13) = cval(11) 
+
+    ELSE IF (INDEX(fname,"430") /= 0 .OR. INDEX(fname,"431") /= 0) THEN
+
+       !  (1) Mercury,
+       !  (2) Venus,
+       !  (3) Earth, 
+       !  (4) Mars,
+       !  (5) Jupiter,
+       !  (6) Saturn,
+       !  (7) Uranus,
+       !  (8) Neptune,
+       !  (9) Pluto,
+       planetary_mu(1:9) = cval(12:20)
+       ! remove Moon from EMS's GM to get Earth's GM
+       emrat = cval(11)
+       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat) 
+       ! (10) Moon,
+       planetary_mu(10) = planetary_mu(3)/emrat
+       ! (11) Sun,
+       planetary_mu(11) = cval(21)
+       ! (12) solar system barycenter,
+       planetary_mu(12) = SUM(planetary_mu(1:11))
+       ! (13) Earth-Moon barycenter,
+       planetary_mu(13) = cval(14) 
 
     ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
 
@@ -379,7 +418,7 @@ CONTAINS
        !  (9) Pluto,
        planetary_mu(1:9) = cval(7:15)
        ! remove Moon from EMS's GM to get Earth's GM
-       planetary_mu(3) = planetary_mu(3)*(1.0_rprec8 - 1.0_rprec8/emrat) 
+       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat) 
        ! (10) Moon,
        planetary_mu(10) = planetary_mu(3)/emrat
        ! (11) Sun,
@@ -394,17 +433,6 @@ CONTAINS
     ! Planets' and Moon's mass
     ! Unit: M_sol
     planetary_masses = planetary_mu/planetary_mu(11)
-
-!!$    do i=1,13
-!!$       write(*,"(I2,1X,A23,1X,E20.12,1X,F20.10)") &
-!!$            i, planetary_locations(i), &
-!!$            planetary_mu(i), 1.0_rprec8/planetary_masses(i)
-!!$    end do
-!!$
-!!$    do i=1,size(cval)
-!!$       write(*,"(I3,1X,E20.12)") &
-!!$            i, cval(i)
-!!$    end do
 
     ALLOCATE(buf(SIZE(tmp,dim=1),i), stat=err)
     IF (err /= 0) THEN

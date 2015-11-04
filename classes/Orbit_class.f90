@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2015-10-23
+!! @version 2015-11-04
 !!
 MODULE Orbit_cl
 
@@ -8609,10 +8609,6 @@ CONTAINS
              RETURN
           END IF
        END DO
-       IF (info_verb >= 4) THEN
-          WRITE(stdout,"(2X,A,1X,I0)") "Number of standard perturbers:", &
-               COUNT(this_arr(1)%perturbers_prm)
-       END IF
 
        IF (ASSOCIATED(this_arr(1)%additional_perturbers)) THEN
           naddit = SIZE(this_arr(1)%additional_perturbers,dim=1)
@@ -8755,7 +8751,10 @@ CONTAINS
           END IF
        END DO
 
-       IF (info_verb >= 4) THEN
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A)") "Integrator:", integrator
+          WRITE(stdout,"(2X,A,1X,I0)") "Number of standard perturbers:", &
+               COUNT(this_arr(1)%perturbers_prm)
           WRITE(stdout,"(2X,A,1X,I0)") "Number of additional perturbers:", naddit
        END IF
        ALLOCATE(masses(nthis+naddit), stat=err)
@@ -8889,7 +8888,8 @@ CONTAINS
           ! Check whether the additional perturbers share the same epoch
           ! with the orbits to be integrated and integrate them to the
           ! correct epoch if required:
-          IF (ALLOCATED(masses)) THEN
+          IF (ASSOCIATED(this_arr(1)%additional_perturbers) .AND. &
+               SIZE(this_arr(1)%additional_perturbers,dim=1) > 0) THEN
              IF (naddit >= 2) THEN
                 DO i=2,naddit
                    IF (ABS(this_arr(1)%additional_perturbers(i-1,7) - &
@@ -8920,11 +8920,14 @@ CONTAINS
                 CALL gauss_radau_15_full_jpl( &
                      this_arr(1)%additional_perturbers(1,7), &
                      mjd_tt0, &
-                     elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), 12, &
-                     2, this_arr(1)%perturbers_prm, error, &
+                     elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
+                     12, &
+                     2, &
+                     this_arr(1)%perturbers_prm, &
+                     error, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=center, &
-                     masses=masses)
+                     masses=this_arr(1)%additional_perturbers(:,8))
              END IF
              IF (info_verb >= 3) THEN
                 WRITE(stdout,"(2X,A)") &
@@ -8933,38 +8936,37 @@ CONTAINS
                 DO i=1,naddit
                    WRITE(stdout,"(2X,I0,7(1X,F17.9),1X,E10.4)") &
                         i, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+i), &
-                        mjd_tt0, masses
+                        mjd_tt0, this_arr(1)%additional_perturbers(i,8)
                 END DO
              END IF
           END IF
 
           IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
-             ! Jacobians through variational equations technique:
+             ! Variational equations technique:
              error = .TRUE.
              CALL errorMessage("Orbit / propagate (multiple)",&
                   "Variational equations technique not available for Gauss-Radau.", 1)          
              RETURN             
-             DO i=1,nthis+naddit
-                jacobian_(:,:,i) = identity_matrix(6)
-             END DO
-             IF (PRESENT(encounters)) THEN
-                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
-                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
-                     error, jacobian=jacobian_, &
-                     step=this_arr(1)%integration_step_prm, &
-                     ncenter=center, encounters=encounters, &
-                     masses=masses)
-             ELSE
-                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
-                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
-                     error, jacobian=jacobian_, &
-                     step=this_arr(1)%integration_step_prm, &
-                     ncenter=center, &
-                     masses=masses)
-             END IF
-             DO i=1,nthis+naddit
-                jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
-             END DO
+!!$             DO i=1,nthis+naddit
+!!$                jacobian_(:,:,i) = identity_matrix(6)
+!!$             END DO
+!!$             IF (PRESENT(encounters)) THEN
+!!$                CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
+!!$                     this_arr(1)%perturbers_prm, &
+!!$                     error, step=this_arr(1)%integration_step_prm, &
+!!$                     jacobian=jacobian_, ncenter=center, &
+!!$                     encounters=encounters, masses=masses, &
+!!$                     info_verb=info_verb)
+!!$             ELSE
+!!$                CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
+!!$                     this_arr(1)%perturbers_prm, &
+!!$                     error, step=this_arr(1)%integration_step_prm, &
+!!$                     jacobian=jacobian_, ncenter=center, &
+!!$                     masses=masses, info_verb=info_verb)
+!!$             END IF
+!!$             DO i=1,nthis+naddit
+!!$                jacobian(i,1:6,1:6) = jacobian_(1:6,1:6,i)
+!!$             END DO
           ELSE IF (.NOT.PRESENT(jacobian) .OR. &
                (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp))) THEN
              ! No Jacobian requested or Jacobian requested through
