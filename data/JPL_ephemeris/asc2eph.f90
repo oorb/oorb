@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002-2014,2015                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -42,7 +42,7 @@
 !! (The data files for DE200 and DE405 contain 20 years each; for DE406, 100 years)
 !!
 !! @author  MG
-!! @version 2010-01-21
+!! @version 2015-11-04
 !!
 PROGRAM asc2eph
 
@@ -97,13 +97,13 @@ PROGRAM asc2eph
 
   !By default, the output ephemeris will span the same interval as the
   !input ascii data file(s).  The user may reset these to other JED's.
-  t1 = 0.0_bp
-  t2 = 9999999.0_bp
+  t1 = -HUGE(t1)
+  t2 = HUGE(t2)
 
-  eph_type = get_cl_option("--eph-type=", "406")
+  eph_type = get_cl_option("--eph-type=", "405")
 
   ! Write a fingerprint to the screen.
-  WRITE(*,*) " JPL ASCII-TO-DIRECT-I/O program. Last modified 21-January-2010."
+  WRITE(*,*) " JPL ASCII-TO-DIRECT-I/O program. Last modified 4-November-2015."
   WRITE(*,*) 
   WRITE(*,*) " ASSUMING TYPE OF INPUT ASCII EPHEMERIS FILE IS DE" // TRIM(eph_type)
 
@@ -165,7 +165,7 @@ PROGRAM asc2eph
   OPEN(unit=12, file="de" // TRIM(eph_type) // ".dat", &
        access="DIRECT", form="UNFORMATTED", recl=irecsz, status="NEW")
 
-  !Read and write the ephemeris data records (GROUP 1070).
+  ! Read and write the ephemeris data records (GROUP 1070).
   CALL nxtgrp(header)
   IF (header /= "GROUP   1070") CALL errprt(1070," not header")
   nrout = 0
@@ -177,11 +177,10 @@ PROGRAM asc2eph
      READ(*,"(2I6)") nrw, ncoeff
   END DO
 
-  !READ(*,"(3D26.18)", iostat=in) db_dp(1:ncoeff)
   READ(*,*,iostat=in) db_dp(1:ncoeff)
   db = REAL(db_dp,bp)
 
-  DO WHILE(in == 0 .AND. db(2) < t2)
+  DO WHILE (in == 0 .AND. db(2) < t2)
 
      IF (2*ncoeff /= ksize) THEN
         CALL errprt(ncoeff, " 2*ncoeff not equal to ksize")
@@ -210,7 +209,7 @@ PROGRAM asc2eph
         nrout = nrout + 1
 
         WRITE(12, rec=nrout+2, iostat=out) db(1:ncoeff)
-        IF (out /= 0) CALL errprt (nrout, "th record not written because of error")
+        IF (out /= 0) CALL errprt(nrout, "th record not written because of error")
 
         ! Save this block's starting date, its interval span, and its end 
         ! date.
