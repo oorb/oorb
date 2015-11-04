@@ -39,7 +39,7 @@ PROGRAM ephtester
 
   CHARACTER(len=256) :: str
   CHARACTER(len=3) :: eph_type
-  REAL(rprec8), DIMENSION(:,:), POINTER :: ephemeris
+  REAL(rprec8), DIMENSION(:,:), POINTER :: ephemeris => null()
   REAL(rprec8) :: mjd_tt, jd_tt, correct_value
   INTEGER :: i, ieph_type, ntarget, ncenter, ncoord, err
   LOGICAL :: error
@@ -86,10 +86,12 @@ PROGRAM ephtester
           correct_value, ephemeris(1,ncoord), &
           ephemeris(1,ncoord)-correct_value
 
-     !     IF (ABS(ephemeris(1,ncoord)-correct_value) > 10.0E-13_rprec8) THEN
-     !        WRITE(0,*) "***** COMPARISON ERROR OCCURRED *****"
-     !        STOP
-     !     END IF
+     IF (ntarget /= 13 .and. &
+          ABS(ephemeris(1,ncoord)-correct_value) > 10.0E-13_rprec8) THEN
+        WRITE(0,*) "***** COMPARISON ERROR OCCURRED *****"
+        STOP
+     END IF
+
      IF (ASSOCIATED(ephemeris)) THEN
         DEALLOCATE(ephemeris,stat=err)
      END IF

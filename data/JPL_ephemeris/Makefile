@@ -24,13 +24,13 @@
 # This is a makefile for Jet Propulsion Laboratory's planetary ephemeris.
 #
 # Author:  MG
-# Version: 2015-06-16
+# Version: 2015-11-04
 
 include ../../make.config
 include ../../Makefile.include
 
-# TYPE OF EPHEMERIS [405|406]
-EPH_TYPE = 405
+# TYPE OF EPHEMERIS [405|406|430|431]
+EPH_TYPE = 430
 # FTP client
 FTP_CLIENT = wget
 # Output name of the program: 
@@ -64,6 +64,19 @@ EPH_ASCII_DE406 = header.406 ascm3000.406 ascm2900.406 ascm2800.406 ascm2700.406
                              ascp1500.406 ascp1600.406 ascp1700.406 ascp1800.406 ascp1900.406 \
                              ascp2000.406 ascp2100.406 ascp2200.406 ascp2300.406 ascp2400.406 \
                              ascp2500.406 ascp2600.406 ascp2700.406 ascp2800.406 ascp2900.406
+# ASCII versions of de430 ephemeris files:
+EPH_ASCII_DE430 = header.430_229 ascp1550.430 ascp1650.430 ascp1750.430 ascp1850.430 \
+                                 ascp1950.430 ascp2050.430 ascp2150.430 ascp2250.430 \
+                                 ascp2350.430 ascp2450.430 ascp2550.430
+# ASCII versions of de431 ephemeris files:
+EPH_ASCII_DE431 = header.431_229 ascm13000.431 ascm12000.431 ascm11000.431 ascm10000.431 \
+                                 ascm09000.431 ascm08000.431 ascm07000.431 ascm06000.431 \
+                                 ascm05000.431 ascm04000.431 ascm03000.431 ascm02000.431 \
+                                 ascm01000.431 ascp00000.431 ascp01000.431 ascp02000.431 \
+                                 ascp03000.431 ascp04000.431 ascp05000.431 ascp06000.431 \
+                                 ascp07000.431 ascp08000.431 ascp09000.431 ascp10000.431 \
+                                 ascp11000.431 ascp12000.431 ascp13000.431 ascp14000.431 \
+                                 ascp15000.431 ascp16000.431
 # Input file for ascii-to-binary converter:
 EPH_INPUT  = ascii.$(EPH_TYPE)
 # Project name:
@@ -73,7 +86,6 @@ PROJNAME = JPL_Ephemeris
 eph : $(CONVERTER) $(EPH_INPUT)
 	rm -f $(EPH_BIN)
 	nice ./$(CONVERTER) --eph-type=$(EPH_TYPE) < $(EPH_INPUT)
-	rm -f $(EPH_INPUT)
 	cp $(EPH_BIN) ../
 
 test : $(TESTER)
@@ -90,9 +102,7 @@ $(TESTER): modules $(TEST_SRC)
 # Build input file for ascii-to-binary converter:
 $(EPH_INPUT):
 	$(FTP_CLIENT) ftp://ssd.jpl.nasa.gov/pub/eph/planets/ascii/de$(EPH_TYPE)/*
-	if [ $(EPH_TYPE) -eq "406" ] ; then gunzip *$(EPH_TYPE).gz ; fi
 	cat $(EPH_ASCII_DE$(EPH_TYPE)) > $(EPH_INPUT)
-	rm -f $(EPH_ASCII_DE$(EPH_TYPE))
 
 # Write back-up:
 backup:
@@ -109,4 +119,6 @@ modules:
 
 # Clean up directory:
 clean:
-	rm -f *.o *~ core $(CONVERTER) $(TESTER) *.$(EPH_TYPE)
+	rm -f *.o *~ core $(CONVERTER) $(TESTER) *.$(EPH_TYPE) \
+              $(EPH_ASCII_DE$(EPH_TYPE)) header.$(EPH_TYPE)*
+
