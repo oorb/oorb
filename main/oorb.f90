@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2015-10-05
+!! @version 2015-12-03
 !!
 PROGRAM oorb
 
@@ -814,10 +814,6 @@ PROGRAM oorb
         DEALLOCATE(orb_arr_in, stat=err)
      ELSE
         DO i=1,norb
-           !write(*,*) 'oorb 2', orb_arr_in(1)%center, &
-           !     orb_arr_in(1)%element_type, &
-           !     orb_arr_in(1)%elements(1:2), &
-           !     orb_arr_in(1)%elements(3:6)/rad_deg
            IF (element_type_comp_prm == "keplerian") THEN
               CALL toKeplerian(orb_arr_in(i))
            ELSE IF (element_type_comp_prm == "cartesian") THEN
@@ -4293,10 +4289,8 @@ PROGRAM oorb
         END IF
         SELECT CASE (vomcmc_type_prm)
         CASE (1)
-           !WRITE(*,*) "type = 1"
            CALL virtualObservationMCMC(storb, orb_arr)
         CASE (2)
-           !WRITE(*,*) "type = 2"
            CALL virtualObservationMCMC2(storb, orb_arr)
         CASE default
            CALL errorMessage("oorb / vomcmc", &
@@ -6054,7 +6048,7 @@ PROGRAM oorb
               integration_step = output_interval
               output_interval = SIGN(output_interval,mjd1-mjd0)
            END IF
-           
+
            ! Set integration parameters
            CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
                 perturbers=perturbers, integrator=integrator, &
@@ -6251,7 +6245,7 @@ PROGRAM oorb
               IF ((interval .AND. ABS(mjd-mjd1) < EPSILON(mjd)) .OR. .NOT.interval) THEN
                  EXIT
               END IF
-              
+
            END DO integration_interval_storb
 
            IF (separately) THEN
@@ -7148,12 +7142,17 @@ PROGRAM oorb
               CALL NULLIFY(ccoord)
               CALL NULLIFY(obsy_ccoord)
 
-              elements = getElements(orb_arr_in(i), "keplerian")
-              CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
-              ta_s = SIN(ecc_anom)
-              ta_c = COS(ecc_anom)
-              fak = SQRT(1 - elements(2) * elements(2))
-              true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
+              elements = getElements(orb_arr_in(i), "cometary")
+              IF (elements(2) < 1.0_bp) THEN
+                 CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
+                 ta_s = SIN(ecc_anom)
+                 ta_c = COS(ecc_anom)
+                 fak = SQRT(1 - elements(2) * elements(2))
+                 true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
+              ELSE
+                 ecc_anom = 0.0_bp/0.0_bp
+                 true_anom = 0.0_bp/0.0_bp
+              END IF
 
               IF (.NOT.radians) THEN 
                  ra = ra/rad_deg
@@ -7637,15 +7636,6 @@ PROGRAM oorb
              planetary_masses(11), elements(1), elements(2))
      END DO
      DEALLOCATE(planeph)
-     !write(*,*) planetary_mu
-     ! JPL_ephemeris PRODUCES BOGUS RESULTS FOR EMB 
-     !planeph => JPL_ephemeris(mjd_tt, 13, 11, error)
-     !call new(ccoord, planeph(1,:), "equatorial", epoch)
-     !call rotateToEcliptic(ccoord)
-     !coordinates = getCoordinates(ccoord)
-     !call nullify(ccoord)
-     !write(stdout,"(A,6(1X,F20.15))") trim(planetary_locations(13)), coordinates
-     !deallocate(planeph)
 
   CASE ("tisserand_parameters")
 
@@ -7772,7 +7762,6 @@ PROGRAM oorb
 
      ! Input observatory code
      obsy_code = get_cl_option("--code=", obsy_code)
-     !write(*,*) obsy_code
      ! Input evolutionary timespan [days]
      timespan = get_cl_option("--timespan=", 0.0_bp)
 
@@ -8119,7 +8108,6 @@ PROGRAM oorb
                  END IF
               END IF
 
-              !write(*,*) "obj_vmag: ", obj_vmag
               IF (obj_vmag > obj_vmag_max) THEN
                  istep = 0
                  CYCLE
@@ -8141,7 +8129,6 @@ PROGRAM oorb
               END IF
               vec3 = cross_product(geoc_obsy,obsy_obj)
               obj_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_obj))
-              !write(*,*) "obj_alt: ", obj_alt/rad_deg
               IF (obj_alt < obj_alt_min) THEN
                  istep = 0
                  CYCLE
@@ -8160,7 +8147,6 @@ PROGRAM oorb
               DEALLOCATE(planeph)
               vec3 = cross_product(geoc_obsy,obsy_sun)
               solar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_sun))
-              !write(*,*) "solar_alt: ", solar_alt/rad_deg
               IF (solar_alt > solar_alt_max) THEN
                  istep = 0
                  CYCLE
@@ -8168,7 +8154,6 @@ PROGRAM oorb
               ! Compute the solar elongation:
               vec3 = cross_product(obsy_obj,obsy_sun)
               solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
-              !write(*,*) "solar_elongation: ", solar_elongation/rad_deg
               IF (solar_elongation < solar_elon_min) THEN
                  istep = 0
                  CYCLE
@@ -8212,7 +8197,6 @@ PROGRAM oorb
               ! Compute (approximate) distance between the target and the Moon:
               vec3 = cross_product(obsy_obj,obsy_moon)
               lunar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_moon))
-              !write(*,*) "lunar_elongation: ", lunar_elongation/rad_deg
               IF (lunar_elongation < lunar_elongation_min) THEN
                  istep = 0
                  CYCLE
@@ -8220,7 +8204,6 @@ PROGRAM oorb
               ! Compute (approximate) altitude of the Moon:
               vec3 = cross_product(geoc_obsy,obsy_moon)
               lunar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_moon))
-              !write(*,*) "lunar_alt: ", lunar_alt/rad_deg
               IF (lunar_alt > lunar_alt_max) THEN
                  istep = 0
                  CYCLE
