@@ -7144,14 +7144,15 @@ PROGRAM oorb
 
               elements = getElements(orb_arr_in(i), "cometary")
               IF (elements(2) < 1.0_bp) THEN
+                 ! Compute eccentric and true anomalies if orbit is elliptic:
                  CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
                  ta_s = SIN(ecc_anom)
                  ta_c = COS(ecc_anom)
                  fak = SQRT(1 - elements(2) * elements(2))
                  true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
               ELSE
-                 ecc_anom = 0.0_bp/0.0_bp
-                 true_anom = 0.0_bp/0.0_bp
+                 ecc_anom = -99.0_bp
+                 true_anom = -99.0_bp
               END IF
 
               IF (.NOT.radians) THEN 
