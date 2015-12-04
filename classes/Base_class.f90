@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2015-10-30
+!! @version 2015-12-04
 !!
 MODULE Base_cl
 
@@ -136,10 +136,17 @@ MODULE Base_cl
   CHARACTER(len=62), PARAMETER :: mpc_conv_str = &
        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
+  ! Verbosity of error messages
   INTEGER :: err_verb = 1
-  INTEGER :: info_verb = 1
+  ! Verbosity of information messages
+  INTEGER :: info_verb = 1 
+  ! Number of massless particles integrated simultaneously
+  INTEGER :: simint = 1
+  ! 
   LOGICAL :: simulated_observations = .FALSE.
+  ! Character string error flag
   CHARACTER(len=1024) :: errstr = ""
+  ! Logical error flag
   LOGICAL :: error = .FALSE.
 
 CONTAINS

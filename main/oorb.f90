@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2015-12-03
+!! @version 2015-12-04
 !!
 PROGRAM oorb
 
@@ -378,6 +378,7 @@ PROGRAM oorb
   orb_in_fname = " "
   orb_out_fname = " "
   separately = .FALSE.
+  simint = 1
   outlier_multiplier_prm = 3.0_bp
   outlier_rejection_prm = .FALSE.
   plot_open = .FALSE.
@@ -454,6 +455,7 @@ PROGRAM oorb
        integrator=integrator, &
        integration_step=integration_step, &
        relativity=relativity, &
+       simint=simint, &
        pp_H_estimation=pp_H_estimation, &
        pp_G=pp_G, &
        pp_G_unc=pp_G_unc)

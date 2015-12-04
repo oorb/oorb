@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2015-10-23
+!! @version 2015-12-04
 !!
 MODULE io
 
@@ -546,7 +546,7 @@ CONTAINS
        plot_results, &
        plot_open, &
        dyn_model, perturbers, integrator, integration_step, relativity, &
-       dyn_model_init, integrator_init, integration_step_init, &
+       dyn_model_init, integrator_init, integration_step_init, simint, &
        accwin_multiplier, &
        dchi2_rejection, dchi2_max, regularized_pdf, chi2_min, & 
        outlier_rejection, outlier_multiplier, &
@@ -632,6 +632,7 @@ CONTAINS
          info_verb, &
          err_verb, &
          task, &
+         simint, &
          sor_type, &
          sor_norb, &
          sor_ntrial, &
@@ -1179,6 +1180,10 @@ CONTAINS
                 CALL errorMessage("io / readConfigurationFile", &
                      "Integration step must be larger than zero.", 1)
              END IF
+          END IF
+       CASE ("simint")
+          IF (PRESENT(simint)) THEN
+             CALL toInt(TRIM(par_val), simint, error)
           END IF
 
 
