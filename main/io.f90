@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2015,2016                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2015-12-04
+!! @version 2016-03-23
 !!
 MODULE io
 
@@ -4393,7 +4393,7 @@ CONTAINS
        END IF
        t = getTime(orb_arr_cmp(1))
 
-       pdf_arr_cmp => getPDFValues(storb)
+       pdf_arr_cmp => getDiscretePDF(storb)
        IF (error) THEN
           error = .TRUE.
           CALL errorMessage("io / writeSORResults", &
@@ -4829,7 +4829,7 @@ CONTAINS
     END IF
     t = getTime(orb_arr_cmp(1))
 
-    pdf_arr_cmp => getPDFValues(storb)
+    pdf_arr_cmp => getDiscretePDF(storb)
     rchi2_arr_cmp => getReducedChi2Distribution(storb)
     CALL getResults(storb, &
          vomcmc_norb_cmp=vomcmc_norb_cmp, &
@@ -5090,7 +5090,7 @@ CONTAINS
     END IF
     t = getTime(orb_arr_cmp(1))
 
-    pdf_arr_cmp => getPDFValues(storb)
+    pdf_arr_cmp => getDiscretePDF(storb)
     rchi2_arr_cmp => getReducedChi2Distribution(storb)
     rms_arr_cmp => getRMSDistribution(storb)
     CALL getResults(storb, reg_apr_arr=reg_apr_arr_cmp, &

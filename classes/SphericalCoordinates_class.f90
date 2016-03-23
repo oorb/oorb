@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2015,2016                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! @see Observations_class
 !! 
 !! @author  MG
-!! @version 2012-10-26
+!! @version 2016-03-23
 !!
 MODULE SphericalCoordinates_cl
 
@@ -595,6 +595,7 @@ CONTAINS
        RETURN
     END IF
     DO i=1,6
+       A(i,i:6) = 0.0_bp
        A(i,i) = p(i)
     END DO
 

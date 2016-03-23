@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2015,2016                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG
-!! @version 2015-10-23
+!! @version 2016-03-09
 !!
 MODULE PhysicalParameters_cl
 
@@ -531,7 +531,7 @@ CONTAINS
     END IF
 
     ! Compute heliocentric and topocentric distances, and phase angles
-    IF (containsSampledPDF(this%storb)) THEN
+    IF (containsDiscretePDF(this%storb)) THEN
        orb_arr => getSampleOrbits(this%storb)
     ELSE
        ALLOCATE(orb_arr(1), stat=err)
@@ -583,7 +583,7 @@ CONTAINS
     END IF
 
     ! Estimate H
-    IF (containsSampledPDF(this%storb)) THEN
+    IF (containsDiscretePDF(this%storb)) THEN
        ALLOCATE(this%H0_arr(norb,2), this%G_arr(norb,2))
        this%G_arr(:,1) = input_G
        this%G_arr(:,2) = 0.0_bp
@@ -754,9 +754,9 @@ CONTAINS
     END IF
 
     ! Compute heliocentric and topocentric distances, and phase angles
-    IF (containsSampledPDF(this%storb)) THEN
+    IF (containsDiscretePDF(this%storb)) THEN
        CALL getEphemerides(this%storb, obsy_ccoord_arr, &
-            ephemerides_arr, pdfs_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr)
+            ephemerides_arr, pdf_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr)
     ELSE
        CALL getEphemerides(this%storb, obsy_ccoord_arr, &
             ephemerides_arr, cov_arr=cov_arr, this_lt_corr_arr=orb_lt_corr_arr)       
@@ -799,7 +799,7 @@ CONTAINS
     END IF
 
     ! Estimate H and G
-    IF (containsSampledPDF(this%storb)) THEN
+    IF (containsDiscretePDF(this%storb)) THEN
        ALLOCATE(this%H0_arr(norb,2), this%G_arr(norb,2))
        DO i=1,norb
           IF (PRESENT(input_G)) THEN
