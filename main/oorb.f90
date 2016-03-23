@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2015,2016                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2015-12-03
+!! @version 2016-03-23
 !!
 PROGRAM oorb
 
@@ -278,7 +278,7 @@ PROGRAM oorb
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_cometary, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
        output_interval, &
-       periapsis_distance, peak, pp_G, pp_G_unc, probability_mass, &
+       pa, periapsis_distance, peak, pp_G, pp_G_unc, probability_mass, &
        ra, &
        sec, smplx_tol, smplx_similarity_tol, &
        solar_elongation, solar_elon_min, solar_elon_max, &
@@ -338,7 +338,6 @@ PROGRAM oorb
        cos_gaussian, &
        first, &
        force_earth_impact_at_epoch, &
-       force_pdf, &
        gaussian_rho, &
        generat_gaussian_deviates, &
        interval, &
@@ -378,6 +377,7 @@ PROGRAM oorb
   orb_in_fname = " "
   orb_out_fname = " "
   separately = .FALSE.
+  simint = 1
   outlier_multiplier_prm = 3.0_bp
   outlier_rejection_prm = .FALSE.
   plot_open = .FALSE.
@@ -454,6 +454,7 @@ PROGRAM oorb
        integrator=integrator, &
        integration_step=integration_step, &
        relativity=relativity, &
+       simint=simint, &
        pp_H_estimation=pp_H_estimation, &
        pp_G=pp_G, &
        pp_G_unc=pp_G_unc)
@@ -723,15 +724,67 @@ PROGRAM oorb
         ELSE IF (nobj == norb .AND. &
              ALL(cov_arr_in(:,1,1) > 0.0_bp)) THEN
            ! Covariance matrix/ces available
-           ALLOCATE(storb_arr_in(norb))
-           DO i=1,norb
-              CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
-                   cov_type=element_type_in, element_type=element_type_in)            
+           ALLOCATE(storb_arr_in(nobj))
+           i = 0
+           j = 1
+           ! generate storbs for sets 1...n-1
+           DO k=2,SIZE(id_arr_in)
+              IF (id_arr_in(k-1) /= id_arr_in(k)) THEN
+                 i = i + 1
+                 IF (ASSOCIATED(obss_sep)) THEN
+                    IF (getID(obss_sep(1)) == id_arr_in(k-1)) THEN
+                       CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
+                            cov_type=element_type_in, element_type=element_type_in, &
+                            obss=obss_sep(1))
+                    END IF
+                 END IF
+                 IF (.NOT.exist(storb_arr_in(i))) THEN
+                    CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
+                         cov_type=element_type_in, element_type=element_type_in, &
+                         obss=obss_sep(1))
+                 END IF
+                 j = k
+              END IF
            END DO
-           ALLOCATE(id_arr_storb_in(nobj), HG_arr_storb_in(nobj,1,4))
-           id_arr_storb_in = id_arr_in
-           HG_arr_storb_in(1:nobj,1,1:4) = HG_arr_in(1:nobj,1:4)
-           DEALLOCATE(id_arr_in, HG_arr_in)
+           ! generate storb for set n (note k-1 above)
+           i = i + 1
+           IF (ASSOCIATED(obss_sep)) THEN
+              IF (getID(obss_sep(1)) == id_arr_in(j)) THEN
+                 CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
+                      cov_type=element_type_in, element_type=element_type_in, &
+                      obss=obss_sep(1))
+              END IF
+           END IF
+           IF (.NOT.exist(storb_arr_in(i))) THEN
+              CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
+                   cov_type=element_type_in, element_type=element_type_in)
+           END IF
+           ALLOCATE(id_arr(nobj), HG_arr_storb_in(nobj,norb,4))
+           id_arr = ""
+           id_arr(1) = id_arr_in(1)
+           HG_arr_storb_in = 99.9_bp 
+           HG_arr_storb_in(1,1,1:4) = HG_arr_in(1,1:4)
+           j = 1
+           k = 1
+           k_max = 1
+           DO i=2,SIZE(id_arr_in)
+              k = k + 1
+              IF (ALL(id_arr(1:j) /= id_arr_in(i))) THEN
+                 j = j + 1
+                 id_arr(j) = id_arr_in(i)
+                 k = 1
+                 HG_arr_storb_in(j,k,1:4) = HG_arr_in(i,1:4)
+              ELSE
+                 HG_arr_storb_in(j,k,1:4) = HG_arr_in(i,1:4)
+              END IF
+              IF (k > k_max) THEN
+                 k_max = k
+              END IF
+           END DO
+           ALLOCATE(id_arr_storb_in(nobj))
+           id_arr_storb_in = id_arr
+           HG_arr_storb_in => reallocate(HG_arr_storb_in, nobj, k_max, 4)
+           DEALLOCATE(id_arr, id_arr_in, HG_arr_in)
         END IF
 
      CASE ("des")
@@ -924,9 +977,9 @@ PROGRAM oorb
                  CYCLE
               END IF
            END IF
-           IF (containsSampledPDF(storb_arr_in(i))) THEN
+           IF (containsDiscretePDF(storb_arr_in(i))) THEN
               orb_arr_in => getSampleOrbits(storb_arr_in(i))
-              pdf_arr_in => getPDFValues(storb_arr_in(i), element_type_out_prm)
+              pdf_arr_in => getDiscretePDF(storb_arr_in(i), element_type_out_prm)
               !pdf_arr_in = pdf_arr_in/sum(pdf_arr_in)
 
               DO j=1,SIZE(orb_arr_in)
@@ -993,7 +1046,7 @@ PROGRAM oorb
                  CYCLE
               END IF
            END IF
-           IF (containsSampledPDF(storb_arr_in(i))) THEN
+           IF (containsDiscretePDF(storb_arr_in(i))) THEN
               orb_arr_in => getSampleOrbits(storb_arr_in(i))
               k = 0
               DO j=1,SIZE(orb_arr_in)
@@ -1097,7 +1150,7 @@ PROGRAM oorb
                  CYCLE
               END IF
            END IF
-           IF (containsSampledPDF(storb_arr_in(i))) THEN
+           IF (containsDiscretePDF(storb_arr_in(i))) THEN
               orb_arr_in => getSampleOrbits(storb_arr_in(i))
               DO j=1,SIZE(orb_arr_in)
                  IF (get_cl_option("--H-max=",.FALSE.)) THEN
@@ -1681,11 +1734,6 @@ PROGRAM oorb
      ! Print header before printing first orbit:
      first = .TRUE.
 
-     ! Initialize H,G array
-     DEALLOCATE(HG_arr_storb_in, stat=err)
-     ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),sor_norb,4))
-     HG_arr_storb_in = 99.9_bp
-
      DO i=1,SIZE(obss_sep,dim=1)
         id = getID(obss_sep(i))
         IF (error) THEN
@@ -1710,7 +1758,7 @@ PROGRAM oorb
            STOP
         END IF
         IF (info_verb >= 2) THEN
-           WRITE(stdout,"(4X,A,1X,F6.2,1X,A)") &
+           WRITE(stdout,"(4X,A,1X,F8.2,1X,A)") &
                 "Observational arc: ", dt, "days"
         END IF
 
@@ -1940,7 +1988,8 @@ PROGRAM oorb
                  HG_arr_in => getGDistribution(physparam)
                  temp_arr(:,3:4) = HG_arr_in(:,1:2)
                  DEALLOCATE(HG_arr_in)
-                 HG_arr_storb_in(i,:,:) = temp_arr
+                 ALLOCATE(HG_arr_in(SIZE(temp_arr,dim=1),4))
+                 HG_arr_in(:,:) = temp_arr
                  DEALLOCATE(temp_arr)
               ELSE
                  error = .FALSE.
@@ -1993,7 +2042,7 @@ PROGRAM oorb
                    "TRACE BACK (125)", 1)
               STOP
            END IF
-           pdf_arr_cmp => getPDFValues(storb, element_type_comp_prm)
+           pdf_arr_cmp => getDiscretePDF(storb, element_type_comp_prm)
            IF (error) THEN
               CALL errorMessage("oorb / ranging ", &
                    "TRACE BACK (130)", 1)
@@ -2032,7 +2081,7 @@ PROGRAM oorb
            END IF
            DO j=1,SIZE(orb_arr_cmp,dim=1)
               IF (orbit_format_out == "orb") THEN
-                 IF (HG_arr_storb_in(i,1,1) < 99.0_bp) THEN
+                 IF (HG_arr_in(1,1) < 99.0_bp) THEN
                     SELECT CASE (TRIM(flavor))
                     CASE ("mc", "stepwise-mc")
                        CALL writeOpenOrbOrbitFile(lu_orb_out, &
@@ -2047,8 +2096,8 @@ PROGRAM oorb
                             jac_sph_inv=jac_arr_cmp(j,1), &
                             jac_car_kep=jac_arr_cmp(j,2), &
                             jac_equ_kep=jac_arr_cmp(j,3), &
-                            H=HG_arr_storb_in(i,j,1), &
-                            G=HG_arr_storb_in(i,j,3), &
+                            H=HG_arr_in(j,1), &
+                            G=HG_arr_in(j,3), &
                             mjd=mjd_epoch)
                     CASE ("mcmc", "random-walk")
                        CALL writeOpenOrbOrbitFile(lu_orb_out, &
@@ -2060,8 +2109,8 @@ PROGRAM oorb
                             pdf=pdf_arr_cmp(j), &
                             rchi2=rchi2_arr_cmp(j), &
                             repetitions=repetition_arr_cmp(j), &
-                            H=HG_arr_storb_in(i,j,1), &
-                            G=HG_arr_storb_in(i,j,3), &
+                            H=HG_arr_in(j,1), &
+                            G=HG_arr_in(j,3), &
                             mjd=mjd_epoch)
                     END SELECT
                  ELSE
@@ -2400,7 +2449,7 @@ PROGRAM oorb
         IF (ALLOCATED(storb_arr_in)) THEN
            DO j=1,SIZE(id_arr_storb_in,dim=1)
               IF (id_arr_storb_in(j) == id) THEN
-                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                 IF (containsDiscretePDF(storb_arr_in(j))) THEN
                     orb_arr => getSampleOrbits(storb_arr_in(j))
                     IF (error) THEN
                        CALL errorMessage("oorb / simplex", &
@@ -2451,6 +2500,11 @@ PROGRAM oorb
            ELSE
               orb_arr => reallocate(orb_arr,norb)
            END IF
+        END IF
+        IF (norb < 7) THEN
+           CALL errorMessage("oorb / simplex", &
+                "Not enough initial orbits available - at least 7 needed.", 1)
+           STOP
         END IF
         dt = getObservationalTimespan(obss_sep(i))
         IF (error) THEN
@@ -2857,7 +2911,7 @@ PROGRAM oorb
         IF (ALLOCATED(storb_arr_in)) THEN
            DO j=1,SIZE(id_arr_storb_in,dim=1)
               IF (id_arr_storb_in(j) == id) THEN
-                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                 IF (containsDiscretePDF(storb_arr_in(j))) THEN
                     orb_arr => getSampleOrbits(storb_arr_in(j))
                     IF (error) THEN
                        CALL errorMessage("oorb / observation_sampling", &
@@ -3169,7 +3223,7 @@ PROGRAM oorb
                    "TRACE BACK (185)", 1)
               STOP
            END IF
-           pdf_arr_cmp => getPDFValues(storb, element_type_comp_prm)
+           pdf_arr_cmp => getDiscretePDF(storb, element_type_comp_prm)
            IF (error) THEN
               CALL errorMessage("oorb / observation_sampling", &
                    "TRACE BACK (186)", 1)
@@ -3458,7 +3512,7 @@ PROGRAM oorb
         IF (ALLOCATED(storb_arr_in)) THEN
            DO j=1,SIZE(id_arr_storb_in,dim=1)
               IF (id_arr_storb_in(j) == id) THEN
-                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                 IF (containsDiscretePDF(storb_arr_in(j))) THEN
                     orb_arr => getSampleOrbits(storb_arr_in(j))
                     IF (error) THEN
                        CALL errorMessage("oorb / vov", &
@@ -3767,7 +3821,7 @@ PROGRAM oorb
                    "TRACE BACK (120)", 1)
               STOP
            END IF
-           pdf_arr_cmp => getPDFValues(storb)
+           pdf_arr_cmp => getDiscretePDF(storb)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
                    "TRACE BACK (125)", 1)
@@ -4139,7 +4193,7 @@ PROGRAM oorb
         IF (ALLOCATED(storb_arr_in)) THEN
            DO j=1,SIZE(id_arr_storb_in,dim=1)
               IF (id_arr_storb_in(j) == id) THEN
-                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                 IF (containsDiscretePDF(storb_arr_in(j))) THEN
                     orb_arr => getSampleOrbits(storb_arr_in(j))
                     IF (error) THEN
                        CALL errorMessage("oorb / vomcmc", &
@@ -4288,10 +4342,8 @@ PROGRAM oorb
            STOP
         END IF
         SELECT CASE (vomcmc_type_prm)
-        CASE (1)
+        CASE (1,2)
            CALL virtualObservationMCMC(storb, orb_arr)
-        CASE (2)
-           CALL virtualObservationMCMC2(storb, orb_arr)
         CASE default
            CALL errorMessage("oorb / vomcmc", &
                 "Unknown type of Vomcmc:", 1)
@@ -4437,7 +4489,7 @@ PROGRAM oorb
                 "TRACE BACK (120)", 1)
            STOP
         END IF
-        pdf_arr_cmp => getPDFValues(storb, element_type_comp_prm)
+        pdf_arr_cmp => getDiscretePDF(storb, element_type_comp_prm)
         IF (error) THEN
            CALL errorMessage("oorb / vomcmc", &
                 "TRACE BACK (125)", 1)
@@ -4743,7 +4795,7 @@ PROGRAM oorb
         IF (ALLOCATED(storb_arr_in)) THEN
            DO j=1,SIZE(id_arr_storb_in,dim=1)
               IF (id_arr_storb_in(j) == id) THEN
-                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                 IF (containsDiscretePDF(storb_arr_in(j))) THEN
                     orb_arr => getSampleOrbits(storb_arr_in(j))
                     IF (error) THEN
                        CALL errorMessage("oorb / lsl", &
@@ -5419,7 +5471,7 @@ PROGRAM oorb
      END IF
 
      DEALLOCATE(HG_arr_storb_in, stat=err)
-     ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),os_norb,4))
+     ALLOCATE(HG_arr_storb_in(SIZE(obss_sep),cos_norb,4))
      HG_arr_storb_in = 99.9_bp
      ! Print header before printing first orbit:
      first = .TRUE.
@@ -5443,7 +5495,7 @@ PROGRAM oorb
         IF (ALLOCATED(storb_arr_in)) THEN
            DO j=1,SIZE(id_arr_storb_in,dim=1)
               IF (id_arr_storb_in(j) == id) THEN
-                 IF (containsSampledPDF(storb_arr_in(j))) THEN
+                 IF (containsDiscretePDF(storb_arr_in(j))) THEN
                     CALL errorMessage("oorb / covariance_sampling", &
                          "TRACE BACK (35)", 1)
                     STOP
@@ -5567,6 +5619,7 @@ PROGRAM oorb
                    "TRACE BACK (125)", 1)
               STOP
            END IF
+
         ELSE
 
            IF (info_verb >= 2) THEN
@@ -5595,6 +5648,7 @@ PROGRAM oorb
               IF (info_verb >= 2) THEN
                  WRITE(stdout,"(1X,A)") "Computing HG parameters... done"
               END IF
+
            END IF
 
            CALL NEW(out_file, TRIM(id) // ".cos")
@@ -5634,7 +5688,7 @@ PROGRAM oorb
                    "TRACE BACK (175)", 1)
               STOP
            END IF
-           pdf_arr_cmp => getPDFValues(storb)
+           pdf_arr_cmp => getDiscretePDF(storb)
            IF (error) THEN
               CALL errorMessage("oorb / covariance_sampling ", &
                    "TRACE BACK (180)", 1)
@@ -5678,8 +5732,8 @@ PROGRAM oorb
                       jac_sph_inv=jac_arr_cmp(j,1), &
                       jac_car_kep=jac_arr_cmp(j,2), &
                       jac_equ_kep=jac_arr_cmp(j,3), &
-                      H=HG_arr_in(j,1), &
-                      G=HG_arr_in(j,3), &
+                      H=HG_arr_storb_in(i,j,1), &
+                      G=HG_arr_storb_in(i,j,3), &
                       mjd=mjd_epoch)
               ELSE
                  CALL errorMessage("oorb / covariance_sampling", &
@@ -6142,7 +6196,7 @@ PROGRAM oorb
               END IF
               CALL NULLIFY(epoch)
 
-              IF (containsSampledPDF(storb_arr_in(i))) THEN
+              IF (containsDiscretePDF(storb_arr_in(i))) THEN
                  ! Sampled orbital-element pdf:
                  orb_arr_cmp => getSampleOrbits(storb_arr_in(i))
                  IF (error) THEN
@@ -6150,7 +6204,7 @@ PROGRAM oorb
                          "TRACE BACK (65)", 1)
                     STOP
                  END IF
-                 pdf_arr_cmp => getPDFValues(storb_arr_in(i))
+                 pdf_arr_cmp => getDiscretePDF(storb_arr_in(i))
                  IF (error) THEN
                     CALL errorMessage("oorb / propagation ", &
                          "TRACE BACK (70)", 1)
@@ -6519,15 +6573,13 @@ PROGRAM oorb
 
      probability_mass = get_cl_option("--probability_mass=", 0.9973_bp)
 
-     force_pdf = get_cl_option("--force_pdf", .FALSE.)
-
      IF (ALLOCATED(storb_arr_in)) THEN
         ! Input orbits contain uncertainty information.
 
         first = .TRUE.
         DO i=1,SIZE(storb_arr_in)
 
-           orb_arr => getSampleOrbits(storb_arr_in(i), probability_mass, force_pdf=force_pdf)
+           orb_arr => getSampleOrbits(storb_arr_in(i), probability_mass)
 
            DO j=1,SIZE(orb_arr)
 
@@ -6647,7 +6699,7 @@ PROGRAM oorb
 
            ! Compute topocentric ephemerides
            CALL getEphemerides(storb_arr_in(i), observers, ephemerides_arr, &
-                cov_arr=cov_arr, pdfs_arr=pdfs_arr)
+                cov_arr=cov_arr, pdf_arr=pdfs_arr)
            IF (error) THEN
               CALL errorMessage('oorb / ephemeris', &
                    'TRACE BACK (25)',1)
@@ -6673,7 +6725,8 @@ PROGRAM oorb
               lu = stdout
            END IF
            IF (separately .OR. i == 1) THEN
-              IF (containsSampledPDF(storb_arr_in(1))) THEN
+              IF (containsDiscretePDF(storb_arr_in(1)) .AND. &
+                   .NOT.get_cl_option("--single-point-estimate", .FALSE.)) THEN
                  WRITE(lu,"(A,A11,5X,9(1X,A18))") "#", "Designation  ", &
                       "Observatory_code ", "MJD_UTC  ", "Delta  ", "RA  ", &
                       "Dec  ", "dDelta/dt  ", "dRA/dt  ", "dDec/dt  ", "PDF_value  "
@@ -6698,7 +6751,8 @@ PROGRAM oorb
               t = getTime(observers(j))
               mjd_utc = getMJD(t, "UTC")
               CALL NULLIFY(t)
-              IF (containsSampledPDF(storb_arr_in(i))) THEN
+              IF (containsDiscretePDF(storb_arr_in(i)) .AND. &
+                   .NOT.get_cl_option("--single-point-estimate", .FALSE.)) THEN
                  ! Input orbits correspond to one or more sampled pdfs.
                  ! Loop over sampled orbits:
                  DO k=1,SIZE(ephemerides_arr,dim=1)
@@ -6713,7 +6767,9 @@ PROGRAM oorb
                     CALL NULLIFY(ephemerides_arr(k,j))
                  END DO
               ELSE
-                 ! Input orbits correspond to one or more single-point estimates of the pdf.
+                 ! Input orbits correspond to one or more single-point
+                 ! estimates of the orbital-element pdf, or the user
+                 ! requests a single-point estimate for the ephemeris.
                  ! Make sure that the ephemeris is equatorial:
                  CALL rotateToEquatorial(ephemerides_arr(1,j))
                  coordinates = getCoordinates(ephemerides_arr(1,j))
@@ -6897,17 +6953,17 @@ PROGRAM oorb
            END IF
 
            IF (separately .OR. i == 1) THEN
-              WRITE(lu,'(A,A11,1X,A,1X,37(A18,1X))') "#", &
+              WRITE(lu,'(A,A11,1X,A,1X,38(A18,1X))') "#", &
                    "Designation", "Code", "MJD_UTC/UT1", "Delta", &
                    "RA", "Dec", "dDelta/dt", "dRA/dt", "dDec/dt", &
-                   "VMag", "Alt", "Phase", "LunarElon", "LunarAlt", &
+                   "VMag", "Alt", "PhaseAngle", "LunarElon", "LunarAlt", &
                    "LunarPhase", "SolarElon", "SolarAlt", "r", &
                    "HLon", "HLat", "TLon", "TLat", "TOCLon", &
                    "TOCLat", "HOCLon", "HOCLat", "TOppLon", &
                    "TOppLat", "HEclObj_X", "HEclObj_Y", "HEclObj_Z", &
                    "HEclObj_dX/dt", "HEclObj_dY/dt", & 
                    "HEclObj_dZ/dt", "HEclObsy_X", "HEclObsy_Y", &
-                   "HEclObsy_Z", "EccAnom", "TrueAnom"
+                   "HEclObsy_Z", "EccAnom", "TrueAnom", "PosAngle"
            END IF
 
            DO j=1,SIZE(observers)
@@ -6946,6 +7002,12 @@ PROGRAM oorb
               dDelta = comp_coord(4)
               dra = comp_coord(5)*COS(comp_coord(3))
               ddec = comp_coord(6)
+
+              ! Compute position angle for direction of motion
+              pa = ATAN2(dra,ddec)
+              IF (pa < 0.0_bp) THEN
+                 pa = two_pi + pa
+              END IF
 
               ! Extract topocentric ecliptic lon and lat
               CALL rotateToEcliptic(ephemerides(j))        
@@ -7101,17 +7163,17 @@ PROGRAM oorb
               END IF
               sun_moon = planeph(1,1:3)
               DEALLOCATE(planeph)
-              ! Position of the Moon as seen from the observatory:
+              ! Angle between Sun and Moon as seen from the observatory:
               obsy_moon = sun_moon - obsy_pos
               obsy_moon_r2 = DOT_PRODUCT(obsy_moon,obsy_moon)
-              sun_moon_r2 = DOT_PRODUCT(sun_moon,sun_moon)
-              cos_obj_phase = 0.5_bp * (sun_moon_r2 + obsy_moon_r2 - &
-                   observer_r2) / (SQRT(sun_moon_r2) * &
-                   SQRT(obsy_moon_r2))
-              lunar_phase = (pi-ACOS(cos_obj_phase))/pi
+              cos_obj_phase = DOT_PRODUCT(obsy_moon,-obsy_pos) / &
+                   (SQRT(observer_r2) * SQRT(obsy_moon_r2))
+              lunar_phase = (1.0_bp-cos_obj_phase)/2.0_bp
+
               ! Compute (approximate) distance between the target and the Moon:
               vec3 = cross_product(obsy_obj,obsy_moon)
               lunar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_moon))
+
               ! Compute (approximate) altitude of the Moon:
               vec3 = cross_product(geoc_obsy,obsy_moon)
               lunar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_moon))
@@ -7135,12 +7197,6 @@ PROGRAM oorb
                       'TRACE BACK (95)',1)
                  STOP
               END IF
-
-              CALL NULLIFY(observers(j))
-              CALL NULLIFY(ephemerides(j))
-              CALL NULLIFY(orb_lt_corr_arr(j))
-              CALL NULLIFY(ccoord)
-              CALL NULLIFY(obsy_ccoord)
 
               elements = getElements(orb_arr_in(i), "cometary")
               IF (elements(2) < 1.0_bp) THEN
@@ -7179,16 +7235,25 @@ PROGRAM oorb
                  opplat = opplat/rad_deg
                  ecc_anom = ecc_anom/rad_deg
                  true_anom = true_anom/rad_deg
+                 pa = pa/rad_deg
               END IF
 
-              WRITE(lu,'(2(A,1X),37(F18.10,1X))') &
+              WRITE(lu,'(2(A,1X),38(F18.10,1X))') &
                    id_arr_in(i), TRIM(obsy_code_arr(j)), mjd_utc, Delta, &
                    ra, dec, dDelta, dra, ddec, obj_vmag, obj_alt, &
                    obj_phase, lunar_elongation, lunar_alt, &
                    lunar_phase, solar_elongation, solar_alt, hdist, &
                    hlon, hlat, tlon, tlat, toclon, toclat, hoclon, &
                    hoclat, opplon, opplat, h_ecl_car_coord_obj, &
-                   h_ecl_car_coord_obsy(1:3),ecc_anom,true_anom
+                   h_ecl_car_coord_obsy(1:3), ecc_anom, true_anom, &
+                   pa
+
+              CALL NULLIFY(observers(j))
+              CALL NULLIFY(ephemerides(j))
+              CALL NULLIFY(orb_lt_corr_arr(j))
+              CALL NULLIFY(ccoord)
+              CALL NULLIFY(obsy_ccoord)
+
 
            END DO
 
@@ -7534,7 +7599,7 @@ PROGRAM oorb
 
      ! Compute probabilities for each object
      DO i=1,SIZE(storb_arr_in)
-        IF (.NOT.containsSampledPDF(storb_arr_in(i))) THEN
+        IF (.NOT.containsDiscretePDF(storb_arr_in(i))) THEN
            CALL errorMessage("oorb / classification", &
                 "Input orbits do not contain sampled " // &
                 "uncertainty information required for this task.", 1)        
@@ -7575,7 +7640,7 @@ PROGRAM oorb
 
      ! Compute probabilities for each object
      DO i=1,SIZE(storb_arr_in)
-        IF (.NOT.containsSampledPDF(storb_arr_in(i))) THEN
+        IF (.NOT.containsDiscretePDF(storb_arr_in(i))) THEN
            CALL errorMessage("oorb / classification", &
                 "Input orbits do not contain sampled " // &
                 "uncertainty information required for this task.", 1)        
@@ -7620,6 +7685,15 @@ PROGRAM oorb
      CALL NEW(epoch, mjd_tt, "TT")
 
      planeph => JPL_ephemeris(mjd_tt, -10, 11, error)
+     coordinates = 0.0_bp
+     elements = 0.0_bp
+     i = 11
+     WRITE(stdout,"(A,17(1X,E25.18))") &
+          TRIM(planetary_locations(i)), 2400000.5_bp+mjd_tt, &
+          coordinates, elements(1:2), elements(3:6)/rad_deg, &
+          planetary_masses(i), &
+          planetary_densities(i)/kgm3_smau3/1000.0_bp, &
+          planetary_mu(i), 0.0_bp     
      DO i=1,SIZE(planeph,dim=1)
         CALL NEW(ccoord, planeph(i,:), "equatorial", epoch)
         CALL rotateToEcliptic(ccoord)
@@ -7670,7 +7744,7 @@ PROGRAM oorb
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)
            CALL getApoapsisDistance(storb_arr_in(i), apoapsis_distance_pdf)
-           IF (containsSampledPDF(storb_arr_in(i))) THEN
+           IF (containsDiscretePDF(storb_arr_in(i))) THEN
               DO j=1,SIZE(apoapsis_distance_pdf,dim=1)
                  WRITE(stdout,*) apoapsis_distance_pdf(j,:) 
               END DO
@@ -7693,7 +7767,7 @@ PROGRAM oorb
      IF (ALLOCATED(storb_arr_in)) THEN
         DO i=1,SIZE(storb_arr_in)
            CALL getPeriapsisDistance(storb_arr_in(i), periapsis_distance_pdf)
-           IF (containsSampledPDF(storb_arr_in(i))) THEN
+           IF (containsDiscretePDF(storb_arr_in(i))) THEN
               DO j=1,SIZE(periapsis_distance_pdf,dim=1)
                  WRITE(stdout,*) periapsis_distance_pdf(j,:) 
               END DO
@@ -7939,17 +8013,17 @@ PROGRAM oorb
            G_value = get_cl_option("--G=", HG_arr_in(i,3))
 
            IF (separately .OR. i == 1) THEN
-              WRITE(lu,'(A3,1X,A11,1X,A,1X,35(A18,1X))') "#RN", &
+              WRITE(lu,'(A3,1X,A11,1X,A,1X,36(A18,1X))') "#RN", &
                    "Designation", "Code", "MJD_UTC/UT1", "Delta", &
                    "RA", "Dec", "dDelta/dt", "dRA/dt", "dDec/dt", &
-                   "VMag", "Alt", "Phase", "LunarElon", "LunarAlt", &
+                   "VMag", "Alt", "PhaseAngle", "LunarElon", "LunarAlt", &
                    "LunarPhase", "SolarElon", "SolarAlt", "r", &
                    "HLon", "HLat", "TLon", "TLat", "TOCLon", &
                    "TOCLat", "HOCLon", "HOCLat", "TOppLon", &
                    "TOppLat", "HEclObj X", "HEclObj Y", "HEclObj Z", &
                    "HEclObj dX/dt", "HEclObj dY/dt", & 
                    "HEclObj dZ/dt", "HEclObsy X", "HEclObsy Y", &
-                   "HEclObsy Z" 
+                   "HEclObsy Z", "PosAngle"
            END IF
 
            istep = 0
@@ -7988,6 +8062,12 @@ PROGRAM oorb
               dDelta = comp_coord(4)
               dra = comp_coord(5)*COS(comp_coord(3))
               ddec = comp_coord(6)
+
+              ! Compute position angle for direction of motion
+              pa = ATAN2(dra,ddec)
+              IF (pa < 0.0_bp) THEN
+                 pa = two_pi + pa
+              END IF
 
               ! Extract topocentric ecliptic lon and lat
               CALL rotateToEcliptic(ephemerides(j))        
@@ -8164,30 +8244,21 @@ PROGRAM oorb
               END IF
 
               ! Compute phase of the Moon:
-              ! Position of the geocenter as seen from the Moon:
-              planeph => JPL_ephemeris(mjd_tt, 3, 10, error)
-              IF (error) THEN
-                 CALL errorMessage('oorb / obsplanner', &
-                      'TRACE BACK (90)',1)
-                 STOP
-              END IF
-              ! Position of the observatory as seen from the Moon:
-              moon_obsy = planeph(1,1:3) + geoc_obsy
-              DEALLOCATE(planeph)
-              ! Position of the Sun as seen from the Moon:
+              ! Position of the Moon as seen from the Sun:
               planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
               IF (error) THEN
                  CALL errorMessage('oorb / obsplanner', &
-                      'TRACE BACK (95)',1)
+                      'TRACE BACK (87)',1)
                  STOP
               END IF
-              moon_sun = planeph(1,1:3)
+              sun_moon = planeph(1,1:3)
               DEALLOCATE(planeph)
-              moon_obsy_r2 = DOT_PRODUCT(moon_obsy,moon_obsy)
-              moon_sun_r2 = DOT_PRODUCT(moon_sun,moon_sun)
-              cos_obj_phase = DOT_PRODUCT(moon_obsy,moon_sun) / (SQRT(moon_sun_r2) * &
-                   SQRT(moon_obsy_r2))
-              lunar_phase = (pi-ACOS(cos_obj_phase))/pi
+              ! Angle between Sun and Moon as seen from the observatory:
+              obsy_moon = sun_moon - obsy_pos
+              obsy_moon_r2 = DOT_PRODUCT(obsy_moon,obsy_moon)
+              cos_obj_phase = DOT_PRODUCT(obsy_moon,-obsy_pos) / &
+                   (SQRT(observer_r2) * SQRT(obsy_moon_r2))
+              lunar_phase = (1.0_bp-cos_obj_phase)/2.0_bp
               IF (lunar_phase < lunar_phase_min) THEN
                  istep = 0
                  CYCLE
@@ -8195,6 +8266,7 @@ PROGRAM oorb
                  istep = 0
                  CYCLE
               END IF
+
               ! Compute (approximate) distance between the target and the Moon:
               vec3 = cross_product(obsy_obj,obsy_moon)
               lunar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_moon))
@@ -8202,6 +8274,7 @@ PROGRAM oorb
                  istep = 0
                  CYCLE
               END IF
+
               ! Compute (approximate) altitude of the Moon:
               vec3 = cross_product(geoc_obsy,obsy_moon)
               lunar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_moon))
@@ -8257,6 +8330,7 @@ PROGRAM oorb
               hoclat = hoclat/rad_deg
               opplon = opplon/rad_deg
               opplat = opplat/rad_deg
+              pa = pa/rad_deg
 
               IF (istep <= minstep) THEN
                  temp_arr(istep,:) = &
@@ -8273,7 +8347,7 @@ PROGRAM oorb
                  DO k=1,istep
                     WRITE(lu,'(I0,1X,2(A,1X),41(F18.10,1X))') i, &
                          id_arr_in(i), TRIM(obsy_code), &
-                         temp_arr(k,:), H_value, G_value, diameter, &
+                         temp_arr(k,:), pa, H_value, G_value, diameter, &
                          geometric_albedo, obj_vmag_cometary, H10_value
                  END DO
               ELSE IF (istep > minstep) THEN
@@ -8284,7 +8358,7 @@ PROGRAM oorb
                       lunar_phase, solar_elongation, solar_alt, hdist, &
                       hlon, hlat, tlon, tlat, toclon, toclat, hoclon, &
                       hoclat, opplon, opplat, h_ecl_car_coord_obj, &
-                      h_ecl_car_coord_obsy(1:3), H_value, G_value, &
+                      h_ecl_car_coord_obsy(1:3), pa, H_value, G_value, &
                       diameter, geometric_albedo,  &
                       obj_vmag_cometary, H10_value
               END IF
@@ -8391,7 +8465,7 @@ PROGRAM oorb
 
            ! Compute topocentric ephemerides
            CALL getEphemerides(storb_arr_in(i), observers, ephemerides_arr, &
-                cov_arr=cov_arr, pdfs_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr2)
+                cov_arr=cov_arr, pdf_arr=pdfs_arr, this_lt_corr_arr=orb_lt_corr_arr2)
            IF (error) THEN
               CALL errorMessage('oorb / fou', &
                    'TRACE BACK (25)',1)
@@ -8458,7 +8532,7 @@ PROGRAM oorb
               sunlat = pos_sun(3)
               CALL NULLIFY(scoord)
 
-              IF (containsSampledPDF(storb_arr_in(i))) THEN
+              IF (containsDiscretePDF(storb_arr_in(i))) THEN
 
                  ! Input orbits correspond to one or more sampled pdfs.
                  ! Loop over sampled orbits:
@@ -8770,7 +8844,7 @@ PROGRAM oorb
      !! is equal to the 1-sigma limits.
 
      DO i=1,SIZE(storb_arr_in)
-        IF (containsSampledPDF(storb_arr_in(i))) THEN
+        IF (containsDiscretePDF(storb_arr_in(i))) THEN
            orb_arr_in => getSampleOrbits(storb_arr_in(i), probability_mass=0.6827_bp)
            ALLOCATE(elements_arr(SIZE(orb_arr_in),6))
            DO j=1,SIZE(orb_arr_in)
@@ -8778,7 +8852,7 @@ PROGRAM oorb
               elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
               CALL NULLIFY(orb_arr_in(j))
            END DO
-           pdf_arr_in => getPDFValues(storb_arr_in(i), "keplerian")
+           pdf_arr_in => getDiscretePDF(storb_arr_in(i), "keplerian")
            j = MAXLOC(pdf_arr_in,dim=1)
            orb = getSampleOrbit(storb_arr_in(i),j)
            elements = getElements(orb, "keplerian")
@@ -8820,7 +8894,7 @@ PROGRAM oorb
      !! is equal to the 1-sigma limits.
 
      DO i=1,SIZE(storb_arr_in)
-        IF (containsSampledPDF(storb_arr_in(i))) THEN
+        IF (containsDiscretePDF(storb_arr_in(i))) THEN
            orb_arr_in => getSampleOrbits(storb_arr_in(i))
            ALLOCATE(elements_arr(SIZE(orb_arr_in),6))
            DO j=1,SIZE(orb_arr_in)
@@ -8828,7 +8902,7 @@ PROGRAM oorb
               elements_arr(j,3:6) = elements_arr(j,3:6)/rad_deg
               CALL NULLIFY(orb_arr_in(j))
            END DO
-           pdf_arr_in => getPDFValues(storb_arr_in(i), "keplerian")
+           pdf_arr_in => getDiscretePDF(storb_arr_in(i), "keplerian")
            DO j=1,3
               CALL confidence_limits(elements_arr(:,j), pdf_arr_in, &
                    probability_mass=0.6827_bp, peak=peak, bounds=bounds, &
@@ -8867,14 +8941,14 @@ PROGRAM oorb
      !! to the 3-sigma limits.
 
      DO i=1,SIZE(storb_arr_in)
-        IF (containsSampledPDF(storb_arr_in(i))) THEN
+        IF (containsDiscretePDF(storb_arr_in(i))) THEN
            orb_arr_in => getSampleOrbits(storb_arr_in(i))
            ALLOCATE(elements_arr(SIZE(orb_arr_in),6))
            DO j=1,SIZE(orb_arr_in)
               elements_arr(j,:) = getElements(orb_arr_in(j), "keplerian")
               CALL NULLIFY(orb_arr_in(j))
            END DO
-           pdf_arr_in => getPDFValues(storb_arr_in(i), "keplerian")
+           pdf_arr_in => getDiscretePDF(storb_arr_in(i), "keplerian")
            CALL confidence_limits(elements_arr(:,1), pdf_arr_in, &
                 probability_mass=0.9973_bp, peak=peak, bounds=bounds, &
                 errstr=errstr)
@@ -9095,7 +9169,7 @@ PROGRAM oorb
            CALL setObservationSCoord(obs_arr(j), ephemerides(j))
            IF (noise) THEN
               cov = getCovarianceMatrix(obs_arr(j))
-              CALL addMultinormalDeviate(obs_arr(j), mean, cov)
+              CALL addMultinormalDeviate(obs_arr(j), mean, cov, combined_covariance=.FALSE.)
            END IF
            IF (error) THEN
               CALL errorMessage('oorb4research / ephemeris', &

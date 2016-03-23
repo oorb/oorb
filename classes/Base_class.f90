@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2015,2016                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2015-10-30
+!! @version 2016-03-23
 !!
 MODULE Base_cl
 
@@ -85,6 +85,8 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: rad_asec = rad_amin/60.0_bp        !! Radians per arcsecond.
   REAL(bp), PARAMETER :: km_au    = 1.4959787066e8_bp       !! Kilometres per astronomical unit.
   REAL(bp), PARAMETER :: m_au     = 1.4959787066e11_bp      !! Metres per astronomical unit.
+  !REAL(bp), PARAMETER :: km_au    = 1.495978707e8_bp       !! Kilometres per astronomical unit (IAU 2012).
+  !REAL(bp), PARAMETER :: m_au     = 1.495978707e11_bp      !! Metres per astronomical unit (IAU 2012).
   REAL(bp), PARAMETER :: day_year = 365.256363004_bp        !! Days per sidereal year (J2000.0).
   REAL(bp), PARAMETER :: hour_day = 24.0_bp                 !! Hours per day.
   REAL(bp), PARAMETER :: min_day  = hour_day*60.0_bp        !! Minutes per day.
@@ -136,10 +138,17 @@ MODULE Base_cl
   CHARACTER(len=62), PARAMETER :: mpc_conv_str = &
        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
+  ! Verbosity of error messages
   INTEGER :: err_verb = 1
-  INTEGER :: info_verb = 1
+  ! Verbosity of information messages
+  INTEGER :: info_verb = 1 
+  ! Number of massless particles integrated simultaneously
+  INTEGER :: simint = 1
+  ! 
   LOGICAL :: simulated_observations = .FALSE.
+  ! Character string error flag
   CHARACTER(len=1024) :: errstr = ""
+  ! Logical error flag
   LOGICAL :: error = .FALSE.
 
 CONTAINS
