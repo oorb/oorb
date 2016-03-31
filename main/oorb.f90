@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2016-03-23
+!! @version 2016-03-31
 !!
 PROGRAM oorb
 
@@ -6727,22 +6727,22 @@ PROGRAM oorb
            IF (separately .OR. i == 1) THEN
               IF (containsDiscretePDF(storb_arr_in(1)) .AND. &
                    .NOT.get_cl_option("--single-point-estimate", .FALSE.)) THEN
-                 WRITE(lu,"(A,A11,5X,9(1X,A18))") "#", "Designation  ", &
-                      "Observatory_code ", "MJD_UTC  ", "Delta  ", "RA  ", &
-                      "Dec  ", "dDelta/dt  ", "dRA/dt  ", "dDec/dt  ", "PDF_value  "
+                 WRITE(lu,"(A,A11,5X,9(1X,A18))") "#", "Designation", &
+                      "Observatory_code", "MJD_UTC", "Delta", "RA", &
+                      "Dec", "dDelta/dt", "dRA/dt", "dDec/dt", "PDF"
               ELSE
-                 WRITE(lu,"(A,A11,5X,30(1X,A18))") "#", "Designation  ", &
-                      "Observatory_code ", "MJD_UTC  ", "Delta  ", "RA  ", "Dec  ", &
-                      "dDelta/dt  ", "dRA/dt  ", "dDec/dt  ", "Delta_unc  ", &
-                      "RA_unc  ", "Dec_unc  ", "dDelta/dt_unc  ", "dRA/dt_unc  ", &
-                      "dDec/dt_unc  ", "cor(Delta,RA)  ", "cor(Delta,Dec)  ", &
-                      "cor(Delta,dDelta)  ", "cor(Delta,dRA)  ", &
-                      "cor(Delta,dDec)  ", "cor(RA,Dec)  ", &
-                      "cor(RA,dDelta)  ", "cor(RA,dRA)  ", &
-                      "cor(RA,dDec)  ", "cor(Dec,dDelta)  ", &
-                      "cor(Dec,dRA)  ", "cor(Dec,dDec)  ", &
-                      "cor(dDelta,dRA)  ", "cor(dDelta,dDec)  ", &
-                      "cor(dRA,dDec)  ", "Current Eph. Unc. "
+                 WRITE(lu,"(A,A11,5X,30(1X,A18))") "#", "Designation", &
+                      "Observatory_code ", "MJD_UTC", "Delta", "RA", "Dec", &
+                      "dDelta/dt", "dRA/dt", "dDec/dt", "Delta_unc", &
+                      "RA_unc", "Dec_unc", "dDelta/dt_unc", "dRA/dt_unc", &
+                      "dDec/dt_unc", "cor(Delta,RA)", "cor(Delta,Dec)", &
+                      "cor(Delta,dDelta)", "cor(Delta,dRA)", &
+                      "cor(Delta,dDec)", "cor(RA,Dec)", &
+                      "cor(RA,dDelta)", "cor(RA,dRA)", &
+                      "cor(RA,dDec)", "cor(Dec,dDelta)", &
+                      "cor(Dec,dRA)", "cor(Dec,dDec)", &
+                      "cor(dDelta,dRA)", "cor(dDelta,dDec)", &
+                      "cor(dRA,dDec)", "CurrentEphUnc"
               END IF
            END IF
 
@@ -7264,19 +7264,6 @@ PROGRAM oorb
                 obsy_code_arr, stat=err)
 
         END DO
-
-!!$        IF (ASSOCIATED(obss_sep)) THEN
-!!$           first = .TRUE.
-!!$           DO i=1,SIZE(obss_sep)
-!!$              IF (exist(obss_sep(i))) THEN
-!!$                 IF (first) THEN
-!!$                    WRITE(stderr,"(A)") "Orbit missing for the following observation set(s):"
-!!$                    first = .FALSE.
-!!$                 END IF
-!!$                 WRITE(stderr,"(A)") TRIM(id_arr(i))
-!!$              END IF
-!!$           END DO
-!!$        END IF
 
      END IF
 
@@ -8013,17 +8000,18 @@ PROGRAM oorb
            G_value = get_cl_option("--G=", HG_arr_in(i,3))
 
            IF (separately .OR. i == 1) THEN
-              WRITE(lu,'(A3,1X,A11,1X,A,1X,36(A18,1X))') "#RN", &
+              WRITE(lu,'(A3,1X,A11,1X,A,1X,42(A18,1X))') "#RN", &
                    "Designation", "Code", "MJD_UTC/UT1", "Delta", &
                    "RA", "Dec", "dDelta/dt", "dRA/dt", "dDec/dt", &
                    "VMag", "Alt", "PhaseAngle", "LunarElon", "LunarAlt", &
                    "LunarPhase", "SolarElon", "SolarAlt", "r", &
                    "HLon", "HLat", "TLon", "TLat", "TOCLon", &
                    "TOCLat", "HOCLon", "HOCLat", "TOppLon", &
-                   "TOppLat", "HEclObj X", "HEclObj Y", "HEclObj Z", &
-                   "HEclObj dX/dt", "HEclObj dY/dt", & 
-                   "HEclObj dZ/dt", "HEclObsy X", "HEclObsy Y", &
-                   "HEclObsy Z", "PosAngle"
+                   "TOppLat", "HEclObj_X", "HEclObj_Y", "HEclObj_Z", &
+                   "HEclObj_dX/dt", "HEclObj_dY/dt", & 
+                   "HEclObj_dZ/dt", "HEclObsy_X", "HEclObsy_Y", &
+                   "HEclObsy_Z", "PosAngle", "H", "G", "Diameter", &
+                   "p_V", "VMag_cometary", "H10"
            END IF
 
            istep = 0
@@ -8345,13 +8333,13 @@ PROGRAM oorb
 
               IF (istep == minstep) THEN
                  DO k=1,istep
-                    WRITE(lu,'(I0,1X,2(A,1X),41(F18.10,1X))') i, &
+                    WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X))') i, &
                          id_arr_in(i), TRIM(obsy_code), &
                          temp_arr(k,:), pa, H_value, G_value, diameter, &
                          geometric_albedo, obj_vmag_cometary, H10_value
                  END DO
               ELSE IF (istep > minstep) THEN
-                 WRITE(lu,'(I0,1X,2(A,1X),41(F18.10,1X))') &
+                 WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X))') &
                       i, id_arr_in(i), TRIM(obsy_code), mjd_utc, Delta, &
                       ra, dec, dDelta, dra, ddec, obj_vmag, obj_alt, &
                       obj_phase, lunar_elongation, lunar_alt, &
