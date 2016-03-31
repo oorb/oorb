@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2015,2016                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see Orbit_class
 !! 
 !! @author  MG, JV
-!! @version 2015-10-23
+!! @version 2016-03-31
 !!
 MODULE Time_cl
 
@@ -882,13 +882,15 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  CHARACTER(len=17) FUNCTION getCalendarDateString(this, timescale) RESULT(str)
+  CHARACTER(len=17) FUNCTION getCalendarDateString(this, timescale, long) RESULT(str)
 
     IMPLICIT NONE
-    TYPE (Time), INTENT(inout)   :: this
-    CHARACTER(len=*), INTENT(in) :: timescale
+    TYPE (Time), INTENT(inout)    :: this
+    CHARACTER(len=*), INTENT(in)  :: timescale
+    LOGICAL, INTENT(in), OPTIONAL :: long
+
     REAL(bp)                     :: day, sec
-    INTEGER                      :: err, year, month, day_, hour, min
+    INTEGER                      :: err, year, month, day_, hour, min, i
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -913,6 +915,26 @@ CONTAINS
        str = "*****ERROR*****"
        RETURN
     END IF
+
+    IF (PRESENT(long)) THEN
+       IF (long) THEN
+          WRITE(str, "(I4,4(I2),F5.2)", iostat=err) year, month, &
+               day_, hour, min, sec
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Time / getCalendarDateString", &
+                  "Could not write output string.", 1)
+             str = "*****ERROR*****"
+             RETURN
+          END IF
+          DO i=1,len_TRIM(str)
+             IF (str(i:i) == " ") THEN
+                str(i:i) = "0"
+             END IF
+          END DO
+       END IF
+    END IF
+
 
   END FUNCTION getCalendarDateString
 
