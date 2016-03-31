@@ -158,6 +158,8 @@ PROGRAM oorb
   CHARACTER(len=64) :: &
        sor_2point_method, &                                         !! Method used for 2-point boundary-value problem. 
        sor_2point_method_sw                                         !! Method used for 2-point boundary-value problem in stepwise Ranging.
+  CHARACTER(len=17) :: &
+       caldate
   CHARACTER(len=DESIGNATION_LEN) :: &
        id                                                           !! Number or temporary designation of asteroid.
   CHARACTER(len=8) :: &
@@ -8000,8 +8002,8 @@ PROGRAM oorb
            G_value = get_cl_option("--G=", HG_arr_in(i,3))
 
            IF (separately .OR. i == 1) THEN
-              WRITE(lu,'(A3,1X,A11,1X,A,1X,42(A18,1X))') "#RN", &
-                   "Designation", "Code", "MJD_UTC/UT1", "Delta", &
+              WRITE(lu,'(A3,1X,A11,1X,A,1X,43(A18,1X))') "#RN", &
+                   "Designation", "Code", "MJD_UTC", "Delta", &
                    "RA", "Dec", "dDelta/dt", "dRA/dt", "dDec/dt", &
                    "VMag", "Alt", "PhaseAngle", "LunarElon", "LunarAlt", &
                    "LunarPhase", "SolarElon", "SolarAlt", "r", &
@@ -8011,7 +8013,7 @@ PROGRAM oorb
                    "HEclObj_dX/dt", "HEclObj_dY/dt", & 
                    "HEclObj_dZ/dt", "HEclObsy_X", "HEclObsy_Y", &
                    "HEclObsy_Z", "PosAngle", "H", "G", "Diameter", &
-                   "p_V", "VMag_cometary", "H10"
+                   "p_V", "VMag_cometary", "H10", "CalendarDate_UTC"
            END IF
 
            istep = 0
@@ -8020,18 +8022,22 @@ PROGRAM oorb
               istep = istep + 1
               t = getTime(observers(j))
               mjd_tt = getMJD(t, "TT")
-              err_verb_ = err_verb
-              err_verb = 0
-              mjd_utc = getMJD(t, "UTC")
-              err_verb = err_verb_
               IF (error) THEN
-                 error = .FALSE.
-                 mjd_utc = getMJD(t, "UT1")
-                 IF (error) THEN
-                    CALL errorMessage('oorb / obsplanner', &
-                         'TRACE BACK (30)',1)
-                    STOP
-                 END IF
+                 CALL errorMessage('oorb / obsplanner', &
+                      'TRACE BACK (29)',1)
+                 STOP
+              END IF
+              mjd_utc = getMJD(t, "UTC")
+              IF (error) THEN
+                 CALL errorMessage('oorb / obsplanner', &
+                      'TRACE BACK (30)',1)
+                 STOP
+              END IF
+              caldate = getCalendarDateString(t, "UTC", long=.TRUE.)
+              IF (error) THEN
+                 CALL errorMessage('oorb / obsplanner', &
+                      'TRACE BACK (31)',1)
+                 STOP
               END IF
 
               ! Extract topocentic equatorial coordinates
@@ -8333,22 +8339,24 @@ PROGRAM oorb
 
               IF (istep == minstep) THEN
                  DO k=1,istep
-                    WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X))') i, &
+                    WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X),A)') i, &
                          id_arr_in(i), TRIM(obsy_code), &
-                         temp_arr(k,:), pa, H_value, G_value, diameter, &
-                         geometric_albedo, obj_vmag_cometary, H10_value
+                         temp_arr(k,:), pa, H_value, G_value, &
+                         diameter, geometric_albedo, &
+                         obj_vmag_cometary, H10_value, caldate
                  END DO
               ELSE IF (istep > minstep) THEN
-                 WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X))') &
-                      i, id_arr_in(i), TRIM(obsy_code), mjd_utc, Delta, &
+                 WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X),A)') i, &
+                      id_arr_in(i), TRIM(obsy_code), mjd_utc, Delta, &
                       ra, dec, dDelta, dra, ddec, obj_vmag, obj_alt, &
                       obj_phase, lunar_elongation, lunar_alt, &
-                      lunar_phase, solar_elongation, solar_alt, hdist, &
-                      hlon, hlat, tlon, tlat, toclon, toclat, hoclon, &
-                      hoclat, opplon, opplat, h_ecl_car_coord_obj, &
-                      h_ecl_car_coord_obsy(1:3), pa, H_value, G_value, &
-                      diameter, geometric_albedo,  &
-                      obj_vmag_cometary, H10_value
+                      lunar_phase, solar_elongation, solar_alt, &
+                      hdist, hlon, hlat, tlon, tlat, toclon, toclat, &
+                      hoclon, hoclat, opplon, opplat, &
+                      h_ecl_car_coord_obj, &
+                      h_ecl_car_coord_obsy(1:3), pa, H_value, &
+                      G_value, diameter, geometric_albedo, &
+                      obj_vmag_cometary, H10_value, caldate
               END IF
 
            END DO
