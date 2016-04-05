@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2016-03-31
+!! @version 2016-04-05
 !!
 PROGRAM oorb
 
@@ -158,8 +158,6 @@ PROGRAM oorb
   CHARACTER(len=64) :: &
        sor_2point_method, &                                         !! Method used for 2-point boundary-value problem. 
        sor_2point_method_sw                                         !! Method used for 2-point boundary-value problem in stepwise Ranging.
-  CHARACTER(len=17) :: &
-       caldate
   CHARACTER(len=DESIGNATION_LEN) :: &
        id                                                           !! Number or temporary designation of asteroid.
   CHARACTER(len=8) :: &
@@ -265,7 +263,7 @@ PROGRAM oorb
        apriori_a_min, apriori_apoapsis_max, apriori_apoapsis_min, &
        apriori_periapsis_max,  apriori_periapsis_min, &
        apriori_rho_min, apriori_rho_max, &
-       chi2_min_init, cos_nsigma, cos_obj_phase, &
+       caldate, chi2_min_init, cos_nsigma, cos_obj_phase, &
        day0, day1, dDelta, ddec, dec, dra, dt, dt_, dt_fulfill_night, dchi2_max, &
        emin, emax, ephemeris_r2, &
        geometric_albedo, &
@@ -7821,6 +7819,7 @@ PROGRAM oorb
      END DO
      CALL NULLIFY(orb_out_file)
 
+     
 
   CASE ("obsplanner")
 
@@ -7846,7 +7845,7 @@ PROGRAM oorb
      ! Input how long the requirements have to be fulfilled each night
      dt_fulfill_night = get_cl_option("--timespan-fulfill-night=", 0.05_bp) ! 0.05
      minstep = MAX(1,CEILING(dt_fulfill_night/step))
-     ALLOCATE(temp_arr(minstep,35))
+     ALLOCATE(temp_arr(minstep,37))
 
      ! Input minimum altitude for object (wrt the horizon)
      obj_alt_min = get_cl_option("--object-altitude-min=", -90.0_bp) ! 30
@@ -8012,8 +8011,8 @@ PROGRAM oorb
                    "TOppLat", "HEclObj_X", "HEclObj_Y", "HEclObj_Z", &
                    "HEclObj_dX/dt", "HEclObj_dY/dt", & 
                    "HEclObj_dZ/dt", "HEclObsy_X", "HEclObsy_Y", &
-                   "HEclObsy_Z", "PosAngle", "H", "G", "Diameter", &
-                   "p_V", "VMag_cometary", "H10", "CalendarDate_UTC"
+                   "HEclObsy_Z", "PosAngle", "CalendarDate_UTC", &
+                   "H", "G", "Diameter", "p_V", "VMag_cometary", "H10"
            END IF
 
            istep = 0
@@ -8033,7 +8032,7 @@ PROGRAM oorb
                       'TRACE BACK (30)',1)
                  STOP
               END IF
-              caldate = getCalendarDateString(t, "UTC", long=.TRUE.)
+              call getCalendarDate(t, "UTC", caldate)
               IF (error) THEN
                  CALL errorMessage('oorb / obsplanner', &
                       'TRACE BACK (31)',1)
@@ -8334,29 +8333,29 @@ PROGRAM oorb
                       lunar_phase, solar_elongation, solar_alt, hdist, &
                       hlon, hlat, tlon, tlat, toclon, toclat, hoclon, &
                       hoclat, opplon, opplat, h_ecl_car_coord_obj, &
-                      h_ecl_car_coord_obsy(1:3) /)
+                      h_ecl_car_coord_obsy(1:3), pa, caldate /)
               END IF
 
               IF (istep == minstep) THEN
                  DO k=1,istep
-                    WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X),A)') i, &
-                         id_arr_in(i), TRIM(obsy_code), &
-                         temp_arr(k,:), pa, H_value, G_value, &
+                    WRITE(lu,'(I0,1X,2(A,1X),36(F18.6,1X),F18.1,6(1X,F18.6))') &
+                         i, id_arr_in(i), TRIM(obsy_code), &
+                         temp_arr(k,:), H_value, G_value, &
                          diameter, geometric_albedo, &
-                         obj_vmag_cometary, H10_value, caldate
+                         obj_vmag_cometary, H10_value
                  END DO
               ELSE IF (istep > minstep) THEN
-                 WRITE(lu,'(I0,1X,2(A,1X),42(F18.10,1X),A)') i, &
-                      id_arr_in(i), TRIM(obsy_code), mjd_utc, Delta, &
+                 WRITE(lu,'(I0,1X,2(A,1X),36(F18.6,1X),F18.1,6(1X,F18.6))') &
+                      i, id_arr_in(i), TRIM(obsy_code), mjd_utc, Delta, &
                       ra, dec, dDelta, dra, ddec, obj_vmag, obj_alt, &
                       obj_phase, lunar_elongation, lunar_alt, &
                       lunar_phase, solar_elongation, solar_alt, &
                       hdist, hlon, hlat, tlon, tlat, toclon, toclat, &
                       hoclon, hoclat, opplon, opplat, &
                       h_ecl_car_coord_obj, &
-                      h_ecl_car_coord_obsy(1:3), pa, H_value, &
+                      h_ecl_car_coord_obsy(1:3), pa, caldate, H_value, &
                       G_value, diameter, geometric_albedo, &
-                      obj_vmag_cometary, H10_value, caldate
+                      obj_vmag_cometary, H10_value
               END IF
 
            END DO
@@ -8373,6 +8372,7 @@ PROGRAM oorb
      DEALLOCATE(temp_arr)
      CALL NULLIFY(obsies)
 
+     
 
   CASE ("fou")
 
