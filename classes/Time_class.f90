@@ -30,7 +30,7 @@
 !! @see Orbit_class
 !! 
 !! @author  MG, JV
-!! @version 2016-03-31
+!! @version 2016-04-05
 !!
 MODULE Time_cl
 
@@ -109,6 +109,7 @@ MODULE Time_cl
 
   INTERFACE getCalendarDate
      MODULE PROCEDURE getCalendarDate_long
+     MODULE PROCEDURE getCalendarDate_shortlong
      MODULE PROCEDURE getCalendarDate_short
   END INTERFACE getCalendarDate
 
@@ -755,7 +756,7 @@ CONTAINS
   !!  - UTC (Coordinated Universal Time), or
   !!  - UT1 (UT + pole variation)
   !!
-  !! as a Calendar Date. Default timescale is UTC.
+  !! as a Calendar Date.
   !!
   !! Returns error.
   !! 
@@ -825,7 +826,60 @@ CONTAINS
   !!  - UTC (Coordinated Universal Time), or
   !!  - UT1 (UT + pole variation)
   !!
-  !! as a Calendar Date. Default timescale is UTC.
+  !! as a Calendar Date formatted as a real number (yyyymmddhhmmss.sss...).
+  !!
+  !! Returns error.
+  !! 
+  SUBROUTINE getCalendarDate_shortlong(this, timescale, yearmonthdayhourminsec)
+
+    IMPLICIT NONE
+    TYPE (Time), INTENT(inout)   :: this
+    CHARACTER(len=*), INTENT(in) :: timescale
+    REAL(bp), INTENT(out)        :: yearmonthdayhourminsec
+
+    REAL(bp) :: sec
+    INTEGER  :: year, month, day, hour, min
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Time / getCalendarDate", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    CALL getCalendarDate(this, timescale, year, month, day, hour, min, sec)
+    IF (error) THEN
+       CALL errorMessage("Time / getCalendarDateString", &
+            "TRACE BACK", 1)
+       RETURN
+    END IF
+    
+    yearmonthdayhourminsec = &
+         year  * 10000000000.0_bp + &
+         month * 100000000.0_bp   + &
+         day   * 1000000.0_bp     + &
+         hour  * 10000.0_bp       + &
+         min   * 100.0_bp         + &
+         sec
+
+  END SUBROUTINE getCalendarDate_shortlong
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Returns
+  !! 
+  !!  - TDT (Terrestrial Dynamical Time; 
+  !!          = ET (Ephemeris Time) 
+  !!          = TT (Terrestrial Time)), or
+  !!  - TAI (Atomic Time, french Temps Atomique International), or
+  !!  - UTC (Coordinated Universal Time), or
+  !!  - UT1 (UT + pole variation)
+  !!
+  !! as a Calendar Date.
   !!
   !! Returns error.
   !! 

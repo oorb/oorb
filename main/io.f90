@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2016-03-23
+!! @version 2016-04-05
 !!
 MODULE io
 
@@ -2693,7 +2693,7 @@ CONTAINS
           RETURN
        END SELECT
     END IF
-    WRITE(lu,"(2(A,1X),7(E22.15,1X),1(E22.10,1X),2(I0,1X),E22.15,1X,A)",iostat=err) &
+    WRITE(lu,"(2(A,1X),7(E22.15,1X),1(E22.14,1X),2(I0,1X),E22.15,1X,A)",iostat=err) &
          TRIM(id), TRIM(frmt), elements, H, mjd_tt, indx_, npar_, &
          moid_, TRIM(compcode_)
     IF (err /= 0) THEN
@@ -3450,7 +3450,7 @@ CONTAINS
     IF (PRESENT(mjd)) THEN
        IF (mjd) THEN
           mjd_tt = getMJD(t, "TT")
-          WRITE(lu, "(A16,6(1X,E21.14),1X,F16.6)", &
+          WRITE(lu, "(A16,6(1X,E21.14),1X,F16.8)", &
                advance="no", iostat=err) id, elements(1:6), mjd_tt
           IF (err /= 0) THEN
              error = .TRUE.
@@ -3461,7 +3461,7 @@ CONTAINS
           CALL NULLIFY(t)
        END IF
     END IF
-    IF (exist(t)) THEN ! MJD not requested...
+    IF (exist(t)) THEN ! MJD not requested since t still exists...
        CALL getCalendarDate(t, "tdt", year, month, day)
        IF (error) THEN
           CALL errorMessage("io / writeOpenOrbOrbitFile", &
