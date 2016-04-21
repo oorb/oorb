@@ -5,8 +5,11 @@
 python/build/
 main/oorb
 data/JPL_ephemeris/asc2eph
-data/JPL_ephemeris/de405.dat
+data/JPL_ephemeris/de*.dat
 data/JPL_ephemeris/ephtester
-data/JPL_ephemeris/testpo.405
-data/de405.dat
+data/JPL_ephemeris/testpo.*
+data/JPL_ephemeris/ascii*
+data/JPL_ephemeris/ascp*
+data/JPL_ephemeris/header*
+data/de4*.dat
 Makefile.include
