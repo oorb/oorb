@@ -1,5 +1,8 @@
+from __future__ import print_function
+from __future__ import absolute_import
 import os
 import subprocess
+import numbers
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import repeat
@@ -8,8 +11,10 @@ import pyoorb as oo
 
 
 import time
+
+
 def dtime(time_prev):
-   return (time.time() - time_prev, time.time())
+    return (time.time() - time_prev, time.time())
 
 
 def pack_oorbArray(orbits):
@@ -27,49 +32,53 @@ def pack_oorbArray(orbits):
     epoch_type = np.zeros(len(orbits)) + 3
     gval = np.zeros(len(orbits)) + 0.15
     # Also, the orbitID has to be a float, rather than a string, so substitute if needed.
-    if ((isinstance(orbits['objid'][0], float) == True) |
-        (isinstance(orbits['objid'][0], int) == True)):
+    if isinstance(orbits['objid'][0], numbers.Real):
         orbids = orbits['objid']
     else:
         orbids = np.arange(0, len(orbits['objid']), 1)
     # Convert to format for pyoorb, INCLUDING converting inclination, node, argperi to RADIANS
     oorbArray = np.column_stack((orbids, orbits['q'], orbits['e'], np.radians(orbits['i']),
-                                    np.radians(orbits['node']), np.radians(orbits['argperi']),
-                                    orbits['t_p'], elem_type, orbits['t_0'], epoch_type, orbits['H'], gval))
+                                 np.radians(orbits['node']), np.radians(orbits['argperi']),
+                                 orbits['t_p'], elem_type, orbits['t_0'], epoch_type, orbits['H'], gval))
     return oorbArray
 
 
 if __name__ == "__main__":
 
     t = time.time()
-    print "starting..."
+    print("starting...")
 
     # check against OpenOrb command line
     timespan = 1000
     timestep = 10
-    command = "/bin/rm test_out ; oorb --code=807 --task=ephemeris --orb-in=test_orbits.des --timespan=%d --step=%d > test_out" %(timespan, timestep)
-    print command
+    try:
+        os.unlink('test_out')
+    except OSError:
+        pass
+    command = "oorb --code=807 --task=ephemeris --orb-in=test_orbits.des " \
+        " --timespan=%d --step=%d > test_out" % (timespan, timestep)
+    print(command)
     subprocess.call(command, shell=True)
     dt, t = dtime(t)
-    print "Calculating ephemerides by command line took %f s "%(dt)
+    print("Calculating ephemerides by command line took %f s " % (dt))
 
     # Read the command line version back, to look for differences.
     data = pd.read_table('test_out', sep="\s*", engine='python')
     dt, t = dtime(t)
-    print "Reading data back from file %f s" %(dt)
-    print "Read %d ephemerides" %(len(data['RA']))
+    print("Reading data back from file %f s" % (dt))
+    print("Read %d ephemerides" % (len(data['RA'])))
     ctimes = data['MJD_UTC/UT1'][data['#Designation'] == 1]
-    print "Created %d unique times; %d times total" %(len(np.unique(data['MJD_UTC/UT1'])), len(ctimes))
+    print("Created %d unique times; %d times total" % (len(np.unique(data['MJD_UTC/UT1'])), len(ctimes)))
 
     # Read the orbits from disk.
-        # Read the orbits from disk.
+    # Read the orbits from disk.
     dt, t = dtime(t)
     orbits = pd.read_table('test_orbits.des', sep='\s*', engine='python')
     newcols = orbits.columns.values
     newcols[0] = 'objid'
     orbits.columns = newcols
     dt, t = dtime(t)
-    print "Reading %d orbits required %f s" %(len(orbits['q']), dt)
+    print("Reading %d orbits required %f s" % (len(orbits['q']), dt))
     # convert orbit array to 'packed' form needed in oorb.
     oorbArray = pack_oorbArray(orbits)
 
@@ -81,19 +90,21 @@ if __name__ == "__main__":
     obscode = 807
     # Set up dates to predict ephemerides.
     timestart = orbits['t_0'][0]
-    times = np.arange(timestart, timestart + timespan + timestep/2.0, timestep)
+    times = np.arange(timestart, timestart + timespan + timestep / 2.0, timestep)
     times = np.array(ctimes)
     # For pyoorb, we need to tag times with timescales;
     # 1= MJD_UTC, 2=UT1, 3=TT, 4=TAI
     ephTimes = np.array(zip(times, repeat(1, len(times))), dtype='double')
-    print times
+    print(times)
     dt, t = dtime(t)
-    print "Ready for ephemeris generation .. %f s" %(dt)
+    print("Ready for ephemeris generation .. %f s" % (dt))
 
     # Generate ephemerides.
-    oorbephs, err = oo.pyoorb.oorb_ephemeris(in_orbits = oorbArray, in_obscode=obscode, in_date_ephems=ephTimes)
+    oorbephs, err = oo.pyoorb.oorb_ephemeris(in_orbits = oorbArray,
+                                             in_obscode=obscode,
+                                             in_date_ephems=ephTimes)
     dt, t = dtime(t)
-    print "Calculating ephemerides by python required %f s" %(dt)
+    print("Calculating ephemerides by python required %f s" % (dt))
 
     # Returned ephems contain a 3-D Fortran array of ephemerides, the axes are:
     #   [objid][time][ephemeris information element]
@@ -115,12 +126,12 @@ if __name__ == "__main__":
     radiff *= 3600
     decdiff *= 3600
 
-    print "min/max ra offsets", radiff.min(), radiff.max()
-    print "min/max dec offsets", decdiff.min(), decdiff.max()
+    print("min/max ra offsets", radiff.min(), radiff.max())
+    print("min/max dec offsets", decdiff.min(), decdiff.max())
 
     plt.figure()
     plt.plot(radiff, decdiff, 'k.')
     plt.xlabel('Difference in RA (arcsec)')
     plt.ylabel('Difference in Dec (arcsec)')
 
-    #plt.show()
+    # plt.show()

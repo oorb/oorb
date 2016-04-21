@@ -1,4 +1,4 @@
-#====================================================================#
+# ================================================================== #
 #                                                                    #
 # Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  #
 # Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      #
@@ -19,11 +19,13 @@
 # You should have received a copy of the GNU General Public License  #
 # along with OpenOrb. If not, see <http://www.gnu.org/licenses/>.    #
 #                                                                    #
-#====================================================================#
+# ================================================================== #
 #
 #
 
-#!/usr/bin/env python
+from __future__ import print_function
+from __future__ import absolute_import
+
 import os
 import numpy as np
 import pylab
@@ -31,17 +33,19 @@ from itertools import repeat
 import pyoorb as oo
 
 import time
+
+
 def dtime(time_prev):
-   return (time.time() - time_prev, time.time())
+    return (time.time() - time_prev, time.time())
 
 
 def read_orbits(orbitfilename):
     """ Read orbits that will be using for orbit prediction """
     """ set up for reading SSM des files"""
     try:
-        f= open(orbitfilename, 'r')
+        f = open(orbitfilename, 'r')
     except IOError:
-        print "Couldn't open file %s" %(orbitfilename)
+        print("Couldn't open file %s" % (orbitfilename))
         exit()
     q = []
     e = []
@@ -100,46 +104,45 @@ if __name__ == "__main__":
     # otherwise - calculate ephemerides at multiple times between epoch and future date.
 
     t = time.time()
-    print "Starting oorb ephemeris generation timing test"
+    print("Starting oorb ephemeris generation timing test")
     dt, t = dtime(t)
     ephfile = os.path.join(os.getenv('OORB_DATA'), 'de405.dat')
     oo.pyoorb.oorb_init(ephemeris_fname=ephfile, error_verbosity=5, info_verbosity=1)
     dt, t = dtime(t)
-    print "calling oorb_init() took %f s" %(dt)
+    print("calling oorb_init() took %f s" % (dt))
     # read in orbit DES file
     orbits, orbital_epoch = read_orbits('test_orbits.des')
     dt, t = dtime(t)
-    print "Reading %d orbits required %f s" %(len(orbits),dt)
+    print("Reading %d orbits required %f s" % (len(orbits), dt))
 
     # set observatory code
     obscode = 807
     # Generate ephemerides for ten years, at timesteps of 30 days.
-    dates = np.arange(orbital_epoch, orbital_epoch+2*365.10+30.0/2., 30.0)
-    dates = np.arange(orbital_epoch, orbital_epoch + 30. + 1./24., 1./24.*.75)
-    #timescale: 1 = UTC, 2 = UT1, 3=TT, 4=TAI
+    dates = np.arange(orbital_epoch, orbital_epoch + 2 * 365.10 + 30.0 / 2., 30.0)
+    dates = np.arange(orbital_epoch, orbital_epoch + 30. + 1. / 24., 1. / 24. * .75)
+    # timescale: 1 = UTC, 2 = UT1, 3=TT, 4=TAI
     # Create an array to store the timing information.
     tReq = np.zeros(len(dates), dtype='float')
     scaling = 1000
     for i in range(1, len(dates)):
         if singledate:
             # Calculate ephemerides at only the 'date'
-            ephem_dates= np.zeros([1,2], dtype=np.double)
+            ephem_dates = np.zeros([1, 2], dtype=np.double)
             ephem_dates[0][:] = [dates[i], 1]
         else:
             # Calculate ephemerides at all times up to date
             d = dates[0:i]
             ephem_dates = np.array(zip(d, repeat(1, len(d))), dtype='double')
         dt, t = dtime(t)
-        eph, err = oo.pyoorb.oorb_ephemeris(in_orbits=orbits, \
-                                            in_obscode=obscode, \
+        eph, err = oo.pyoorb.oorb_ephemeris(in_orbits=orbits,
+                                            in_obscode=obscode,
                                             in_date_ephems=ephem_dates)
         dt, t = dtime(t)
         if singledate:
-           print "Calculating ephemerides @ date %f required %f s" %(dates[i], dt)
+            print("Calculating ephemerides @ date %f required %f s" % (dates[i], dt))
         else:
-           print "Calculating ephemerides up to date %f required %f s" %(dates[i], dt)
+            print("Calculating ephemerides up to date %f required %f s" % (dates[i], dt))
         tReq[i] = dt / float(len(orbits)) * scaling
-
 
     deltatime = dates - dates[0]
     pylab.plot(deltatime, tReq, 'bo')
@@ -147,12 +150,16 @@ if __name__ == "__main__":
     dt = np.arange(deltatime[0], deltatime[-1], 0.1)
     y = np.polyval(p, dt)
     if singledate:
-        pylab.plot(dt, y, 'b-', label='Single ephemeride for %d objects @ date: y=%.1f + %.2f dt' %(scaling, p[1], p[0]))
+        pylab.plot(dt, y, 'b-',
+                   label='Single ephemeride for %d objects @ date: y=%.1f + %.2f dt'
+                   % (scaling, p[1], p[0]))
     else:
-        pylab.plot(dt, y, 'b-', label='Multiple ephemerides for %d objects up to date: y=%.1f + %.2f dt' %(scaling, p[1], p[0]))
+        pylab.plot(dt, y, 'b-',
+                   label='Multiple ephemerides for %d objects up to date: y=%.1f + %.2f dt'
+                   % (scaling, p[1], p[0]))
     pylab.legend(loc='lower right', fontsize='smaller', fancybox=True)
     pylab.xlabel("Days from epoch of orbit")
     pylab.ylabel("Approx time required to calculate ephemerides for 1000 objects")
     pylab.title("OpenOrb ephemeride calculation requirements")
     pylab.savefig('timing_test.png', format='png')
-    #pylab.show()
+    # pylab.show()
