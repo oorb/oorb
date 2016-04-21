@@ -30,10 +30,10 @@ include ../../make.config
 include ../../Makefile.include
 
 # TYPE OF EPHEMERIS [405|406|430|431]
-EPH_TYPE = 430
+EPH_TYPE ?= 430
 # FTP client
 FTP_CLIENT = wget
-# Output name of the program: 
+# Output name of the program:
 EPH_BIN = de$(EPH_TYPE).dat
 # Name of ascii-to-binary converter program source file:
 CONV_SRC = asc2eph.f90
@@ -121,4 +121,3 @@ modules:
 clean:
 	rm -f *.o *~ core $(CONVERTER) $(TESTER) *.$(EPH_TYPE) \
               $(EPH_ASCII_DE$(EPH_TYPE)) header.$(EPH_TYPE)*
-
