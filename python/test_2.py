@@ -2,6 +2,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 import os
 import subprocess
+import StringIO
 import numbers
 import numpy as np
 import matplotlib.pyplot as plt
@@ -51,21 +52,18 @@ if __name__ == "__main__":
     # check against OpenOrb command line
     timespan = 1000
     timestep = 10
-    try:
-        os.unlink('test_out')
-    except OSError:
-        pass
     command = "oorb --code=807 --task=ephemeris --orb-in=test_orbits.des " \
-        " --timespan=%d --step=%d > test_out" % (timespan, timestep)
+        " --timespan=%d --step=%d" % (timespan, timestep)
     print(command)
-    subprocess.call(command, shell=True)
+    d = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
     dt, t = dtime(t)
     print("Calculating ephemerides by command line took %f s " % (dt))
 
+    d = StringIO.StringIO(d)
+    data = pd.read_table(d, delim_whitespace=True)
     # Read the command line version back, to look for differences.
-    data = pd.read_table('test_out', sep="\s*", engine='python')
     dt, t = dtime(t)
-    print("Reading data back from file %f s" % (dt))
+    print("Turning data into dataframe %f s" % (dt))
     print("Read %d ephemerides" % (len(data['RA'])))
     ctimes = data['MJD_UTC/UT1'][data['#Designation'] == 1]
     print("Created %d unique times; %d times total" % (len(np.unique(data['MJD_UTC/UT1'])), len(ctimes)))
