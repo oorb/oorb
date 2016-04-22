@@ -1,0 +1,9 @@
+envPrepend(PATH, ${PRODUCT_DIR}/bin)
+
+envPrepend(DYLD_LIBRARY_PATH, ${PRODUCT_DIR}/lib)
+envPrepend(LD_LIBRARY_PATH, ${PRODUCT_DIR}/lib)
+
+envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
+
+envSet(OORB_CONF, ${PRODUCT_DIR}/etc/oorb.conf)
+envSet(OORB_DATA, ${PRODUCT_DIR}/data)
