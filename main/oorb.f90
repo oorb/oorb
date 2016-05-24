@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2016-04-05
+!! @version 2016-05-24
 !!
 PROGRAM oorb
 
@@ -996,11 +996,13 @@ PROGRAM oorb
               DEALLOCATE(orb_arr_in, pdf_arr_in)
            ELSE
               orb = getNominalOrbit(storb_arr_in(i))
-              cov = getCovarianceMatrix(storb_arr_in(i), element_type_out_prm)
+              cov = getCovarianceMatrix(storb_arr_in(i), &
+                   element_type_out_prm, frame=frame)
               CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                    element_type_out_prm, id_arr_storb_in(i), &
                    orb=orb, cov=cov, H=HG_arr_storb_in(i,j,1), &
-                   G=HG_arr_storb_in(i,j,3), mjd=mjd_epoch)
+                   G=HG_arr_storb_in(i,j,3), mjd=mjd_epoch, &
+                   frame=frame)
               first = .FALSE.
            END IF
         END DO
@@ -1774,6 +1776,7 @@ PROGRAM oorb
 
         ! Initialize StochasticOrbit
         IF (ASSOCIATED(id_arr_storb_in) .AND. ALLOCATED(storb_arr_in)) THEN
+           ! ...with an estimate for the orbit + observations:
            DO j=1,SIZE(id_arr_storb_in)
               IF (TRIM(id) == TRIM(id_arr_storb_in(j))) THEN
                  EXIT
@@ -1782,7 +1785,24 @@ PROGRAM oorb
            IF (j <= SIZE(id_arr_storb_in)) THEN
               storb = copy(storb_arr_in(j))
            END IF
+        ELSE IF (ASSOCIATED(id_arr_in) .AND. ASSOCIATED(orb_arr_in)) THEN
+           ! ...with a sample of orbits + observations:
+           norb = 0
+           DO j=1,SIZE(id_arr_in)
+              IF (TRIM(id) == TRIM(id_arr_in(j))) THEN
+                 norb = norb + 1
+                 orb_arr => reallocate(orb_arr, norb)
+                 orb_arr(norb) = copy(orb_arr_in(j))
+              END IF
+           END DO
+           ALLOCATE(pdf_arr(norb), stat=err)
+           pdf_arr = 1.0_bp
+           pdf_arr = pdf_arr/SUM(pdf_arr)
+           CALL NEW(storb, orb_arr=orb_arr, pdf_arr=pdf_arr, &
+                element_type=getElementType(orb_arr(1)), &
+                obss=obss_sep(i))
         ELSE
+           ! ...with just observations:
            CALL NEW(storb, obss_sep(i))        
         END IF
         IF (error) THEN
@@ -2081,7 +2101,7 @@ PROGRAM oorb
            END IF
            DO j=1,SIZE(orb_arr_cmp,dim=1)
               IF (orbit_format_out == "orb") THEN
-                 IF (HG_arr_in(1,1) < 99.0_bp) THEN
+                 IF (ASSOCIATED(HG_arr_in)) THEN
                     SELECT CASE (TRIM(flavor))
                     CASE ("mc", "stepwise-mc")
                        CALL writeOpenOrbOrbitFile(lu_orb_out, &
@@ -7052,7 +7072,7 @@ PROGRAM oorb
               CALL NULLIFY(ccoord)
               CALL NULLIFY(scoord)
 
-              ! Compute opposition-centered topocentric ecliptic coordinates
+              ! Compute opposition-centered heliocentric ecliptic coordinates
               hoclon = hlon - opplon
               hoclat = hlat - opplat
               IF (hoclon > pi) THEN
@@ -7819,7 +7839,7 @@ PROGRAM oorb
      END DO
      CALL NULLIFY(orb_out_file)
 
-     
+
 
   CASE ("obsplanner")
 
@@ -8032,7 +8052,7 @@ PROGRAM oorb
                       'TRACE BACK (30)',1)
                  STOP
               END IF
-              call getCalendarDate(t, "UTC", caldate)
+              CALL getCalendarDate(t, "UTC", caldate)
               IF (error) THEN
                  CALL errorMessage('oorb / obsplanner', &
                       'TRACE BACK (31)',1)
@@ -8372,7 +8392,7 @@ PROGRAM oorb
      DEALLOCATE(temp_arr)
      CALL NULLIFY(obsies)
 
-     
+
 
   CASE ("fou")
 
