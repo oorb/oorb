@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002-2015,2016                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains generic routines for parameter estimation.
 !!
 !! @author  MG
-!! @version 2010-03-02
+!! @version 2016-05-24
 !!
 MODULE estimators
 
@@ -40,11 +40,11 @@ MODULE estimators
   INTERFACE leastSquares
      MODULE PROCEDURE leastSquares_r8_matrix
      MODULE PROCEDURE leastSquares_r8_blockdiag
-  END INTERFACE
+  END INTERFACE leastSquares
 
   INTERFACE LevenbergMarquardt
      MODULE PROCEDURE LevenbergMarquardt_r8_blockdiag
-  END INTERFACE
+  END INTERFACE LevenbergMarquardt
 
 CONTAINS
 
@@ -703,7 +703,7 @@ CONTAINS
     END INTERFACE
     REAL(rprec8), DIMENSION(:), INTENT(in) :: param
     REAL(rprec8), INTENT(IN) :: fac
-    INTEGER, INTENT(in) :: ihi
+    INTEGER(iprec4), INTENT(in) :: ihi
     REAL(rprec8), DIMENSION(:), INTENT(inout) :: psum
     REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: p_matrix
     REAL(rprec8), DIMENSION(:), INTENT(inout) :: y_vector
