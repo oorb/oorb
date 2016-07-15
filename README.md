@@ -219,7 +219,9 @@ The Python wrappers are under heavy development and change fairly frequently. Us
 
 When using this software please cite
 
-	Granvik, M., Virtanen, J., Oszkiewicz, D., Muinonen, K. (2009). OpenOrb: Open-source asteroid orbit computation software including statistical ranging. Meteoritics & Planetary Science 44(12), 1853-1861.
+	Granvik, M., Virtanen, J., Oszkiewicz, D., Muinonen, K. (2009). 
+	OpenOrb: Open-source asteroid orbit computation software including statistical ranging. 
+	Meteoritics & Planetary Science 44(12), 1853-1861.
 
 
 # Licensing information #
