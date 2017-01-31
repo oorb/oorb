@@ -213,3 +213,28 @@ Yes there is. Go to http://groups.google.com/group/oorb.
 ### Why are the Python wrappers not working anymore? ###
 
 The Python wrappers are under heavy development and change fairly frequently. Use the command-line executable if you need a more stable platform.
+
+
+# Citation information #
+
+When using this software please cite
+
+	Granvik, M., Virtanen, J., Oszkiewicz, D., Muinonen, K. (2009). 
+	OpenOrb: Open-source asteroid orbit computation software including statistical ranging. 
+	Meteoritics & Planetary Science 44(12), 1853-1861.
+
+
+# Licensing information #
+
+OpenOrb is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+OpenOrb is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+
+You should receive a copy of the GNU General Public License along 
+with OpenOrb. If not, see <http://www.gnu.org/licenses/>.
