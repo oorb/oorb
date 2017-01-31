@@ -32,8 +32,9 @@ include ../../Makefile.include
 # TYPE OF EPHEMERIS [405|406|430|431]
 EPH_TYPE = 430
 # FTP client
-FTP_CLIENT = wget
-# Output name of the program: 
+#FTP_CLIENT = wget -nv -c
+FTP_CLIENT = curl -L -O -\# -C - -f
+# Output name of the program:
 EPH_BIN = de$(EPH_TYPE).dat
 # Name of ascii-to-binary converter program source file:
 CONV_SRC = asc2eph.f90
@@ -101,7 +102,7 @@ $(TESTER): modules $(TEST_SRC)
 
 # Build input file for ascii-to-binary converter:
 $(EPH_INPUT):
-	$(FTP_CLIENT) ftp://ssd.jpl.nasa.gov/pub/eph/planets/ascii/de$(EPH_TYPE)/*
+	for F in $(EPH_ASCII_DE$(EPH_TYPE)) testpo.$(EPH_TYPE); do $(FTP_CLIENT) ftp://ssd.jpl.nasa.gov/pub/eph/planets/ascii/de$(EPH_TYPE)/$$F; done
 	cat $(EPH_ASCII_DE$(EPH_TYPE)) > $(EPH_INPUT)
 
 # Write back-up:
