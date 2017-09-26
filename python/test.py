@@ -115,3 +115,12 @@ if __name__ == "__main__":
     for i in range(0,3):
         for j in range(0,2):
             print eph[i][j]
+
+    print("calling oorb_ephemeris_2b")
+    eph, err = pyoorb.pyoorb.oorb_ephemeris_2b(in_orbits=orbits,
+                                               in_obscode=obscode,
+                                               in_date_ephems=ephem_dates)
+    print("error code:", err)
+    for i in range(0, 3):
+        for j in range(0, 2):
+            print(eph[i][j])
