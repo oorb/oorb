@@ -49,7 +49,7 @@ all_clean: clean
 	cd $(LIBPATH)    ; $(MAKE) clean
 
 install:
-	mkdir -p $(PREFIX)/{bin,etc,lib,data,python}
+	mkdir -p $(PREFIX)/bin $(PREFIX)/etc $(PREFIX)/lib $(PREFIX)/data $(PREFIX)/python
 	cp -a main/oorb $(PREFIX)/bin/
 	cp -a main/oorb.conf $(PREFIX)/etc/
 	cp -a lib/* $(PREFIX)/lib/
