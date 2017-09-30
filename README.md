@@ -75,7 +75,7 @@ The [DE405](http://ssd.jpl.nasa.gov/?planet_eph_export) planetary ephemerides pr
 
 ### IAU/MPC Observatory codes and positions ###
 
-The [Minor Planet Center](http://www.cfa.harvard.edu/iau/mpc.html) is updating the [observatory codes](http://www.cfa.harvard.edu/iau/lists/ObsCodes.html) on a daily basis, but an update is not necessarily required until you stumble upon observations from an observatory which isn't listed in your version of the file.
+The [Minor Planet Center](http://www.cfa.harvard.edu/iau/mpc.html) updates the [observatory codes](http://www.cfa.harvard.edu/iau/lists/ObsCodes.html) on a daily basis, but an update is not necessarily required until you stumble upon observations from an observatory which isn't listed in your version of the file.
 
 > `cd OORBROOT/data/`
 
@@ -85,16 +85,23 @@ updates a file called `OBSCODE.dat`.
 
 ### ET minus UT ###
 
-Updated via the OOrb Subversion repository by
+Update via the OOrb git repository by
 
-> `svn update ET-UT.dat`
+> `git pull ET-UT.dat`
 
 ### TAI minus UTC ###
 
-Updated via the OOrb Subversion repository by
+Update via the OOrb git repository by
 
-> `svn update TAI-UTC.dat`
+> `git pull TAI-UTC.dat`
 
+## Setting environment variables ##
+
+Finally, you need to tell `oorb` where to find the different files. This is easiest to do through environment variables which you declare in the configuration file for the shell (e.g., .profile on Mac OS X and .bash_profile on Linux). For the Bash shell you need to add the following lines to the configuration file of your shell:
+
+> `export OORB_DATA=OORBROOT/data`
+> `export OORB_CONF=OORBROOT/main/oorb.conf`
+> `export OORB_GNUPLOT_SCRIPTS_DIR=OORBROOT/gnuplot/`
 
 # Using oorb #
 
