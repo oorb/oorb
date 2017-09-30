@@ -97,10 +97,12 @@ Update via the OOrb git repository by
 
 ## Setting environment variables ##
 
-Finally, you need to tell `oorb` where to find the different files. This is easiest to do through environment variables which you declare in the configuration file for the shell (e.g., .profile on Mac OS X and .bash_profile on Linux). For the Bash shell you need to add the following lines to the configuration file of your shell:
+Finally, you need to tell `oorb` where to find the different files. This is easiest to do through environment variables which you declare in the configuration file for the shell (e.g., `.profile` on Mac OS X and `.bash_profile` on Linux). For the Bash shell you need to add the following lines to the configuration file of your shell:
 
 > `export OORB_DATA=OORBROOT/data`
+
 > `export OORB_CONF=OORBROOT/main/oorb.conf`
+
 > `export OORB_GNUPLOT_SCRIPTS_DIR=OORBROOT/gnuplot/`
 
 # Using oorb #
