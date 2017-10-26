@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002-2016,2017                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,10 +26,11 @@
 !! Contains generic functions that return command line options.
 !!
 !! @author  MG
-!! @version 2008-08-12
+!! @version 2017-10-26
 !!
 MODULE cl_options
 
+  USE parameters
   IMPLICIT NONE
   INTEGER, PARAMETER :: CL_LEN = 4096
 
@@ -93,11 +94,11 @@ CONTAINS
 
 
 
-  REAL(kind=8) FUNCTION get_cl_option_real8(option, default) RESULT(value)
+  REAL(rprec8) FUNCTION get_cl_option_real8(option, default) RESULT(value)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(in) :: option
-    REAL(kind=8), INTENT(in) :: default
+    REAL(rprec8), INTENT(in) :: default
     CHARACTER(len=CL_LEN) :: cl = ""
     INTEGER :: i, di, err
 
