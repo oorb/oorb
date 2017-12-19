@@ -4906,6 +4906,7 @@ PROGRAM oorb
            CALL NULLIFY(t)
            t = copy(epoch)
         END IF
+        CALL NULLIFY(storb)
         CALL NEW(storb, obss_sep(i))        
         IF (error) THEN
            CALL errorMessage("oorb / lsl", &
