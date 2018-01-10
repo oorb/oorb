@@ -132,8 +132,6 @@ subroutine oorb_ranging_fast(obscodes,                                  &
   REAL(8), DIMENSION(4)                               :: sor_genwin_offset
   real(8)                                             :: accwin_multiplier
   logical                                             :: gaussian_rho
-  real(8)                                             :: pdf_ml_init
-  logical                                             :: uniform
   logical                                             :: regularized
   logical                                             :: random_obs
   TYPE (Observations), DIMENSION(:), POINTER          :: obss
@@ -193,8 +191,6 @@ subroutine oorb_ranging_fast(obscodes,                                  &
   sor_genwin_offset = 0.0_8
   accwin_multiplier = 3.0_8
   gaussian_rho = .false.
-  pdf_ml_init = -1.0_8
-  uniform = .false.
   regularized = .true.
   random_obs = .false.
   obss => null()
@@ -276,7 +272,6 @@ subroutine oorb_ranging_fast(obscodes,                                  &
           sor_genwin_offset=sor_genwin_offset, &
           accwin_multiplier=accwin_multiplier, &
           gaussian_rho=gaussian_rho, &
-          pdf_ml_init=pdf_ml_init, uniform=uniform, &
           regularized=regularized, random_obs=random_obs, &
           outOrbit=storb, errorCode=error_code)
      if(error_code /= 0) then
@@ -371,7 +366,6 @@ subroutine oorb_ranging(obscodes,                                  &
   REAL(8), DIMENSION(4)                               :: sor_genwin_offset
   real(8)                                             :: accwin_multiplier
   logical                                             :: gaussian_rho
-  real(8)                                             :: pdf_ml_init
   logical                                             :: uniform
   logical                                             :: regularized
   logical                                             :: random_obs
@@ -432,7 +426,6 @@ subroutine oorb_ranging(obscodes,                                  &
   sor_genwin_offset = 0.0_8
   accwin_multiplier = 3.0_8
   gaussian_rho = .false.
-  pdf_ml_init = -1.0_8
   uniform = .false.
   regularized = .true.
   random_obs = .false.
@@ -515,7 +508,6 @@ subroutine oorb_ranging(obscodes,                                  &
           sor_genwin_offset=sor_genwin_offset, &
           accwin_multiplier=accwin_multiplier, &
           gaussian_rho=gaussian_rho, &
-          pdf_ml_init=pdf_ml_init, uniform=uniform, &
           regularized=regularized, random_obs=random_obs, &
           outOrbit=storb, errorCode=error_code)
      if(error_code /= 0) then
