@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Grigori Fedorets                               !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2016-03-23
+!! @version 2018-01-10
 !!
 MODULE Orbit_cl
 
@@ -50,6 +50,7 @@ MODULE Orbit_cl
   PRIVATE :: new_Orb_spherical
   PRIVATE :: new_Orb_elements
   PRIVATE :: new_Orb_2point
+  PRIVATE :: new_Orb_aeixyzt
   PRIVATE :: nullify_Orb
   PRIVATE :: copy_Orb
   PRIVATE :: exist_Orb
@@ -118,6 +119,7 @@ MODULE Orbit_cl
      MODULE PROCEDURE new_Orb_spherical
      MODULE PROCEDURE new_Orb_elements
      MODULE PROCEDURE new_Orb_2point
+     MODULE PROCEDURE new_Orb_aeixyzt
   END INTERFACE NEW
 
   INTERFACE NULLIFY
@@ -1720,10 +1722,9 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Initializes a Orbit-object using a given
-  !! SphericalCoordinates-object. Coordinate frame s equal to the
-  !! frame of the input frame and propagation scheme is 2-body.
-  !! Central body is the Sun.
+  !! Initializes a Orbit object using a given SphericalCoordinates
+  !! object. Coordinate frame s equal to the frame of the input frame
+  !! and propagation scheme is 2-body.  Central body is the Sun.
   !!
   !! Returns error.
   !!
@@ -1765,6 +1766,186 @@ CONTAINS
     this%center = 11
 
   END SUBROUTINE new_Orb_spherical
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Initializes an array of Orbit objects that reproduce the three
+  !! Keplerian elements (a,e,i), the Cartesian position (x,y,z) and
+  !! the epoch provided as input.
+  !!
+  !! Reference: Granvik et al. (2012), Icarus 218(1), 262-277.
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE new_Orb_aeixyzt(orb_arr, kep, pos, t, center)
+
+    IMPLICIT NONE
+    TYPE (Orbit), DIMENSION(:), POINTER :: orb_arr
+    REAL(bp), DIMENSION(:), INTENT(in) :: kep, pos
+    TYPE (Time), INTENT(inout) :: t
+    INTEGER, INTENT(in), OPTIONAL :: center
+
+    REAL(bp), DIMENSION(3,8) :: nam
+    REAL(bp), DIMENSION(7) :: param
+    REAL(bp), DIMENSION(6) :: elements
+    REAL(bp), DIMENSION(2) :: ea_arr
+    REAL(bp) :: a, b, c, cosnode1, cosnode2, cosperi1, cosperi2, dist, &
+         cosE, r, mjd_tt
+    INTEGER :: i, j, k, l, lu
+
+    mjd_tt = getMJD(t, "TT")
+
+    nam = -1.0_bp
+    r = SQRT(DOT_PRODUCT(pos,pos))    
+
+    IF (r < kep(1)*(1.0_bp-kep(2))) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / new_Orb_aeixyzt", &
+            "Distance smaller than periapsis distance.",1)
+       RETURN
+    END IF
+
+    IF (r > kep(1)*(1.0_bp+kep(2))) THEN
+       error = .TRUE.
+       CALL errorMessage("Orbit / new_Orb_aeixyzt", &
+            "Distance larger than apoapsis distance.",1)
+       WRITE(stderr,*) r, kep(1)*(1.0_bp+kep(2)), r-kep(1)*(1.0_bp+kep(2))
+       RETURN
+    END IF
+
+    ! ascending node
+    a = pos(1)/pos(2)
+    b = pos(3)/(pos(2)*TAN(kep(3)))
+    IF (a**2 - b**2 + 1.0_bp < 0.0_bp) THEN
+       !write(lu,*) "node sqrt: ", a**2 - b**2 + 1.0_bp
+       RETURN
+    END IF
+    cosnode1 = (b + a*SQRT(a**2.0_bp - b**2.0_bp + 1.0_bp))/(a**2.0_bp + 1.0_bp)
+    cosnode2 = (b - a*SQRT(a**2.0_bp - b**2.0_bp + 1.0_bp))/(a**2.0_bp + 1.0_bp)
+    IF (ABS(cosnode1) < 1.0_bp) THEN
+       nam(1,1) = ACOS(cosnode1)
+       nam(1,2) = two_pi - nam(1,1)
+       nam(1,3) = ACOS(-cosnode1)
+       nam(1,4) = two_pi - nam(1,3)
+    ELSE IF (ABS(cosnode1) == 1.0_bp) THEN
+       nam(1,1) = ACOS(cosnode1)
+       nam(1,2) = ACOS(-cosnode1)
+    END IF
+    IF (ABS(cosnode2) < 1.0_bp) THEN
+       nam(1,5) = ACOS(cosnode2)
+       nam(1,6) = two_pi - nam(1,5)
+       nam(1,7) = ACOS(-cosnode2)
+       nam(1,8) = two_pi - nam(1,7)
+    ELSE IF (ABS(cosnode2) == 1.0_bp) THEN
+       nam(1,5) = ACOS(cosnode2)
+       nam(1,6) = ACOS(-cosnode2)
+    END IF
+    !WRITE(stderr,*) "cosnode", cosnode1, cosnode2
+    !WRITE(stderr,*) "node", nam(1,1:8)/rad_deg
+
+    ! argument of pericenter
+    cosE = (1.0_bp - r/kep(1))/kep(2)
+    a = kep(1)*(cosE - kep(2))
+    b = kep(1)*SQRT((1.0_bp - kep(2)**2.0_bp) * (1.0_bp - cosE**2.0_bp))
+    c = pos(3)/SIN(kep(3))
+    IF (a**2.0_bp + b**2.0_bp - c**2.0_bp < 0.0_bp) THEN
+       !write(lu,*) "peri sqrt: ", a**2 + b**2 - c**2
+       RETURN
+    END IF
+    cosperi1 = (b*c + a*SQRT(a**2.0_bp + b**2.0_bp - c**2.0_bp))/(a**2.0_bp + b**2.0_bp)
+    cosperi2 = (b*c - a*SQRT(a**2.0_bp + b**2.0_bp - c**2.0_bp))/(a**2.0_bp + b**2.0_bp)
+    IF (ABS(cosperi1) < 1.0_bp) THEN
+       nam(2,1) = ACOS(cosperi1)
+       nam(2,2) = two_pi - nam(2,1)
+       nam(2,3) = ACOS(-cosperi1)
+       nam(2,4) = two_pi - nam(2,3)
+    ELSE IF (ABS(cosperi1) == 1.0_bp) THEN
+       nam(2,1) = ACOS(cosperi1)
+       nam(2,2) = ACOS(-cosperi1)
+    END IF
+    IF (ABS(cosperi2) < 1.0_bp) THEN
+       nam(2,5) = ACOS(cosperi2)
+       nam(2,6) = two_pi - nam(2,5)
+       nam(2,7) = ACOS(-cosperi2)
+       nam(2,8) = two_pi - nam(2,7)
+    ELSE IF (ABS(cosperi2) == 1.0_bp) THEN
+       nam(2,5) = ACOS(cosperi2)
+       nam(2,6) = ACOS(-cosperi2)
+    END IF
+    !WRITE(stderr,*) "peri", nam(2,1:8)/rad_deg
+
+    ! mean anomaly
+    ea_arr(1) = ACOS((1.0_bp - r/kep(1))/kep(2))
+    ea_arr(2) = two_pi - ea_arr(1)
+    DO i=1,2
+       nam(3,i) = ea_arr(i) - kep(2)*SIN(ea_arr(i))
+       IF (ABS((1.0_bp - r/kep(1))/kep(2)) == 1.0_bp) THEN
+          EXIT
+       END IF
+    END DO
+    !WRITE(stderr,*) "mano", nam(3,1:2)/rad_deg
+
+    param(1:3) = kep
+    param(4:6) = pos
+    param(7) = mjd_tt
+    ! find out which (kep+) nam combinations produce acceptable (=tiny)
+    ! difference wrt given pos
+    i = 0
+    ! max 4 possible nodes
+    DO j=1,8
+       IF (nam(1,j) < 0.0_bp) THEN
+          CYCLE
+       END IF
+       ! max 4 possible argperis
+       DO k=1,8
+          IF (nam(2,k) < 0.0_bp) THEN
+             CYCLE
+          END IF
+          ! two possible ma
+          DO l=1,2
+             IF (nam(3,l) < 0.0_bp) THEN
+                CYCLE
+             END IF
+             elements = (/ kep, nam(1,j), nam(2,k), nam(3,l) /)
+             IF (PRESENT(center)) THEN
+                dist = xyzdist(elements(4:6), param, center=center)
+             ELSE
+                dist = xyzdist(elements(4:6), param)
+             END IF
+             !WRITE(lu,*) "aeixyztOrbits_nam / dist: ", dist, j, k, l, nam(3,l)
+             IF (LEN_TRIM(errstr) > 0) THEN
+                WRITE(lu,*) j, k, l
+                WRITE(lu,*) nam(1,:)/rad_deg
+                WRITE(lu,*) nam(2,:)/rad_deg
+                WRITE(lu,*) nam(3,:)/rad_deg
+                WRITE(lu,*) elements(4:6)/rad_deg
+                STOP
+             END IF
+             IF (dist < 10.0E-10_bp) THEN
+                !WRITE(lu,"(A,6(1X,F10.6),1X,F10.4,3(1X,I0))") "NAM ", elements(1:2), elements(3:6)/rad_deg, mjd_tt, j, k, l
+                orb_arr => reallocate(orb_arr, i+1)
+                CALL NULLIFY(orb_arr(i+1))
+                IF (PRESENT(center)) THEN
+                   CALL NEW(orb_arr(i+1), elements, "keplerian", "ecliptic", t, center=center)
+                ELSE
+                   CALL NEW(orb_arr(i+1), elements, "keplerian", "ecliptic", t)
+                END IF
+                IF (error) THEN
+                   CALL errorMessage("Orbit / new_Orb_aeixyzt", &
+                        "TRACE BACK 5",1)
+                   RETURN
+                END IF
+                i = i + 1
+             END IF
+          END DO
+       END DO
+    END DO
+
+  END SUBROUTINE new_Orb_aeixyzt
 
 
 
@@ -1864,7 +2045,10 @@ CONTAINS
 
 
 
-  REAL(bp) FUNCTION aeidist(ptry,param,errstr)
+
+
+
+  REAL(bp) FUNCTION aeidist(ptry, param, errstr)
 
     IMPLICIT NONE
     REAL(bp), DIMENSION(:), INTENT(in) :: ptry
@@ -1904,12 +2088,12 @@ CONTAINS
 
 
 
-  REAL(bp) FUNCTION xyzdist(ptry,param,errstr)
+  REAL(bp) FUNCTION xyzdist(ptry, param, center)
 
     IMPLICIT NONE
     REAL(bp), DIMENSION(:), INTENT(in) :: ptry
     REAL(bp), DIMENSION(:), INTENT(in) :: param
-    CHARACTER(len=*), INTENT(inout) :: errstr
+    INTEGER, INTENT(in), OPTIONAL :: center
 
     TYPE (Orbit) :: orb
     TYPE (Time) :: t
@@ -1920,17 +2104,18 @@ CONTAINS
     elements = (/ param(1:3), nam /)
     CALL NEW(t, param(7), "TT")
     IF (error) THEN
-       errstr = "error12"
        RETURN
     END IF
-    CALL NEW(orb, elements, "keplerian", "ecliptic", t)
+    IF (PRESENT(center)) THEN
+       CALL NEW(orb, elements, "keplerian", "ecliptic", t, center=center)
+    ELSE
+       CALL NEW(orb, elements, "keplerian", "ecliptic", t)
+    END IF
     IF (error) THEN
-       errstr = "error13"
        RETURN
     END IF
     elements = getCartesianElements(orb, "ecliptic")
     IF (error) THEN
-       errstr = "error14"
        RETURN
     END IF
     CALL NULLIFY(orb)
@@ -2647,7 +2832,7 @@ CONTAINS
     REAL(bp), PARAMETER :: tol4 = 1.0e-3_bp
     INTEGER, PARAMETER :: max_iter = 100
     REAL(bp), DIMENSION(0:3) :: stumpff_c, stumpff_cs
-    REAL(bp), DIMENSION(3) :: pos, vel, k, cos_angles, evec, fb, gb
+    REAL(bp), DIMENSION(3) :: pos, vel, pos_, vel_, k, cos_angles, evec, fb, gb
     REAL(bp) :: r0, ru, alpha, a, e, i, an, ap, varpi, tmp1, tmp2, &
          div, q, tp, r, rp, rpp, xv, s, ds, x, dt, cosu, u0, mjd_tt, &
          p, ea, sin_ea, cos_ea, ma, mm
@@ -2771,7 +2956,20 @@ CONTAINS
        a = r0 / (2.0_bp - r0*DOT_PRODUCT(vel,vel) / &
             planetary_mu(this_%center))
        ! Angular momentum:
-       k = cross_product(pos,vel)
+       ! Normalize pos and vel to increase numerical accuracy
+       pos_ = pos/SQRT(dot_PRODUCT(pos,pos))
+       vel_ = vel/SQRT(dot_PRODUCT(vel,vel))
+       k = cross_product(pos_,vel_)
+       ru = SQRT(DOT_PRODUCT(k,k))
+       IF (ru < EPSILON(ru)) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getCometaryElements", &   
+               "Position and velocity almost parallel.", 1)
+          RETURN
+       END IF
+       ! Renormalize k and ru
+       k = k*SQRT(dot_PRODUCT(pos,pos))*SQRT(dot_PRODUCT(vel,vel))
+       ru = ru*SQRT(dot_PRODUCT(pos,pos))*SQRT(dot_PRODUCT(vel,vel))
        ! Eccentricity vector:
        evec = cross_product(vel,k)/planetary_mu(this_%center) - pos/r0
        ! Eccentricity:
@@ -2780,13 +2978,6 @@ CONTAINS
        q = a * (1.0_bp - e)
 
        ! Inclination and ascending node:
-       ru = SQRT(DOT_PRODUCT(k,k))
-       IF (ru < EPSILON(ru)) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getCometaryElements", &   
-               "Position and velocity almost parallel.", 1)
-          RETURN
-       END IF
        k = k/ru
        cos_angles(1) = k(3)
        IF (ABS(cos_angles(1)) > 1.0_bp) THEN
@@ -2859,10 +3050,6 @@ CONTAINS
              s = 0.0_bp
           END IF
        END IF
-       !write(*,*) 
-       !write(*,*) 
-       !write(*,*) q,e,i/rad_deg,an/rad_deg,ap/rad_deg
-       !write(*,*) 
 
        DO iiter=1,max_iter
           x = s**2.0_bp * alpha
@@ -4855,7 +5042,7 @@ CONTAINS
 
     TYPE (Orbit):: this_
     TYPE (Time) :: t
-    REAL(bp), DIMENSION(3) :: pos, vel, k, fb, gb, evec, cos_angles
+    REAL(bp), DIMENSION(3) :: pos, vel, pos_, vel_, k, fb, gb, evec, cos_angles
     REAL(bp) :: r, ru, ea, e_cos_ea, e_sin_ea, cos_ea, sin_ea, &
          alpha, gamma, mjd_tt, a, e, i, an, ap, ma, div, tmp1, tmp2, &
          varpi
@@ -4886,7 +5073,20 @@ CONTAINS
        r   = SQRT(DOT_PRODUCT(pos,pos))
        vel = this_%elements(4:6)
        ! Angular momentum:
-       k = cross_product(pos,vel)
+       ! Normalize pos and vel to increase numerical accuracy
+       pos_ = pos/SQRT(dot_PRODUCT(pos,pos))
+       vel_ = vel/SQRT(dot_PRODUCT(vel,vel))
+       k = cross_product(pos_,vel_)
+       ru = SQRT(DOT_PRODUCT(k,k))
+       IF (ru < EPSILON(ru)) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getKeplerianElements", &   
+               "Position and velocity almost parallel.", 1)
+          RETURN
+       END IF
+       ! Renormalize k and ru
+       k = k*SQRT(dot_PRODUCT(pos,pos))*SQRT(dot_PRODUCT(vel,vel))
+       ru = ru*SQRT(dot_PRODUCT(pos,pos))*SQRT(dot_PRODUCT(vel,vel))
        ! Eccentricity vector:
        evec = cross_product(vel,k)/planetary_mu(this_%center) - pos/r
 
@@ -4953,13 +5153,6 @@ CONTAINS
        END IF
 
        ! Inclination and ascending node:
-       ru = SQRT(DOT_PRODUCT(k,k))
-       IF (ru < EPSILON(ru)) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / getKeplerianElements", &   
-               "Position and velocity almost parallel.", 1)
-          RETURN
-       END IF
        k = k/ru
        cos_angles(1) = k(3) ! = cos(i)
        IF (ABS(cos_angles(1)) > 1.0_bp) THEN
