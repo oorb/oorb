@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2013,2014                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Independent utilities.
 !!
 !! @author  MG
-!! @version 2014-08-22
+!! @version 2018-01-10
 !!
 MODULE utilities
 
@@ -162,15 +162,15 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:), INTENT(in)     :: array    ! input array
-    LOGICAL, DIMENSION(:), INTENT(in)         :: elements ! used elements
+    LOGICAL, DIMENSION(:), INTENT(in)          :: elements ! used elements
     REAL(rprec8), DIMENSION(:), INTENT(in)     :: bin_size ! bin sizes
-    INTEGER, DIMENSION(:), INTENT(in)         :: nbins     ! number of bins
+    INTEGER, DIMENSION(:), INTENT(in)          :: nbins     ! number of bins
     REAL(rprec8), DIMENSION(:,:), INTENT(in)   :: bounds   ! variable bounds
-    LOGICAL, INTENT(out)                      :: error
+    LOGICAL, INTENT(out)                       :: error
     INTEGER(iprec8), DIMENSION(:), ALLOCATABLE :: kp
-    INTEGER, DIMENSION(:), ALLOCATABLE        :: help, nbins_
+    INTEGER, DIMENSION(:), ALLOCATABLE         :: help, nbins_
     INTEGER(iprec8)                            :: bins_coeff, intgr
-    INTEGER                                   :: ncolumn, i, j, err
+    INTEGER                                    :: ncolumn, i, j, err
 
     ! Make an index (help) of the elements that are used:
     ncolumn = COUNT(elements)
@@ -237,17 +237,17 @@ CONTAINS
   REAL(rprec16) FUNCTION arrayToReal_r8r16(array, elements, bin_size, nbins, bounds, error)
 
     IMPLICIT NONE
-    REAL(rprec8), DIMENSION(:), INTENT(in)   :: array    ! input array
-    LOGICAL, DIMENSION(:), INTENT(in)       :: elements ! used elements
-    REAL(rprec8), DIMENSION(:), INTENT(in)   :: bin_size ! bin sizes
-    INTEGER, DIMENSION(:), INTENT(in)       :: nbins     ! number of bins
-    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: bounds   ! variable bounds
-    LOGICAL, INTENT(out)                    :: error
-    INTEGER(iprec8), DIMENSION(:), ALLOCATABLE   :: kp
-    INTEGER, DIMENSION(:), ALLOCATABLE      :: help, nbins_
-    REAL(rprec16)                            :: bins_coeff, rreal
-    REAL(rprec8)                             :: tmp
-    INTEGER                                 :: ncolumn, i, j, err
+    REAL(rprec8), DIMENSION(:), INTENT(in)     :: array    ! input array
+    LOGICAL, DIMENSION(:), INTENT(in)          :: elements ! used elements
+    REAL(rprec8), DIMENSION(:), INTENT(in)     :: bin_size ! bin sizes
+    INTEGER, DIMENSION(:), INTENT(in)          :: nbins    ! number of bins
+    REAL(rprec8), DIMENSION(:,:), INTENT(in)   :: bounds   ! variable bounds
+    LOGICAL, INTENT(out)                       :: error
+    INTEGER(iprec8), DIMENSION(:), ALLOCATABLE :: kp
+    INTEGER, DIMENSION(:), ALLOCATABLE         :: help, nbins_
+    REAL(rprec16)                              :: bins_coeff, rreal
+    REAL(rprec8)                               :: tmp
+    INTEGER                                    :: ncolumn, i, j, err
 
     ! Make an index (help) of the elements that are used:
     ncolumn = COUNT(elements)
@@ -626,13 +626,14 @@ CONTAINS
   FUNCTION realToArray_r16r8(rreal, elements, bin_size, nbins, bounds, error)
 
     IMPLICIT NONE
-    REAL(rprec16), INTENT(in)               :: rreal    ! input integer (real)
-    LOGICAL, DIMENSION(:), INTENT(in)      :: elements ! used elements
+    REAL(rprec16), INTENT(in)                :: rreal    ! input integer (real)
+    LOGICAL, DIMENSION(:), INTENT(in)        :: elements ! used elements
     REAL(rprec8), DIMENSION(:), INTENT(in)   :: bin_size ! bin sizes
-    INTEGER, DIMENSION(:), INTENT(in)      :: nbins     ! number of bins
+    INTEGER, DIMENSION(:), INTENT(in)        :: nbins     ! number of bins
     REAL(rprec8), DIMENSION(:,:), INTENT(in) :: bounds   ! variable bounds
-    LOGICAL, INTENT(out)                   :: error
+    LOGICAL, INTENT(out)                     :: error
     REAL(rprec8), DIMENSION(:), POINTER      :: realToArray_r16r8
+
     REAL(rprec16)                          :: rreal_coeff, bins_coeff
     INTEGER, DIMENSION(:), ALLOCATABLE     :: kp, nbins_
     INTEGER                                :: ncolumn, i, j, k, err
@@ -705,6 +706,7 @@ CONTAINS
     CHARACTER(len=*), DIMENSION(:), POINTER :: array
     CHARACTER(len=LEN(array(1))), DIMENSION(:), POINTER :: reallocate_ch_1
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_ch_1(n))
@@ -727,6 +729,7 @@ CONTAINS
     CHARACTER(len=*), DIMENSION(:,:), POINTER :: array
     CHARACTER(len=LEN(array(1,1))), DIMENSION(:,:), POINTER :: reallocate_ch_2
     INTEGER, INTENT(in) :: n, m
+
     INTEGER :: nold, mold, i, j
 
     ALLOCATE(reallocate_ch_2(n,m))
@@ -754,6 +757,7 @@ CONTAINS
     IMPLICIT NONE
     CHARACTER(len=18), DIMENSION(:), POINTER :: reallocate_ch18_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_ch18_1(n))
@@ -773,6 +777,7 @@ CONTAINS
     IMPLICIT NONE
     CHARACTER(len=24), DIMENSION(:), POINTER :: reallocate_ch24_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_ch24_1(n))
@@ -792,6 +797,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER(iprec1), DIMENSION(:), POINTER :: reallocate_i1_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_i1_1(n))
@@ -812,6 +818,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER(iprec4), DIMENSION(:), POINTER :: reallocate_i4_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_i4_1(n))
@@ -832,6 +839,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER(iprec4), DIMENSION(:,:), POINTER :: reallocate_i4_2, array
     INTEGER, INTENT(in) :: n, m
+
     INTEGER :: nold, mold
 
     ALLOCATE(reallocate_i4_2(n,m))
@@ -853,6 +861,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER(rprec8), DIMENSION(:), POINTER :: reallocate_i8_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_i8_1(n))
@@ -872,6 +881,7 @@ CONTAINS
     IMPLICIT NONE
     INTEGER(rprec8), DIMENSION(:,:), POINTER :: reallocate_i8_2, array
     INTEGER, INTENT(in) :: n, m
+
     INTEGER :: nold, mold
 
     ALLOCATE(reallocate_i8_2(n,m))
@@ -893,6 +903,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec4), DIMENSION(:), POINTER :: reallocate_r4_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_r4_1(n))
@@ -912,6 +923,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec4), DIMENSION(:,:), POINTER :: reallocate_r4_2, array
     INTEGER, INTENT(in) :: n, m
+
     INTEGER :: nold, mold
 
     ALLOCATE(reallocate_r4_2(n,m))
@@ -933,6 +945,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:), POINTER :: reallocate_r8_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_r8_1(n))
@@ -953,6 +966,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(:,:), POINTER :: reallocate_r8_2, array
     INTEGER, INTENT(in) :: n, m
     LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL :: nmask
+
     INTEGER :: i, in, nold, mold
 
     ALLOCATE(reallocate_r8_2(n,m))
@@ -987,6 +1001,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:,:), POINTER :: reallocate_r8_3, array
     INTEGER, INTENT(in) :: n, m, o
+
     INTEGER :: nold, mold, oold
 
     ALLOCATE(reallocate_r8_3(n,m,o))
@@ -1010,6 +1025,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec16), DIMENSION(:), POINTER :: reallocate_r16_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_r16_1(n))
@@ -1029,6 +1045,7 @@ CONTAINS
     IMPLICIT NONE
     REAL(rprec16), DIMENSION(:,:), POINTER :: reallocate_r16_2, array
     INTEGER, INTENT(in) :: n, m
+
     INTEGER :: nold, mold
 
     ALLOCATE(reallocate_r16_2(n,m))
@@ -1050,6 +1067,7 @@ CONTAINS
     IMPLICIT NONE
     LOGICAL, DIMENSION(:), POINTER :: reallocate_l_1, array
     INTEGER, INTENT(in) :: n
+
     INTEGER :: nold
 
     ALLOCATE(reallocate_l_1(n))
@@ -1070,6 +1088,7 @@ CONTAINS
     IMPLICIT NONE
     LOGICAL, DIMENSION(:,:), POINTER :: reallocate_l_2, array
     INTEGER, INTENT(in) :: n, m
+
     INTEGER :: nold, mold
 
     ALLOCATE(reallocate_l_2(n,m))

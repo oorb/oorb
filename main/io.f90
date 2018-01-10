@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV
-!! @version 2016-04-05
+!! @version 2018-01-10
 !!
 MODULE io
 
@@ -865,7 +865,12 @@ CONTAINS
           END IF
        CASE ("outlier_rejection")
           IF (PRESENT(outlier_rejection)) THEN
-             outlier_rejection = .TRUE.
+             READ(par_val, *, iostat=err) outlier_rejection
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could not read parameter value (40).", 1)
+             END IF
           END IF
        CASE ("outlier.multiplier")
           IF (PRESENT(outlier_multiplier)) THEN
@@ -2038,14 +2043,14 @@ CONTAINS
        IF (line(132:132) == "-") THEN
           CALL toInt(line(128:131), y1, error)
           CALL toInt(line(133:136), y2, error)
-          arc_arr(norb) = REAL(y2-y1)*day_year
-!!$          arc_arr(norb) = y1
+          arc_arr(norb) = REAL(y2-y1)*day_year ! observed arc in days with a resolution of 1 year
+!!$          arc_arr(norb) = y1 ! discovery year
        ELSE
-          CALL toReal(line(128:131), arc_arr(norb), error)          
+          CALL toReal(line(128:131), arc_arr(norb), error) ! observed arc in days
 !!$          line = ""
 !!$          line = id_arr(norb)
 !!$          CALL decodeMPCDesignation(line)
-!!$          CALL toReal(line(1:4),arc_arr(norb),error)
+!!$          CALL toReal(line(1:4),arc_arr(norb),error) ! discovery year
           IF (error) THEN
              error = .FALSE.
              arc_arr(norb) = -1
@@ -2645,8 +2650,10 @@ CONTAINS
     ELSE IF (element_type_out == "keplerian") THEN
        frmt = "KEP" // TRIM(frmt)
        elements(3:6) = elements(3:6)/rad_deg
-    ELSE IF (element_type_out == "cartesian") THEN
+    ELSE IF (element_type_out == "cartesian" .AND. frame_ == "ecliptic") THEN
        frmt = "CAR" // TRIM(frmt)
+    ELSE IF (element_type_out == "cartesian" .AND. frame_ == "equatorial") THEN
+       frmt = "CAREQ" // TRIM(frmt)
     ELSE
        error = .TRUE.
        CALL errorMessage("io / writeDESOrbitFile", &
@@ -2904,7 +2911,7 @@ CONTAINS
     ! WRITE REDUCED CHI2:
     CALL getParameters(storb, ls_element_mask=ls_element_mask)
     inform_mat_obs_bd => getBlockDiagInformationMatrix(obss)
-    rchi2 = chi_square(residuals, inform_mat_obs_bd, obs_masks, errstr) - &
+    rchi2 = chi_square(residuals, inform_mat_obs_bd, obs_masks, errstr) / &
          COUNT(obs_masks)
     IF (LEN_TRIM(errstr) /= 0) THEN
        error = .TRUE.

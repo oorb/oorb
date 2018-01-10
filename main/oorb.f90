@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2016-05-24
+!! @version 2018-01-10
 !!
 PROGRAM oorb
 
@@ -722,7 +722,7 @@ PROGRAM oorb
            HG_arr_storb_in => reallocate(HG_arr_storb_in, nobj, k_max, 4)
            DEALLOCATE(id_arr, id_arr_in, HG_arr_in)
         ELSE IF (nobj == norb .AND. &
-             ALL(cov_arr_in(:,1,1) > 0.0_bp)) THEN
+             ALL(cov_arr_in(:,1,1) >= 0.0_bp)) THEN
            ! Covariance matrix/ces available
            ALLOCATE(storb_arr_in(nobj))
            i = 0
@@ -989,7 +989,7 @@ PROGRAM oorb
                       element_type_pdf=element_type_out_prm, &
                       H=HG_arr_storb_in(i,j,1), &
                       G=HG_arr_storb_in(i,j,3), &
-                      mjd=mjd_epoch)
+                      mjd=mjd_epoch, frame=frame)
                  first = .FALSE.
                  CALL NULLIFY(orb_arr_in(j))
               END DO
@@ -1069,7 +1069,8 @@ PROGRAM oorb
                  CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                       element_type_out_prm, id_arr_storb_in(i), &
                       orb_arr_in(j), H=HG_arr_storb_in(i,j,1), &
-                      G=HG_arr_storb_in(i,j,3), mjd=mjd_epoch)
+                      G=HG_arr_storb_in(i,j,3), mjd=mjd_epoch, &
+                      frame=frame)
                  first = .FALSE.
                  IF (k == norb) THEN
                     EXIT
@@ -1080,7 +1081,8 @@ PROGRAM oorb
               CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                    element_type_out_prm, id_arr_storb_in(i), &
                    orb=orb, H=HG_arr_storb_in(i,1,1), &
-                   G=HG_arr_storb_in(i,1,3), mjd=mjd_epoch)
+                   G=HG_arr_storb_in(i,1,3), mjd=mjd_epoch, &
+                   frame=frame)
               first = .FALSE.
            END IF
         END DO
@@ -1109,7 +1111,8 @@ PROGRAM oorb
            j = j + 1
            CALL writeOpenOrbOrbitFile(lu_orb_out, first, &
                 element_type_out_prm, id_arr_in(i), orb_arr_in(i), &
-                H=HG_arr_in(i,1), G=HG_arr_in(i,3), mjd=mjd_epoch)
+                H=HG_arr_in(i,1), G=HG_arr_in(i,3), mjd=mjd_epoch, &
+                frame=frame)
            first = .FALSE.
            IF (j == norb) THEN
               EXIT
@@ -1186,7 +1189,8 @@ PROGRAM oorb
                  END IF
                  CALL writeDESOrbitFile(lu_orb_out, first, &
                       element_type_out_prm, id_arr_storb_in(i), &
-                      orb_arr_in(j), HG_arr_storb_in(i,j,1), center=center)
+                      orb_arr_in(j), HG_arr_storb_in(i,j,1), &
+                      frame=frame, center=center)
                  IF (error) THEN
                     CALL errorMessage("oorb", &
                          "DES output failed at orbit:", 1)
@@ -1212,7 +1216,8 @@ PROGRAM oorb
               END IF
               CALL writeDESOrbitFile(lu_orb_out, first, &
                    element_type_out_prm, id_arr_storb_in(i), orb, &
-                   HG_arr_storb_in(i,1,1), center=center)
+                   HG_arr_storb_in(i,1,1), frame=frame, &
+                   center=center)
               first = .FALSE.
               CALL NULLIFY(orb)
            END IF
@@ -1241,7 +1246,8 @@ PROGRAM oorb
               END IF
            END IF
            CALL writeDESOrbitFile(lu_orb_out, first, element_type_out_prm, &
-                id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), center=center)
+                id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), frame=frame, &
+                center=center)
            IF (error) THEN
               CALL errorMessage("oorb", &
                    "DES output failed at orbit:", 1)
@@ -1462,12 +1468,13 @@ PROGRAM oorb
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, &
                 element_type_out_prm, id, orb, H_value, 1, 6, &
-                REAL(int_arr(7),bp), "OPENORB", center=center)
+                REAL(int_arr(7),bp), "OPENORB", frame=frame, &
+                center=center)
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
                 id=TRIM(id), orb=orb, H=H_value, G=G_value, &
-                mjd=mjd_epoch)
+                mjd=mjd_epoch, frame=frame)
         CASE default
            CALL errorMessage("oorb / astorbtoorb", &
                 "Orbit format " // TRIM(orbit_format_out) // &
@@ -1528,13 +1535,13 @@ PROGRAM oorb
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                arc_arr(i), "OPENORB", center=center)
+                arc_arr(i), "OPENORB", frame=frame, center=center)
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
                 id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
                 H=HG_arr_in(i,1), G=HG_arr_in(i,2), &
-                mjd=mjd_epoch)
+                mjd=mjd_epoch, frame=frame)
         CASE default
            CALL errorMessage("oorb / mpcorbtoorb", &
                 "Orbit format " // TRIM(orbit_format_out) // &
@@ -5049,6 +5056,11 @@ PROGRAM oorb
                       "TRACE BACK (155)", 1)
                  STOP
               END IF
+              CALL errorMessage("oorb / lsl", &
+                   "More than 20% of the observations have been" \\ &
+                   "discarded as outliers.", 1)
+              STOP
+           ELSE
               CYCLE
            END IF
            DEALLOCATE(obs_masks, stat=err)
@@ -6541,14 +6553,14 @@ PROGRAM oorb
                  CALL writeDESOrbitFile(lu_orb_out, & 
                       first, element_type_out_prm, &
                       id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), &
-                      1, 6, -1.0_bp, "OPENORB", center=center)
+                      1, 6, -1.0_bp, "OPENORB", frame=frame, center=center)
               ELSE IF (orbit_format_out == "orb") THEN
                  CALL writeOpenOrbOrbitFile(lu_orb_out, &
                       print_header=first, &
                       element_type_out=element_type_out_prm, &
                       id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
                       H=HG_arr_in(i,1), G=HG_arr_in(i,3), &
-                      mjd=mjd_epoch)
+                      mjd=mjd_epoch, frame=frame)
               END IF
 
 !!$              IF (orbit_format_out == "des") THEN
@@ -6608,14 +6620,14 @@ PROGRAM oorb
                  CALL writeDESOrbitFile(lu_orb_out, & 
                       first, element_type_out_prm, &
                       id_arr_storb_in(i), orb_arr(j), HG_arr_storb_in(i,j,1), &
-                      1, 6, -1.0_bp, "OPENORB", center=center)
+                      1, 6, -1.0_bp, "OPENORB", frame=frame, center=center)
               ELSE IF (orbit_format_out == "orb") THEN
                  CALL writeOpenOrbOrbitFile(lu_orb_out, &
                       print_header=first, &
                       element_type_out=element_type_out_prm, &
                       id=TRIM(id_arr_storb_in(i)), orb=orb_arr(j), &
                       H=HG_arr_storb_in(i,j,1), G=HG_arr_storb_in(i,j,3), &
-                      mjd=mjd_epoch)
+                      mjd=mjd_epoch, frame=frame)
               END IF
               first = .FALSE.
               CALL NULLIFY(orb_arr(j))
@@ -7825,13 +7837,13 @@ PROGRAM oorb
         IF (orbit_format_out == "des") THEN
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                moid, "OPENORB", center=center)
+                moid, "OPENORB", frame=frame, center=center)
         ELSE IF (orbit_format_out == "orb") THEN
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
                 id=TRIM(id_arr_in(i)), orb=orb_arr_in(i), &
                 H=HG_arr_in(i,1), G=HG_arr_in(i,3), &
-                mjd=mjd_epoch)
+                mjd=mjd_epoch, frame=frame)
         END IF
         IF (error) THEN
            WRITE(stderr,*) i
@@ -8995,7 +9007,7 @@ PROGRAM oorb
              "TRACE BACK (10)", 1)
         STOP
      END IF
-     WRITE(stdout,'(F15.8)') mjd_utc
+     WRITE(stdout,'(F20.12)') mjd_utc
      CALL NULLIFY(epoch)
 
 
@@ -9014,7 +9026,7 @@ PROGRAM oorb
              "TRACE BACK (10)", 1)
         STOP
      END IF
-     WRITE(stdout,'(F15.8)') mjd_tai
+     WRITE(stdout,'(F20.12)') mjd_tai
      CALL NULLIFY(epoch)
 
 
@@ -9033,7 +9045,7 @@ PROGRAM oorb
              "TRACE BACK (10)", 1)
         STOP
      END IF
-     WRITE(stdout,'(F15.8)') mjd_tt
+     WRITE(stdout,'(F20.12)') mjd_tt
      CALL NULLIFY(epoch)
 
 
