@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2016-03-23
+!! @version 2018-01-10
 !!
 MODULE integrators
 
@@ -109,7 +109,7 @@ CONTAINS
   !! ncenter          number of solar-system object to use as center (default=Sun)
   !! encounters       table containing the closest distances to, or earliest
   !!                  time of impact with solar-system objects
-  !! masses     masses for additional perturbing bodies
+  !! masses           masses for additional perturbing bodies
   !!
   SUBROUTINE bulirsch_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
        perturbers, error, jacobian, step, ncenter, encounters, &
@@ -426,7 +426,7 @@ CONTAINS
     REAL(prec), DIMENSION(:,:), ALLOCATABLE :: wst
     REAL(prec), DIMENSION(:), ALLOCATABLE :: hseq
     INTEGER, DIMENSION(:), ALLOCATABLE :: ws_index, pws_index
-    INTEGER :: ws_final, pws_final, i, k, l, m, n, NS, nseq, err
+    INTEGER :: ws_final, pws_final, i, k, l, m, n, NS, err
     LOGICAL, DIMENSION(:), ALLOCATABLE :: ws_converged, pws_converged
 
     ALLOCATE(hseq(SIZE(seq)), &
@@ -476,7 +476,6 @@ CONTAINS
 
     ws_final = 0
     pws_final = 0
-    nseq = SIZE(seq)
     NS = SIZE(ws0,dim=2)
 
     DO i=1, nseq
