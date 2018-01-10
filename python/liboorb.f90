@@ -1,6 +1,6 @@
 !
 ! LSST Data Management System
-! Copyright 2008, 2009 LSST Corporation, Mikael Granvik
+! Copyright 2008-2017,2018 LSST Corporation, Mikael Granvik
 !
 ! This product includes software developed by the
 ! LSST Project (http://www.lsst.org/).
@@ -198,8 +198,6 @@ CONTAINS
        sor_genwin_offset, &
        accwin_multiplier, &
        gaussian_rho, &
-       pdf_ml_init, &
-       uniform, &
        regularized, &
        random_obs, &
        outOrbit, &
@@ -282,10 +280,6 @@ CONTAINS
     REAL(bp), INTENT(in)                                :: accwin_multiplier
     ! sor.rho.gauss
     LOGICAL, OPTIONAL, INTENT(in)                       :: gaussian_rho
-    ! pdf.init (default -1.0)
-    REAL(bp), OPTIONAL, INTENT(in)                      :: pdf_ml_init
-    ! Toggle use of a uniform p.d.f. (default off)
-    LOGICAL, OPTIONAL, INTENT(in)                       :: uniform
     ! Toggle use of regularization (default off)
     LOGICAL, OPTIONAL, INTENT(in)                       :: regularized
     ! Toggle use of random observation pair. Default is off, that is, use fixed
@@ -322,8 +316,6 @@ CONTAINS
     LOGICAL                                     :: outlierRejection = .FALSE.
     REAL(bp)                                    :: outlierMultiplier = 3.0_bp
     LOGICAL                                     :: gaussianRho = .FALSE.
-    REAL(bp)                                    :: pdfMLInit = -1.0_bp
-    LOGICAL                                     :: uniformPDF = .FALSE.
     LOGICAL                                     :: regularizedPDF = .FALSE.
     LOGICAL                                     :: randomObs = .FALSE.
 
@@ -382,8 +374,6 @@ CONTAINS
     !    write(*, *) "sor_genwin_offset: ", sor_genwin_offset
     !    write(*, *) "accwin_multiplier: ", accwin_multiplier
     !    write(*, *) "gaussian_rho: ", gaussian_rho
-    !    write(*, *) "pdf_ml_init: ", pdf_ml_init
-    !    write(*, *) "uniform: ", uniform
     !    write(*, *) "regularized: ", regularized
     !    write(*, *) "random_obs: ", random_obs
 
@@ -439,12 +429,6 @@ CONTAINS
     END IF
     IF(PRESENT(gaussian_rho)) THEN
        gaussianRho = gaussian_rho
-    END IF
-    IF(PRESENT(pdf_ml_init)) THEN
-       pdfMLInit = pdf_ml_init
-    END IF
-    IF(PRESENT(uniform)) THEN
-       uniformPDF = uniform
     END IF
     IF(PRESENT(regularized)) THEN
        regularizedPDF = regularized
@@ -515,8 +499,8 @@ CONTAINS
          outlier_rejection=outlierRejection, &
          outlier_multiplier=outlierMultiplier, t_inv=t, &
          element_type=elementType, &
-         regularized_pdf=regularizedPDF, uniform_pdf=uniformPDF, &
-         pdf_ml=pdfMLInit, accept_multiplier=accwin_multiplier, &
+         regularized_pdf=regularizedPDF, &
+         accept_multiplier=accwin_multiplier, &
          apriori_a_max=aprioriAMax, apriori_a_min=aprioriAMin, &
          apriori_periapsis_max=aprioriPeriapsisMax, &
          apriori_periapsis_min=aprioriPeriapsisMin, &
@@ -529,7 +513,7 @@ CONTAINS
          sor_rho1_u=sor_rho_init(2), sor_rho2_l=sor_rho_init(3), &
          sor_rho2_u=sor_rho_init(4), sor_iterate_bounds=sor_iterate_bounds, &
          sor_random_obs_selection=randomObs, gaussian_pdf=gaussianRho, &
-         sor_generat_multiplier=sor_genwin_multiplier, &
+         generat_multiplier=sor_genwin_multiplier, &
          sor_generat_offset=sor_genwin_offset)
     IF (error) THEN
        ! Error in setParameters()
@@ -780,7 +764,7 @@ CONTAINS
     END IF
 
     ! Get the sample orbits from ranging.
-    IF (containsSampledPDF(inStochOrbit)) THEN
+    IF (containsDiscretePDF(inStochOrbit)) THEN
        orb_arr => getSampleOrbits(inStochOrbit)
        IF (error) THEN
           ! Error in getSampleOrbits()
@@ -1115,7 +1099,7 @@ CONTAINS
          observers, &
          ephemerides, &
          cov_arr=cov_arr, &
-         pdfs_arr=pdfs_arr)
+         pdf_arr=pdfs_arr)
     IF (error) THEN
        ! Error in getEphemerides()
        errorCode = 38
@@ -1142,7 +1126,7 @@ CONTAINS
     error = .FALSE.
     errorCode = 0
 
-    IF (.NOT.containsSampledPDF(storb)) THEN
+    IF (.NOT.containsDiscretePDF(storb)) THEN
        ! Error: we need sampled uncertainty information required for this task.
        errorCode = 44
        RETURN
@@ -1312,9 +1296,9 @@ CONTAINS
        errorCode = 16
        RETURN
     END IF
-    pdf_arr_cmp => getPDFValues(storb)
+    pdf_arr_cmp => getDiscretePDF(storb)
     IF (error) THEN
-       WRITE(*, *) "Error in getPDFValues()"
+       WRITE(*, *) "Error in getDiscretePDF()"
        errorCode = 17
        RETURN
     END IF
@@ -1531,7 +1515,7 @@ CONTAINS
        t = getTime(observers(j))
        mjd_tai = getMJD(t, internal_timescale)
        CALL NULLIFY(t)
-       IF (containsSampledPDF(storb)) THEN
+       IF (containsDiscretePDF(storb)) THEN
           ! Input orbits correspond to one or more sampled pdfs.
           ! Loop over sampled orbits:
           DO k=1,SIZE(ephemerides, dim=1)
@@ -2067,10 +2051,10 @@ CONTAINS
     INTEGER, INTENT(out)                                    :: errorCode
 
     ! Internal variables.
-    TYPE(Observations)                                      :: rawObss
+    TYPE (Observations)                                     :: rawObss
     LOGICAL, DIMENSION(6)                                   :: obs_mask
     INTEGER                                                 :: i = 0
-    TYPE(Time)                                              :: t
+    TYPE (Time)                                             :: t
     TYPE (SphericalCoordinates)                             :: obs_scoord
     REAL(bp), DIMENSION(6,6)                                :: covariance
     REAL(bp)                                                :: ra = 0.0_bp
@@ -2079,8 +2063,8 @@ CONTAINS
     REAL(bp)                                                :: decErr=0.0_bp
     TYPE (Observatory)                                      :: obsy
     TYPE (CartesianCoordinates)                             :: obsy_ccoord
-    TYPE(Observation)                                       :: obs
-    CHARACTER(len=255)                                      :: designation
+    TYPE (Observation)                                      :: obs
+    CHARACTER(len=255)                                      :: designation, str
 
 
     ! Init
@@ -2139,9 +2123,12 @@ CONTAINS
 
        ! Create observation object:
        CALL NULLIFY(obs)
-       WRITE(designation, fmt="(A,I10.10)") "TRK", trackId
+       str = " "
+       designation = " "
+       WRITE(str, fmt="(I0)") trackId
+       WRITE(designation, fmt="(A,I0)") "TRK", trackId
        CALL NEW(obs, &
-            number=trackId, &
+            number=trim(str), &
             designation=TRIM(designation), &
             discovery=.FALSE., &
             note1=" ", &
@@ -2238,9 +2225,9 @@ CONTAINS
        errorCode = 16
        RETURN
     END IF
-    pdf_arr_cmp => getPDFValues(storb)
+    pdf_arr_cmp => getDiscretePDF(storb)
     IF (error) THEN
-       ! write(*, *) "Error in getPDFValues()"
+       ! write(*, *) "Error in getDiscretePDF()"
        errorCode = 17
        RETURN
     END IF
@@ -2492,7 +2479,7 @@ CONTAINS
        t = getTime(observers(j))
        mjd = getMJD(t, internal_timescale)
        CALL NULLIFY(t)
-       IF (containsSampledPDF(storb)) THEN
+       IF (containsDiscretePDF(storb)) THEN
           ! We do not support exporting ephems from ranging orbits yet.
           ! FIXME: support ephems from ranging orbits?
           errorCode = 59
