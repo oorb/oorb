@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2015-10-23
+!! @version 2018-01-10
 !!  
 MODULE Observations_cl
 
@@ -3547,8 +3547,7 @@ CONTAINS
              END SELECT
              CALL NEW(this%obs_arr(i), number, designation, discovery, &
                   line1(14:14), line1(15:15), obs_scoord, covariance, &
-                  obs_mask, mag, -1.0_bp, line1(71:71), -1.0_bp, &
-                  obsy, obsy_ccoord, &
+                  obs_mask, mag, line1(71:71), obsy, obsy_ccoord, &
                   satellite_ccoord=satellite_ccoord, coord_unit=coord_unit)
           CASE default
              obsy_ccoord = getObservatoryCCoord(obsies, obsy_code, t)
@@ -4034,7 +4033,7 @@ CONTAINS
                         "Could not convert string to number (25).", 1)
                    RETURN
                 END IF
-                CALL toReal(records(1)(47:52), sec, error)
+                CALL toReal(records(1)(47:53), sec, error)
                 IF (error) THEN
                    CALL errorMessage("Observations / readObservationFile", &
                         "Could not convert string to number (30).", 1)
@@ -4063,7 +4062,8 @@ CONTAINS
                         "Could not convert string to number (40).", 1)
                    RETURN
                 END IF
-                CALL toReal(records(1)(63:67), arcsec, error)
+                ! This has been changed from (63:67) to (63:68) to allow milliarcsec accuracy
+                CALL toReal(records(1)(63:68), arcsec, error)
                 IF (error) THEN
                    CALL errorMessage("Observations / readObservationFile", &
                         "Could not convert string to number (45).", 1)
@@ -4123,6 +4123,7 @@ CONTAINS
              correlation = 0.0_bp
           ELSE
              IF (records(2)(43:43) == ".") THEN
+                ! 
                 CALL toReal(records(2)(41:46), stdev_(2), error)
                 IF (error) THEN
                    CALL errorMessage("Observations / readObservationFile", &
