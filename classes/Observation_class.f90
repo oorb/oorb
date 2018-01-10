@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2015-06-15
+!! @version 2018-01-10
 !!  
 MODULE Observation_cl
 
@@ -194,9 +194,11 @@ CONTAINS
   !!
   !! Returns error.
   !!
+
   SUBROUTINE NEW_Obs(this, number, designation, discovery, note1, &
-       note2, obs_scoord, covariance, obs_mask, mag, mag_unc, filter, &
-       s2n, obsy, obsy_ccoord, satellite_ccoord, coord_unit, secret_name)
+       note2, obs_scoord, covariance, obs_mask, mag, filter, obsy, &
+       obsy_ccoord, mag_unc, s2n, satellite_ccoord, coord_unit, &
+       secret_name)
 
     IMPLICIT NONE
     TYPE (Observation), INTENT(inout)                 :: this
@@ -941,10 +943,10 @@ CONTAINS
     CHARACTER(len=2)                  :: month_str, h_str, m_str, deg_str, am_str, filter_
     CHARACTER(len=1)                  :: discovery, sign_dec, sign_x, sign_y, sign_z
     REAL(bp), DIMENSION(6)            :: coord
-    REAL(bp)                          :: day, ra, s, dec, as, correlation
+    REAL(bp)                          :: day, ra, s, dec, as, correlation, mjd
     INTEGER(ihp)                      :: day_integer
     INTEGER                           :: err, year, month, h, m, &
-         deg, am, n, i, indx
+         deg, am, n, i, indx, err_verb_
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -1590,10 +1592,24 @@ CONTAINS
        ELSE
           secret_name = this%secret_name
        END IF
+       err_verb_ = err_verb
+       err_verb = 0
+       mjd = getMJD(t, "UTC")
+       err_verb = err_verb_
+       IF (error) THEN
+          error = .FALSE.
+          mjd = getMJD(t, "UT1")
+       END IF
+       IF (error) THEN
+          CALL errorMessage("Observation / getObservationRecords / des", &
+               "Couldn't convert observation date to UTC or UT1.", 1)
+          DEALLOCATE(records, stat=err)          
+          RETURN
+       END IF
        IF (LEN_TRIM(this%number) /= 0) THEN
           WRITE(records(1),"(A,1X,F16.10,1X,A,3(1X,F14.10)," // &
                "2(1X,A),2(1X,F14.10),1X,F14.10,1X,E14.7,1X,A)", iostat=err) & 
-               TRIM(this%number), getMJD(t, "UTC"), "O", &
+               TRIM(this%number), mjd, "O", &
                ra/rad_deg, dec/rad_deg, this%mag, filter_, &
                TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_asec, &
                SQRT(this%covariance(3,3))/rad_asec, this%mag_unc, &
@@ -1601,7 +1617,7 @@ CONTAINS
        ELSE IF (LEN_TRIM(this%designation) /= 0) THEN
           WRITE(records(1),"(A,1X,F16.10,1X,A,3(1X,F14.10)," // &
                "2(1X,A),2(1X,F14.10),1X,F14.10,1X,E14.7,1X,A)", iostat=err) & 
-               TRIM(this%designation), getMJD(t, "UTC"), "O", &
+               TRIM(this%designation), mjd, "O", &
                ra/rad_deg, dec/rad_deg, this%mag, filter_, &
                TRIM(obsy_code), SQRT(this%covariance(2,2))/rad_asec, &
                SQRT(this%covariance(3,3))/rad_asec, this%mag_unc, &
