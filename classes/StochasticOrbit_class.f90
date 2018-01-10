@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2016-03-23
+!! @version 2018-01-10
 !!  
 MODULE StochasticOrbit_cl
 
@@ -18809,6 +18809,9 @@ CONTAINS
     END IF
 
   END SUBROUTINE constrainRangeDistributions2
+
+
+
 
 
   !! *Description*:
