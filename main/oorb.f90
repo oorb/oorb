@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2018-01-10
+!! @version 2018-01-11
 !!
 PROGRAM oorb
 
@@ -5057,7 +5057,7 @@ PROGRAM oorb
                  STOP
               END IF
               CALL errorMessage("oorb / lsl", &
-                   "More than 20% of the observations have been" \\ &
+                   "More than 20% of the observations have been" // &
                    "discarded as outliers.", 1)
               STOP
            ELSE
