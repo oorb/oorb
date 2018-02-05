@@ -1352,15 +1352,7 @@ CONTAINS
     vc(2) = 1.0_rprec8
 
     l = ind
-    buf = 0.0
-    DO k=1,na 
-       DO j=1,ncm
-          DO i=1,ncf
-             buf(i,j,k) = inbuf(l)
-             l = l + 1
-          END DO
-       END DO
-    END DO
+    l2 = l
 
     ! Get correct sub-interval number for this set of coefficients and
     ! then get normalized Chebyshev time within that subinterval.
@@ -1392,16 +1384,9 @@ CONTAINS
        npos = ncf
     END IF
 
-    ! interpolate to get position for each component
-    DO i=1,ncm
-       pos(i) = 0.0_rprec8
-       DO j=ncf,1,-1
-          pos(i) = pos(i) + pc(j) * buf(j,i,l)
-       END DO
-    END DO
-
     ! if velocity interpolation is wanted, be sure enough
     ! derivative polynomials have been generated and stored.
+
     IF (ABS(time(2)) < EPSILON(time(2))) THEN
        error = .TRUE.
        WRITE(0,*) 'interpolate(): Attempted division by zero.'
@@ -1416,13 +1401,21 @@ CONTAINS
        nvel = ncf
     ENDIF
 
-    ! interpolate to get velocity for each component
-    DO i=1, ncm
-       vel(i) = 0.0_rprec8
-       DO j=ncf,2,-1
-          vel(i) = vel(i) + vc(j) * buf(j,i,l)
+    ! interpolate to get position and velocity for each component
+    l2 = l2 + (l-1)* ncm *ncf
+    pos = 0.0_rprec8
+    vel = 0.0_rprec8
+    DO i=1,ncm
+       l2 = l2 + ncf
+       DO j=ncf,2,-1 ! Velocity is only computed down to j=2, while pos to j=1
+          l2 = l2 - 1
+          pos(i) = pos(i) + pc(j) * inbuf(l2)
+          vel(i) = vel(i) + vc(j) * inbuf(l2)
        END DO
+       l2 = l2 - 1
+       pos(i) = pos(i) + pc(1) * inbuf(l2)
        vel(i) = vel(i) * vfac
+       l2 = l2 + ncf
     END DO
 
     svector = (/ pos(1:3), vel(1:3) /)
