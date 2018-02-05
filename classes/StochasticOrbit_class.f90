@@ -148,6 +148,7 @@ MODULE StochasticOrbit_cl
      REAL(bp), DIMENSION(:), POINTER     :: finite_diff_prm      => NULL()
      REAL(bp)                            :: integration_step_prm = 1.0_bp
      LOGICAL, DIMENSION(10)              :: perturbers_prm       = .FALSE.
+     LOGICAL                             :: ast_perturbers_prm   = .FALSE.
 
      ! Parameters for statistical ranging:
      CHARACTER(len=64)                   :: sor_2point_method_prm      = "continued fraction"
@@ -745,8 +746,9 @@ CONTAINS
     IF (ASSOCIATED(this%finite_diff_prm)) THEN
        DEALLOCATE(this%finite_diff_prm, stat=err)
     END IF
-    this%integration_step_prm = 1.0_bp 
+    this%integration_step_prm = 1.0_bp
     this%perturbers_prm = .FALSE.
+    this%ast_perturbers_prm = .FALSE.
 
     ! Ranging variables
     this%sor_2point_method_prm = "continued fraction"
@@ -1010,6 +1012,7 @@ CONTAINS
     END IF
     copy_SO%integration_step_prm = this%integration_step_prm
     copy_SO%perturbers_prm = this%perturbers_prm
+    copy_SO%ast_perturbers_prm = this%ast_perturbers_prm
 
     ! Ranging parameters
     copy_SO%element_type_prm = this%element_type_prm
@@ -1963,7 +1966,8 @@ CONTAINS
        CALL setParameters(orb, dyn_model=this%dyn_model_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm, &
-            perturbers=this%perturbers_prm)
+            perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm)
        IF (error) THEN
           CALL errorMessage("StochasticOrbit / covarianceSampling", &
                "TRACE BACK (75)",1)
@@ -4222,6 +4226,7 @@ CONTAINS
   SUBROUTINE getParameters_SO(this, &
        dyn_model, &
        perturbers, &
+       asteroid_perturbers, &
        integration_step, &
        integrator, &
        finite_diff, &
@@ -4339,7 +4344,8 @@ CONTAINS
          gaussian_pdf, &
          outlier_rejection, &
          smplx_force, &
-         generat_gaussian_deviates
+         generat_gaussian_deviates, &
+         asteroid_perturbers
     INTEGER :: err
 
     IF (.NOT.this%is_initialized_prm) THEN
@@ -4354,6 +4360,9 @@ CONTAINS
     END IF
     IF (PRESENT(perturbers)) THEN
        perturbers = this%perturbers_prm
+    END IF
+    IF (PRESENT(asteroid_perturbers)) THEN
+       asteroid_perturbers = this%ast_perturbers_prm
     END IF
     IF (PRESENT(integration_step)) THEN
        integration_step = this%integration_step_prm
@@ -6753,9 +6762,10 @@ CONTAINS
             this%sor_2point_method_prm, this%apriori_a_max_prm, &
             center=this%center_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
-       IF (error) THEN 
+       IF (error) THEN
           CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                "TRACE BACK (86)", 1)
           error = .FALSE.
@@ -6856,13 +6866,14 @@ CONTAINS
        CALL setParameters(orb, &
             dyn_model=this%dyn_model_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
 
        ! checking if the epochs are the same
        IF (.NOT. equal(this%t_inv_prm,getTime(orb))) THEN
           CALL propagate(orb, this%t_inv_prm)
-          IF (error) THEN 
+          IF (error) THEN
              CALL errorMessage("StochasticOrbit / randomWalkRanging", &
                   "TRACE BACK (90)", 1)
              error = .FALSE.
@@ -7451,9 +7462,10 @@ CONTAINS
             this%sor_2point_method_prm, this%apriori_a_max_prm, &
             center=this%center_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
-       IF (error) THEN 
+       IF (error) THEN
           CALL errorMessage("StochasticOrbit / MCMCRanging", &
                "TRACE BACK (86)", 1)
           error = .FALSE.
@@ -7548,13 +7560,14 @@ CONTAINS
        CALL setParameters(orb, &
             dyn_model=this%dyn_model_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
 
        ! checking if the epochs are the same
        IF (.NOT. equal(this%t_inv_prm,getTime(orb))) THEN
           CALL propagate(orb, this%t_inv_prm)
-          IF (error) THEN 
+          IF (error) THEN
              CALL errorMessage("StochasticOrbit / MCMCRanging", &
                   "TRACE BACK (90)", 1)
              error = .FALSE.
@@ -8039,6 +8052,7 @@ CONTAINS
           CALL setParameters(orb_arr_init(i), &
                dyn_model=this%dyn_model_prm, &
                perturbers=this%perturbers_prm, &
+               asteroid_perturbers=this%ast_perturbers_prm, &
                integration_step=this%integration_step_prm, &
                integrator=this%integrator_prm)
           IF (error) THEN
@@ -9813,6 +9827,7 @@ CONTAINS
        CALL setParameters(orb_local, &
             dyn_model=this%dyn_model_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integration_step=this%integration_step_prm, &
             integrator=this%integrator_prm)
        !, &
@@ -10059,6 +10074,7 @@ CONTAINS
        END IF
        CALL setParameters(orb_local, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             dyn_model=this%dyn_model_prm, &
             integration_step=this%integration_step_prm, &
             integrator=this%integrator_prm)
@@ -10389,6 +10405,7 @@ CONTAINS
           END IF
           CALL setParameters(orb_arr(i), &
                perturbers=this%perturbers_prm, &
+               asteroid_perturbers=this%ast_perturbers_prm, &
                dyn_model=this%dyn_model_prm, &
                integration_step=this%integration_step_prm, &
                integrator=this%integrator_prm)
@@ -11451,6 +11468,7 @@ CONTAINS
        END IF
        CALL setParameters(orb, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             dyn_model=this%dyn_model_prm, &
             integration_step=this%integration_step_prm, &
             integrator=this%integrator_prm)
@@ -12445,6 +12463,7 @@ CONTAINS
           CALL setParameters(orb, &
                dyn_model=dyn_model_, &
                perturbers=this%perturbers_prm, &
+               asteroid_perturbers=this%ast_perturbers_prm, &
                integration_step=orb_integration_step, &
                integrator=orb_integrator, &
                finite_diff=orb_finite_diff, &
@@ -13589,6 +13608,7 @@ CONTAINS
     CALL setParameters(this%orb_ml_cmp, &
          dyn_model=dyn_model_, &
          perturbers=this%perturbers_prm, &
+         asteroid_perturbers=this%ast_perturbers_prm, &
          integration_step=integration_step_, &
          integrator=integrator_, &
          finite_diff=finite_diff_)
@@ -13804,6 +13824,7 @@ CONTAINS
       CALL setParameters(orb, &
            dyn_model=dyn_model_, &
            perturbers=this%perturbers_prm, &
+           asteroid_perturbers=this%ast_perturbers_prm, &
            integration_step=integration_step_, &
            integrator=integrator_, &
            finite_diff=finite_diff_)
@@ -14321,7 +14342,7 @@ CONTAINS
   !! Returns error.
   !!
   SUBROUTINE setParameters_SO(this, orb_ml, &
-       dyn_model, perturbers, integration_step, integrator, &
+       dyn_model, perturbers, asteroid_perturbers, integration_step, integrator, &
        finite_diff, &
        t_inv, element_type, multiple_objects, outlier_rejection, &
        dchi2_rejection, dchi2_max, regularized_pdf, jacobians_pdf, &
@@ -14432,7 +14453,8 @@ CONTAINS
          cos_gaussian, &
          smplx_force, &
          generat_gaussian_deviates, &
-         set_acceptance_window
+         set_acceptance_window, &
+         asteroid_perturbers
 
     CHARACTER(len=256) :: str
     INTEGER :: i, err
@@ -14495,6 +14517,17 @@ CONTAINS
        END IF
        IF (exist(this%orb_ml_cmp)) THEN
           CALL setParameters(this%orb_ml_cmp, perturbers=this%perturbers_prm)
+       END IF
+    END IF
+    IF (PRESENT(asteroid_perturbers)) THEN
+       this%ast_perturbers_prm = asteroid_perturbers
+       IF (ASSOCIATED(this%orb_arr_cmp)) THEN
+          DO i=1,SIZE(this%orb_arr_cmp)
+             CALL setParameters(this%orb_arr_cmp(i), asteroid_perturbers=this%ast_perturbers_prm)
+          END DO
+       END IF
+       IF (exist(this%orb_ml_cmp)) THEN
+          CALL setParameters(this%orb_ml_cmp, asteroid_perturbers=this%ast_perturbers_prm)
        END IF
     END IF
     IF (PRESENT(integration_step)) THEN
@@ -15599,6 +15632,7 @@ CONTAINS
        CALL setParameters(this%orb_arr_cmp(i), &
             dyn_model=this%dyn_model_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
        IF (error) THEN
@@ -15659,6 +15693,7 @@ CONTAINS
                   CALL setParameters(orb_arr(i), &
                        dyn_model=this%dyn_model_prm, &
                        perturbers=this%perturbers_prm, &
+                       asteroid_perturbers=this%ast_perturbers_prm, &
                        integrator=this%integrator_prm, &
                        integration_step=this%integration_step_prm)
                   info_verb_ = info_verb
@@ -15814,6 +15849,7 @@ CONTAINS
                      CALL setParameters(orb, &
                           dyn_model=this%dyn_model_prm, &
                           perturbers=this%perturbers_prm, &
+                          asteroid_perturbers=this%ast_perturbers_prm, &
                           integrator=this%integrator_prm, &
                           integration_step=this%integration_step_prm)
                      IF (error) THEN
@@ -15893,6 +15929,7 @@ CONTAINS
       CALL setParameters(orb, &
            dyn_model=this%dyn_model_prm, &
            perturbers=this%perturbers_prm, &
+           asteroid_perturbers=this%ast_perturbers_prm, &
            integrator=this%integrator_prm, &
            integration_step=this%integration_step_prm)
       IF (error) THEN
@@ -17000,13 +17037,14 @@ CONTAINS
           CALL NEW(orb_arr(i+1), obs_ccoord_focus1, obs_ccoord_focus2, &
                this%sor_2point_method_prm, this%apriori_a_max_prm, &
                ftol=ftol, perturbers=this%perturbers_prm, &
+               asteroid_perturbers=this%ast_perturbers_prm, &
                integrator=this%integrator_prm, &
                integration_step=this%integration_step_prm, &
                center=this%center_prm)
           err_verb = err_verb_
           IF (error) THEN
              IF (info_verb >= 5) THEN
-                WRITE(stdout,"(2X,A)") "Failed solving 2-point boundary value problem." 
+                WRITE(stdout,"(2X,A)") "Failed solving 2-point boundary value problem."
              END IF
              failed_flag(1) = failed_flag(1) + 1
              error = .FALSE.
@@ -17108,6 +17146,7 @@ CONTAINS
           CALL setParameters(orb_arr(i+1), &
                dyn_model=dyn_model, &
                perturbers=this%perturbers_prm, &
+               asteroid_perturbers=this%ast_perturbers_prm, &
                integration_step=integration_step, &
                integrator=integrator)
           IF (error) THEN
@@ -18209,6 +18248,7 @@ CONTAINS
        CALL setParameters(storb, &
             dyn_model=this%dyn_model_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm, &
             t_inv=this%t_inv_prm, &

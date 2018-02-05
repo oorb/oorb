@@ -47,9 +47,9 @@ MODULE integrators
   !! Speed of light (AU/day).
   REAL(prec), PARAMETER :: c = 173.14463272_prec
   REAL(prec), PARAMETER :: ic2 = 1.0_prec/c**2
-  !! Decimal precision. 
+  !! Decimal precision.
   REAL(prec), PARAMETER :: rstep_tol = 10*EPSILON(pi)
-  !! Decimal precision for extrapolation (or step convergence). 
+  !! Decimal precision for extrapolation (or step convergence).
   REAL(prec), PARAMETER :: bs_extrapol_tol = 10*EPSILON(pi)
   !! Default step length (1 days):
   REAL(prec), PARAMETER :: step_def = 1.0_prec
@@ -59,6 +59,8 @@ MODULE integrators
        seq = (/ 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, &
        256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, &
        12288, 16384, 24576 /) ! n_i = 2 * n_(i-2)
+  ! Amount of used asteroid perturbers.
+  INTEGER :: nast = 300
 
   LOGICAL :: relativity = .TRUE.
   ! Default central body for the dynamical system
@@ -74,13 +76,13 @@ MODULE integrators
 
   INTERFACE ratf_extrapolation
      MODULE PROCEDURE ratf_extrapolation_vec, ratf_extrapolation_mat, &
-          ratf_extrapolation_vec_n, ratf_extrapolation_mat_n 
-  END INTERFACE ratf_extrapolation
+          ratf_extrapolation_vec_n, ratf_extrapolation_mat_n
+  END INTERFACE
 
   INTERFACE polf_extrapolation
      MODULE PROCEDURE polf_extrapolation_vec, polf_extrapolation_mat, &
           polf_extrapolation_vec_n, polf_extrapolation_mat_n
-  END INTERFACE polf_extrapolation
+  END INTERFACE
 
 CONTAINS
 
@@ -88,12 +90,12 @@ CONTAINS
 
 
 
-  !! Description: 
+  !! Description:
   !!   Bulirsch-Stoer scheme.
-  !!   Rational function extrapolation w/ modified midpoint. 
+  !!   Rational function extrapolation w/ modified midpoint.
   !!
   !! References:
-  !!   [1] Press et al. 1989, Numerical Recipes. 
+  !!   [1] Press et al. 1989, Numerical Recipes.
   !!   [2] Stoer & Bulirsch 1980, Introduction to Num. Anal.
   !!
   !! Usage:
@@ -103,7 +105,7 @@ CONTAINS
   !! mjd_tdt0         integration start (MJD TT)
   !! mjd_tdt1         integration stop (MJD TT)
   !! celements        initial coordinates for massless particles (1:6,1:nparticles)
-  !! error            returns true, if something fails 
+  !! error            returns true, if something fails
   !! jacobian         jacobian matrix (coordinates wrt initial coordinates)
   !! step             step size
   !! ncenter          number of solar-system object to use as center (default=Sun)
@@ -112,12 +114,13 @@ CONTAINS
   !! masses           masses for additional perturbing bodies
   !!
   SUBROUTINE bulirsch_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
-       perturbers, error, jacobian, step, ncenter, encounters, &
+       perturbers, asteroid_perturbers, error, jacobian, step, ncenter, encounters, &
        masses, info_verb, radial_acceleration)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt0, mjd_tdt1
     REAL(prec), DIMENSION(:,:), INTENT(inout)             :: celements
     LOGICAL, DIMENSION(:), INTENT(in)                     :: perturbers
+    LOGICAL, INTENT(in)                                   :: asteroid_perturbers
     LOGICAL, INTENT(inout)                                :: error
     REAL(prec), DIMENSION(:,:,:), INTENT(inout), OPTIONAL :: jacobian
     REAL(prec), INTENT(in), OPTIONAL                      :: step
@@ -165,7 +168,7 @@ CONTAINS
     ! Reset the global module parameter
     IF (PRESENT(ncenter)) THEN
        central_body = ncenter
-    ELSE 
+    ELSE
        central_body = central_body_prm
     END IF
 
@@ -230,7 +233,7 @@ CONTAINS
        pws = jacobian
        DO WHILE (k <= total)
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers,ws, &
                   ws, error, pws, pws, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -245,7 +248,7 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers,ws, &
                   ws, error, pws, pws, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
@@ -262,23 +265,24 @@ CONTAINS
              END DO
           END IF
        END DO
+
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers,ws, &
                   ws, error, pws, pws, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
                   ws, error, pws, pws, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        ELSE
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
+             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers, &
                   ws, ws, error, pws, pws, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
-                  ws, ws, error, pws, pws, masses=masses, radial_acceleration=radial_acceleration)             
+             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
+                  ws, ws, error, pws, pws, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        END IF
        IF (PRESENT(encounters)) THEN
@@ -305,7 +309,7 @@ CONTAINS
     ELSE
        DO WHILE (k <= total)
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers, ws, &
                   ws, error, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -320,7 +324,7 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers, ws, &
                   ws, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
@@ -339,20 +343,20 @@ CONTAINS
        END DO
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
                   ws, error, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, ws, &
+             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
                   ws, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        ELSE
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
+             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
                   ws, ws, error, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, &
+             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
                   ws, ws, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        END IF
@@ -407,12 +411,13 @@ CONTAINS
   !!  error    returns true, if something fails
   !!  pws0     initial values of the partial derivatives
   !!  pws1     final values of the partial derivatives
-  !!  
-  SUBROUTINE step_bulirsch_full_jpl(mjd_tdt, H, perturbers, ws0, ws1, &
+  !!
+  SUBROUTINE step_bulirsch_full_jpl(mjd_tdt, H, perturbers, asteroid_perturbers,ws0, ws1, &
        error, pws0, pws1, encounters, masses, radial_acceleration)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt, H
     LOGICAL, DIMENSION(:), INTENT(in)                     :: perturbers
+    LOGICAL, INTENT(in)                                   :: asteroid_perturbers
     REAL(prec), DIMENSION(:,:), INTENT(inout)             :: ws0, ws1
     LOGICAL, INTENT(inout)                                :: error
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(inout) :: pws0, pws1
@@ -485,7 +490,7 @@ CONTAINS
        ! Integration with seq(i) substeps.
        IF (PRESENT(pws0) .AND. PRESENT(pws1)) THEN
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
+             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers, &
                   ws0, wst, error, pws0, pwst, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -500,7 +505,7 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
+             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers, &
                   ws0, wst, error, pws0, pwst, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           DO k=1, NS
@@ -511,7 +516,7 @@ CONTAINS
           END DO
        ELSE
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
+             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers,&
                   ws0, wst, error, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -526,7 +531,7 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, &
+             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers,&
                   ws0, wst, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           DO k=1, NS
@@ -552,7 +557,7 @@ CONTAINS
                   stat=err)
              RETURN
           END IF
-          WHERE (ws_converged .AND. ws_index == 0) 
+          WHERE (ws_converged .AND. ws_index == 0)
              ws_index = i
           END WHERE
           IF (ALL(ws_index > 0)) THEN
@@ -651,14 +656,14 @@ CONTAINS
 
 
 
-  !! Description: 
+  !! Description:
   !!   Modified midpoint step (2nd order).
-  !! 
-  !! References: 
+  !!
+  !! References:
   !!   [1] Press et al. 1989, Numerical Recipes.
   !!
   !! Usage:
-  !!   CALL step_midpoint_full_jpl(mjd_tdt, h, nsteps, ws0, ws1, 
+  !!   CALL step_midpoint_full_jpl(mjd_tdt, h, nsteps, ws0, ws1,
   !!                               error, pws0, pws1)
   !!
   !! One integration step.
@@ -668,16 +673,17 @@ CONTAINS
   !!  nsteps   number of substeps
   !!  ws0      initial coordinates for the massless bodies
   !!  ws1      final coordinates for the massless bodies
-  !!  error    returns true, if something fails                        
+  !!  error    returns true, if something fails
   !!  pws0     initial values of the partial derivatives
   !!  pws1     final values of the partial derivatives
   !!
-  SUBROUTINE step_midpoint_full_jpl(mjd_tdt, h, nsteps, perturbers, &
+  SUBROUTINE step_midpoint_full_jpl(mjd_tdt, h, nsteps, perturbers, asteroid_perturbers,&
        ws0, ws1, error, pws0, pws1, encounters, masses, radial_acceleration)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt, h
     INTEGER, INTENT(in)                                   :: nsteps
     LOGICAL, DIMENSION(:), INTENT(in)                     :: perturbers
+    LOGICAL, INTENT(in)                                   :: asteroid_perturbers
     REAL(prec), DIMENSION(:,:), INTENT(inout)             :: ws0, ws1
     LOGICAL, INTENT(inout)                                :: error
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(inout) :: pws0, pws1
@@ -704,7 +710,7 @@ CONTAINS
 
     ! Algorithm needs information from two previous points.
     ! When calculating at k+1, sw(1) points to variables at k-1,
-    ! and sw(2) to variables at k.   
+    ! and sw(2) to variables at k.
     sw(1)         = 1
     sw(2)         = 2
     q(:,:,sw(1))  = ws0
@@ -724,14 +730,14 @@ CONTAINS
     IF (PRESENT(pws0) .AND. PRESENT(pws1)) THEN
        pq(:,:,:,sw(1)) = pws0
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers, &
                qd, error, pqd, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Initialize log
           encounters = encounters_
           encounters(:,:,4) = dt
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers, &
                qd, error, pqd, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
@@ -742,10 +748,10 @@ CONTAINS
           pqt = MATMUL(pqd(:,:,i),pq(:,:,i,sw(1)))
           pq(:,:,i,sw(2)) = pq(:,:,i,sw(1)) + dt * pqt
        END DO
-       DO k=2, nsteps     
+       DO k=2, nsteps
           IF (PRESENT(encounters)) THEN
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, qd, error, pqd, encounters=encounters_, &
+                  perturbers, asteroid_perturbers, qd, error, pqd, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration substep
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
@@ -759,7 +765,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, qd, error, pqd, masses=masses, radial_acceleration=radial_acceleration)
+                  perturbers, asteroid_perturbers, qd, error, pqd, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
              RETURN
@@ -772,7 +778,7 @@ CONTAINS
           sw(1:2) = sw(2:1:-1)
        END DO
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
                qd, error, pqd, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Log closest non-impacting encounter during the integration substep
@@ -786,7 +792,7 @@ CONTAINS
              encounters(m,n,1:3) = encounters_(m,n,1:3)
           END FORALL
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
                qd, error, pqd, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
@@ -802,24 +808,24 @@ CONTAINS
     ELSE
        ! Plain integration.
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers,asteroid_perturbers, &
                qd, error, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Initialize log
           encounters(:,:,1:3) = encounters_(:,:,1:3)
           encounters(:,:,4) = dt
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers,&
                qd, error, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
           RETURN
        END IF
        q(:,:,sw(2)) = q(:,:,sw(1)) + dt * qd
-       DO k=2, nsteps     
+       DO k=2, nsteps
           IF (PRESENT(encounters)) THEN
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, qd, error, encounters=encounters_, &
+                  perturbers, asteroid_perturbers,qd, error, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration substep
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
@@ -833,7 +839,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
-                  perturbers, qd, error, masses=masses, radial_acceleration=radial_acceleration)
+                  perturbers, asteroid_perturbers, qd, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
              RETURN
@@ -842,7 +848,7 @@ CONTAINS
           sw(1:2)      = sw(2:1:-1)
        END DO
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
                qd, error, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Log closest non-impacting encounter during the integration substep
@@ -856,7 +862,7 @@ CONTAINS
              encounters(m,n,1:3) = encounters_(m,n,1:3)
           END FORALL
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, &
+          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers, &
                qd, error, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
@@ -865,7 +871,6 @@ CONTAINS
        q(:,:,sw(1)) = q(:,:,sw(1)) + dt * qd
        ws1 = (q(:,:,sw(1)) + q(:,:,sw(2))) / 2.0_prec
     END IF
-
     IF (PRESENT(encounters)) THEN
        DEALLOCATE(encounters_, stat=err)
        IF (err /= 0) THEN
@@ -881,20 +886,20 @@ CONTAINS
 
 
 
-  !! *Description*: 
+  !! *Description*:
   !!
   !!   Rational and polynomial function extrapolation for
   !!   (Gragg-)Bulirsch-Stoer integration.
   !!
   !!   These routines are applicable to single vectors or single matrices
-  !!   or to groups of vectors or matrices. 
-  !!   Extrapolation is always towards zero. 
+  !!   or to groups of vectors or matrices.
+  !!   Extrapolation is always towards zero.
   !!   Extrapolation converges when all of the elements of a vector/matrix
   !!   are converged. For groups of N vectors/matrices, convergence is checked
   !!   individually N times.
   !!
   !! References:
-  !!   [1] Press et al. 1989, Numerical Recipes. 
+  !!   [1] Press et al. 1989, Numerical Recipes.
   !!   [2] Stoer & Bulirsch 1980, Introduction to Num. Anal.
   !!
   !! Usage:
@@ -904,11 +909,11 @@ CONTAINS
   !! Fill one diagonal in rational function extrapolation table.
   !! Applicable to vectors.
   !!
-  !!  z          index to process in extrapolation table  
+  !!  z          index to process in extrapolation table
   !!  h          sequence of step sizes used
-  !!  w0         integrations corresponding the step sizes h 
+  !!  w0         integrations corresponding the step sizes h
   !!  w1         extrapolated values with z integrations
-  !!  ddif       extrapolation table with differences (see below) 
+  !!  ddif       extrapolation table with differences (see below)
   !!  converged  flag for convergence
   !!
   SUBROUTINE ratf_extrapolation_vec(z, h, w0, w1, ddif, converged, &
@@ -969,7 +974,7 @@ CONTAINS
              w1(k,z)     = w1(k,z) + ddif(k,i,j)
           ELSE
              ddif(k,i,j) = 0.0_prec
-             cdif(k)     = 0.0_prec                
+             cdif(k)     = 0.0_prec
           END IF
        END DO
     END DO
@@ -995,11 +1000,11 @@ CONTAINS
   !! Fill one diagonal in polynomial function extrapolation table.
   !! Applicable to vectors.
   !!
-  !!  z          index to process in extrapolation table  
+  !!  z          index to process in extrapolation table
   !!  h          sequence of step sizes used
-  !!  w0         integrations corresponding the step sizes h 
+  !!  w0         integrations corresponding the step sizes h
   !!  w1         extrapolated values with z integrations
-  !!  ddif       extrapolation table with differences 
+  !!  ddif       extrapolation table with differences
   !!  converged  flag for convergence
   !!
   SUBROUTINE polf_extrapolation_vec(z, h, w0, w1, ddif, converged, &
@@ -1064,9 +1069,9 @@ CONTAINS
   !! Fill one diagonal in rational function extrapolation table.
   !! Applicable to matrices.
   !!
-  !!  z          index to process in extrapolation table  
+  !!  z          index to process in extrapolation table
   !!  h          sequence of step sizes used
-  !!  w0         integrations corresponding the step sizes h 
+  !!  w0         integrations corresponding the step sizes h
   !!  w1         extrapolated values with z integrations
   !!  ddif       extrapolation table with differences (see below)
   !!  converged  flag for convergence
@@ -1086,8 +1091,8 @@ CONTAINS
     LOGICAL, DIMENSION(:), ALLOCATABLE :: column_ok
 
     ! This routine calls ratf_extrapolation_vec (for vectors) for each
-    ! column of the extrapolated matrix. Therefore, the last index of 
-    ! w0, w1, and ddif is the column index of the matrix. Note this 
+    ! column of the extrapolated matrix. Therefore, the last index of
+    ! w0, w1, and ddif is the column index of the matrix. Note this
     ! when accessing the corresponding actual arguments.
 
     converged = .FALSE.
@@ -1132,7 +1137,7 @@ CONTAINS
   !!  w1         extrapolated values with z integrations
   !!  ddif       extrapolation table with differences
   !!  converged  flag for convergence
-  !! 
+  !!
   SUBROUTINE polf_extrapolation_mat(z, h, w0, w1, ddif, converged, &
        error)
 
@@ -1156,16 +1161,16 @@ CONTAINS
        RETURN
     END IF
 
-    DO i=1, SIZE(w0,dim=3) 
-       CALL polf_extrapolation_vec(z, h, w0(:,:,i), w1(:,:,i), & 
+    DO i=1, SIZE(w0,dim=3)
+       CALL polf_extrapolation_vec(z, h, w0(:,:,i), w1(:,:,i), &
             ddif(:,:,:,i), column_ok(i), error)
        IF (error) THEN
           DEALLOCATE(column_ok, stat=err)
           RETURN
        END IF
     END DO
-    IF (ALL(column_ok)) THEN 
-       converged = .TRUE. 
+    IF (ALL(column_ok)) THEN
+       converged = .TRUE.
     END IF
 
     DEALLOCATE(column_ok, stat=err)
@@ -1192,7 +1197,7 @@ CONTAINS
   !!
   SUBROUTINE ratf_extrapolation_vec_n(z, h, w0, w1, ddif, converged, error)
 
-    INTEGER, INTENT(in)                           :: z 
+    INTEGER, INTENT(in)                           :: z
     REAL(prec), DIMENSION(:), INTENT(in)          :: h
     REAL(prec), DIMENSION(:,:,:), INTENT(in)      :: w0
     REAL(prec), DIMENSION(:,:,:), INTENT(out)     :: w1
@@ -1208,7 +1213,7 @@ CONTAINS
 
     DO i=1, SIZE(w0,dim=3)
        IF (converged(i)) CYCLE
-       CALL ratf_extrapolation_vec(z, h, w0(:,:,i), w1(:,:,i), & 
+       CALL ratf_extrapolation_vec(z, h, w0(:,:,i), w1(:,:,i), &
             ddif(:,:,:,i), converged(i), error)
        IF (error) THEN
           RETURN
@@ -1234,7 +1239,7 @@ CONTAINS
   SUBROUTINE polf_extrapolation_vec_n(z, h, w0, w1, ddif, converged, &
        error)
 
-    INTEGER, INTENT(in)                           :: z 
+    INTEGER, INTENT(in)                           :: z
     REAL(prec), DIMENSION(:), INTENT(in)          :: h
     REAL(prec), DIMENSION(:,:,:), INTENT(in)      :: w0
     REAL(prec), DIMENSION(:,:,:), INTENT(out)     :: w1
@@ -1246,7 +1251,7 @@ CONTAINS
 
     DO i=1, SIZE(w0,dim=3)
        IF (converged(i)) CYCLE
-       CALL polf_extrapolation_vec(z, h, w0(:,:,i), w1(:,:,i), & 
+       CALL polf_extrapolation_vec(z, h, w0(:,:,i), w1(:,:,i), &
             ddif(:,:,:,i), converged(i), error)
        IF (error) THEN
           RETURN
@@ -1272,7 +1277,7 @@ CONTAINS
   SUBROUTINE ratf_extrapolation_mat_n(z, h, w0, w1, ddif, converged, &
        error)
 
-    INTEGER, INTENT(in)                             :: z 
+    INTEGER, INTENT(in)                             :: z
     REAL(prec), DIMENSION(:), INTENT(in)            :: h
     REAL(prec), DIMENSION(:,:,:,:), INTENT(in)      :: w0
     REAL(prec), DIMENSION(:,:,:,:), INTENT(out)     :: w1
@@ -1297,15 +1302,15 @@ CONTAINS
     DO i=1, SIZE(w0,dim=4)
        IF (converged(i)) CYCLE
        DO j=1, SIZE(w0,dim=3)
-          CALL ratf_extrapolation_vec(z, h, w0(:,:,j,i), w1(:,:,j,i), & 
+          CALL ratf_extrapolation_vec(z, h, w0(:,:,j,i), w1(:,:,j,i), &
                ddif(:,:,:,j,i), column_ok(j), error)
           IF (error) THEN
              DEALLOCATE(column_ok, stat=err)
              RETURN
           END IF
        END DO
-       IF (ALL(column_ok)) THEN 
-          converged(i) = .TRUE. 
+       IF (ALL(column_ok)) THEN
+          converged(i) = .TRUE.
        END IF
     END DO
 
@@ -1334,7 +1339,7 @@ CONTAINS
   SUBROUTINE polf_extrapolation_mat_n(z, h, w0, w1, ddif, converged, &
        error)
 
-    INTEGER, INTENT(in)                             :: z 
+    INTEGER, INTENT(in)                             :: z
     REAL(prec), DIMENSION(:), INTENT(in)            :: h
     REAL(prec), DIMENSION(:,:,:,:), INTENT(in)      :: w0
     REAL(prec), DIMENSION(:,:,:,:), INTENT(out)     :: w1
@@ -1355,15 +1360,15 @@ CONTAINS
     DO i=1, SIZE(w0,dim=4)
        IF (converged(i)) CYCLE
        DO j=1, SIZE(w0,dim=3)
-          CALL polf_extrapolation_vec(z, h, w0(:,:,j,i), w1(:,:,j,i), & 
+          CALL polf_extrapolation_vec(z, h, w0(:,:,j,i), w1(:,:,j,i), &
                ddif(:,:,:,j,i), column_ok(j), error)
           IF (error) THEN
              DEALLOCATE(column_ok, stat=err)
              RETURN
           END IF
        END DO
-       IF (ALL(column_ok)) THEN 
-          converged(i) = .TRUE. 
+       IF (ALL(column_ok)) THEN
+          converged(i) = .TRUE.
        END IF
     END DO
 
@@ -1380,7 +1385,7 @@ CONTAINS
 
 
   !! Gauss-Radau integrator by Edgar Everhart
-  !! (Physics Department, University of Denver) 
+  !! (Physics Department, University of Denver)
   !!
   !! This 15th-order version is written out for faster execution.
   !! y'=f(y,t) is clss=1, y"=f(y,t) is clss= -2, and y"=f(y',y,t)
@@ -1404,7 +1409,7 @@ CONTAINS
   !! integrating orbits', Celestial Mechanics, vol. 10, no. 1,
   !! pp. 35-55
   !!
-  !! 
+  !!
   !! Input/output parameters:
   !! mjd_tdt0         integration start (MJD TT)
   !! mjd_tdt1         integration stop (MJD TT)
@@ -1412,7 +1417,7 @@ CONTAINS
   !! ll
   !! clss
   !! perturbers
-  !! error            returns true, if something fails 
+  !! error            returns true, if something fails
   !! jacobian         jacobian matrix (new coordinates wrt initial coordinates)
   !! step             step size
   !! ncenter          number of solar-system object to use as center (default=Sun)
@@ -1425,17 +1430,18 @@ CONTAINS
   !! @version   01.03.2010
   !!
   !!
-  !! WARNING: jacobians do not yet work properly! 
+  !! WARNING: jacobians do not yet work properly!
   !!
   SUBROUTINE gauss_radau_15_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
-       ll, clss, perturbers, error, jacobian, step, ncenter, &
+       ll, clss, perturbers, asteroid_perturbers, error, jacobian, step, ncenter, &
        encounters, masses)
 
     IMPLICIT NONE
     REAL(prec), INTENT(in)                                :: mjd_tdt0, mjd_tdt1
-    REAL(prec), DIMENSION(:,:), INTENT(inout)             :: celements    
+    REAL(prec), DIMENSION(:,:), INTENT(inout)             :: celements
     INTEGER, INTENT(in)                                   :: ll, clss
     LOGICAL, DIMENSION(:), INTENT(in)                     :: perturbers
+    LOGICAL, INTENT(in)                                   :: asteroid_perturbers
     LOGICAL, INTENT(inout)                                :: error
     REAL(prec), DIMENSION(:,:,:), INTENT(inout), OPTIONAL :: jacobian
     REAL(prec), INTENT(in), OPTIONAL                      :: step
@@ -1444,7 +1450,7 @@ CONTAINS
     REAL(prec), DIMENSION(:), INTENT(in), OPTIONAL        :: masses
 
     ! Gauss-Radau spacings h, scaled to the range [0,1] for
-    ! integrating to the 15th order. The sum of these values 
+    ! integrating to the 15th order. The sum of these values
     ! should be 3.73333333...
     REAL(prec), DIMENSION(8), PARAMETER :: h = (/ 0.0_prec, &
          0.05626256053692215_prec, 0.18024069173689236_prec, &
@@ -1479,7 +1485,7 @@ CONTAINS
     ! Reset the global module parameter
     IF (PRESENT(ncenter)) THEN
        central_body = ncenter
-    ELSE 
+    ELSE
        central_body = central_body_prm
     END IF
 
@@ -1593,7 +1599,7 @@ CONTAINS
           r(ld) = 1.0_prec/(h(k+1)-h(l-1))
        END DO
     END DO
-    ! For some reason, the value 10 was declared 10. instead of 10.d0 in 
+    ! For some reason, the value 10 was declared 10. instead of 10.d0 in
     ! the original version by Everhart (1985). This lead to a difference
     ! in the 12-13 decimal. Here it is declared similar to 10.d0:
     ss = 10.0_prec**(-ll)
@@ -1615,7 +1621,7 @@ CONTAINS
        IF (PRESENT(jacobian)) THEN
           IF (PRESENT(encounters)) THEN
              CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
-                  perturbers, wd_massless1, error, pwd_massless, &
+                  perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, &
                   encounters=encounters_, masses=masses)
              ! Log closest non-impacting encounter during the integration step
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
@@ -1630,7 +1636,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
-                  perturbers, wd_massless1, error, pwd_massless, masses=masses)
+                  perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, masses=masses)
 !!$          CALL interact_full_jpl_center(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
 !!$               wd_massless1, error, pwd_massless)
           END IF
@@ -1651,7 +1657,7 @@ CONTAINS
        ELSE
           IF (PRESENT(encounters)) THEN
              CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
-                  perturbers, wd_massless1, error, encounters=encounters_, &
+                  perturbers, asteroid_perturbers, wd_massless1, error, encounters=encounters_, &
                   masses=masses)
              ! Log closest non-impacting encounter during the integration step
              FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
@@ -1666,7 +1672,7 @@ CONTAINS
              END FORALL
           ELSE
              CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
-                  perturbers, wd_massless1, error, masses=masses)
+                  perturbers, asteroid_perturbers,wd_massless1, error, masses=masses)
 !!$          CALL interact_full_jpl_center(w_massless1, mjd_tdt0+tm, &
 !!$               wd_massless1, error)
           END IF
@@ -1735,7 +1741,7 @@ CONTAINS
                 IF (PRESENT(jacobian)) THEN
                    IF (PRESENT(encounters)) THEN
                       CALL interact_full_jpl(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
-                           perturbers, wd_massless2, error, pwd_massless, &
+                           perturbers, asteroid_perturbers, wd_massless2, error, pwd_massless, &
                            encounters=encounters_, masses=masses)
                       ! Log closest non-impacting encounter during the integration step
                       FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
@@ -1750,7 +1756,7 @@ CONTAINS
                       END FORALL
                    ELSE
                       CALL interact_full_jpl(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
-                           perturbers, wd_massless2, error, pwd_massless, &
+                           perturbers, asteroid_perturbers, wd_massless2, error, pwd_massless, &
                            masses=masses)
 !!$                   CALL interact_full_jpl_center(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
 !!$                        wd_massless2, error, pwd_massless)
@@ -1772,7 +1778,7 @@ CONTAINS
                 ELSE
                    IF (PRESENT(encounters)) THEN
                       CALL interact_full_jpl(w_massless2, &
-                           mjd_tdt0+tm+s*t, perturbers, &
+                           mjd_tdt0+tm+s*t, perturbers, asteroid_perturbers, &
                            wd_massless2, &
                            error, encounters=encounters_, masses=masses)
                       ! Log closest non-impacting encounter during the integration step
@@ -1788,7 +1794,7 @@ CONTAINS
                       END FORALL
                    ELSE
                       CALL interact_full_jpl(w_massless2, &
-                           mjd_tdt0+tm+s*t, perturbers, &
+                           mjd_tdt0+tm+s*t, perturbers, asteroid_perturbers,&
                            wd_massless2, &
                            error, masses=masses)
 !!$                   CALL interact_full_jpl_center(w_massless2, mjd_tdt0+tm+s*t, wd_massless2, error)
@@ -1818,10 +1824,10 @@ CONTAINS
                    CASE (6)
                       g(iorb,5,:) = ((((gk-g(iorb,1,:))*r(7) - g(iorb,2,:))*r(8) - g(iorb,3,:))*r(9) - &
                            g(iorb,4,:))*r(10)
-                   CASE (7) 
+                   CASE (7)
                       g(iorb,6,:) = (((((gk-g(iorb,1,:))*r(11) - g(iorb,2,:))*r(12) - &
                            g(iorb,3,:))*r(13) - g(iorb,4,:))*r(14)-g(iorb,5,:))*r(15)
-                   CASE (8) 
+                   CASE (8)
                       g(iorb,7,:) = ((((((gk-g(iorb,1,:))*r(16) - g(iorb,2,:))*r(17) - g(iorb,3,:))*r(18) - &
                            g(iorb,4,:))*r(19) - g(iorb,5,:))*r(20) - g(iorb,6,:))*r(21)
                    END SELECT
@@ -1949,7 +1955,7 @@ CONTAINS
           IF (PRESENT(jacobian)) THEN
              IF (PRESENT(encounters)) THEN
                 CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
-                     perturbers, wd_massless1, error, pwd_massless, &
+                     perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, &
                      encounters=encounters_, masses=masses)
                 ! Log closest non-impacting encounter during the integration step
                 FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
@@ -1964,13 +1970,13 @@ CONTAINS
                 END FORALL
              ELSE
                 CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
-                     perturbers, wd_massless1, error, pwd_massless, &
+                     perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, &
                      masses=masses)
              END IF
           ELSE
              IF (PRESENT(encounters)) THEN
                 CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
-                     perturbers, wd_massless1, error, &
+                     perturbers, asteroid_perturbers, wd_massless1, error, &
                      encounters=encounters_, masses=masses)
                 ! Log closest non-impacting encounter during the integration step
                 FORALL (m=1:SIZE(encounters,dim=1), n=1:SIZE(encounters,dim=2), &
@@ -1985,7 +1991,7 @@ CONTAINS
                 END FORALL
              ELSE
                 CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
-                     perturbers, wd_massless1, error, &
+                     perturbers, asteroid_perturbers, wd_massless1, error, &
                      masses=masses)
              END IF
           END IF
@@ -2045,7 +2051,7 @@ CONTAINS
 
 
 
-  !! Description: 
+  !! Description:
   !!
   !! Evaluation of the full Newtonian force function for several
   !! massless bodies. Positions of the massive bodies are read from
@@ -2078,14 +2084,16 @@ CONTAINS
   !!               radially outwards from the origin (usually the Sun)
   !!               this is aimed for accounting for radiation pressure
   !!
-  SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers, wds, error, pwds, encounters, masses, radial_acceleration)
+  SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers,  asteroid_perturbers, wds, error, &
+       pwds, encounters, masses, radial_acceleration)
 
     REAL(prec), DIMENSION(:,:), INTENT(in)              :: ws
     REAL(prec), INTENT(in)                              :: mjd_tdt
     LOGICAL, DIMENSION(:), INTENT(in)                   :: perturbers ! = basic perturbers (planets + Moon + Pluto)
+    LOGICAL, INTENT(in)                                 :: asteroid_perturbers ! BC430 asteroid perturbations.
     REAL(prec), DIMENSION(:,:), INTENT(out)             :: wds
     LOGICAL, INTENT(inout)                              :: error
-    REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out) :: pwds 
+    REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out) :: pwds
     REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out) :: encounters
     REAL(prec), DIMENSION(:), OPTIONAL, INTENT(in)      :: masses
     REAL(prec), OPTIONAL, INTENT(in)                    :: radial_acceleration
@@ -2099,23 +2107,41 @@ CONTAINS
     ! Number of massless bodies.
     INTEGER :: NS
 
-    ! Coordinates for the massive bodies.
-    REAL(prec), DIMENSION(:,:), POINTER :: wc => NULL()
+    ! Coordinates for the massive planets.
+    REAL(prec), DIMENSION(:,:), POINTER :: wc1 => NULL()
+    ! All used bodies.
+    REAL(prec), DIMENSION(:,:), ALLOCATABLE :: wc
 
+    ! And for the massive asteroids.
+    REAL(prec), DIMENSION(:,:), POINTER :: wc2 => NULL()
+    REAL(prec), DIMENSION(:), POINTER :: asteroid_masses => NULL()
     ! Various distances.
-    REAL(prec), DIMENSION(3,SIZE(perturbers)) :: drs 
-    REAL(prec), DIMENSION(SIZE(perturbers)) :: ir3c
-    REAL(prec), DIMENSION(SIZE(perturbers)) :: r2d, ir3d, ir5d
-    REAL(prec), DIMENSION(3,SIZE(ws,dim=2)) :: drs_ 
+    REAL(prec), DIMENSION(:,:), ALLOCATABLE :: drs
+    REAL(prec), DIMENSION(:), ALLOCATABLE :: ir3c
+    REAL(prec), DIMENSION(:), ALLOCATABLE :: r2d, ir3d, ir5d
+    REAL(prec), DIMENSION(3,SIZE(ws,dim=2)) :: drs_
     REAL(prec), DIMENSION(SIZE(ws,dim=2)) :: ir3c_
     REAL(prec), DIMENSION(SIZE(ws,dim=2)) :: r2d_, ir3d_, ir5d_
     REAL(prec) :: r2c, r2s, ir3s, ir5s, ir4s, v2s, us, ir6s, dist
 
     ! Utility variables.
-    REAL(prec), DIMENSION(3,3) :: A, B, P1, P2 
+    REAL(prec), DIMENSION(3,3) :: A, B, P1, P2
     INTEGER :: i, iaddit, j, k, l, err, naddit
 
     naddit = 0
+
+    IF (asteroid_perturbers) THEN
+       wc2 => BC_ephemeris(mjd_tdt,nast,error)
+       asteroid_masses => BC_masses(nast)
+    ELSE
+       nast = 0
+    END IF
+    ALLOCATE(drs(3,SIZE(perturbers)+nast))
+    ALLOCATE(ir3c(SIZE(perturbers)+nast))
+    ALLOCATE(r2d(SIZE(perturbers)+nast))
+    ALLOCATE(ir3d(SIZE(perturbers)+nast))
+    ALLOCATE(ir5d(SIZE(perturbers)+nast))
+
     IF (PRESENT(masses)) THEN
        DO i=1,SIZE(masses)
           IF (masses(i) > 0.0_prec) THEN
@@ -2125,40 +2151,59 @@ CONTAINS
     END IF
 
     ! Number of basic perturbers.
-    N = SIZE(perturbers)
-    NP = COUNT(perturbers)
+    N = SIZE(perturbers)+nast
+    NP = COUNT(perturbers)+nast
 
     ! Number of test particles (ie, bodies massless wrt basic perturbers).
     NS = SIZE(ws,dim=2)
 
     IF (NP > 0) THEN
        ! Get positions of massive bodies (-10 = 9 planets + Moon).
-       wc => JPL_ephemeris(mjd_tdt, -10, 11, error)
-       IF (error) THEN 
+       wc1 => JPL_ephemeris(mjd_tdt, -10, 11, error)
+       IF (error) THEN
           DEALLOCATE(wc, stat=err)
-          RETURN 
+          RETURN
+       END IF
+
+       IF (nast > 0) THEN ! This happens if there are asteroid perturbers.
+          ALLOCATE(wc(SIZE(wc1,dim=1)+SIZE(wc2,dim=1),6))
+          wc(1:SIZE(wc1,dim=1),1:6) = wc1
+          wc(SIZE(wc1,dim=1)+1:SIZE(wc2,dim=1)+SIZE(wc1,dim=1),1:6) = wc2
+          ! WC has planet perturbers followed by asteroid perturbers.
+          DEALLOCATE(wc1)
+          DEALLOCATE(wc2)
+       ELSE
+          ALLOCATE(wc(SIZE(wc1,dim=1),SIZE(wc1,dim=2)))
+          wc(:,:) = wc1(:,:)
+          DEALLOCATE(wc1)
        END IF
     END IF
 
-    ! Useful quantities. 
+    ! Useful quantities.
     ir3c = 0.0_prec
     ir3c_ = 0.0_prec
 
     ! Basic perturbers
     IF (NP > 0) THEN
        DO i=1,N
-          IF (perturbers(i)) THEN
-             r2c  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3)) 
-             ir3c(i) = 1.0_prec / (r2c * SQRT(r2c)) 
+          IF (i > SIZE(perturbers)) THEN
+             r2c  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3))
+             ir3c(i) = 1.0_prec / (r2c * SQRT(r2c))
+          ELSE IF (perturbers(i)) THEN
+             r2c  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3))
+             ir3c(i) = 1.0_prec / (r2c * SQRT(r2c))
+             !          END IF
+
           END IF
        END DO
     END IF
+
     IF (naddit > 0) THEN
        ! Additional perturbers
        DO i=1,NS
           IF (masses(i) > 0.0_prec) THEN
-             r2c  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i)) 
-             ir3c_(i) = 1.0_prec / (r2c * SQRT(r2c)) 
+             r2c  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i))
+             ir3c_(i) = 1.0_prec / (r2c * SQRT(r2c))
           END IF
        END DO
     END IF
@@ -2166,29 +2211,28 @@ CONTAINS
     ! Loop over bodies to be integrated.
     DO i=1,NS
 
-       r2s  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i)) ! ws(6,NS) 
-       ir3s = 1.0_prec / (r2s * SQRT(r2s)) 
+       r2s  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i)) ! ws(6,NS)
+       ir3s = 1.0_prec / (r2s * SQRT(r2s))
        drs = 0.0_prec ; r2d = 0.0_prec ; ir3d = 0.0_prec
        IF (COUNT(perturbers) > 0) THEN
           ! Log impacts and distances to solar-system objects
           DO j=1,N
-             IF (j <= N .AND. NP > 0) THEN
-                ! Basic perturbers. Compute drs and r2d regardless of
-                ! perturbers to be included in the force model (as
-                ! long as there is at least one perturber included in
-                ! the force model) so that the distance to planets can
-                ! be logged:
-                drs(1:3,j) = wc(j,1:3) - ws(1:3,i) 
-                r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j)) 
-                IF (perturbers(j)) THEN
-                   ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))
-                END IF
-                IF (PRESENT(encounters)) THEN
-                   dist = SQRT(r2d(j))
-                   ! Basic perturbers
+             !IF (j <= N .AND. NP > 0) THEN
+             ! Basic perturbers. Compute drs and r2d regardless of
+             ! perturbers to be included in the force model (as
+             ! long as there is at least one perturber included in
+             ! the force model) so that the distance to planets can
+             ! be logged:
+             drs(1:3,j) = wc(j,1:3) - ws(1:3,i)
+             r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j))
+             ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))
+             IF (PRESENT(encounters)) THEN
+                dist = SQRT(r2d(j))
+                ! Basic perturbers
+                IF (j < SIZE(perturbers)) THEN
                    IF (dist < planetary_radii(j)) THEN
                       encounters(i,j,1) = mjd_tdt ! date
-                      encounters(i,j,2) = 1       ! = impact          
+                      encounters(i,j,2) = 1       ! = impact
                       encounters(i,j,3) = dist    ! distance
                    ELSE
                       encounters(i,j,1) = mjd_tdt ! date
@@ -2197,6 +2241,7 @@ CONTAINS
                    END IF
                 END IF
              END IF
+             !END IF
           END DO
        END IF
        IF (naddit > 0) THEN
@@ -2209,8 +2254,8 @@ CONTAINS
                    ! Skip references to self
                    CYCLE
                 END IF
-                drs_(1:3,j) = ws(1:3,j) - ws(1:3,i) 
-                r2d_(j)     = DOT_PRODUCT(drs_(1:3,j), drs_(1:3,j)) 
+                drs_(1:3,j) = ws(1:3,j) - ws(1:3,i)
+                r2d_(j)     = DOT_PRODUCT(drs_(1:3,j), drs_(1:3,j))
                 ir3d_(j)    = 1.0_prec / (r2d_(j) * SQRT(r2d_(j)))
                 IF (PRESENT(encounters)) THEN
                    dist = SQRT(r2d_(j))
@@ -2229,7 +2274,7 @@ CONTAINS
           ! Distance to Sun
           dist = SQRT(DOT_PRODUCT(ws(1:3,i), ws(1:3,i)))
           IF (dist < planetary_radii(11)) THEN
-             encounters(i,11,1) = mjd_tdt 
+             encounters(i,11,1) = mjd_tdt
              encounters(i,11,2) = 1
              encounters(i,11,3) = dist
           ELSE
@@ -2246,7 +2291,10 @@ CONTAINS
        ! Non-integrable part of the interaction.
        ! Basic perturbers
        DO j=1,N
-          IF (perturbers(j)) THEN
+          IF (j > SIZE(perturbers)) THEN
+             wds(4:6,i) = wds(4:6,i) + &
+                  asteroid_masses(j-SIZE(perturbers)) * (drs(1:3,j) * ir3d(j) - wc(j,1:3) * ir3c(j))
+          ELSE  IF (perturbers(j)) THEN
              wds(4:6,i) = wds(4:6,i) + &
                   planetary_masses(j) * (drs(1:3,j) * ir3d(j) - wc(j,1:3) * ir3c(j))
           END IF
@@ -2303,7 +2351,6 @@ CONTAINS
 
        ! Optional part.
        IF (PRESENT(pwds)) THEN
-
           ! Some useful quantities.
           ir5s = ir3s / r2s
           ir5d = ir3d / r2d
@@ -2312,7 +2359,15 @@ CONTAINS
           A = 0.0_prec
           ! Basic perturbers
           DO j=1,N
-             IF (perturbers(j)) THEN
+             IF (j > SIZE(perturbers)) THEN
+                DO k=1,3
+                   DO l=1,3
+                      A(k,l) = A(k,l) + 3.0_prec * asteroid_masses(j-SIZE(perturbers)) &
+                           * drs(k,j) * drs(l,j) * ir5d(j)
+                   END DO
+                   A(k,k) = A(k,k) - asteroid_masses(j-SIZE(perturbers)) * ir3d(j)
+                END DO
+             ELSE IF (perturbers(j)) THEN
                 DO k=1,3
                    DO l=1,3
                       A(k,l) = A(k,l) + 3.0_prec * planetary_masses(j) &
@@ -2350,7 +2405,7 @@ CONTAINS
 
           ! Integrable part of the interaction
           DO k=1,3
-             DO l=1,3 
+             DO l=1,3
                 B(k,l) = 3.0_prec * ws(k,i) * ws(l,i) * ir5s
              END DO
              B(k,k) = B(k,k) - ir3s
@@ -2361,7 +2416,7 @@ CONTAINS
           IF (relativity) THEN
              ir6s = ir4s / r2s
              DO k=1,3
-                DO l=1,3 
+                DO l=1,3
                    P1(k,l) = (3.0_prec * v2s * ir5s - &
                         16.0_prec * gc * ir6s) * ws(k,i) * ws(l,i) - &
                         12.0_prec * us * ir5s * ws(k+3,i) * ws(l,i) + &
@@ -2372,7 +2427,7 @@ CONTAINS
              P1 = gc * ic2 * P1
 
              DO k=1,3
-                DO l=1,3 
+                DO l=1,3
                    P2(k,l) = 2.0_prec * ws(k+3,i) * ws(l,i) - ws(k,i) * ws(l+3,i)
                 END DO
                 P2(k,k) = P2(k,k) + 2.0_prec * us
@@ -2396,12 +2451,10 @@ CONTAINS
 
     END DO
 
-    IF (ASSOCIATED(wc)) THEN
-       DEALLOCATE(wc, stat=err)
-       IF (err /= 0) THEN
-          error = .TRUE.
-          RETURN
-       END IF
+    DEALLOCATE(wc, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       RETURN
     END IF
 
   END SUBROUTINE interact_full_jpl
@@ -2411,9 +2464,9 @@ CONTAINS
 
 
 
-  !! Description: 
-  !!   Evaluation of the full Newtonian force function for several 
-  !!   massless bodies. Positions of the massive bodies are read 
+  !! Description:
+  !!   Evaluation of the full Newtonian force function for several
+  !!   massless bodies. Positions of the massive bodies are read
   !!   from JPL ephemerides. A relativistic term due to the Sun is included.
   !!   Optional argument triggers evaluation of the partial derivatives
   !!   of the force function wrt Cartesian coordinates.
@@ -2439,7 +2492,7 @@ CONTAINS
     REAL(prec), INTENT(in)                              :: mjd_tdt
     REAL(prec), DIMENSION(:,:), INTENT(out)             :: wds
     LOGICAL, INTENT(inout)                              :: error
-    REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out) :: pwds 
+    REAL(prec), DIMENSION(:,:,:), OPTIONAL, INTENT(out) :: pwds
 
     ! Number of massive bodies.
     INTEGER, PARAMETER :: N = 11
@@ -2457,12 +2510,12 @@ CONTAINS
     ! Various distances.
     REAL(prec)                 :: r2s, ir3s, ir5s
     REAL(prec), DIMENSION(N)   :: r2c, ir3c
-    REAL(prec), DIMENSION(3,N) :: drs 
+    REAL(prec), DIMENSION(3,N) :: drs
     REAL(prec), DIMENSION(N)   :: r2d, ir3d, ir5d
     REAL(prec)                 :: ir4s, v2s, us, ir6s
 
     ! Utility variables.
-    REAL(prec), DIMENSION(3,3) :: A, B, P1, P2 
+    REAL(prec), DIMENSION(3,3) :: A, B, P1, P2
     INTEGER :: i, j, k, l, err
 
 
@@ -2474,9 +2527,9 @@ CONTAINS
 
     ! Get heliocentric positions of massive bodies (-10 = 9 planets + Moon).
     wc_sun => JPL_ephemeris(mjd_tdt, -10, 11, error)
-    IF (error) THEN 
+    IF (error) THEN
        DEALLOCATE(wc_sun, stat=err)
-       RETURN 
+       RETURN
     END IF
 
     ALLOCATE(wc(SIZE(wc_sun,dim=1)+1,SIZE(wc_sun,dim=2)),stat=err)
@@ -2501,10 +2554,10 @@ CONTAINS
     ! Planetary masses + Sun.
     m(1:N) = planetary_masses(1:N)
 
-    ! Useful quantities. 
+    ! Useful quantities.
     DO i = 1, N
-       r2c(i)  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3)) 
-       ir3c(i) = 1.0_prec / (r2c(i) * SQRT(r2c(i))) 
+       r2c(i)  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3))
+       ir3c(i) = 1.0_prec / (r2c(i) * SQRT(r2c(i)))
     END DO
 
     ! Number of massless bodies.
@@ -2513,12 +2566,12 @@ CONTAINS
     ! Loop over massless bodies.
     DO i = 1, NS
 
-       r2s  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i)) ! ws(6,NS) 
-       ir3s = 1.0_prec / (r2s * SQRT(r2s)) 
-       DO j = 1, N 
-          drs(1:3,j) = wc(j,1:3) - ws(1:3,i) 
-          r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j)) 
-          ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j))) 
+       r2s  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i)) ! ws(6,NS)
+       ir3s = 1.0_prec / (r2s * SQRT(r2s))
+       DO j = 1, N
+          drs(1:3,j) = wc(j,1:3) - ws(1:3,i)
+          r2d(j)     = DOT_PRODUCT(drs(1:3,j), drs(1:3,j))
+          ir3d(j)    = 1.0_prec / (r2d(j) * SQRT(r2d(j)))
        END DO
 
        ! Initialize force function.
@@ -2575,7 +2628,7 @@ CONTAINS
 
           ! Integrable part of the interaction
           DO k = 1, 3
-             DO l = 1, 3 
+             DO l = 1, 3
                 B(k,l) = 3.0_prec * ws(k,i) * ws(l,i) * ir5s
              END DO
              B(k,k) = B(k,k) - ir3s
@@ -2585,7 +2638,7 @@ CONTAINS
           ! Relativistic term from the Sun
           IF (relativity) THEN
              DO k = 1, 3
-                DO l = 1, 3 
+                DO l = 1, 3
                    P1(k,l) = (3.0_prec * v2s * ir5s - &
                         16.0_prec * gc * ir6s) * ws(k,i) * ws(l,i) - &
                         12.0_prec * us * ir5s * ws(k+3,i) * ws(l,i) + &
@@ -2596,7 +2649,7 @@ CONTAINS
              P1 = gc * ic2 * P1
 
              DO k = 1, 3
-                DO l = 1, 3 
+                DO l = 1, 3
                    P2(k,l) = 2.0_prec * ws(k+3,i) * ws(l,i) - ws(k,i) * ws(l+3,i)
                 END DO
                 P2(k,k) = P2(k,k) + 2.0_prec * us
@@ -2642,7 +2695,3 @@ CONTAINS
 
 
 END MODULE integrators
-
-
-
-
