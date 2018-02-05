@@ -73,6 +73,19 @@ The [DE405](http://ssd.jpl.nasa.gov/?planet_eph_export) planetary ephemerides pr
 
 > `make test`
 
+### BC430 Asteroid ephemerides ### 
+
+Usage of the BC430 asteroid ephemerides (Baer & Chesley, 2017)
+requires the files `asteroid_ephemeris.txt`, `asteroid_masses.txt`,
+and `asteroid_indices.txt`. These can be obtained as follows:
+
+> cd `OORBROOT/data/`
+
+> `./getBC430`
+
+or alternatively directly through Baer's Google drive at
+https://docs.google.com/document/d/1bZIpK99YNwYnxNLsaMsxfrY6fJ-wGRNWNcDzWmGvP9s/edit
+
 ### IAU/MPC Observatory codes and positions ###
 
 The [Minor Planet Center](http://www.cfa.harvard.edu/iau/mpc.html) updates the [observatory codes](http://www.cfa.harvard.edu/iau/lists/ObsCodes.html) on a daily basis, but an update is not necessarily required until you stumble upon observations from an observatory which isn't listed in your version of the file.
@@ -193,6 +206,19 @@ The output is divided into the following columns (as marked by a single-line hea
   * Fedora Core 9 + gfortran 4.3.0
 
 ## Usage ##
+
+### How do I include asteroidal perturbations in my computation? ###
+
+The new asteroidal perturbations feature may be enabled by toggling
+perturber.Asteroids in the configuration file. Note that downloading
+the BC430 asteroid ephemerides is necessary for this purpose (see data
+files section). The file `asteroid_indices.txt` contains the
+designations of each massive asteroid included in BC430 in descending
+order in terms of mass. To exclude perturbations of individual
+asteroid(s), comment out their corresponding lines with a hash (\#).
+
+Note that this is a very new feature and bugs may exist. Should
+problems arise, please raise an issue on Github.
 
 ### Can I specify a date for which I want an ephemeris to be computed? ###
 
