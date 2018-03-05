@@ -207,10 +207,11 @@ The output is divided into the following columns (as marked by a single-line hea
 
 ## Usage ##
 
+
 ### How do I include asteroidal perturbations in my computation? ###
 
 The new asteroidal perturbations feature may be enabled by toggling
-perturber.Asteroids in the configuration file. Note that downloading
+perturber.asteroids in the configuration file. Note that downloading
 the BC430 asteroid ephemerides is necessary for this purpose (see data
 files section). The file `asteroid_indices.txt` contains the
 designations of each massive asteroid included in BC430 in descending
@@ -219,6 +220,16 @@ asteroid(s), comment out their corresponding lines with a hash (\#).
 
 Note that this is a very new feature and bugs may exist. Should
 problems arise, please raise an issue on Github.
+
+
+### Can I input multiple observation files simultaneously? ###
+
+Yes. Simply add each observation file into --obs-in separated by
+commas and OpenOrb will seamlessly include observations from each file
+into the computation.
+
+> `oorb --obs-in=OBSERVATIONFILE1,OBSERVATIONFILE2,OBSERVATIONFILE3`
+
 
 ### Can I specify a date for which I want an ephemeris to be computed? ###
 
