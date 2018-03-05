@@ -545,10 +545,10 @@ CONTAINS
        observation_format_out, orbit_format_out, &
        plot_results, &
        plot_open, &
-       dyn_model, perturbers, integrator, integration_step, relativity, &
+       dyn_model, perturbers, asteroid_perturbers, integrator, integration_step, relativity, &
        dyn_model_init, integrator_init, integration_step_init, simint, &
        accwin_multiplier, &
-       dchi2_rejection, dchi2_max, regularized_pdf, chi2_min, & 
+       dchi2_rejection, dchi2_max, regularized_pdf, chi2_min, &
        outlier_rejection, outlier_multiplier, &
        apriori_a_min, apriori_a_max, apriori_periapsis_min, &
        apriori_periapsis_max, apriori_apoapsis_min, &
@@ -673,6 +673,7 @@ CONTAINS
     LOGICAL, DIMENSION(4), INTENT(inout), OPTIONAL :: &
          sor_iterate_bounds
     LOGICAL, INTENT(inout), OPTIONAL :: &
+         asteroid_perturbers,&
          plot_results, &
          plot_open, &
          multiple_ids, &
@@ -1140,6 +1141,22 @@ CONTAINS
                 END SELECT
              END IF
           END IF
+       CASE ("perturber.asteroids")
+         IF (PRESENT(asteroid_perturbers)) THEN
+            IF (.NOT.error) THEN
+               SELECT CASE (ADJUSTL(par_val))
+               CASE ("t", "T")
+                  asteroid_perturbers = .TRUE.
+               CASE ("f", "F")
+                  asteroid_perturbers = .FALSE.
+               CASE default
+                  error = .TRUE.
+                  CALL errorMessage("io / readConfigurationFile", &
+                       "Cannot understand logical value: " // &
+                       TRIM(ADJUSTL(par_val)) // ".", 1)
+               END SELECT
+            END IF
+         END IF
        CASE ("integrator")
           IF (PRESENT(integrator)) THEN
              integrator = TRIM(par_val)
@@ -3120,7 +3137,7 @@ CONTAINS
           header(4)(indx:indx+22) = ">--------0050--------<"
           indx = indx + 22
        ELSE IF (element_type_out == "poincare") THEN
-          !! Output Poincaré elements calculated from Delaunay's
+          !! Output PoincarÃ© elements calculated from Delaunay's
           !! elements. The mass of the target body is assumed to be negligible
           !! compared to the mass of the Sun.
           !  (&radic = square root)

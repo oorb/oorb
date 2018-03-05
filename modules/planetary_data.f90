@@ -28,7 +28,7 @@
 !! ephemerides provided by JPL and IMCCE.
 !!
 !! This software is partly based on <i>jplsub.f</i> (by JPL) and a
-!! Fortran 90 compilation of the same software by Hannu Karttunen 
+!! Fortran 90 compilation of the same software by Hannu Karttunen
 !! (Tuorla Observatory, Turku, Finland).
 !!
 !! *Example*:
@@ -55,9 +55,10 @@ MODULE planetary_data
 
   USE parameters
   USE linal
+  USE sort
   IMPLICIT NONE
   PRIVATE
-  CHARACTER(len=256), PARAMETER :: EPH_FNAME = 'de405.dat' 
+  CHARACTER(len=256), PARAMETER :: EPH_FNAME = 'de405.dat'
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4
   INTEGER, PARAMETER            :: RECORD_SIZE_405 =  2036
   INTEGER, PARAMETER            :: RECORD_SIZE_406 =  1456
@@ -72,11 +73,12 @@ MODULE planetary_data
   INTEGER, PARAMETER            :: NRECORD_MAX = 250000 ! Fits all of de40x and de43x
   REAL(rprec8), PARAMETER       :: kgm3_smau3 = (1.4959787066e8_rprec8)**3/1.989100e30
 
-  ! Planets' GMs are read from the ephemeris file 
+  ! Planets' GMs are read from the ephemeris file
   ! Unit: AU^3 day^(-2)
   REAL(rprec8), DIMENSION(17), PUBLIC :: planetary_mu
   !! Masses are computed based on above GMs
   REAL(rprec8), DIMENSION(17), PUBLIC :: planetary_masses
+
 
   CHARACTER(len=23), DIMENSION(13), PARAMETER, PUBLIC :: planetary_locations = (/ &
        "Mercury                ", &
@@ -97,7 +99,7 @@ MODULE planetary_data
   REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_radii = (/ &
        1.63037e-5_rprec8, &   !!  (1) Mercury,
        4.04551e-5_rprec8, &   !!  (2) Venus,
-       4.25641e-5_rprec8, &   !!  (3) Earth, 
+       4.25641e-5_rprec8, &   !!  (3) Earth,
        2.26491e-5_rprec8, &   !!  (4) Mars,
        4.62908e-4_rprec8, &   !!  (5) Jupiter,
        3.81021e-4_rprec8, &   !!  (6) Saturn,
@@ -118,7 +120,7 @@ MODULE planetary_data
   REAL(rprec8), DIMENSION(17), PARAMETER, PUBLIC :: planetary_densities = (/ &
        5427.0_rprec8*kgm3_smau3, &               !!  (1) Mercury,
        5243.0_rprec8*kgm3_smau3, &               !!  (2) Venus,
-       5515.0_rprec8*kgm3_smau3, &               !!  (3) Earth, 
+       5515.0_rprec8*kgm3_smau3, &               !!  (3) Earth,
        3933.0_rprec8*kgm3_smau3, &               !!  (4) Mars,
        1326.0_rprec8*kgm3_smau3, &               !!  (5) Jupiter,
        687.0_rprec8*kgm3_smau3, &                !!  (6) Saturn,
@@ -143,12 +145,23 @@ MODULE planetary_data
   INTEGER, DIMENSION(3,13)                  :: ipt
   INTEGER                                   :: numde, ncon, rec_size, eph_size
   LOGICAL                                   :: first = .TRUE.
+  LOGICAL                                   :: first_bc = .TRUE.
   LOGICAL                                   :: kilometres = .FALSE.
   LOGICAL                                   :: barycenter = .TRUE.
+
+  ! BC430 asteroid ephemeris data
+  REAL(rprec8), DIMENSION(:,:,:), ALLOCATABLE   :: asteroid_ephemerides
+  REAL(rprec8), DIMENSION(3653)                 :: asteroid_epochs
+  REAL(rprec8), DIMENSION(:), ALLOCATABLE       :: asteroid_masses
+  LOGICAL, DIMENSION(300)                       :: asteroid_masks = .TRUE.
+  CHARACTER(len=10), DIMENSION(300)             :: asteroid_indices
 
   PUBLIC :: JPL_ephemeris_init
   PUBLIC :: JPL_ephemeris
   PUBLIC :: JPL_ephemeris_nullify
+  PUBLIC :: BC_ephemeris
+  PUBLIC :: BC_ephemeris_init
+  PUBLIC :: BC_masses
   PUBLIC :: Hill_radius
 
   INTERFACE JPL_ephemeris
@@ -158,6 +171,13 @@ MODULE planetary_data
      MODULE PROCEDURE JPL_ephemeris_perturbers_r16
   END INTERFACE JPL_ephemeris
 
+  INTERFACE BC_ephemeris
+     MODULE PROCEDURE BC_ephemeris_r8
+  END INTERFACE BC_ephemeris
+
+  INTERFACE BC_masses
+     MODULE PROCEDURE BC_masses_r8
+  END INTERFACE BC_masses
 CONTAINS
 
 
@@ -166,7 +186,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Returns the radius of the Hill sphere 
+  !! Returns the radius of the Hill sphere
   !!
   !!    r_H ~ a_1(1-e_1) * (mass_1/3mass_2)^(1/3))
   !!
@@ -219,7 +239,7 @@ CONTAINS
     CHARACTER(len=*), OPTIONAL, INTENT(in) :: filename
     INTEGER, PARAMETER                     :: min_lu = 10
     INTEGER, PARAMETER                     :: max_lu = 99
-    CHARACTER(len=256)                     :: fname, OORB_DATA_DIR    
+    CHARACTER(len=256)                     :: fname, OORB_DATA_DIR
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: tmp
     INTEGER                                :: err, i, lu, count
     LOGICAL                                :: done, used
@@ -258,7 +278,7 @@ CONTAINS
           count = count + 1
           ! If more than max_lu units have been tried,
           ! every available unit has been tried at least once.
-          ! A free unit could not be found: 
+          ! A free unit could not be found:
           IF (count > max_lu) THEN
              error = .TRUE.
              WRITE(0,*) "JPL_ephemeris_init(): Could not find a free logical unit."
@@ -361,7 +381,7 @@ CONTAINS
 
        !  (1) Mercury,
        !  (2) Venus,
-       !  (3) Earth, 
+       !  (3) Earth,
        !  (4) Mars,
        !  (5) Jupiter,
        !  (6) Saturn,
@@ -371,7 +391,7 @@ CONTAINS
        planetary_mu(1:9) = cval(9:17)
        ! remove Moon from EMS's GM to get Earth's GM
        emrat = cval(8)
-       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat) 
+       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat)
        ! (10) Moon,
        planetary_mu(10) = planetary_mu(3)/emrat
        ! (11) Sun,
@@ -379,13 +399,13 @@ CONTAINS
        ! (12) solar system barycenter,
        planetary_mu(12) = SUM(planetary_mu(1:11))
        ! (13) Earth-Moon barycenter,
-       planetary_mu(13) = cval(11) 
+       planetary_mu(13) = cval(11)
 
     ELSE IF (INDEX(fname,"430") /= 0 .OR. INDEX(fname,"431") /= 0) THEN
 
        !  (1) Mercury,
        !  (2) Venus,
-       !  (3) Earth, 
+       !  (3) Earth,
        !  (4) Mars,
        !  (5) Jupiter,
        !  (6) Saturn,
@@ -395,7 +415,7 @@ CONTAINS
        planetary_mu(1:9) = cval(12:20)
        ! remove Moon from EMS's GM to get Earth's GM
        emrat = cval(11)
-       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat) 
+       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat)
        ! (10) Moon,
        planetary_mu(10) = planetary_mu(3)/emrat
        ! (11) Sun,
@@ -403,13 +423,13 @@ CONTAINS
        ! (12) solar system barycenter,
        planetary_mu(12) = SUM(planetary_mu(1:11))
        ! (13) Earth-Moon barycenter,
-       planetary_mu(13) = cval(14) 
+       planetary_mu(13) = cval(14)
 
     ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
 
        !  (1) Mercury,
        !  (2) Venus,
-       !  (3) Earth, 
+       !  (3) Earth,
        !  (4) Mars,
        !  (5) Jupiter,
        !  (6) Saturn,
@@ -418,7 +438,7 @@ CONTAINS
        !  (9) Pluto,
        planetary_mu(1:9) = cval(7:15)
        ! remove Moon from EMS's GM to get Earth's GM
-       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat) 
+       planetary_mu(3) = planetary_mu(3)/(1.0_rprec8 + 1.0_rprec8/emrat)
        ! (10) Moon,
        planetary_mu(10) = planetary_mu(3)/emrat
        ! (11) Sun,
@@ -426,7 +446,7 @@ CONTAINS
        ! (12) solar system barycenter,
        planetary_mu(12) = SUM(planetary_mu(1:11))
        ! (13) Earth-Moon barycenter,
-       planetary_mu(13) = cval(9) 
+       planetary_mu(13) = cval(9)
 
     END IF
 
@@ -479,7 +499,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Reads the JPL Planetary Ephemeris and gives the position and 
+  !! Reads the JPL Planetary Ephemeris and gives the position and
   !! velocity of the point 'ntarget' with respect to 'ncenter'.
   !!
   !! ntarget = integer number of target point.
@@ -509,16 +529,16 @@ CONTAINS
   !! radians and radians per day.
   !!
   !! Returns error.
-  !! 
+  !!
   !! ntarget=-10 and ncenter=11 tested to produce correct results.
   !! ntarget=-10 and ncenter=12 tested to produce correct results.
   !!
-  ! In the case 
-  ! of nutations the first four words of rrd will be set to nutations and 
+  ! In the case
+  ! of nutations the first four words of rrd will be set to nutations and
   ! rates, having units of radians and radians/day.
   !!
-  !! Known errors: 
-  !! 
+  !! Known errors:
+  !!
   !!  ntarget  ncenter
   !!    13       11        (note that 11 13 works?!?)
   !!    -9       11
@@ -577,7 +597,7 @@ CONTAINS
     list = 0
 
     !  check for librations
-    IF (ntarget == 15) THEN 
+    IF (ntarget == 15) THEN
        IF (ipt(2,13) > 0) THEN
           list(12) = 2
           celements(1:12,1:6) = states(tt2, list, error)
@@ -608,7 +628,7 @@ CONTAINS
              k = ncenter
           END IF
           IF (k <= 10) THEN
-             list(k)  = 2 ! If k:th planet wanted, k:th is needed 
+             list(k)  = 2 ! If k:th planet wanted, k:th is needed
           END IF
           IF (k == 3) THEN
              list(10) = 2 ! If Earth wanted, Moon is needed
@@ -631,19 +651,19 @@ CONTAINS
        RETURN
     END IF
 
-    ! If the target or the center is the Sun, 
+    ! If the target or the center is the Sun,
     ! change it to the Solar System barycenter:
     IF (ntarget == 11 .OR. ncenter == 11 .OR. ntarget < 0) THEN
        celements(11,:) = celements(12,1:6)
     END IF
 
-    ! If the target or the center is the Solar System barycenter, 
+    ! If the target or the center is the Solar System barycenter,
     ! set its coordinates to zero:
     IF (ntarget == 12 .OR. ncenter == 12) THEN
        celements(12,:) = 0.0_rprec8
     END IF
 
-    ! If the target or the center is the Earth-Moon barycenter, 
+    ! If the target or the center is the Earth-Moon barycenter,
     ! set it initially equal to the coordinates of the Earth:
     IF (ntarget == 13 .OR. ncenter == 13 .OR. ntarget == -9) THEN
        celements(13,:) = celements(3,:)
@@ -651,7 +671,7 @@ CONTAINS
 
     ! If Earth to Moon (or vice versa) coordinates are needed, use
     ! geocentric coordinates for the Moon:
-    IF (ntarget * ncenter == 30 .AND. ntarget + ncenter == 13) THEN 
+    IF (ntarget * ncenter == 30 .AND. ntarget + ncenter == 13) THEN
        celements(3,:) = 0.0_rprec8
        celements(ntarget,:) = celements(ntarget,:) - celements(ncenter,:)
        ALLOCATE(JPL_ephemeris_r8(1,6), stat=err)
@@ -665,8 +685,8 @@ CONTAINS
        RETURN
     END IF
 
-    ! If the target or the center is the Moon or the Earth-Moon barycenter, 
-    ! compute Earth coordinates using coordinates for the barycentric Earth-Moon 
+    ! If the target or the center is the Moon or the Earth-Moon barycenter,
+    ! compute Earth coordinates using coordinates for the barycentric Earth-Moon
     ! system and geocentric coordinates for the Moon:
     IF (list(3) == 2) THEN
        celements(3,:) = celements(3,:) - celements(10,:)/(1.0_rprec8 + emrat)
@@ -728,7 +748,7 @@ CONTAINS
   !! *Description*:
   !!
   !! Same as JPL_ephemeris_r8, but with digits allowing greater
-  !! numerical accuracy, i.e., the accuracy of values is the same 
+  !! numerical accuracy, i.e., the accuracy of values is the same
   !! as for JPL_ephemeris_r8.
   !!
   FUNCTION JPL_ephemeris_r16(mjd_tt, ntarget, ncenter, error, km)
@@ -775,7 +795,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Reads the JPL Planetary Ephemeris and gives the position and 
+  !! Reads the JPL Planetary Ephemeris and gives the position and
   !! velocity of the point 'ntarget' with respect to 'ncenter'.
   !!
   !! ntarget = integer number of target point.
@@ -804,16 +824,16 @@ CONTAINS
   !! For librations the units are radians and radians per day.
   !!
   !! Returns error.
-  !! 
+  !!
   !! ntarget=-10 and ncenter=11 tested to produce correct results.
   !! ntarget=-10 and ncenter=12 tested to produce correct results.
   !!
-  ! In the case 
-  ! of nutations the first four words of rrd will be set to nutations and 
+  ! In the case
+  ! of nutations the first four words of rrd will be set to nutations and
   ! rates, having units of radians and radians/day.
   !!
-  !! Known errors: 
-  !! 
+  !! Known errors:
+  !!
   !!  ntarget  ncenter
   !!    13       11
   !!    -9       11
@@ -823,7 +843,7 @@ CONTAINS
 
     IMPLICIT NONE
     REAL(rprec8), INTENT(in)              :: mjd_tt
-    LOGICAL, DIMENSION(:), INTENT(in)     :: ntargets    
+    LOGICAL, DIMENSION(:), INTENT(in)     :: ntargets
     INTEGER, INTENT(in)                   :: ncenter
     LOGICAL, INTENT(inout)                :: error
     LOGICAL, OPTIONAL, INTENT(in)         :: km
@@ -873,18 +893,18 @@ CONTAINS
        RETURN
     END IF
 
-    ! If the target or the center is the Sun, 
+    ! If the target or the center is the Sun,
     ! change it to the Solar System barycenter:
     celements(11,:) = celements(12,1:6)
 
-    ! If the target or the center is the Earth-Moon barycenter, 
+    ! If the target or the center is the Earth-Moon barycenter,
     ! set it initially equal to the coordinates of the Earth:
     IF (ntargets(3) .AND. .NOT.ntargets(10)) THEN
        celements(13,:) = celements(3,:)
     END IF
 
-    ! If the target or the center is the Moon or the Earth-Moon barycenter, 
-    ! compute Earth coordinates using coordinates for the barycentric Earth-Moon 
+    ! If the target or the center is the Moon or the Earth-Moon barycenter,
+    ! compute Earth coordinates using coordinates for the barycentric Earth-Moon
     ! system and geocentric coordinates for the Moon:
     celements(3,:) = celements(3,:) - celements(10,:)/(1.0_rprec8 + emrat)
 
@@ -921,7 +941,7 @@ CONTAINS
   !! *Description*:
   !!
   !! Same as JPL_ephemeris_r8, but with digits allowing greater
-  !! numerical accuracy, i.e., the accuracy of values is the same 
+  !! numerical accuracy, i.e., the accuracy of values is the same
   !! as for JPL_ephemeris_r8.
   !!
   FUNCTION JPL_ephemeris_perturbers_r16(mjd_tt, ntargets, ncenter, error, km)
@@ -969,7 +989,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Reads the jpl planetary ephemeris and gives the position and 
+  !! Reads the jpl planetary ephemeris and gives the position and
   !! velocity of the point 'ntarget' with respect to 'ncenter'.
   !!
   !! ntarget = integer number of target point.
@@ -994,12 +1014,12 @@ CONTAINS
   !!
   !! Output is a CartesianCoordinates object (crtcrd) containing position and velocity
   !! of point 'ntarget' relative to 'ncenter'. the units are AU and AU/day.
-  !! For librations the units are radians and radians per day. 
+  !! For librations the units are radians and radians per day.
   !!
   !! Returns error.
   !!
-  ! In the case 
-  ! of nutations the first four words of rrd will be set to nutations and 
+  ! In the case
+  ! of nutations the first four words of rrd will be set to nutations and
   ! rates, having units of radians and radians/day.
   !!
   FUNCTION nutations(t, error)
@@ -1103,36 +1123,36 @@ CONTAINS
   FUNCTION states(tt2, list, error)
 
     ! this subroutine reads and interpolates the jpl planetary ephemeris file
-    ! 
+    !
     ! calling sequence parameters:
-    ! 
+    !
     ! input:
-    ! 
+    !
     ! tt2   rprec8 2-word julian ephemeris epoch at which interpolation
     ! is wanted.  any combination of tt2(1)+tt2(2) which falls
     ! within the time span on the file is a permissible epoch.
-    ! 
+    !
     ! a. for ease in programming, the user may put the
     ! entire epoch in tt2(1) and set tt2(2)=0.
-    ! 
+    !
     ! b. for maximum interpolation accuracy, set tt2(1) =
     ! the most recent midnight at or before interpolation
     ! epoch and set tt2(2) = fractional part of a day
     ! elapsed between tt2(1) and epoch.
-    ! 
+    !
     ! c. as an alternative, it may prove convenient to set
     ! tt2(1) = some fixed epoch, such as start of integration,
     ! and tt2(2) = elapsed interval between then and epoch.
-    ! 
+    !
     ! list   12-word integer array specifying what interpolation
     ! is wanted for each of the bodies on the file.
-    ! 
+    !
     ! list(i)=0, no interpolation for body i
     ! =1, position only
     ! =2, position and velocity
-    ! 
+    !
     ! the designation of the astronomical bodies by i is:
-    ! 
+    !
     ! i =  1: mercury
     !   =  2: venus
     !   =  3: earth-moon barycenter
@@ -1145,10 +1165,10 @@ CONTAINS
     !   = 10: geocentric moon
     !   = 11: nutations in longitude and obliquity
     !   = 12: lunar librations (if on file)
-    ! 
-    ! 
+    !
+    !
     ! output:
-    ! 
+    !
     ! s_array   rprec8 6 x 11 array that will contain requested interpolated
     ! quantities.  the body specified by list(i) will have its
     ! state in the array starting at s_array(1,i).  (on any given
@@ -1157,45 +1177,45 @@ CONTAINS
     ! on the file) are set.  the rest of the 's_array' array
     ! is untouched.)  the order of components starting in
     ! s_array(1,i) is: x,y,z,dx,dy,dz.
-    ! 
+    !
     ! all output vectors are referenced to the earth mean
     ! equator and equinox of j2000 if the de number is 200 or
-    ! greater; of b1950 if the de number is less than 200. 
-    ! 
-    ! the moon state is always geocentric; the other nine states 
-    ! are either heliocentric or solar-system barycentric, 
+    ! greater; of b1950 if the de number is less than 200.
+    !
+    ! the moon state is always geocentric; the other nine states
+    ! are either heliocentric or solar-system barycentric,
     ! depending on the setting of common flags (see below).
-    ! 
+    !
     ! lunar librations, if on file, are put into s_array(k,11) if
     ! list(12) is 1 or 2.
-    ! 
+    !
     ! nut   rprec8 4-word array that will contain nutations and rates,
     ! depending on the setting of list(11).  the order of
     ! quantities in nut is:
-    ! 
+    !
     ! d psi  (nutation in longitude)
     ! d epsilon (nutation in obliquity)
     ! d psi dot
     ! d epsilon dot
-    ! 
+    !
     ! *   statement # for error return, in case of epoch out of
     ! range or i/o errors.
-    ! 
-    ! 
+    !
+    !
     ! common area stcomx:
-    ! 
+    !
     ! kilometres   logical flag defining physical units of the output
     ! states. kilometres = .true., km and km/sec
     ! = .false., au and au/day
     ! default value = .false.  (kilometres determines time unit
     ! for nutations and librations.  angle unit is always radians.)
-    ! 
+    !
     ! bary   logical flag defining output center.
     ! only the 9 planets are affected.
     ! bary = .true. =\ center is solar-system barycenter
     ! = .false. =\ center is sun
     ! default value = .false.
-    ! 
+    !
     ! celements(1:6,12) rprec8 6-word array containing the barycentric position and
     ! velocity of the sun.
 
@@ -1256,7 +1276,7 @@ CONTAINS
        aufac = 1.0_rprec8/au
     ENDIF
 
-    ! Interpolate ssbary sun: 
+    ! Interpolate ssbary sun:
     CALL interpolate(buf(:,record_nr), ipt(1,11), t, ipt(2,11), &
          3, ipt(3,11), states(12,1:6), error)
     IF (error) THEN
@@ -1304,31 +1324,31 @@ CONTAINS
 
     ! this subroutine differentiates and interpolates a
     ! set of chebyshev coefficients to give position and velocity
-    ! 
+    !
     ! calling sequence parameters:
-    ! 
+    !
     ! input:
-    ! 
+    !
     ! buf   1st location of array of d.p. chebyshev coefficients of position
-    ! 
+    !
     ! t   t(1) is rprec8 fractional time in interval covered by
     ! coefficients at which interpolation is wanted
     ! (0 <= t(1) <= 1).  t(2) is rprec8 length of whole
     ! interval in input time units.
-    ! 
+    !
     ! ncf   # of coefficients per component
-    ! 
+    !
     ! ncm   # of components per set of coefficients
-    ! 
+    !
     ! na   # of sets of coefficients in full array
     ! (i.e., # of sub-intervals in full interval)
-    ! 
+    !
     ! flag  integer flag: =1 for positions only
     ! =2 for pos and vel
-    ! 
-    ! 
+    !
+    !
     ! output:
-    ! 
+    !
     ! svector   interpolated quantities requested.  dimension
     ! expected is svector(ncm,flag), rprec8.
     !
@@ -1343,7 +1363,7 @@ CONTAINS
     REAL(rprec8), DIMENSION(18)             :: pc, vc
     REAL(rprec8), DIMENSION(6)              :: pos, vel
     REAL(rprec8)                            :: twot, tmp, tc, vfac, dna
-    INTEGER                             :: npos, nvel, dt1, i, j, k, l
+    INTEGER                             :: npos, nvel, dt1, i, j, k, l, l2
 
     npos = 2
     nvel = 3
@@ -1352,15 +1372,7 @@ CONTAINS
     vc(2) = 1.0_rprec8
 
     l = ind
-    buf = 0.0
-    DO k=1,na 
-       DO j=1,ncm
-          DO i=1,ncf
-             buf(i,j,k) = inbuf(l)
-             l = l + 1
-          END DO
-       END DO
-    END DO
+    l2 = l
 
     ! Get correct sub-interval number for this set of coefficients and
     ! then get normalized Chebyshev time within that subinterval.
@@ -1392,16 +1404,9 @@ CONTAINS
        npos = ncf
     END IF
 
-    ! interpolate to get position for each component
-    DO i=1,ncm
-       pos(i) = 0.0_rprec8
-       DO j=ncf,1,-1
-          pos(i) = pos(i) + pc(j) * buf(j,i,l)
-       END DO
-    END DO
-
     ! if velocity interpolation is wanted, be sure enough
     ! derivative polynomials have been generated and stored.
+
     IF (ABS(time(2)) < EPSILON(time(2))) THEN
        error = .TRUE.
        WRITE(0,*) 'interpolate(): Attempted division by zero.'
@@ -1416,13 +1421,21 @@ CONTAINS
        nvel = ncf
     ENDIF
 
-    ! interpolate to get velocity for each component
-    DO i=1, ncm
-       vel(i) = 0.0_rprec8
-       DO j=ncf,2,-1
-          vel(i) = vel(i) + vc(j) * buf(j,i,l)
+    ! interpolate to get position and velocity for each component
+    l2 = l2 + (l-1)* ncm *ncf
+    pos = 0.0_rprec8
+    vel = 0.0_rprec8
+    DO i=1,ncm
+       l2 = l2 + ncf
+       DO j=ncf,2,-1 ! Velocity is only computed down to j=2, while pos to j=1
+          l2 = l2 - 1
+          pos(i) = pos(i) + pc(j) * inbuf(l2)
+          vel(i) = vel(i) + vc(j) * inbuf(l2)
        END DO
+       l2 = l2 - 1
+       pos(i) = pos(i) + pc(1) * inbuf(l2)
        vel(i) = vel(i) * vfac
+       l2 = l2 + ncf
     END DO
 
     svector = (/ pos(1:3), vel(1:3) /)
@@ -1473,7 +1486,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! The Roche limit 'd' for a fluid satellite where 
+  !! The Roche limit 'd' for a fluid satellite where
   !!
   !!    d ~ 2.44 * r_planet * (rho_planet/rho_satellite)^(1/3))
   !!
@@ -1490,7 +1503,239 @@ CONTAINS
 
   END FUNCTION Roche_limit
 
+  !! *Description*:
+  !!
+  !! If used for the first time during execution, this routine reads
+  !! the BC430 asteroid ephemerides from a given file
+  !! and stores the data in an array.
+  !! Files 'asteroid_ephemeris.txt', 'asteroid_indices.txt' and
+  !! 'asteroid_masses.txt' required in working directory or the program explodes.
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE BC_ephemeris_init(ntarget,error)
 
+    IMPLICIT NONE
+    LOGICAL, INTENT(inout)                     :: error
+    INTEGER, INTENT(inout)                     :: ntarget
+    REAL(rprec8) mjd_0
+    REAL(rprec8), DIMENSION(:), ALLOCATABLE    :: fbuffer
+    INTEGER i, j, k, to_include
+    mjd_0 = 2378495.0 - 2400000.5
+    ntarget = 300
+
+    ALLOCATE(fbuffer(6575400))
+    OPEN(unit=14,file='asteroid_indices.txt')
+    to_include = ntarget
+    DO i=1,ntarget
+       READ(14,*) asteroid_indices(i)
+       IF (asteroid_indices(i)(1:1) == "#") THEN
+          asteroid_masks(i) = .FALSE.
+          to_include = to_include - 1
+       END IF
+    END DO
+        OPEN(unit=13,file='asteroid_ephemeris.txt')
+    DO i=1,SIZE(fbuffer) ! Read asteroid_ephemeris into fbuffer
+       READ(13,*) fbuffer(i)
+    END DO
+    CLOSE(unit=13)
+    k = 1
+    ALLOCATE(asteroid_ephemerides(to_include,3653,6), asteroid_masses(to_include))
+    write(0, *) "Total number of asteroids to include:", to_include
+    DO i=1,ntarget ! Parse fbuffer into asteroid_ephemerides
+       IF (asteroid_masks(i)) THEN
+         write(0, *) "Including asteroid", asteroid_indices(i)
+          DO j = 1, 3653
+             asteroid_ephemerides(k,j,1) = fbuffer(1800*(j-1) + 6*(i-1) + 1)
+             asteroid_ephemerides(k,j,2) = fbuffer(1800*(j-1) + 6*(i-1) + 2)
+             asteroid_ephemerides(k,j,3) = fbuffer(1800*(j-1) + 6*(i-1) + 3)
+             asteroid_ephemerides(k,j,5) = fbuffer(1800*(j-1) + 6*(i-1) + 4)
+             asteroid_ephemerides(k,j,4) = fbuffer(1800*(j-1) + 6*(i-1) + 5)
+             asteroid_ephemerides(k,j,6) = fbuffer(1800*(j-1) + 6*(i-1) + 6)
+          END DO
+          k = k + 1
+       END IF
+    END DO
+    DEALLOCATE(fbuffer)
+    DO i=1,3653
+       asteroid_epochs(i) = mjd_0 + 40*(i-1)
+    END DO
+    OPEN(unit=13,file='asteroid_masses.txt')
+    k=1
+    DO i=1,ntarget
+       IF (asteroid_masks(i)) THEN
+          READ(13,*) asteroid_masses(k)
+          k = k + 1
+       END IF
+    END DO
+    CLOSE(unit=13)
+    CLOSE(unit=14)
+    ntarget = to_include
+    WRITE(0,*) "initialization complete."
+
+
+  END SUBROUTINE BC_ephemeris_init
+
+  ! Returns the BC430 masses for ntarget asteroids.
+  FUNCTION BC_masses_r8(ntarget)
+
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: ntarget
+    REAL(rprec8), DIMENSION(:), POINTER :: BC_masses_r8
+
+    ALLOCATE(BC_masses_r8(ntarget))
+
+    BC_masses_r8(:) = asteroid_masses(1:ntarget)
+  END FUNCTION BC_masses_r8
+
+
+  !! *Description*:
+  !!
+  !! Reads the BC430 asteroid Ephemeris and gives the position and
+  !! velocity of the ntarget most massive asteroids at epoch mjd_tt.
+  !!
+  !! ntarget = integer amount of asteroids wanted. Starts from
+  !! most massive ones -> need a better scheme later. 300 = everything.
+  !! Output is a 6-vector containing position and velocity of point
+  !! 'ntarget' relative to 'ncenter' in an equatorial reference
+  !! frame. The units are AU and AU/day.
+  !!
+  !! Returns error.
+  !!
+  FUNCTION BC_ephemeris_r8(mjd_tt, ntarget, error,km)
+
+    IMPLICIT NONE
+    REAL(rprec8), INTENT(in)              :: mjd_tt
+    INTEGER, INTENT(inout)                   :: ntarget
+    LOGICAL, INTENT(inout)                :: error
+    LOGICAL, OPTIONAL, INTENT(in)         :: km
+    REAL(rprec8), DIMENSION(:,:), POINTER :: BC_ephemeris_r8
+
+    REAL(rprec8) :: eph_epoch, dt, two_pi, fp, fpp, fppp, dx
+    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: tmp_elements, mean_motion,&
+         ea, ma, sigma, x,esinx,ecosx, f, cea, sea,b,dot_ea,celements, &
+         R2, sin_angles, cos_angles, v,r3,h
+    REAL(rprec8), DIMENSION(2)    :: tt2
+    REAL(rprec8), PARAMETER     :: kk = 0.85
+    REAL(rprec8), PARAMETER     :: tol = 1.0e-15
+    INTEGER, PARAMETER      :: nmax = 10000
+    REAL(rprec8), DIMENSION(:,:,:), ALLOCATABLE :: R
+    REAL(rprec8) :: eps
+
+
+
+    INTEGER, DIMENSION(12)        :: list
+    INTEGER                       :: i, j,k, err, ind
+    LOGICAL                       :: tmp_barycenter
+
+    IF (first_bc) THEN
+       CALL BC_ephemeris_init(ntarget,error)
+       IF (error) THEN
+          WRITE(0,*) "BC_ephemeris_r8(): Error when calling BC_ephemeris_init()."
+          RETURN
+       END IF
+       first_bc = .FALSE.
+    END IF
+  !  write(0,*) ntarget
+    two_pi = 8*ATAN(1.0d0)
+    eps = 23.43929111111111d0*two_pi/180.0d0/2.0d0
+    ALLOCATE(BC_ephemeris_r8(ntarget,6))
+    ALLOCATE(tmp_elements(ntarget,6))
+    ALLOCATE(mean_motion(ntarget,1))
+    ALLOCATE(R2(3,3))
+    ALLOCATE(ea(ntarget,1), ma(ntarget,1), sigma(ntarget,1), x(ntarget,1),esinx(ntarget,1),&
+         f(ntarget,1),ecosx(ntarget,1), cea(ntarget,1),sea(ntarget,1),b(ntarget,1), &
+         dot_ea(ntarget,1),celements(ntarget,6),v(ntarget,1), r3(ntarget,1),h(ntarget,1))
+    ALLOCATE(r(ntarget,3,3))
+    ALLOCATE(sin_angles(ntarget,3),cos_angles(ntarget,3))
+    ! First of all, lets find the ephemeris with the closest mjd to what we want.
+    ind = findLocation(mjd_tt, asteroid_epochs)!+1
+    eph_epoch = asteroid_epochs(ind)
+    dt = mjd_tt - eph_epoch
+    tmp_elements(:,:) = asteroid_ephemerides(1:ntarget,ind,1:6)
+    mean_motion(:,1) = SQRT(planetary_mu(11)/tmp_elements(:,1)**3)
+    tmp_elements(:,6) = MODULO(tmp_elements(:,6) + mean_motion(:,1)*dt, two_pi)
+
+    ! Ok, we have the Keplerian elements. Lets convert to cartesian like in the Orbit class.
+
+    ma(:,1) = tmp_elements(:,6)
+    ma(:,1) = MODULO(ma(:,1),two_pi)
+    sigma(:,1)= SIGN(1.0_rprec8,SIN(ma(:,1)))
+    x(:,1) = ma(:,1) + sigma(:,1)*kk*tmp_elements(:,2)
+
+    ! Solve Kepler's equation iteratively using Newton's accelerated method:
+    esinx(:,1) = tmp_elements(:,2)*SIN(x(:,1))
+    f(:,1) = x(:,1) - esinx(:,1) - ma(:,1)
+    DO j=1, ntarget
+       i = 1
+       DO WHILE (ABS(f(j,1)) >= tol)
+          IF (i > nmax) THEN
+             error = .TRUE.
+             RETURN
+          END IF
+          ecosx(j,1) = tmp_elements(j,2)*COS(x(j,1))
+          fp    = 1.0d0 - ecosx(j,1)
+          fpp   = esinx(j,1)
+          fppp  = ecosx(j,1)
+          dx    = -f(j,1)/fp
+          dx    = -f(j,1)/(fp+0.5d0*dx*fpp)
+          dx    = -f(j,1)/(fp+0.5d0*dx*fpp+dx*dx*fppp/6.0d0)
+          x(j,1)     = x(j,1) + dx
+          esinx(j,1)= tmp_elements(j,2)*SIN(x(j,1))
+          f(j,1)     = x(j,1) - esinx(j,1) - ma(j,1)
+          i     = i + 1
+       END DO
+    END DO
+    ea(:,1) = MODULO(x(:,1),two_pi)
+
+    cea(:,1) = COS(ea(:,1))
+    sea(:,1) = SIN(ea(:,1))
+    b(:,1) = tmp_elements(:,1) * SQRT(1.0 - tmp_elements(:,2)**2.0)
+    dot_ea(:,1) = SQRT(planetary_mu(11)/tmp_elements(:,1)**3.0) / &
+         (1.0 - tmp_elements(:,2)*cea(:,1))
+
+    !! Keplerian elements to polar Cartesian elements:
+    !! -positions:
+    celements(:,1) = tmp_elements(:,1)*(cea(:,1) - tmp_elements(:,2))
+    celements(:,2) = b(:,1)*sea(:,1)
+    celements(:,3) = 0.0
+    !! -velocities:
+    celements(:,4) = -1*tmp_elements(:,1)*dot_ea(:,1)*sea(:,1)
+    celements(:,5) = b(:,1)*dot_ea(:,1)*cea(:,1)
+    celements(:,6) = 0.0
+    sin_angles(:,:) = SIN(tmp_elements(:,3:5))
+    cos_angles(:,:) = COS(tmp_elements(:,3:5))
+
+    R(:,1,1) = cos_angles(:,2)*cos_angles(:,3) - &
+         sin_angles(:,2)*sin_angles(:,3)*cos_angles(:,1)
+    R(:,1,2) = -(cos_angles(:,2)*sin_angles(:,3) + &
+         sin_angles(:,2)*cos_angles(:,3)*cos_angles(:,1))
+    R(:,1,3) = sin_angles(:,2)*sin_angles(:,1)
+
+    R(:,2,1) = sin_angles(:,2)*cos_angles(:,3) + &!
+         cos_angles(:,2)*sin_angles(:,3)*cos_angles(:,1)
+    R(:,2,2) = -(sin_angles(:,2)*sin_angles(:,3) - &
+         cos_angles(:,2)*cos_angles(:,3)*cos_angles(:,1))
+    R(:,2,3) = -cos_angles(:,2)*sin_angles(:,1)
+
+    R(:,3,1) = sin_angles(:,3)*sin_angles(:,1)
+    R(:,3,2) = cos_angles(:,3)*sin_angles(:,1)
+    R(:,3,3) = cos_angles(:,1)
+    DO i=1,ntarget
+       celements(i,1:3) = MATMUL(R(i,:,:),celements(i,1:3))
+       celements(i,4:6) = MATMUL(R(i,:,:),celements(i,4:6))
+    END DO
+    ! Now lets rotate to equatorial..
+    R2(1,:) = (/ 1.0d0,   0.0d0,    0.0d0 /)
+    R2(2,:) = (/ 0.0d0, COS(eps), -SIN(eps) /)
+    R2(3,:) = (/ 0.0d0, SIN(eps),  COS(eps) /)
+    DO i=1, ntarget
+       celements(i,1:3) = MATMUL(r2,celements(i,1:3))
+       celements(i,4:6) = MATMUL(r2,celements(i,4:6))
+    END DO
+    BC_ephemeris_r8(:,:) = celements(:,:)
+  END FUNCTION BC_ephemeris_r8
 
 
 END MODULE planetary_data

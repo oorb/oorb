@@ -104,8 +104,9 @@ MODULE Orbit_cl
      CHARACTER(len=INTEGRATOR_LEN)       :: integrator_prm       = "bulirsch-stoer"
      REAL(bp), DIMENSION(:,:), POINTER   :: additional_perturbers => NULL() ! (car equ + mjdtt + mass)
      REAL(bp), DIMENSION(6)              :: finite_diff_prm      = -1.0_bp
-     REAL(bp)                            :: integration_step_prm = 5.0_bp 
+     REAL(bp)                            :: integration_step_prm = 5.0_bp
      LOGICAL, DIMENSION(10)              :: perturbers_prm       = .FALSE.
+     LOGICAL                             :: ast_perturbers_prm   = .FALSE.
      ! Mass of the asteroid in solar masses (M_sol). A negative value
      ! indicates that this orbit is integrated as a test particle, ie,
      ! it has no effect on the orbits of other objects. Default is -1.
@@ -730,11 +731,11 @@ CONTAINS
   !! Muinonen (n-body). The frame of the output orbit is defined by
   !! the equal frames of the input positions. The Sun is the central
   !! body.
-  !! 
+  !!
   !! Returns error.
   !!
   RECURSIVE SUBROUTINE new_Orb_2point(this, ccoord0, ccoord1, &
-       method, smamax, ftol, iter, perturbers, integrator, &
+       method, smamax, ftol, iter, perturbers, asteroid_perturbers, integrator, &
        integration_step, center)
 
     IMPLICIT NONE
@@ -745,6 +746,7 @@ CONTAINS
     REAL(bp), INTENT(in), OPTIONAL                    :: ftol
     INTEGER(ibp), INTENT(out), OPTIONAL               :: iter
     LOGICAL, DIMENSION(:), INTENT(in), OPTIONAL       :: perturbers
+    LOGICAL, INTENT(in), OPTIONAL                     :: asteroid_perturbers
     CHARACTER(len=*), INTENT(in), OPTIONAL            :: integrator
     REAL(bp), INTENT(in), OPTIONAL                    :: integration_step
     INTEGER, INTENT(in), OPTIONAL                     :: center
@@ -830,6 +832,11 @@ CONTAINS
        this%perturbers_prm = perturbers
     ELSE
        this%perturbers_prm = .TRUE.
+    END IF
+    IF (PRESENT(asteroid_perturbers)) THEN
+       this%ast_perturbers_prm = asteroid_perturbers
+    ELSE
+       this%ast_perturbers_prm = .FALSE.
     END IF
     IF (PRESENT(integrator)) THEN
        this%integrator_prm = integrator
@@ -1113,6 +1120,7 @@ CONTAINS
        CALL setParameters(orb_arr(1), &
             dyn_model=this%dyn_model_prm, &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm,&
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
        y_vector(1) = distance_2b(orb_arr(1))
@@ -1125,6 +1133,7 @@ CONTAINS
           this = copy(orb)
           this%dyn_model_prm = "2-body"
           this%perturbers_prm = perturbers
+          this%ast_perturbers_prm = asteroid_perturbers
           this%integrator_prm = integrator
           this%integration_step_prm = integration_step
           CALL NULLIFY(orb)
@@ -1144,6 +1153,7 @@ CONTAINS
           CALL setParameters(orb_arr(i), &
                dyn_model=this%dyn_model_prm, &
                perturbers=this%perturbers_prm, &
+               asteroid_perturbers=this%ast_perturbers_prm, &
                integrator=this%integrator_prm, &
                integration_step=this%integration_step_prm)
           y_vector(i) = distance_2b(orb_arr(i))
@@ -1219,6 +1229,7 @@ CONTAINS
        CALL setParameters(orb_arr(1), &
             dyn_model="n-body", &
             perturbers=this%perturbers_prm, &
+            asteroid_perturbers=this%ast_perturbers_prm, &
             integrator=this%integrator_prm, &
             integration_step=this%integration_step_prm)
        y_vector(1) = distance(orb_arr(1))
@@ -1231,6 +1242,7 @@ CONTAINS
           this = copy(orb)
           this%dyn_model_prm = "n-body"
           this%perturbers_prm = perturbers
+          this%ast_perturbers_prm = asteroid_perturbers
           this%integrator_prm = integrator
           this%integration_step_prm = integration_step
           CALL NULLIFY(orb)
@@ -1252,6 +1264,7 @@ CONTAINS
           CALL setParameters(orb_arr(i), &
                dyn_model="n-body", &
                perturbers=this%perturbers_prm, &
+               asteroid_perturbers=this%ast_perturbers_prm, &
                integrator=this%integrator_prm, &
                integration_step=this%integration_step_prm)
           y_vector(i) = distance(orb_arr(i))
@@ -1401,6 +1414,7 @@ CONTAINS
                      CALL setParameters(orb, &
                           dyn_model=this%dyn_model_prm, &
                           perturbers=this%perturbers_prm, &
+                          asteroid_perturbers=this%ast_perturbers_prm, &
                           integrator=this%integrator_prm, &
                           integration_step=this%integration_step_prm)
                      IF (error) THEN
@@ -1527,6 +1541,7 @@ CONTAINS
                      CALL setParameters(orb, &
                           dyn_model=this%dyn_model_prm, &
                           perturbers=this%perturbers_prm, &
+                          asteroid_perturbers=this%ast_perturbers_prm, &
                           integrator=this%integrator_prm, &
                           integration_step=this%integration_step_prm)
                      IF (error) THEN
@@ -1582,6 +1597,7 @@ CONTAINS
       CALL setParameters(orb, &
            dyn_model=this%dyn_model_prm, &
            perturbers=this%perturbers_prm, &
+           asteroid_perturbers=this%ast_perturbers_prm, &
            integrator=this%integrator_prm, &
            integration_step=this%integration_step_prm)
       IF (error) THEN
@@ -1638,6 +1654,7 @@ CONTAINS
       CALL setParameters(orb, &
            dyn_model=this%dyn_model_prm, &
            perturbers=this%perturbers_prm, &
+           asteroid_perturbers=this%ast_perturbers_prm, &
            integrator=this%integrator_prm, &
            integration_step=this%integration_step_prm)
       IF (error) THEN
@@ -2004,6 +2021,7 @@ CONTAINS
     copy_Orb%center   = this%center
     copy_Orb%dyn_model_prm  = this%dyn_model_prm
     copy_Orb%perturbers_prm(:) = this%perturbers_prm(:)
+    copy_Orb%ast_perturbers_prm = this%ast_perturbers_prm
     IF (ASSOCIATED(this%additional_perturbers)) THEN
        ALLOCATE(copy_Orb%additional_perturbers(SIZE(this%additional_perturbers,dim=1), &
             SIZE(this%additional_perturbers,dim=2)), stat=err)
@@ -9006,7 +9024,7 @@ CONTAINS
                 IF (PRESENT(radial_acceleration)) THEN
                    CALL bulirsch_full_jpl(this_arr(1)%additional_perturbers(1,7), &
                         mjd_tt0, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
-                        this_arr(1)%perturbers_prm, error, &
+                        this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                         step=this_arr(1)%integration_step_prm, &
                         ncenter=center, &
                         masses=this_arr(1)%additional_perturbers(:,8), &
@@ -9014,7 +9032,7 @@ CONTAINS
                 ELSE
                    CALL bulirsch_full_jpl(this_arr(1)%additional_perturbers(1,7), &
                         mjd_tt0, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
-                        this_arr(1)%perturbers_prm, error, &
+                        this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                         step=this_arr(1)%integration_step_prm, &
                         ncenter=center, &
                         masses=this_arr(1)%additional_perturbers(:,8), &
@@ -9086,7 +9104,7 @@ CONTAINS
                 IF (PRESENT(encounters)) THEN
                    IF (PRESENT(radial_acceleration)) THEN
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
                            ncenter=center, &
@@ -9094,7 +9112,7 @@ CONTAINS
                            masses=masses_, info_verb=info_verb)
                    ELSE
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
                            ncenter=center, &
@@ -9108,7 +9126,7 @@ CONTAINS
                 ELSE
                    IF (PRESENT(radial_acceleration)) THEN
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
                            ncenter=center, masses=masses_, &
@@ -9116,7 +9134,7 @@ CONTAINS
                            radial_acceleration=radial_acceleration)
                    ELSE
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
                            ncenter=center, masses=masses_, &
@@ -9133,7 +9151,7 @@ CONTAINS
                 IF (PRESENT(encounters)) THEN
                    IF (PRESENT(radial_acceleration)) THEN
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, &
                            encounters=encounters_, &
@@ -9141,7 +9159,7 @@ CONTAINS
                            radial_acceleration=radial_acceleration)
                    ELSE
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, &
                            encounters=encounters_, &
@@ -9154,14 +9172,14 @@ CONTAINS
                 ELSE
                    IF (PRESENT(radial_acceleration)) THEN
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, masses=masses_, &
                            info_verb=info_verb, &
                            radial_acceleration=radial_acceleration)
                    ELSE
                       CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_, &
-                           this_arr(1)%perturbers_prm, error, &
+                           this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, masses=masses_, &
                            info_verb=info_verb)
@@ -9227,7 +9245,7 @@ CONTAINS
                      elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
                      12, &
                      2, &
-                     this_arr(1)%perturbers_prm, &
+                     this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, &
                      error, &
                      step=this_arr(1)%integration_step_prm, &
                      ncenter=center, &
@@ -9277,13 +9295,13 @@ CONTAINS
              ! finite differences technique:
              IF (PRESENT(encounters)) THEN
                 CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
-                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
+                     elm_arr, 12, 2, this_arr(1)%perturbers_prm,this_arr(1)%ast_perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      ncenter=center, encounters=encounters, &
                      masses=masses)
              ELSE
                 CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
-                     elm_arr, 12, 2, this_arr(1)%perturbers_prm, &
+                     elm_arr, 12, 2, this_arr(1)%perturbers_prm,this_arr(1)%ast_perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      ncenter=center, &
                      masses=masses)
@@ -9836,6 +9854,7 @@ CONTAINS
        integrator, &
        finite_diff, &
        perturbers, &
+       asteroid_perturbers, &
        additional_perturbers)
 
     IMPLICIT NONE
@@ -9847,6 +9866,7 @@ CONTAINS
     REAL(bp), INTENT(in), OPTIONAL               :: integration_step
     REAL(bp), INTENT(in), OPTIONAL               :: mass
     LOGICAL, DIMENSION(10), OPTIONAL             :: perturbers
+    LOGICAL, OPTIONAL                            :: asteroid_perturbers
 
     CHARACTER(len=256) :: str
     INTEGER :: err
@@ -9909,13 +9929,16 @@ CONTAINS
     IF (PRESENT(perturbers)) THEN
        this%perturbers_prm = perturbers
     END IF
+    IF (PRESENT(asteroid_perturbers)) THEN
+       this%ast_perturbers_prm = asteroid_perturbers
+    END IF
     IF (PRESENT(additional_perturbers)) THEN
        IF (SIZE(additional_perturbers,dim=2) < 8) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / setParameters", &
                "Too few parameters provided for additional perturbers. " // &
                "Minimum information includes orbital elements, epoch, and perturber mass.", 1)
-          RETURN          
+          RETURN
        END IF
        IF (.NOT.ASSOCIATED(this%additional_perturbers)) THEN
           ALLOCATE(this%additional_perturbers(SIZE(additional_perturbers,dim=1), &

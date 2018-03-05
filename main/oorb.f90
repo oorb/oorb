@@ -360,8 +360,8 @@ PROGRAM oorb
        separately, separately_, & !! Output orbit(s)/ephemerides/etc separately for each object
        smplx_force, &
        dchi2_rejection, &
-       write_residuals
-
+       write_residuals, &
+       asteroid_perturbers
   ! Defaults:
   error = .FALSE.
   task = " "
@@ -463,7 +463,8 @@ PROGRAM oorb
        simint=simint, &
        pp_H_estimation=pp_H_estimation, &
        pp_G=pp_G, &
-       pp_G_unc=pp_G_unc)
+       pp_G_unc=pp_G_unc, &
+       asteroid_perturbers=asteroid_perturbers  )
   IF (error) THEN
      CALL errorMessage("oorb", &
           "TRACE BACK (15)", 1)
@@ -1765,6 +1766,7 @@ PROGRAM oorb
           t0=epoch, &
           dyn_model=dyn_model, &
           perturbers=perturbers, &
+          asteroid_perturbers=asteroid_perturbers, &
           integrator=integrator, &
           integration_step=integration_step, &
           dyn_model_init=dyn_model_init, &
@@ -1932,6 +1934,7 @@ PROGRAM oorb
         CALL setParameters(storb, &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
@@ -2652,6 +2655,7 @@ PROGRAM oorb
         CALL setParameters(storb, &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
@@ -2678,6 +2682,7 @@ PROGRAM oorb
               CALL setParameters(orb_arr_(k), &
                    dyn_model=dyn_model_init, &
                    perturbers=perturbers, &
+                   asteroid_perturbers=asteroid_perturbers, &
                    integrator=integrator_init, &
                    integration_step=integration_step_init)
               IF (error) THEN
@@ -2694,6 +2699,7 @@ PROGRAM oorb
               CALL setParameters(orb_arr_(k), &
                    dyn_model=dyn_model, &
                    perturbers=perturbers, &
+                   asteroid_perturbers=asteroid_perturbers, &
                    integrator=integrator, &
                    integration_step=integration_step)
               IF (error) THEN
@@ -3113,6 +3119,7 @@ PROGRAM oorb
         CALL setParameters(storb, &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
@@ -3141,6 +3148,7 @@ PROGRAM oorb
            CALL setParameters(orb_arr(k), &
                 dyn_model=dyn_model_init, &
                 perturbers=perturbers, &
+                asteroid_perturbers=asteroid_perturbers, &
                 integrator=integrator_init, &
                 integration_step=integration_step_init)
            IF (error) THEN
@@ -3157,6 +3165,7 @@ PROGRAM oorb
            CALL setParameters(orb_arr(k), &
                 dyn_model=dyn_model, &
                 perturbers=perturbers, &
+                asteroid_perturbers=asteroid_perturbers, &
                 integrator=integrator, &
                 integration_step=integration_step)
            IF (error) THEN
@@ -3711,6 +3720,7 @@ PROGRAM oorb
            CALL setParameters(orb_arr(k), &
                 dyn_model=dyn_model, &
                 perturbers=perturbers, &
+                asteroid_perturbers=asteroid_perturbers, &
                 integrator=integrator, &
                 integration_step=integration_step)
            IF (error) THEN
@@ -3733,6 +3743,7 @@ PROGRAM oorb
            CALL setParameters(storb, &
                 dyn_model=dyn_model, &
                 perturbers=perturbers, &
+                asteroid_perturbers=asteroid_perturbers, &
                 integrator=integrator, &
                 integration_step=integration_step, &
                 outlier_rejection=outlier_rejection_prm, &
@@ -4392,6 +4403,7 @@ PROGRAM oorb
            CALL setParameters(orb_arr(k), &
                 dyn_model=dyn_model, &
                 perturbers=perturbers, &
+                asteroid_perturbers=asteroid_perturbers, &
                 integrator=integrator, &
                 integration_step=integration_step)
            IF (error) THEN
@@ -4410,6 +4422,7 @@ PROGRAM oorb
              t_inv=t, &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, &
              integration_step=integration_step, &
              dchi2_rejection = dchi2_rejection, &
@@ -4994,6 +5007,7 @@ PROGRAM oorb
         CALL setParameters(storb, &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
@@ -5019,6 +5033,7 @@ PROGRAM oorb
            CALL setParameters(orb_arr(j), &
                 dyn_model=dyn_model_init, &
                 perturbers=perturbers, &
+                asteroid_perturbers=asteroid_perturbers, &
                 integrator=integrator_init, &
                 integration_step=integration_step_init)
            IF (error) THEN
@@ -5035,6 +5050,7 @@ PROGRAM oorb
            CALL setParameters(orb_arr(j), &
                 dyn_model=dyn_model, &
                 perturbers=perturbers, &
+                asteroid_perturbers=asteroid_perturbers, &
                 integrator=integrator, &
                 integration_step=integration_step)
            IF (error) THEN
@@ -5681,6 +5697,7 @@ PROGRAM oorb
         CALL setParameters(storb, &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
@@ -6062,6 +6079,7 @@ PROGRAM oorb
      CALL setParameters(storb_arr_in(1), &
           dyn_model=dyn_model, &
           perturbers=perturbers, &
+          asteroid_perturbers=asteroid_perturbers, &
           integrator=integrator, &
           integration_step=integration_step, &
           outlier_rejection=outlier_rejection_prm, &
@@ -6220,8 +6238,8 @@ PROGRAM oorb
 
            ! Set integration parameters
            CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
+                perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                integrator=integrator, integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
                    "TRACE BACK (15)", 1)
@@ -6557,8 +6575,8 @@ PROGRAM oorb
 
            ! Set integration parameters
            CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
+                perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                integrator=integrator, integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / propagation", &
                    "TRACE BACK (120)", 1)
@@ -6804,8 +6822,8 @@ PROGRAM oorb
 
            ! Set integration parameters
            CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
+                perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                integrator=integrator, integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / ephemeris", &
                    "TRACE BACK (20)", 1)
@@ -7032,8 +7050,8 @@ PROGRAM oorb
 
            ! Set integration parameters
            CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
+                perturbers=perturbers, asteroid_perturbers=asteroid_perturbers,&
+                integrator=integrator, integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / ephemeris", &
                    "TRACE BACK (15)", 1)
@@ -7463,8 +7481,8 @@ PROGRAM oorb
 
         ! Set integration parameters
         CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
-             perturbers=perturbers, integrator=integrator, &
-             integration_step=integration_step)
+             perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+             integrator=integrator, integration_step=integration_step)
         IF (error) THEN
            CALL errorMessage("oorb / phasecurve", &
                 "TRACE BACK (15)", 1)
@@ -8040,8 +8058,8 @@ PROGRAM oorb
 
            ! Set integration parameters
            CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
+                perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                integrator=integrator, integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / obsplanner", &
                    "TRACE BACK (15)", 1)
@@ -8566,8 +8584,8 @@ PROGRAM oorb
 
            ! Set integration parameters
            CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
-                perturbers=perturbers, integrator=integrator, &
-                integration_step=integration_step)
+                perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                integrator=integrator, integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / fou", &
                    "TRACE BACK (20)", 1)
@@ -9256,6 +9274,7 @@ PROGRAM oorb
         CALL setParameters(orb_arr_in(i), &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, &
              integration_step=integration_step)
 
