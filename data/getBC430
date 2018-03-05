@@ -30,7 +30,7 @@
 # Author: LS
 # Date:   2018-02-05
 
-wget http://staff.not.iac.es/~siltala/asteroid_indices.txt
-wget http://staff.not.iac.es/~siltala/asteroid_masses.txt
-wget http://staff.not.iac.es/~siltala/asteroid_ephemeris.txt
+curl -L -O -\# -C - -f http://staff.not.iac.es/~siltala/asteroid_indices.txt
+curl -L -O -\# -C - -f http://staff.not.iac.es/~siltala/asteroid_masses.txt
+curl -L -O -\# -C - -f http://staff.not.iac.es/~siltala/asteroid_ephemeris.txt
 
