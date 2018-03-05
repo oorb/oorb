@@ -1141,7 +1141,7 @@ CONTAINS
                 END SELECT
              END IF
           END IF
-       CASE ("perturber.Asteroids")
+       CASE ("perturber.asteroids")
          IF (PRESENT(asteroid_perturbers)) THEN
             IF (.NOT.error) THEN
                SELECT CASE (ADJUSTL(par_val))
@@ -3137,7 +3137,7 @@ CONTAINS
           header(4)(indx:indx+22) = ">--------0050--------<"
           indx = indx + 22
        ELSE IF (element_type_out == "poincare") THEN
-          !! Output Poincaré elements calculated from Delaunay's
+          !! Output PoincarÃ© elements calculated from Delaunay's
           !! elements. The mass of the target body is assumed to be negligible
           !! compared to the mass of the Sun.
           !  (&radic = square root)
