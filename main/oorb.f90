@@ -69,7 +69,8 @@ PROGRAM oorb
        obss_sep => NULL()
   TYPE (Observations) :: &
        obss, &
-       obss_in  
+       obss_in, &
+       obss_in_temp
   TYPE (Observation) :: &
        obs
   TYPE (Observation), DIMENSION(:), POINTER :: &
@@ -135,7 +136,10 @@ PROGRAM oorb
        orb_out_fname, &                                             !! Path to output orbit file (incl. fname).
        out_fname, &                                                 !! Path to generic output file (incl. fname).
        tmp_fname, &
+       buffer, &
        line
+  CHARACTER(len=FNAME_LEN) , DIMENSION(:), ALLOCATABLE :: &
+       fnames
   CHARACTER(len=ELEMENT_TYPE_LEN) :: &
        element_type_comp_prm, &                                     !! Element type to be used in computations.
        element_type_in, &                                           !! Element type of input orbit(s).
@@ -322,7 +326,8 @@ PROGRAM oorb
        vov_norb_iter, vov_ntrial_iter, vov_nmap, &
        vomcmc_type, vomcmc_type_prm, vomcmc_norb, vomcmc_ntrial, vomcmc_niter, &
        vomcmc_norb_iter, vomcmc_ntrial_iter, vomcmc_nmap, &
-       year, year0, year1
+       year, year0, year1, &
+       loc, nfile
   LOGICAL, DIMENSION(:,:), POINTER :: &
        obs_masks => NULL()
   LOGICAL, DIMENSION(:), POINTER :: &
@@ -334,6 +339,7 @@ PROGRAM oorb
   LOGICAL, DIMENSION(4) :: &
        sor_iterate_bounds
   LOGICAL :: &
+       reading, &
        compress, &
        cos_gaussian, &
        first, &
@@ -490,28 +496,93 @@ PROGRAM oorb
   ! Read observation file if given:
   obs_fname = get_cl_option("--obs-in="," ")
   IF (LEN_TRIM(obs_fname) /= 0) THEN
-     CALL NEW(obs_file, TRIM(obs_fname))
-     CALL setActionRead(obs_file)
-     CALL setStatusOld(obs_file)
-     CALL OPEN(obs_file)
-     IF (error) THEN
-        CALL errorMessage("oorb", &
-             "TRACE BACK (30)", 1)
-        STOP
-     END IF
-     IF (ANY(obs_stdev_arr_prm < 0.0_bp)) THEN
-        CALL NEW(obss_in, obs_file)
-     ELSE
-        CALL NEW(obss_in, obs_file, stdev=obs_stdev_arr_prm)
-     END IF
-     IF (error) THEN
-        CALL errorMessage("oorb", &
-             "TRACE BACK (35)", 1)
-        STOP
-     END IF
-     CALL NULLIFY(obs_file)
-     indx = INDEX(obs_fname,".",back=.TRUE.)
-     out_fname = obs_fname(1:indx-1)
+     loc = 0
+     nfile = 1         ! Need to start at 1 because the while loop below
+     buffer = obs_fname ! won't take the last one into account.
+     reading = .TRUE.
+     DO WHILE (reading .EQV. .TRUE.)      ! Check amount of commas (ie amount of obs files)
+        loc = INDEX(buffer, ",")
+        IF (loc == 0) THEN
+           reading = .FALSE.
+           CYCLE
+        END IF
+        buffer = buffer(loc+1:)
+        nfile = nfile + 1
+     END DO
+     ! Now that we know the amount of files, get each individual name
+     buffer = obs_fname
+     ALLOCATE(fnames(nfile))
+     DO i=1, nfile-1
+        loc = INDEX(buffer, ",")
+        fnames(i) = buffer(1:loc-1)
+        buffer = buffer(loc+1:)
+     END DO
+     fnames(nfile) = buffer
+     ! Now that we have the filenames, read them
+     DO i=1, SIZE(fnames)
+        CALL NEW(obs_file, TRIM(fnames(i)))
+        CALL setActionRead(obs_file)
+        CALL setStatusOld(obs_file)
+        CALL OPEN(obs_file)
+        IF (error) THEN
+           CALL errorMessage("oorb", &
+                "TRACE BACK (30)", 1)
+           STOP
+        END IF
+        IF (i == 1) THEN
+           IF (ANY(obs_stdev_arr_prm < 0.0_bp)) THEN
+              CALL NEW(obss_in, obs_file)
+           ELSE
+              CALL NEW(obss_in, obs_file, stdev=obs_stdev_arr_prm)
+           END IF
+
+           IF (error) THEN
+              CALL errorMessage("oorb", &
+                   "TRACE BACK (35)", 1)
+              STOP
+           END IF
+           CALL NULLIFY(obs_file)
+        ELSE
+           IF (ANY(obs_stdev_arr_prm < 0.0_bp)) THEN
+              CALL NEW(obss_in_temp, obs_file)
+           ELSE
+              CALL NEW(obss_in_temp, obs_file, stdev=obs_stdev_arr_prm)
+           END IF
+           obss_in = obss_in + obss_in_temp
+           CALL NULLIFY(obss_in_temp)
+           IF (error) THEN
+              CALL errorMessage("oorb", &
+                   "TRACE BACK (35)", 1)
+              STOP
+           END IF
+        END IF
+
+        CALL NULLIFY(obs_file)
+        ! Now we come up with the output filenames.
+        indx = INDEX(obs_fname,".",back=.TRUE.)
+        out_fname = obs_fname(1:indx-1)
+        reading = .TRUE.
+        DO WHILE (reading .EQV. .TRUE.) ! Remove commas from filename
+           indx = INDEX(out_fname,",",back=.TRUE.)
+           IF (indx == 0) THEN
+              reading = .FALSE.
+           ELSE
+              out_fname(indx:indx) = "_"
+           END IF
+        END DO
+        reading = .TRUE.
+        j = 1
+        DO WHILE (reading .EQV. .TRUE.) ! Remove backslashes from filename
+
+           indx = INDEX(out_fname,"/",back=.TRUE.)
+           IF (indx == 0) THEN
+              reading = .FALSE.
+
+           ELSE
+              out_fname(indx:indx) = "_"
+           END IF
+        END DO
+     END DO
      obss_sep => getSeparatedSets(obss_in)
      IF (error) THEN
         CALL errorMessage("oorb", &

@@ -194,6 +194,14 @@ The output is divided into the following columns (as marked by a single-line hea
 
 ## Usage ##
 
+### Can I input multiple observation files simultaneously? ###
+
+Yes. Simply add each observation file into --obs-in separated by
+commas and OpenOrb will seamlessly include observations from each file
+into the computation.
+
+> `oorb --obs-in=OBSERVATIONFILE1,OBSERVATIONFILE2,OBSERVATIONFILE3`
+
 ### Can I specify a date for which I want an ephemeris to be computed? ###
 
 No. At the moment the only option is to first explicitly propagate the orbits to the desired date by using, e.g.,
