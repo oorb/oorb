@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2018-01-11
+!! @version 2018-03-03
 !!
 PROGRAM oorb
 
@@ -5022,48 +5022,59 @@ PROGRAM oorb
               END IF
            END DO
            IF (noutlier > SIZE(obs_masks,dim=1)/5) THEN
-              ! In case of too many outliers (>20% of obs), throw the
-              ! observation set in a separate bin:
-              CALL NEW(out_file, "observation_sets_with_many_outliers." // TRIM(observation_format_out))
-              CALL setPositionAppend(out_file)
-              CALL OPEN(out_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / lsl", &
-                      "TRACE BACK (145)", 1)
-                 STOP
-              END IF
-              WRITE(getUnit(out_file),"(1X)")
-              WRITE(getUnit(out_file),"(A,I0,A)",advance="no") "# ", &
-                   noutlier, " outliers: "
-              DO j=1,SIZE(obs_masks,dim=1)
-                 IF (ALL(.NOT.obs_masks(j,:))) THEN
-                    WRITE(getUnit(out_file),"(A)",advance="no") "*"
-                 ELSE
-                    WRITE(getUnit(out_file),"(A)",advance="no") "-"
-                 END IF
-              END DO
-              WRITE(getUnit(out_file),"(1X)")
-              CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
-                   TRIM(observation_format_out))
-              IF (error) THEN
-                 CALL errorMessage("oorb / lsl", &
-                      "TRACE BACK (150)", 1)
-                 STOP
-              END IF
-              CALL NULLIFY(out_file)
-              IF (error) THEN
-                 CALL errorMessage("oorb / lsl", &
-                      "TRACE BACK (155)", 1)
-                 STOP
-              END IF
-              CALL errorMessage("oorb / lsl", &
+              CALL warningMessage("oorb / lsl", &
                    "More than 20% of the observations have been" // &
                    "discarded as outliers.", 1)
-              STOP
-           ELSE
-              CYCLE
+              ! In case of too many outliers (>20% of obs), try new
+              ! initial orbit or declare error.
+              IF (j == SIZE(orb_arr,dim=1)) THEN
+                 ! If no more initial orbits left, throw the
+                 ! observation set in a separate bin and declare
+                 ! error.
+                 CALL errorMessage("oorb / lsl", &
+                      "No more initial orbits left", 1)
+                 CALL NEW(out_file, "observation_sets_with_many_outliers." // &
+                      TRIM(observation_format_out))
+                 CALL setPositionAppend(out_file)
+                 CALL OPEN(out_file)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / lsl", &
+                         "TRACE BACK (145)", 1)
+                    STOP
+                 END IF
+                 WRITE(getUnit(out_file),"(1X)")
+                 WRITE(getUnit(out_file),"(A,I0,A)",advance="no") "# ", &
+                      noutlier, " outliers: "
+                 DO j=1,SIZE(obs_masks,dim=1)
+                    IF (ALL(.NOT.obs_masks(j,:))) THEN
+                       WRITE(getUnit(out_file),"(A)",advance="no") "*"
+                    ELSE
+                       WRITE(getUnit(out_file),"(A)",advance="no") "-"
+                    END IF
+                 END DO
+                 WRITE(getUnit(out_file),"(1X)")
+                 CALL writeObservationFile(obss_sep(i), getUnit(out_file), &
+                      TRIM(observation_format_out))
+                 IF (error) THEN
+                    CALL errorMessage("oorb / lsl", &
+                         "TRACE BACK (150)", 1)
+                    STOP
+                 END IF
+                 CALL NULLIFY(out_file)
+                 IF (error) THEN
+                    CALL errorMessage("oorb / lsl", &
+                         "TRACE BACK (155)", 1)
+                    STOP
+                 END IF
+                 DEALLOCATE(obs_masks, stat=err)
+                 STOP
+              ELSE
+                 CALL warningMessage("oorb / lsl", &
+                      "Will try another initial orbit.", 2)
+                 DEALLOCATE(obs_masks, stat=err)
+                 CYCLE
+              END IF
            END IF
-           DEALLOCATE(obs_masks, stat=err)
 
            IF (pp_H_estimation) THEN
               CALL NEW(physparam, storb)
