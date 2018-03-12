@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2018-01-10
+!! @version 2018-03-12
 !!  
 MODULE Observations_cl
 
@@ -3132,14 +3132,14 @@ CONTAINS
     REAL(bp), DIMENSION(6,6) :: covariance
     REAL(bp), DIMENSION(6) :: coordinates, stdev_, mean
     REAL(bp), DIMENSION(3) :: position, velocity, pos1, pos2
-    REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd_utc, dt, &
+    REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd, dt, &
          ecl_lon, ecl_lat, angscan, pos_unc_along, pos_unc_across, &
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
          rmin, rarcmin, mag_unc, s2n, mjd_tt, mjd_tcb, strk_len, &
          strk_len_unc, strk_direction, strk_direction_unc
     INTEGER :: i, j, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
-         border1, border2
+         border1, border2, err_verb_
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat
 
@@ -3223,7 +3223,7 @@ CONTAINS
        DO
           designation = " "
           covariance = 0.0
-          READ(getUnit(obsf), *, iostat=err) designation, mjd_utc, &
+          READ(getUnit(obsf), *, iostat=err) designation, mjd, &
                obstype, ra, dec, mag, filter, obsy_code, &
                covariance(2,2), covariance(3,3), mag_unc, s2n, str
           IF (err > 0) THEN
@@ -3236,7 +3236,14 @@ CONTAINS
           ELSE IF (designation(1:1) == "!" .OR. designation(1:1) == "#") THEN
              CYCLE
           END IF
-          CALL NEW(t, mjd_utc, "UTC")
+          err_verb_ = err_verb
+          err_verb = 0
+          CALL NEW(t, mjd, "UTC")
+          err_verb = err_verb_
+          IF (error) THEN
+             error = .FALSE.
+             CALL NEW(t, mjd, "UT1")
+          END IF
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (15)", 1)
@@ -4403,7 +4410,7 @@ CONTAINS
           ELSE IF (line(1:1) == "#") THEN
              CYCLE
           END IF
-          READ(line, *, iostat=err) number, obsy_code, mjd_utc, position(2), &
+          READ(line, *, iostat=err) number, obsy_code, mjd, position(2), &
                position(3), covariance(2,2), covariance(3,3), coordinates(1:6)
           IF (err /= 0) THEN
              error = .TRUE.
@@ -4419,7 +4426,7 @@ CONTAINS
              discovery = .FALSE.
           END IF
 
-          CALL NEW(t, mjd_utc, "UTC")
+          CALL NEW(t, mjd, "UTC")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
@@ -4519,7 +4526,7 @@ CONTAINS
           ELSE IF (line(1:1) == "#") THEN
              CYCLE
           END IF
-          READ(line, *, iostat=err) designation, mjd_utc, dt, &
+          READ(line, *, iostat=err) designation, mjd, dt, &
                obsy_code, position(2), covariance(2,2), position(3), &
                covariance(3,3), covariance(2,3), strk_len, &
                strk_len_unc, strk_direction, strk_direction_unc, &
@@ -4551,7 +4558,7 @@ CONTAINS
           ! Streak start point
           i = i + 1
           discovery = .FALSE.
-          CALL NEW(t, mjd_utc-dt/2.0_bp, "UTC")
+          CALL NEW(t, mjd-dt/2.0_bp, "UTC")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
@@ -4584,7 +4591,7 @@ CONTAINS
           ! Streak end point
           i = i + 1
           discovery = .FALSE.
-          CALL NEW(t, mjd_utc+dt/2.0_bp, "UTC")
+          CALL NEW(t, mjd+dt/2.0_bp, "UTC")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
@@ -4627,7 +4634,7 @@ CONTAINS
        obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
 
        ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
-       mjd_utc = 55197.0_bp
+       mjd = 55197.0_bp
        i = 0
        DO
 
@@ -4660,7 +4667,7 @@ CONTAINS
              discovery = .FALSE.
           END IF
 
-          CALL NEW(t, mjd_utc + dt, "utc")
+          CALL NEW(t, mjd + dt, "utc")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
