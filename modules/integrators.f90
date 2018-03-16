@@ -2229,7 +2229,7 @@ CONTAINS
              IF (PRESENT(encounters)) THEN
                 dist = SQRT(r2d(j))
                 ! Basic perturbers
-                IF (j < SIZE(perturbers)) THEN
+                IF (j <= SIZE(perturbers)) THEN
                    IF (dist < planetary_radii(j)) THEN
                       encounters(i,j,1) = mjd_tdt ! date
                       encounters(i,j,2) = 1       ! = impact
