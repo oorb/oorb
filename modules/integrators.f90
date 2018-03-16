@@ -2450,7 +2450,9 @@ CONTAINS
        END IF
 
     END DO
-
+    IF (ASSOCIATED(asteroid_masses)) THEN
+      DEALLOCATE(asteroid_masses)
+    END IF
     DEALLOCATE(wc, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
