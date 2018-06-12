@@ -83,10 +83,8 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: rad_deg  = pi/180.0_bp             !! Radians per degree.
   REAL(bp), PARAMETER :: rad_amin = rad_deg/60.0_bp         !! Radians per arcminute.
   REAL(bp), PARAMETER :: rad_asec = rad_amin/60.0_bp        !! Radians per arcsecond.
-  REAL(bp), PARAMETER :: km_au    = 1.4959787066e8_bp       !! Kilometres per astronomical unit.
-  REAL(bp), PARAMETER :: m_au     = 1.4959787066e11_bp      !! Metres per astronomical unit.
-  !REAL(bp), PARAMETER :: km_au    = 1.495978707e8_bp       !! Kilometres per astronomical unit (IAU 2012).
-  !REAL(bp), PARAMETER :: m_au     = 1.495978707e11_bp      !! Metres per astronomical unit (IAU 2012).
+  REAL(bp), PARAMETER :: km_au    = 1.495978707e8_bp       !! Kilometres per astronomical unit (IAU 2012, HORIZONS).
+  REAL(bp), PARAMETER :: m_au     = 1.495978707e11_bp      !! Metres per astronomical unit (IAU 2012, HORIZONS).
   REAL(bp), PARAMETER :: day_year = 365.256363004_bp        !! Days per sidereal year (J2000.0).
   REAL(bp), PARAMETER :: hour_day = 24.0_bp                 !! Hours per day.
   REAL(bp), PARAMETER :: min_day  = hour_day*60.0_bp        !! Minutes per day.
@@ -95,12 +93,12 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: kg_solar = 1.9892e30_bp            !! Kilograms per solar mass (IAU 1976).  
   REAL(bp), PARAMETER :: kB = 1.38e-23_bp                   !! Boltzmans constant kB [J K^-1]
   REAL(bp), PARAMETER :: hPl = 6.63e-34_bp                  !! Planck's constant h [J s]
-  ! ggc and mu (= ggc**2) have been deprecated, use array 'planetary_mu' in modules/planetary_data.f90
-  REAL(bp), PARAMETER :: sol      = 173.14463272_bp         !! Speed of light (AU/d).
+  REAL(bp), PARAMETER :: sol      = 299792.458_bp/km_au*sec_day !! Speed of light (AU/d).
   !REAL(bp), PARAMETER :: eps = 23.439280833_bp*rad_deg     !! Obliquity of ecliptic (J2000.0) 
-  !!                                                           Gaia 2006 (84381.41100asec).
-  REAL(bp), PARAMETER :: eps = 23.43929111111111_bp*rad_deg !! Obliquity of ecliptic (J2000.0), IAU 1976
-  !!                                                           (used by Horizon, MPC, OrbFit)
+  !!                                                           Gaia 2006 (84381.41100 arcsec).
+  REAL(bp), PARAMETER :: eps = 23.43929111111111_bp*rad_deg !! Obliquity of ecliptic (J2000.0;
+  !!                                                           84381.448 arcsec), IAU 1976
+  !!                                                           (used by HORIZONS, MPC, OrbFit)
   REAL(bp), PARAMETER :: r_earth  = 6378.140_bp/km_au       !! Earth equatorial radius (not mean!).
   REAL(bp), PARAMETER :: smamax   = 500.0_bp                !! Maximum for semimajor axis (AU).
   REAL(bp), PARAMETER :: rmoon    = 2.57e-3_bp              !! Earth-Moon mean distance (AU).
