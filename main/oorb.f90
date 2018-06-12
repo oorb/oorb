@@ -5103,8 +5103,8 @@ PROGRAM oorb
               STOP
            END IF
            noutlier = 0
-           DO j=1,SIZE(obs_masks,dim=1)
-              IF (ALL(.NOT.obs_masks(j,:))) THEN
+           DO k=1,SIZE(obs_masks,dim=1)
+              IF (ALL(.NOT.obs_masks(k,:))) THEN
                  noutlier = noutlier + 1
               END IF
            END DO
