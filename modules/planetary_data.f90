@@ -1,8 +1,8 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2017,2018                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
-! Dagmara Oszkiewicz                                                 !
+! Dagmara Oszkiewicz, Lauri Siltala                                  !
 !                                                                    !
 ! This file is part of OpenOrb.                                      !
 !                                                                    !
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2015-11-04
+!! @version 2018-06-12
 !!
 MODULE planetary_data
 
@@ -59,6 +59,8 @@ MODULE planetary_data
   IMPLICIT NONE
   PRIVATE
   CHARACTER(len=256), PARAMETER :: EPH_FNAME = 'de405.dat'
+  INTEGER, PARAMETER            :: min_lu = 10
+  INTEGER, PARAMETER            :: max_lu = 99
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4
   INTEGER, PARAMETER            :: RECORD_SIZE_405 =  2036
   INTEGER, PARAMETER            :: RECORD_SIZE_406 =  1456
@@ -237,8 +239,6 @@ CONTAINS
     IMPLICIT NONE
     LOGICAL, INTENT(inout)                 :: error
     CHARACTER(len=*), OPTIONAL, INTENT(in) :: filename
-    INTEGER, PARAMETER                     :: min_lu = 10
-    INTEGER, PARAMETER                     :: max_lu = 99
     CHARACTER(len=256)                     :: fname, OORB_DATA_DIR
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: tmp
     INTEGER                                :: err, i, lu, count
@@ -1503,49 +1503,117 @@ CONTAINS
 
   END FUNCTION Roche_limit
 
+
+
+
+
   !! *Description*:
   !!
   !! If used for the first time during execution, this routine reads
-  !! the BC430 asteroid ephemerides from a given file
-  !! and stores the data in an array.
-  !! Files 'asteroid_ephemeris.txt', 'asteroid_indices.txt' and
-  !! 'asteroid_masses.txt' required in working directory or the program explodes.
+  !! the BC430 asteroid ephemerides from a given file and stores the
+  !! data in an array.
   !!
   !! Returns error.
   !!
-  SUBROUTINE BC_ephemeris_init(ntarget,error)
+  SUBROUTINE BC_ephemeris_init(nastpert, error)
 
     IMPLICIT NONE
     LOGICAL, INTENT(inout)                     :: error
-    INTEGER, INTENT(inout)                     :: ntarget
-    REAL(rprec8) mjd_0
-    REAL(rprec8), DIMENSION(:), ALLOCATABLE    :: fbuffer
-    INTEGER i, j, k, to_include
-    mjd_0 = 2378495.0 - 2400000.5
-    ntarget = 300
+    INTEGER, INTENT(inout)                     :: nastpert
 
+    CHARACTER(len=1024) :: fname, OORB_DATA_DIR
+    REAL(rprec8), DIMENSION(:), ALLOCATABLE :: fbuffer
+    REAL(rprec8) :: mjd_0
+    INTEGER :: i, j, k, to_include, count, lu, err
+    LOGICAL :: done, used
+
+    mjd_0 = 2378495.0_rprec8 - 2400000.5_rprec8
     ALLOCATE(fbuffer(6575400))
-    OPEN(unit=14,file='asteroid_indices.txt')
-    to_include = ntarget
-    DO i=1,ntarget
-       READ(14,*) asteroid_indices(i)
+
+    ! Find a free logical unit:
+    done = .FALSE.
+    count = min_lu
+    lu = min_lu
+    DO WHILE (.NOT. done)
+       ! Figure out whether this unit is taken or not:
+       INQUIRE(unit=lu, opened=used, iostat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          WRITE(0,*) "JPL_ephemeris_init(): Error when inquiring for status of logical unit."
+          RETURN
+       END IF
+       IF (used) THEN
+          count = count + 1
+          ! If more than max_lu units have been tried,
+          ! every available unit has been tried at least once.
+          ! A free unit could not be found:
+          IF (count > max_lu) THEN
+             error = .TRUE.
+             WRITE(0,*) "JPL_ephemeris_init(): Could not find a free logical unit."
+             RETURN
+          END IF
+          lu = lu + 1
+          ! Back to beginning if top is reached:
+          IF (lu > max_lu) lu = min_lu
+       ELSE
+          done = .TRUE.
+       END IF
+    END DO
+    CALL getenv("OORB_DATA", OORB_DATA_DIR)
+    IF (LEN_TRIM(OORB_DATA_DIR) == 0) THEN
+       OORB_DATA_DIR = "."
+    END IF
+
+    fname = TRIM(OORB_DATA_DIR) // "/asteroid_indices.txt"
+    OPEN(unit=lu, file=TRIM(fname), status='OLD', action='READ', iostat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       WRITE(0,*) "BC_ephemeris_init(): Could not open file '" // TRIM(fname) // "'."
+       RETURN
+    END IF
+    to_include = nastpert
+    DO i=1,nastpert
+       READ(lu,*) asteroid_indices(i)
        IF (asteroid_indices(i)(1:1) == "#") THEN
           asteroid_masks(i) = .FALSE.
           to_include = to_include - 1
        END IF
     END DO
-        OPEN(unit=13,file='asteroid_ephemeris.txt')
-    DO i=1,SIZE(fbuffer) ! Read asteroid_ephemeris into fbuffer
-       READ(13,*) fbuffer(i)
-    END DO
-    CLOSE(unit=13)
-    k = 1
+    CLOSE(unit=lu)
     ALLOCATE(asteroid_ephemerides(to_include,3653,6), asteroid_masses(to_include))
-    write(0, *) "Total number of asteroids to include:", to_include
-    DO i=1,ntarget ! Parse fbuffer into asteroid_ephemerides
+
+    fname = TRIM(OORB_DATA_DIR) // "/asteroid_ephemeris.txt"
+    OPEN(unit=lu, file=TRIM(fname), status='OLD', action='READ', iostat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       WRITE(0,*) "BC_ephemeris_init(): Could not open file '" // TRIM(fname) // "'."
+       RETURN
+    END IF
+    DO i=1,SIZE(fbuffer) ! Read asteroid_ephemeris into fbuffer
+       READ(lu,*) fbuffer(i)
+    END DO
+    CLOSE(unit=lu)
+
+    fname = TRIM(OORB_DATA_DIR) // "/asteroid_masses.txt"
+    OPEN(unit=lu, file=TRIM(fname), status='OLD', action='READ', iostat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       WRITE(0,*) "BC_ephemeris_init(): Could not open file '" // TRIM(fname) // "'."
+       RETURN
+    END IF
+    k=1
+    DO i=1,nastpert
        IF (asteroid_masks(i)) THEN
-         write(0, *) "Including asteroid", asteroid_indices(i)
-          DO j = 1, 3653
+          READ(lu,*) asteroid_masses(k)
+          k = k + 1
+       END IF
+    END DO
+    CLOSE(unit=lu)
+
+    k = 1
+    DO i=1,nastpert ! Parse fbuffer into asteroid_ephemerides
+       IF (asteroid_masks(i)) THEN
+          DO j=1,3653
              asteroid_ephemerides(k,j,1) = fbuffer(1800*(j-1) + 6*(i-1) + 1)
              asteroid_ephemerides(k,j,2) = fbuffer(1800*(j-1) + 6*(i-1) + 2)
              asteroid_ephemerides(k,j,3) = fbuffer(1800*(j-1) + 6*(i-1) + 3)
@@ -1560,114 +1628,112 @@ CONTAINS
     DO i=1,3653
        asteroid_epochs(i) = mjd_0 + 40*(i-1)
     END DO
-    OPEN(unit=13,file='asteroid_masses.txt')
-    k=1
-    DO i=1,ntarget
-       IF (asteroid_masks(i)) THEN
-          READ(13,*) asteroid_masses(k)
-          k = k + 1
-       END IF
-    END DO
-    CLOSE(unit=13)
-    CLOSE(unit=14)
-    ntarget = to_include
-    WRITE(0,*) "initialization complete."
 
+    nastpert = to_include
 
   END SUBROUTINE BC_ephemeris_init
 
-  ! Returns the BC430 masses for ntarget asteroids.
-  FUNCTION BC_masses_r8(ntarget)
+
+
+
+
+  ! Returns the BC430 masses for nastpert asteroids.
+  FUNCTION BC_masses_r8(nastpert)
 
     IMPLICIT NONE
 
-    INTEGER, INTENT(IN) :: ntarget
+    INTEGER, INTENT(IN) :: nastpert
     REAL(rprec8), DIMENSION(:), POINTER :: BC_masses_r8
 
-    ALLOCATE(BC_masses_r8(ntarget))
+    ALLOCATE(BC_masses_r8(nastpert))
 
-    BC_masses_r8(:) = asteroid_masses(1:ntarget)
+    BC_masses_r8(:) = asteroid_masses(1:nastpert)
+
   END FUNCTION BC_masses_r8
+
+
+
 
 
   !! *Description*:
   !!
   !! Reads the BC430 asteroid Ephemeris and gives the position and
-  !! velocity of the ntarget most massive asteroids at epoch mjd_tt.
+  !! velocity of the nastpert most massive asteroids at epoch mjd_tt.
   !!
-  !! ntarget = integer amount of asteroids wanted. Starts from
+  !! nastpert = integer amount of asteroids wanted. Starts from
   !! most massive ones -> need a better scheme later. 300 = everything.
   !! Output is a 6-vector containing position and velocity of point
-  !! 'ntarget' relative to 'ncenter' in an equatorial reference
+  !! 'nastpert' relative to 'ncenter' in an equatorial reference
   !! frame. The units are AU and AU/day.
   !!
   !! Returns error.
   !!
-  FUNCTION BC_ephemeris_r8(mjd_tt, ntarget, error,km)
+  FUNCTION BC_ephemeris_r8(mjd_tt, nastpert, error, km)
 
     IMPLICIT NONE
     REAL(rprec8), INTENT(in)              :: mjd_tt
-    INTEGER, INTENT(inout)                   :: ntarget
+    INTEGER, INTENT(inout)                :: nastpert
     LOGICAL, INTENT(inout)                :: error
     LOGICAL, OPTIONAL, INTENT(in)         :: km
     REAL(rprec8), DIMENSION(:,:), POINTER :: BC_ephemeris_r8
 
-    REAL(rprec8) :: eph_epoch, dt, two_pi, fp, fpp, fppp, dx
-    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: tmp_elements, mean_motion,&
-         ea, ma, sigma, x,esinx,ecosx, f, cea, sea,b,dot_ea,celements, &
-         R2, sin_angles, cos_angles, v,r3,h
-    REAL(rprec8), DIMENSION(2)    :: tt2
-    REAL(rprec8), PARAMETER     :: kk = 0.85
-    REAL(rprec8), PARAMETER     :: tol = 1.0e-15
+    REAL(rprec8), PARAMETER :: kk = 0.85
+    REAL(rprec8), PARAMETER :: tol = 1.0e-15
     INTEGER, PARAMETER      :: nmax = 10000
+
     REAL(rprec8), DIMENSION(:,:,:), ALLOCATABLE :: R
-    REAL(rprec8) :: eps
-
-
-
-    INTEGER, DIMENSION(12)        :: list
-    INTEGER                       :: i, j,k, err, ind
-    LOGICAL                       :: tmp_barycenter
+    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: tmp_elements, &
+         mean_motion, ea, ma, sigma, x, esinx, ecosx, f, cea, sea, &
+         b, dot_ea, celements, R2, sin_angles, cos_angles, v, r3, h
+    REAL(rprec8), DIMENSION(2) :: tt2
+    REAL(rprec8) :: eph_epoch, dt, two_pi, fp, fpp, fppp, dx, eps
+    INTEGER, DIMENSION(12) :: list
+    INTEGER :: i, j,k, err, ind
+    LOGICAL :: tmp_barycenter
 
     IF (first_bc) THEN
-       CALL BC_ephemeris_init(ntarget,error)
+       CALL BC_ephemeris_init(nastpert,error)
        IF (error) THEN
           WRITE(0,*) "BC_ephemeris_r8(): Error when calling BC_ephemeris_init()."
           RETURN
        END IF
        first_bc = .FALSE.
     END IF
-  !  write(0,*) ntarget
-    two_pi = 8*ATAN(1.0d0)
-    eps = 23.43929111111111d0*two_pi/180.0d0/2.0d0
-    ALLOCATE(BC_ephemeris_r8(ntarget,6))
-    ALLOCATE(tmp_elements(ntarget,6))
-    ALLOCATE(mean_motion(ntarget,1))
-    ALLOCATE(R2(3,3))
-    ALLOCATE(ea(ntarget,1), ma(ntarget,1), sigma(ntarget,1), x(ntarget,1),esinx(ntarget,1),&
-         f(ntarget,1),ecosx(ntarget,1), cea(ntarget,1),sea(ntarget,1),b(ntarget,1), &
-         dot_ea(ntarget,1),celements(ntarget,6),v(ntarget,1), r3(ntarget,1),h(ntarget,1))
-    ALLOCATE(r(ntarget,3,3))
-    ALLOCATE(sin_angles(ntarget,3),cos_angles(ntarget,3))
-    ! First of all, lets find the ephemeris with the closest mjd to what we want.
+
+    two_pi = 8*ATAN(1.0_rprec8)
+    ! Fixed obliquity of ecliptic which may be different from the
+    ! value used elsewhere in OpenOrb (see classes/Base_class.f90)
+    eps = 23.43929111111111_rprec8*two_pi/360.0_rprec8
+    ALLOCATE(BC_ephemeris_r8(nastpert,6), tmp_elements(nastpert,6), &
+         mean_motion(nastpert,1), R2(3,3), ea(nastpert,1), &
+         ma(nastpert,1), sigma(nastpert,1), x(nastpert,1), &
+         esinx(nastpert,1), f(nastpert,1), ecosx(nastpert,1), &
+         cea(nastpert,1), sea(nastpert,1), b(nastpert,1), &
+         dot_ea(nastpert,1), celements(nastpert,6), v(nastpert,1), &
+         r3(nastpert,1), h(nastpert,1), r(nastpert,3,3), &
+         sin_angles(nastpert,3), cos_angles(nastpert,3))
+
+    ! First, find the ephemeris with the closest MJD to
+    ! what we want.
     ind = findLocation(mjd_tt, asteroid_epochs)!+1
     eph_epoch = asteroid_epochs(ind)
     dt = mjd_tt - eph_epoch
-    tmp_elements(:,:) = asteroid_ephemerides(1:ntarget,ind,1:6)
+    tmp_elements(:,:) = asteroid_ephemerides(1:nastpert,ind,1:6)
     mean_motion(:,1) = SQRT(planetary_mu(11)/tmp_elements(:,1)**3)
     tmp_elements(:,6) = MODULO(tmp_elements(:,6) + mean_motion(:,1)*dt, two_pi)
 
-    ! Ok, we have the Keplerian elements. Lets convert to cartesian like in the Orbit class.
-
+    ! Convert Keplerian elements of input orbits to Cartesian like in
+    ! the Orbit class.
     ma(:,1) = tmp_elements(:,6)
     ma(:,1) = MODULO(ma(:,1),two_pi)
-    sigma(:,1)= SIGN(1.0_rprec8,SIN(ma(:,1)))
+    sigma(:,1) = SIGN(1.0_rprec8,SIN(ma(:,1)))
     x(:,1) = ma(:,1) + sigma(:,1)*kk*tmp_elements(:,2)
 
-    ! Solve Kepler's equation iteratively using Newton's accelerated method:
+    ! Solve Kepler's equation iteratively using Newton's accelerated
+    ! method:
     esinx(:,1) = tmp_elements(:,2)*SIN(x(:,1))
     f(:,1) = x(:,1) - esinx(:,1) - ma(:,1)
-    DO j=1, ntarget
+    DO j=1, nastpert
        i = 1
        DO WHILE (ABS(f(j,1)) >= tol)
           IF (i > nmax) THEN
@@ -1675,35 +1741,35 @@ CONTAINS
              RETURN
           END IF
           ecosx(j,1) = tmp_elements(j,2)*COS(x(j,1))
-          fp    = 1.0d0 - ecosx(j,1)
-          fpp   = esinx(j,1)
-          fppp  = ecosx(j,1)
-          dx    = -f(j,1)/fp
-          dx    = -f(j,1)/(fp+0.5d0*dx*fpp)
-          dx    = -f(j,1)/(fp+0.5d0*dx*fpp+dx*dx*fppp/6.0d0)
+          fp         = 1.0d0 - ecosx(j,1)
+          fpp        = esinx(j,1)
+          fppp       = ecosx(j,1)
+          dx         = -f(j,1)/fp
+          dx         = -f(j,1)/(fp+0.5d0*dx*fpp)
+          dx         = -f(j,1)/(fp+0.5d0*dx*fpp+dx*dx*fppp/6.0d0)
           x(j,1)     = x(j,1) + dx
-          esinx(j,1)= tmp_elements(j,2)*SIN(x(j,1))
+          esinx(j,1) = tmp_elements(j,2)*SIN(x(j,1))
           f(j,1)     = x(j,1) - esinx(j,1) - ma(j,1)
-          i     = i + 1
+          i          = i + 1
        END DO
     END DO
     ea(:,1) = MODULO(x(:,1),two_pi)
 
     cea(:,1) = COS(ea(:,1))
     sea(:,1) = SIN(ea(:,1))
-    b(:,1) = tmp_elements(:,1) * SQRT(1.0 - tmp_elements(:,2)**2.0)
-    dot_ea(:,1) = SQRT(planetary_mu(11)/tmp_elements(:,1)**3.0) / &
-         (1.0 - tmp_elements(:,2)*cea(:,1))
+    b(:,1) = tmp_elements(:,1) * SQRT(1.0_rprec8 - tmp_elements(:,2)**2)
+    dot_ea(:,1) = SQRT(planetary_mu(11)/tmp_elements(:,1)**3) / &
+         (1.0_rprec8 - tmp_elements(:,2)*cea(:,1))
 
     !! Keplerian elements to polar Cartesian elements:
     !! -positions:
     celements(:,1) = tmp_elements(:,1)*(cea(:,1) - tmp_elements(:,2))
     celements(:,2) = b(:,1)*sea(:,1)
-    celements(:,3) = 0.0
+    celements(:,3) = 0.0_rprec8
     !! -velocities:
     celements(:,4) = -1*tmp_elements(:,1)*dot_ea(:,1)*sea(:,1)
     celements(:,5) = b(:,1)*dot_ea(:,1)*cea(:,1)
-    celements(:,6) = 0.0
+    celements(:,6) = 0.0_rprec8
     sin_angles(:,:) = SIN(tmp_elements(:,3:5))
     cos_angles(:,:) = COS(tmp_elements(:,3:5))
 
@@ -1722,20 +1788,24 @@ CONTAINS
     R(:,3,1) = sin_angles(:,3)*sin_angles(:,1)
     R(:,3,2) = cos_angles(:,3)*sin_angles(:,1)
     R(:,3,3) = cos_angles(:,1)
-    DO i=1,ntarget
+    DO i=1,nastpert
        celements(i,1:3) = MATMUL(R(i,:,:),celements(i,1:3))
        celements(i,4:6) = MATMUL(R(i,:,:),celements(i,4:6))
     END DO
-    ! Now lets rotate to equatorial..
+
+    ! Rotate polar Cartesian to equatorial Cartesian
     R2(1,:) = (/ 1.0d0,   0.0d0,    0.0d0 /)
     R2(2,:) = (/ 0.0d0, COS(eps), -SIN(eps) /)
     R2(3,:) = (/ 0.0d0, SIN(eps),  COS(eps) /)
-    DO i=1, ntarget
+    DO i=1,nastpert
        celements(i,1:3) = MATMUL(r2,celements(i,1:3))
        celements(i,4:6) = MATMUL(r2,celements(i,4:6))
     END DO
     BC_ephemeris_r8(:,:) = celements(:,:)
+
   END FUNCTION BC_ephemeris_r8
+
+
 
 
 END MODULE planetary_data
