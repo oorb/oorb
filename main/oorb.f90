@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2018-03-03
+!! @version 2018-06-12
 !!
 PROGRAM oorb
 
@@ -6757,7 +6757,7 @@ PROGRAM oorb
      timespan = get_cl_option("--timespan=", 0.0_bp)
 
      ! Input time step [days]
-     step = get_cl_option("--step=", 1.0_bp)
+     step = get_cl_option("--step=", integration_step)
      IF (step == 0.0_bp) THEN
         nstep = 1        
      ELSE
@@ -7099,9 +7099,9 @@ PROGRAM oorb
                    "HEclObsy_Z", "EccAnom", "TrueAnom", "PosAngle"
            END IF
 
-           DO j=1,SIZE(observers)
+           DO j=1,SIZE(ephemerides)
 
-              t = getTime(observers(j))
+              t = getTime(ephemerides(j))
               mjd_tt = getMJD(t, "TT")
               err_verb_ = err_verb
               err_verb = 0
@@ -7252,64 +7252,80 @@ PROGRAM oorb
                  STOP
               END IF
 
-              ! Compute (approximate) altitude of the target
-              obsy_ccoord = getGeocentricObservatoryCCoord(obsies, obsy_code_arr(j), t)
-              IF (error) THEN
-                 CALL errorMessage('oorb / ephemeris', &
-                      'TRACE BACK (75)',1)
-                 STOP
-              END IF
-              CALL rotateToEquatorial(obsy_ccoord)
-              geoc_obsy = getPosition(obsy_ccoord)
-              IF (error) THEN
-                 CALL errorMessage('oorb / ephemeris', &
-                      'TRACE BACK (80)',1)
-                 STOP
-              END IF
-              vec3 = cross_product(geoc_obsy,obsy_obj)
-              obj_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_obj))
+              IF (INDEX(obsy_code_arr(j),"-") == 0) THEN
 
-              ! Compute (approximate) altitude of the Sun
-              ! Position of the geocenter as seen from the Sun:
-              planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
-              IF (error) THEN
-                 CALL errorMessage('oorb / ephemeris', &
-                      'TRACE BACK (85)',1)
-                 STOP
+                 ! Parameters relevant for an Earth-based observer (for
+                 ! now, at least!):
+
+                 ! Compute (approximate) altitude of the target
+                 obsy_ccoord = getGeocentricObservatoryCCoord(obsies, obsy_code_arr(j), t)
+                 IF (error) THEN
+                    CALL errorMessage('oorb / ephemeris', &
+                         'TRACE BACK (75)',1)
+                    STOP
+                 END IF
+                 CALL rotateToEquatorial(obsy_ccoord)
+                 geoc_obsy = getPosition(obsy_ccoord)
+                 IF (error) THEN
+                    CALL errorMessage('oorb / ephemeris', &
+                         'TRACE BACK (80)',1)
+                    STOP
+                 END IF
+                 vec3 = cross_product(geoc_obsy,obsy_obj)
+                 obj_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_obj))
+
+                 ! Compute (approximate) altitude of the Sun
+                 ! Position of the geocenter as seen from the Sun:
+                 planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+                 IF (error) THEN
+                    CALL errorMessage('oorb / ephemeris', &
+                         'TRACE BACK (85)',1)
+                    STOP
+                 END IF
+                 ! Position of the Sun as seen from the observatory:
+                 obsy_sun = -(planeph(1,1:3) + geoc_obsy)
+                 DEALLOCATE(planeph)
+                 vec3 = cross_product(geoc_obsy,obsy_sun)
+                 solar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_sun))
+
+                 ! Compute the solar elongation:
+                 vec3 = cross_product(obsy_obj,obsy_sun)
+                 solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
+
+                 ! Compute phase of the Moon:
+                 ! Position of the Moon as seen from the Sun:
+                 planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
+                 IF (error) THEN
+                    CALL errorMessage('oorb / ephemeris', &
+                         'TRACE BACK (95)',1)
+                    STOP
+                 END IF
+                 sun_moon = planeph(1,1:3)
+                 DEALLOCATE(planeph)
+                 ! Angle between Sun and Moon as seen from the observatory:
+                 obsy_moon = sun_moon - obsy_pos
+                 obsy_moon_r2 = DOT_PRODUCT(obsy_moon,obsy_moon)
+                 cos_obj_phase = DOT_PRODUCT(obsy_moon,-obsy_pos) / &
+                      (SQRT(observer_r2) * SQRT(obsy_moon_r2))
+                 lunar_phase = (1.0_bp-cos_obj_phase)/2.0_bp
+
+                 ! Compute (approximate) distance between the target and the Moon:
+                 vec3 = cross_product(obsy_obj,obsy_moon)
+                 lunar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_moon))
+
+                 ! Compute (approximate) altitude of the Moon:
+                 vec3 = cross_product(geoc_obsy,obsy_moon)
+                 lunar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_moon))
+
+              ELSE
+
+                 obj_alt = pi/2.0_bp
+                 solar_elongation = -pi
+                 lunar_phase = -1.0_bp
+                 lunar_elongation = -pi
+                 lunar_alt = pi/2.0_bp
+
               END IF
-              ! Position of the Sun as seen from the observatory:
-              obsy_sun = -(planeph(1,1:3) + geoc_obsy)
-              DEALLOCATE(planeph)
-              vec3 = cross_product(geoc_obsy,obsy_sun)
-              solar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_sun))
-              ! Compute the solar elongation:
-              vec3 = cross_product(obsy_obj,obsy_sun)
-              solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
-
-              ! Compute phase of the Moon:
-              ! Position of the Moon as seen from the Sun:
-              planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
-              IF (error) THEN
-                 CALL errorMessage('oorb / ephemeris', &
-                      'TRACE BACK (95)',1)
-                 STOP
-              END IF
-              sun_moon = planeph(1,1:3)
-              DEALLOCATE(planeph)
-              ! Angle between Sun and Moon as seen from the observatory:
-              obsy_moon = sun_moon - obsy_pos
-              obsy_moon_r2 = DOT_PRODUCT(obsy_moon,obsy_moon)
-              cos_obj_phase = DOT_PRODUCT(obsy_moon,-obsy_pos) / &
-                   (SQRT(observer_r2) * SQRT(obsy_moon_r2))
-              lunar_phase = (1.0_bp-cos_obj_phase)/2.0_bp
-
-              ! Compute (approximate) distance between the target and the Moon:
-              vec3 = cross_product(obsy_obj,obsy_moon)
-              lunar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_moon))
-
-              ! Compute (approximate) altitude of the Moon:
-              vec3 = cross_product(geoc_obsy,obsy_moon)
-              lunar_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_moon))
 
               ! Extract heliocentric distance
               hdist = SQRT(heliocentric_r2)
@@ -9267,6 +9283,7 @@ PROGRAM oorb
            id_arr_in(i) = id_arr_storb_in(i)
         END DO
      END IF
+
      norb = SIZE(orb_arr_in)
      nobj = SIZE(obss_sep)
      DO i=1,norb
@@ -9294,6 +9311,13 @@ PROGRAM oorb
         obs_arr => getObservations(obss_sep(iobj))
         mean = 0.0_bp
         CALL getEphemerides(orb_arr_in(i), observers, ephemerides)
+        IF (error) THEN
+           IF (error) THEN
+              CALL errorMessage('oorb / synthetic_astrometry', &
+                   'TRACE BACK (15)',1)
+              STOP
+           END IF
+        END IF
         DO j=1,SIZE(ephemerides)
            CALL rotateToEquatorial(ephemerides(j))
            CALL setObservationSCoord(obs_arr(j), ephemerides(j))
@@ -9302,7 +9326,7 @@ PROGRAM oorb
               CALL addMultinormalDeviate(obs_arr(j), mean, cov, combined_covariance=.FALSE.)
            END IF
            IF (error) THEN
-              CALL errorMessage('oorb4research / ephemeris', &
+              CALL errorMessage('oorb / synthetic_astrometry', &
                    'TRACE BACK (20)',1)
               STOP
            END IF

@@ -26,7 +26,7 @@
 !! Contains integrators and force routines.
 !!
 !! @author  TL, MG, JV
-!! @version 2018-01-10
+!! @version 2018-06-12
 !!
 MODULE integrators
 
@@ -59,8 +59,8 @@ MODULE integrators
        seq = (/ 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, &
        256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, &
        12288, 16384, 24576 /) ! n_i = 2 * n_(i-2)
-  ! Amount of used asteroid perturbers.
-  INTEGER :: nast = 300
+  ! Maximum number of asteroid perturbers available
+  INTEGER :: nastpert = 300
 
   LOGICAL :: relativity = .TRUE.
   ! Default central body for the dynamical system
@@ -77,12 +77,12 @@ MODULE integrators
   INTERFACE ratf_extrapolation
      MODULE PROCEDURE ratf_extrapolation_vec, ratf_extrapolation_mat, &
           ratf_extrapolation_vec_n, ratf_extrapolation_mat_n
-  END INTERFACE
+  END INTERFACE ratf_extrapolation
 
   INTERFACE polf_extrapolation
      MODULE PROCEDURE polf_extrapolation_vec, polf_extrapolation_mat, &
           polf_extrapolation_vec_n, polf_extrapolation_mat_n
-  END INTERFACE
+  END INTERFACE polf_extrapolation
 
 CONTAINS
 
@@ -2084,7 +2084,7 @@ CONTAINS
   !!               radially outwards from the origin (usually the Sun)
   !!               this is aimed for accounting for radiation pressure
   !!
-  SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers,  asteroid_perturbers, wds, error, &
+  SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers, asteroid_perturbers, wds, error, &
        pwds, encounters, masses, radial_acceleration)
 
     REAL(prec), DIMENSION(:,:), INTENT(in)              :: ws
@@ -2130,18 +2130,30 @@ CONTAINS
 
     naddit = 0
 
+    ! Number of basic perturbers, that is, perturbers whose orbits are
+    ! not integrated.
+    !
+    ! Maximum number of planetary perturbers:
+    N = SIZE(perturbers)
+    ! Number of planetary perturbers considered here:
+    NP = COUNT(perturbers) 
     IF (asteroid_perturbers) THEN
-       wc2 => BC_ephemeris(mjd_tdt,nast,error)
-       asteroid_masses => BC_masses(nast)
+       ! Number of asteroidal perturbers considered here:
+       wc2 => BC_ephemeris(mjd_tdt, nastpert, error)
+       asteroid_masses => BC_masses(nastpert)
     ELSE
-       nast = 0
+       nastpert = 0
     END IF
-    ALLOCATE(drs(3,SIZE(perturbers)+nast))
-    ALLOCATE(ir3c(SIZE(perturbers)+nast))
-    ALLOCATE(r2d(SIZE(perturbers)+nast))
-    ALLOCATE(ir3d(SIZE(perturbers)+nast))
-    ALLOCATE(ir5d(SIZE(perturbers)+nast))
 
+    ! Allocate memory for basic perturbers
+    ALLOCATE(drs(3,N+nastpert))
+    ALLOCATE(ir3c(N+nastpert))
+    ALLOCATE(r2d(N+nastpert))
+    ALLOCATE(ir3d(N+nastpert))
+    ALLOCATE(ir5d(N+nastpert))
+
+    ! Number of additional perturbers that will be integrated
+    ! simultaneously with the massless test particles.
     IF (PRESENT(masses)) THEN
        DO i=1,SIZE(masses)
           IF (masses(i) > 0.0_prec) THEN
@@ -2149,10 +2161,6 @@ CONTAINS
           END IF
        END DO
     END IF
-
-    ! Number of basic perturbers.
-    N = SIZE(perturbers)+nast
-    NP = COUNT(perturbers)+nast
 
     ! Number of test particles (ie, bodies massless wrt basic perturbers).
     NS = SIZE(ws,dim=2)
@@ -2164,19 +2172,23 @@ CONTAINS
           DEALLOCATE(wc, stat=err)
           RETURN
        END IF
-
-       IF (nast > 0) THEN ! This happens if there are asteroid perturbers.
+       IF (nastpert > 0) THEN ! Add asteroid perturbers.
           ALLOCATE(wc(SIZE(wc1,dim=1)+SIZE(wc2,dim=1),6))
           wc(1:SIZE(wc1,dim=1),1:6) = wc1
           wc(SIZE(wc1,dim=1)+1:SIZE(wc2,dim=1)+SIZE(wc1,dim=1),1:6) = wc2
-          ! WC has planet perturbers followed by asteroid perturbers.
+          ! wc has planet perturbers followed by asteroid perturbers.
           DEALLOCATE(wc1)
           DEALLOCATE(wc2)
        ELSE
-          ALLOCATE(wc(SIZE(wc1,dim=1),SIZE(wc1,dim=2)))
-          wc(:,:) = wc1(:,:)
-          DEALLOCATE(wc1)
+          ALLOCATE(wc(SIZE(wc1,dim=1),6))
+          wc = wc1
+          DEALLOCATE(wc1)          
        END IF
+    ELSE IF (NP == 0 .AND. nastpert > 0) THEN
+       ! Only asteroid perturbers
+       ALLOCATE(wc(SIZE(wc2,dim=1),SIZE(wc2,dim=2)))
+       wc = wc2
+       DEALLOCATE(wc2)
     END IF
 
     ! Useful quantities.
@@ -2184,17 +2196,16 @@ CONTAINS
     ir3c_ = 0.0_prec
 
     ! Basic perturbers
-    IF (NP > 0) THEN
+    IF (NP+nastpert > 0) THEN
        DO i=1,N
-          IF (i > SIZE(perturbers)) THEN
+          IF (perturbers(i)) THEN
              r2c  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3))
              ir3c(i) = 1.0_prec / (r2c * SQRT(r2c))
-          ELSE IF (perturbers(i)) THEN
-             r2c  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3))
-             ir3c(i) = 1.0_prec / (r2c * SQRT(r2c))
-             !          END IF
-
           END IF
+       END DO
+       DO i=N+1,N+nastpert
+          r2c  = DOT_PRODUCT(wc(i,1:3), wc(i,1:3))
+          ir3c(i) = 1.0_prec / (r2c * SQRT(r2c))
        END DO
     END IF
 
@@ -2214,10 +2225,9 @@ CONTAINS
        r2s  = DOT_PRODUCT(ws(1:3,i), ws(1:3,i)) ! ws(6,NS)
        ir3s = 1.0_prec / (r2s * SQRT(r2s))
        drs = 0.0_prec ; r2d = 0.0_prec ; ir3d = 0.0_prec
-       IF (COUNT(perturbers) > 0) THEN
+       IF (NP > 0) THEN
           ! Log impacts and distances to solar-system objects
-          DO j=1,N
-             !IF (j <= N .AND. NP > 0) THEN
+          DO j=1,N+nastpert
              ! Basic perturbers. Compute drs and r2d regardless of
              ! perturbers to be included in the force model (as
              ! long as there is at least one perturber included in
@@ -2229,7 +2239,7 @@ CONTAINS
              IF (PRESENT(encounters)) THEN
                 dist = SQRT(r2d(j))
                 ! Basic perturbers
-                IF (j <= SIZE(perturbers)) THEN
+                IF (j <= N) THEN
                    IF (dist < planetary_radii(j)) THEN
                       encounters(i,j,1) = mjd_tdt ! date
                       encounters(i,j,2) = 1       ! = impact
@@ -2241,7 +2251,6 @@ CONTAINS
                    END IF
                 END IF
              END IF
-             !END IF
           END DO
        END IF
        IF (naddit > 0) THEN
@@ -2290,11 +2299,11 @@ CONTAINS
 
        ! Non-integrable part of the interaction.
        ! Basic perturbers
-       DO j=1,N
-          IF (j > SIZE(perturbers)) THEN
+       DO j=1,N+nastpert
+          IF (j > N) THEN
              wds(4:6,i) = wds(4:6,i) + &
-                  asteroid_masses(j-SIZE(perturbers)) * (drs(1:3,j) * ir3d(j) - wc(j,1:3) * ir3c(j))
-          ELSE  IF (perturbers(j)) THEN
+                  asteroid_masses(j-N) * (drs(1:3,j) * ir3d(j) - wc(j,1:3) * ir3c(j))
+          ELSE IF (perturbers(j)) THEN
              wds(4:6,i) = wds(4:6,i) + &
                   planetary_masses(j) * (drs(1:3,j) * ir3d(j) - wc(j,1:3) * ir3c(j))
           END IF
@@ -2358,14 +2367,14 @@ CONTAINS
           ! Non-integrable part of the interaction
           A = 0.0_prec
           ! Basic perturbers
-          DO j=1,N
-             IF (j > SIZE(perturbers)) THEN
+          DO j=1,N+nastpert
+             IF (j > N) THEN
                 DO k=1,3
                    DO l=1,3
-                      A(k,l) = A(k,l) + 3.0_prec * asteroid_masses(j-SIZE(perturbers)) &
+                      A(k,l) = A(k,l) + 3.0_prec * asteroid_masses(j-N) &
                            * drs(k,j) * drs(l,j) * ir5d(j)
                    END DO
-                   A(k,k) = A(k,k) - asteroid_masses(j-SIZE(perturbers)) * ir3d(j)
+                   A(k,k) = A(k,k) - asteroid_masses(j-N) * ir3d(j)
                 END DO
              ELSE IF (perturbers(j)) THEN
                 DO k=1,3
