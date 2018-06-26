@@ -4774,7 +4774,6 @@ CONTAINS
        mjd_tt = getMJD(t_emit, "TT")
        sun_emit => JPL_ephemeris(mjd_tt, 11, 12, error)
        solar_motion_correction = sun_emit(1,:) - sun_observer(1,:)
-       NULLIFY(sun_emit)
 
        ! Transform to equatorial topocentric coordinates:
        CALL toCartesian(this_1, frame="equatorial")
@@ -4963,10 +4962,10 @@ CONTAINS
        CALL NULLIFY(this_1)
        CALL NULLIFY(this_2)
        CALL NULLIFY(t_emit)
-
+       DEALLOCATE(sun_emit)
     END DO
 
-    NULLIFY(sun_observer)
+    DEALLOCATE(sun_observer)
     CALL NULLIFY(observer_)
     CALL NULLIFY(t_observer)
     IF (ASSOCIATED(jacobian_prop_arr_)) THEN
