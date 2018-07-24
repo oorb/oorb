@@ -37,10 +37,10 @@ wrapper.o: wrapper.f90 liboorb.o
 	$(FC_INC)../main \
 	wrapper.f90
 
-liboorb.$(LIBEXT): modules classes main liboorb.o
+liboorb.$(LIBEXT): modules classes main wrapper.o liboorb.o
 	$(FC) $(FCOPTIONS) -shared -o liboorb.$(LIBEXT) \
 	$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH) \
-	liboorb.o \
+	liboorb.o wrapper.o \
 	../main/io.o \
 	../$(CLASSPATH)/*.o \
 	../$(MODULEPATH)/*.o
@@ -55,6 +55,11 @@ pyoorb.o: liboorb
 
 liboorb:
 	cd ../$(LIBPATH) ; make
+
+test: test.f90 pyoorb.o
+	$(FC) $(FCOPTIONS) pyoorb.o -loorb -L../lib test.f90 -o test
+
+
 
 main:
 	cd ../main/ ; make io.o
