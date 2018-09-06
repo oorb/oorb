@@ -387,7 +387,7 @@ CONTAINS
     REAL(8), DIMENSION(in_ndate,2), INTENT(in)          :: in_date_ephems ! (1:ndate,1:2)
     ! in_model: "2"=2-body dynamical model, "N"=n-body dynamical model
     CHARACTER(len=1), INTENT(in)                        :: in_dynmodel
-    ! out_ephemn: output ephemeris, 34 columns per target and epoch:
+    ! out_ephemn: output ephemeris, 33 columns per target and epoch:
     ! (1) modified julian date                                                                
     ! (2) right ascension (deg)                                                               
     ! (3) declination (deg)                                                                   
@@ -421,8 +421,7 @@ CONTAINS
     ! (31) heliocentric ecliptic cartesian coordinates for the observatory (au)                
     ! (32) heliocentric ecliptic cartesian coordinates for the observatory (au)                
     ! (33) heliocentric ecliptic cartesian coordinates for the observatory (au)                
-    ! (34) true anomaly (deg)                                                                  
-    REAL(8), DIMENSION(in_norb,in_ndate,34), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:34)
+    REAL(8), DIMENSION(in_norb,in_ndate,33), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:33)
     ! error_code: output error code
     INTEGER, INTENT(out)                                :: error_code
 
@@ -522,7 +521,7 @@ CONTAINS
 
     ! Loop over orbits:
     DO i=1,SIZE(in_orbits,dim=1)
-
+    
        ! Get the element type from the input flattened orbit.
        IF(NINT(in_orbits(i,8)) < 0 .OR.                                       &
             NINT(in_orbits(i,8)) > SIZE(element_types)) THEN
@@ -575,15 +574,10 @@ CONTAINS
           error_code = 40
           RETURN
        END IF
-       ! CALL NULLIFY(orb_arr(1))
-
+       CALL NULLIFY(orb_arr(1))
+   
        ! Now export the ephem_arr to a flat array.
        DO j=1,SIZE(observers)
-
-          ! ephem date
-          t = getTime(observers(j))
-          mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
-          mjd_tt = getMJD(t, "TT")
 
           ! Make sure that the ephemeris is equatorial:
           CALL rotateToEquatorial(ephemerides(1,j))
@@ -705,26 +699,35 @@ CONTAINS
                   'TRACE BACK (70)',1)
              STOP
           END IF
-
+         
           ! Parameters relevant for Earth-based observers
-          
+
+          ! ephem date
+          t = getTime(observers(j))
+          mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
+          mjd_tt = getMJD(t, "TT")
+
           obsy_ccoord = getGeocentricObservatoryCCoord(obsies, in_obscode, t)
-          
           IF (error) THEN
              CALL errorMessage('oorb / ephemeris', &
                   'TRACE BACK (75)',1)
              STOP
           END IF
-          CALL rotateToEquatorial(obsy_ccoord)
+
+          CALL rotateToEquatorial(obsy_ccoord)        
           geoc_obsy = getPosition(obsy_ccoord)
+
           IF (error) THEN
              CALL errorMessage('oorb / ephemeris', &
                   'TRACE BACK (80)',1)
              STOP
           END IF
+
+          CALL NULLIFY(t)
+          
           vec3 = cross_product(geoc_obsy,obsy_obj)
           obj_alt = pi/2.0_bp - ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(geoc_obsy,obsy_obj))
-
+          
           ! Compute (approximate) altitude of the Sun
           ! Position of the geocenter as seen from the Sun:
           planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
@@ -785,21 +788,23 @@ CONTAINS
              STOP
           END IF
 
-          elements = getElements(orb_lt_corr_arr(i,j), "cometary")
-          IF (elements(2) < 1.0_bp) THEN
-             ! Compute eccentric and true anomalies if orbit is elliptic:
-             CALL solveKeplerEquation(orb_lt_corr_arr(i,j), orb_lt_corr_arr(i,j)%t, ecc_anom)
-             ! line above modified from:
-             ! CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
-             ta_s = SIN(ecc_anom)
-             ta_c = COS(ecc_anom)
-             fak = SQRT(1 - elements(2) * elements(2))
-             true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
-          ELSE
-             ecc_anom = -99.0_bp
-             true_anom = -99.0_bp
-          END IF
-
+          ! ! true anomaly does not work properly
+          ! elements = getElements(orb_lt_corr_arr(i,j), "cometary")
+          ! IF (elements(2) < 1.0_bp) THEN
+          !    ! Compute eccentric and true anomalies if orbit is elliptic:
+          !    CALL solveKeplerEquation(orb_lt_corr_arr(i,j), orb_lt_corr_arr(i,j)%t, ecc_anom)
+          !    ! line above modified from:
+          !    ! CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
+          !    ta_s = SIN(ecc_anom)
+          !    ta_c = COS(ecc_anom)
+          !    fak = SQRT(1 - elements(2) * elements(2))
+          !    true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
+          ! ELSE
+          !    ecc_anom = -99.0_bp
+          !    true_anom = -99.0_bp
+          ! END IF
+          
+          
           ! Write the output ephem array.
           out_ephems(i,j,1) = mjd                                        ! modified julian date
           out_ephems(i,j,2) = coordinates(2)/rad_deg                     ! right ascension (deg)
@@ -834,9 +839,9 @@ CONTAINS
           out_ephems(i,j,31) = h_ecl_car_coord_obsy(1)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
           out_ephems(i,j,32) = h_ecl_car_coord_obsy(2)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
           out_ephems(i,j,33) = h_ecl_car_coord_obsy(3)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
-          out_ephems(i,j,34) = true_anom/rad_deg                         ! true anomaly (deg)                                                                  
+          !out_ephems(i,j,34) = true_anom/rad_deg                         ! true anomaly (deg)                                                           
+          
 
-          CALL NULLIFY(observers(j))
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
           
@@ -845,9 +850,9 @@ CONTAINS
        DEALLOCATE(ephemerides, orb_lt_corr_arr)
 
     END DO
-    !DO i=1,SIZE(observers)
-    !   CALL NULLIFY(observers(i))
-    !END DO
+    DO i=1,SIZE(observers)
+      CALL NULLIFY(observers(i))
+    END DO
     DEALLOCATE(observers)
 
   END SUBROUTINE oorb_ephemeris_full
@@ -858,6 +863,7 @@ CONTAINS
        in_obscode,                   &
        in_ndate,                     &
        in_date_ephems,               &
+       in_dynmodel,                  &
        out_ephems,                   &
        error_code)
  
@@ -883,7 +889,9 @@ CONTAINS
     ! (1) modified Julian date
     ! (2) timescale type ('UTC': 1, 'UT1': 2, 'TT': 3, 'TAI': 4)
     REAL(8), DIMENSION(in_ndate,2), INTENT(in)          :: in_date_ephems ! (1:ndate,1:2)
-    ! out_ephemn: output ephemeris, 34 columns per target and epoch:
+    ! in_model: "2"=2-body dynamical model, "N"=n-body dynamical model
+    CHARACTER(len=1), INTENT(in)                        :: in_dynmodel
+    ! out_ephemn: output ephemeris, 33 columns per target and epoch:
     ! (1) modified julian date                                                                
     ! (2) right ascension (deg)                                                               
     ! (3) declination (deg)                                                                   
@@ -912,7 +920,9 @@ CONTAINS
     CHARACTER(len=6) :: dyn_model
     REAL(8), DIMENSION(6) :: coordinates, &
          elements, &
-         comp_coord         
+         comp_coord, &
+         h_ecl_car_coord_obsy, &
+         h_ecl_car_coord_obj         
     REAL(8), DIMENSION(3) :: obsy_obj, &
          obsy_pos, &
          geoc_obsy, &
@@ -928,9 +938,7 @@ CONTAINS
          observer_r2, &
          phase, &
          solar_elongation, &
-         vmag, &
-         hlon, &
-         hlat
+         vmag
     INTEGER :: i, &
          j
     LOGICAL, DIMENSION(10) :: perturbers
@@ -938,7 +946,12 @@ CONTAINS
     ! Init
     errstr = ""
     error_code = 0
-    dyn_model = "n-body"
+    IF (in_dynmodel .EQ. "2") THEN
+       dyn_model = "2-body"
+    END IF
+    IF (in_dynmodel .EQ. "N") THEN
+       dyn_model = "n-body"
+    END IF
     integrator = "bulirsch-stoer"
     integration_step = 5.0_8
     perturbers = .TRUE.
@@ -963,7 +976,7 @@ CONTAINS
 
     ! Loop over orbits:
     DO i=1,SIZE(in_orbits,dim=1)
-
+    
        ! Get the element type from the input flattened orbit.
        IF(NINT(in_orbits(i,8)) < 0 .OR.                                       &
             NINT(in_orbits(i,8)) > SIZE(element_types)) THEN
@@ -1016,15 +1029,10 @@ CONTAINS
           error_code = 40
           RETURN
        END IF
-       ! CALL NULLIFY(orb_arr(1))
-
+       CALL NULLIFY(orb_arr(1))
+   
        ! Now export the ephem_arr to a flat array.
        DO j=1,SIZE(observers)
-
-          ! ephem date
-          t = getTime(observers(j))
-          mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
-          mjd_tt = getMJD(t, "TT")
 
           ! Make sure that the ephemeris is equatorial:
           CALL rotateToEquatorial(ephemerides(1,j))
@@ -1035,6 +1043,13 @@ CONTAINS
           ! coordinates(4) = dDelta 
           ! coordinates(5) = dra (to be multiplied with cos(coordinates(3))
           ! coordinates(6) = ddec
+
+          ! ephem date
+          t = getTime(observers(j))
+          mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
+          mjd_tt = getMJD(t, "TT")
+          CALL NULLIFY(t)
+
 
           ! r, Delta, phase angle
           CALL NEW(ccoord, ephemerides(1,j))
@@ -1088,7 +1103,9 @@ CONTAINS
                   'TRACE BACK (70)',1)
              STOP
           END IF
-
+         
+          ! Compute (approximate) altitude of the Sun
+          ! Position of the geocenter as seen from the Sun:
           planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
           IF (error) THEN
              CALL errorMessage('oorb / ephemeris', &
@@ -1102,6 +1119,23 @@ CONTAINS
           ! Compute the solar elongation:
           vec3 = cross_product(obsy_obj,obsy_sun)
           solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
+
+          ! ! true anomaly does not work properly
+          ! elements = getElements(orb_lt_corr_arr(i,j), "cometary")
+          ! IF (elements(2) < 1.0_bp) THEN
+          !    ! Compute eccentric and true anomalies if orbit is elliptic:
+          !    CALL solveKeplerEquation(orb_lt_corr_arr(i,j), orb_lt_corr_arr(i,j)%t, ecc_anom)
+          !    ! line above modified from:
+          !    ! CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
+          !    ta_s = SIN(ecc_anom)
+          !    ta_c = COS(ecc_anom)
+          !    fak = SQRT(1 - elements(2) * elements(2))
+          !    true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
+          ! ELSE
+          !    ecc_anom = -99.0_bp
+          !    true_anom = -99.0_bp
+          ! END IF
+          
           
           ! Write the output ephem array.
           out_ephems(i,j,1) = mjd                                        ! modified julian date
@@ -1114,8 +1148,7 @@ CONTAINS
           out_ephems(i,j,8) = SQRT(heliocentric_r2)                      ! heliocentric distance (au)
           out_ephems(i,j,9) = coordinates(1)                             ! geocentric distance (au)
           out_ephems(i,j,10) = vmag                                      ! predicted apparent V-band magnitude
-
-          CALL NULLIFY(observers(j))
+          !out_ephems(i,j,11) = true_anom/rad_deg                         ! true anomaly (deg)                                                           
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
           
@@ -1124,12 +1157,272 @@ CONTAINS
        DEALLOCATE(ephemerides, orb_lt_corr_arr)
 
     END DO
-    !DO i=1,SIZE(observers)
-    !   CALL NULLIFY(observers(i))
-    !END DO
+    DO i=1,SIZE(observers)
+      CALL NULLIFY(observers(i))
+    END DO
     DEALLOCATE(observers)
 
   END SUBROUTINE oorb_ephemeris_basic
+  
+  
+
+  ! SUBROUTINE oorb_ephemeris_original(in_norb, &
+  !      in_orbits,                    &
+  !      in_obscode,                   &
+  !      in_ndate,                     &
+  !      in_date_ephems,               &
+  !      out_ephems,                   &
+  !      error_code)
+
+  !   ! Input/Output variables.
+  !   INTEGER, INTENT(in)                                 :: in_norb
+  !   ! Input flattened orbit:
+  !   !  (track_id, elements(1:6), element_type_index, epoch, timescale, H, G)
+  !   REAL(8),DIMENSION(in_norb,12), INTENT(in)           :: in_orbits ! (1:norb,1:12)
+  !   ! Observatory code as defined by the Minor Planet Center
+  !   CHARACTER(len=*), INTENT(in)                        :: in_obscode
+  !   INTEGER, INTENT(in)                                 :: in_ndate
+  !   ! Ephemeris dates.
+  !   ! (mjd, timescale)
+  !   REAL(8), DIMENSION(in_ndate,2), INTENT(in)          :: in_date_ephems ! (1:ndate,1:2)
+  !   ! Output ephemeris
+  !   ! out_ephems = ((dist, ra, dec, mag, mjd, timescale, dra/dt, ddec/dt, phase, solar_elongation), )
+  !   REAL(8), DIMENSION(in_norb,in_ndate,10), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:8)
+  !   ! Output error code
+  !   INTEGER, INTENT(out)                                :: error_code
+
+  !   ! Internal variables.  
+  !   TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_lt_corr_arr
+  !   TYPE (Orbit), DIMENSION(1) :: orb_arr
+  !   TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: observers
+  !   TYPE (CartesianCoordinates) :: ccoord
+  !   TYPE (CartesianCoordinates) :: obsy_ccoord
+  !   TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER :: ephemerides
+  !   TYPE (Time) :: t
+  !   REAL(8), DIMENSION(:,:), POINTER :: planeph
+  !   CHARACTER(len=INTEGRATOR_LEN) :: integrator
+  !   CHARACTER(len=6) :: dyn_model
+  !   REAL(8), DIMENSION(6) :: coordinates, &
+  !        elements
+  !   REAL(8), DIMENSION(3) :: obsy_obj, &
+  !        obsy_pos, &
+  !        geoc_obsy, &
+  !        obsy_sun, &
+  !        vec3, &
+  !        pos
+  !   REAL(8) :: cos_phase, &
+  !        ephemeris_r2, &
+  !        heliocentric_r2, &
+  !        integration_step, &
+  !        mjd, &
+  !        mjd_tt, &
+  !        observer_r2, &
+  !        phase, &
+  !        solar_elongation, &
+  !        vmag
+  !   INTEGER :: i, &
+  !        j
+  !   LOGICAL, DIMENSION(10) :: perturbers
+
+  !   ! Init
+  !   errstr = ""
+  !   error_code = 0
+  !   dyn_model = "n-body"
+  !   integrator = "bulirsch-stoer"
+  !   integration_step = 5.0_8
+  !   perturbers = .TRUE.
+  !   ALLOCATE(observers(SIZE(in_date_ephems,dim=1)))
+  !   DO i=1,SIZE(in_date_ephems,dim=1)
+  !      CALL NEW(t, in_date_ephems(i,1), timescales(NINT(in_date_ephems(i,2))))
+  !      IF (error) THEN
+  !         ! Error in creating a new Time object.
+  !         error_code = 35
+  !         RETURN
+  !      END IF
+  !      ! Compute heliocentric observatory coordinates
+  !      observers(i) = getObservatoryCCoord(obsies, in_obscode, t)
+  !      IF (error) THEN
+  !         ! Error in getObservatoryCCoord()
+  !         error_code = 36
+  !         RETURN
+  !      END IF
+  !      CALL rotateToEquatorial(observers(i))
+  !      CALL NULLIFY(t)
+  !   END DO
+
+  !   ! Loop over orbits:
+  !   DO i=1,SIZE(in_orbits,dim=1)
+
+  !      ! Get the element type from the input flattened orbit.
+  !      IF(NINT(in_orbits(i,8)) < 0 .OR. &
+  !           NINT(in_orbits(i,8)) > SIZE(element_types)) THEN
+  !         ! Error: unsupported orbital elements.
+  !         error_code = 58
+  !         RETURN
+  !      END IF
+
+  !      ! Get each flattened orbit and create an Orbit instance.
+  !      elements(1:6) = in_orbits(i,2:7)
+  !      ! Create a Time instance.
+  !      CALL NEW(t, in_orbits(i,9), timescales(NINT(in_orbits(i,10))))
+  !      IF(error) THEN
+  !         ! Error in creating a Time instance.
+  !         error_code = 57
+  !         RETURN
+  !      END IF
+
+  !      ! Now create an instant of StochasticOrbit via an Orbit instance.
+  !      CALL NEW(orb_arr(1), &
+  !           elements(1:6), &
+  !           element_types(NINT(in_orbits(i,8))), &
+  !           "ecliptic", &
+  !           copy(t))
+  !      CALL NULLIFY(t)
+  !      CALL setParameters(orb_arr(1), &
+  !           dyn_model=dyn_model, &
+  !           perturbers=perturbers, &
+  !           integrator=integrator, &
+  !           integration_step=integration_step)
+  !      IF (error) THEN
+  !         error_code = 37
+  !         RETURN
+  !      END IF
+  !      ! Use cartesian equatorial coordinates:
+  !      CALL toCartesian(orb_arr(1), "equatorial")
+  !      !CALL toCometary(orb_arr(1))
+  !      IF (error) THEN
+  !         ! Error in setParameters()
+  !         error_code = 39
+  !         RETURN
+  !      END IF
+  !      ! Compute topocentric ephemerides
+  !      CALL getEphemerides(orb_arr, &
+  !           observers, &
+  !           ephemerides, &
+  !           this_lt_corr_arr=orb_lt_corr_arr)
+  !      IF (error) THEN
+  !         ! Error in getEphemerides()
+  !         error_code = 40
+  !         RETURN
+  !      END IF
+  !      CALL NULLIFY(orb_arr(1))
+
+  !      ! Now export the ephem_arr to a flat array.
+  !      DO j=1,SIZE(observers)
+
+  !         ! Make sure that the ephemeris is equatorial:
+  !         CALL rotateToEquatorial(ephemerides(1,j))
+  !         ! Extract RA & Dec
+  !         coordinates = getCoordinates(ephemerides(1,j))
+
+  !         ! Calculate apparent brightness
+  !         CALL NEW(ccoord, ephemerides(1,j))
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (50)',1)
+  !            STOP
+  !         END IF
+  !         CALL rotateToEquatorial(ccoord)
+  !         obsy_obj = getPosition(ccoord)
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (55)',1)
+  !            STOP
+  !         END IF
+  !         CALL NULLIFY(ccoord)
+  !         ephemeris_r2 = DOT_PRODUCT(obsy_obj,obsy_obj)
+  !         CALL toCartesian(orb_lt_corr_arr(1,j), frame='equatorial')
+  !         pos = getPosition(orb_lt_corr_arr(1,j))
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (60)',1)
+  !            STOP
+  !         END IF
+  !         heliocentric_r2 = DOT_PRODUCT(pos,pos)
+  !         obsy_pos = getPosition(observers(j))
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (65)',1)
+  !            STOP
+  !         END IF
+  !         geoc_obsy = obsy_pos - pos
+  !         observer_r2 = DOT_PRODUCT(obsy_pos,obsy_pos)
+  !         cos_phase = 0.5_bp * (heliocentric_r2 + ephemeris_r2 - &
+  !              observer_r2) / (SQRT(heliocentric_r2) * &
+  !              SQRT(ephemeris_r2))
+  !         phase = ACOS(cos_phase)
+
+
+
+  !         vmag = getApparentHGMagnitude(H=in_orbits(i,11), &
+  !              G=in_orbits(i,12), r=SQRT(heliocentric_r2), &
+  !              Delta=coordinates(1), phase_angle=phase)
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (70)',1)
+  !            STOP
+  !         END IF
+
+  !         ! ephem date
+  !         t = getTime(observers(j))
+  !         mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
+  !         mjd_tt = getMJD(t, "TT")
+  !         obsy_ccoord = getGeocentricObservatoryCCoord(obsies, in_obscode, t)
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (75)',1)
+  !            STOP
+  !         END IF
+  !         CALL rotateToEquatorial(obsy_ccoord)
+  !         geoc_obsy = getPosition(obsy_ccoord)
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (80)',1)
+  !            STOP
+  !         END IF
+
+  !         CALL NULLIFY(t)
+
+  !         planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+  !         IF (error) THEN
+  !            CALL errorMessage('oorb / ephemeris', &
+  !                 'TRACE BACK (85)',1)
+  !            STOP
+  !         END IF
+
+  !         geoc_obsy = getPosition(obsy_ccoord)
+  !         obsy_sun = -(planeph(1,1:3) + geoc_obsy)
+  !         vec3 = cross_product(obsy_obj,obsy_sun)
+  !         solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
+
+
+  !         ! Write the output ephem array.
+  !         out_ephems(i,j,1) = coordinates(1)                             ! distance
+  !         out_ephems(i,j,2) = coordinates(2)/rad_deg                     ! ra
+  !         out_ephems(i,j,3) = coordinates(3)/rad_deg                     ! dec
+  !         out_ephems(i,j,4) = vmag                                       ! mag
+  !         out_ephems(i,j,5) = mjd                                        ! ephem mjd
+  !         out_ephems(i,j,6) = NINT(in_date_ephems(j,2))                  ! ephem mjd timescale
+  !         out_ephems(i,j,7) = coordinates(5)*COS(coordinates(3))/rad_deg ! dra/dt  sky-motion
+  !         out_ephems(i,j,8) = coordinates(6)/rad_deg                     ! ddec/dt sky-motion
+  !         out_ephems(i,j,9) = phase/rad_deg                              ! phase angle
+  !         out_ephems(i,j,10) = solar_elongation/rad_deg                  ! solar elongation angle (deg)
+
+  !         CALL NULLIFY(ephemerides(1,j))
+  !         CALL NULLIFY(orb_lt_corr_arr(1,j))
+
+  !      END DO
+
+  !      DEALLOCATE(ephemerides, orb_lt_corr_arr)
+
+  !   END DO
+  !   DO i=1,SIZE(observers)
+  !      CALL NULLIFY(observers(i))
+  !   END DO
+  !   DEALLOCATE(observers)
+
+  ! END SUBROUTINE oorb_ephemeris_original
+
 
 
   SUBROUTINE oorb_ephemeris_covariance(in_norb, &
