@@ -174,7 +174,7 @@ Keplerian to a cartesian definition:
        1.03814468e-02 -2.24243823e-02 -1.46645896e-04  1.00000000e+00
        5.15445000e+04  1.00000000e+00  2.05000000e+01  1.50000000e-01]]    
 
-The definitions of the individual columns in provided above.
+The definitions of the individual columns are provided above.
 
 Orbit Propagation
 ^^^^^^^^^^^^^^^^^
@@ -208,8 +208,8 @@ orbits defined above using an N-body integration:
       5.85002081e+00 3.58026888e+00 4.96413849e+00 3.00000000e+00
       5.12322300e+04 3.00000000e+00 0.00000000e+00 0.00000000e+00]]
 
-Ephemeris Computations
-^^^^^^^^^^^^^^^^^^^^^^
+Ephemeris Computation
+^^^^^^^^^^^^^^^^^^^^^
 
 The function ``pyoorb.oorb_ephemeris_full`` computes ephemeris for
 orbits ``in_orbits`` relative to observer location ``in_obscode`` (the
@@ -224,7 +224,8 @@ integration (``in_dynmodel='N'``) or a faster but less accurate
 two-body integration (``in_dynmodel='2'``).
 
 The following example computes ephemeris for the orbits defined above,
-as seen from Maunkea, and for a range of epochs:
+as seen from Maunakea, and for a range of epochs, using an N-body
+integration:
 
     >>> mjds = np.arange(51232, 51233, 1/24)
     >>> epochs = np.array(list(zip(mjds, [1]*len(mjds))), dtype=np.double, order='F')
@@ -235,7 +236,6 @@ as seen from Maunkea, and for a range of epochs:
     >>> print(err)
     0
     >>> print(eph)
-
     [[[ 5.12320000e+04  2.97420305e+01  9.39898382e+00 ... -8.88643901e-01
         4.34680947e-01  1.86372479e-05]
       [ 5.12320417e+04  2.97612057e+01  9.40381070e+00 ... -8.88970865e-01
@@ -250,58 +250,58 @@ as seen from Maunkea, and for a range of epochs:
       [ 5.12329583e+04  1.71426400e+01  7.67619777e+00 ... -8.96026864e-01
         4.19736086e-01  2.22713554e-05]]]
 
-``eph`` is in this case a nested array with one element per input
-orbit, one element per epoch, and 33 properties that are calculated by
-pyoorb. In the case of ``pyoorb.oorb_ephemeris_full``, these
-properties are:
+``eph`` is a nested array with one element per input orbit, one
+element per epoch, and 33 properties that are calculated by pyoorb. In
+the case of ``pyoorb.oorb_ephemeris_full``, these properties are:
 
-  0. modified julian date
-  1. right ascension (deg)
-  2. declination (deg)
-  3. dra/dt sky-motion (deg/day, including cos(dec) factor)
-  4. ddec/dt sky-motion (deg/day)
-  5. solar phase angle (deg)
-  6. solar elongation angle (deg)
-  7. heliocentric distance (au)
-  8. geocentric distance (au)
-  9. predicted apparent V-band magnitude
- 10. position angle for direction of motion (deg)
- 11. topocentric ecliptic longitude (deg)
- 12. topocentric ecliptic latitude (deg)
- 13. opposition-centered topocentric ecliptic longitude (deg)
- 14. opposition-centered topocentric ecliptic latitude (deg)
- 15. heliocentric ecliptic longitude (deg)
- 16. heliocentric ecliptic latitude (deg)
- 17. opposition-centered heliocentric ecliptic longitude (deg)
- 18. opposition-centered heliocentric ecliptic latitude (deg)
- 19. topocentric object altitude (deg)
- 20. topocentric solar altitude (deg)
- 21. topocentric lunar altitude (deg)
- 22. lunar phase [0...1]
- 23. lunar elongation (deg, distance between the target and the Moon)
- 24. heliocentric ecliptic cartesian x coordinate for the object (au)
- 25. heliocentric ecliptic cartesian y coordinate for the object (au)
- 26. heliocentric ecliptic cartesian z coordinate for the objects (au)
- 27. heliocentric ecliptic cartesian x rate for the object (au/day)
- 28. heliocentric ecliptic cartesian y rate for the object (au/day)
- 29. heliocentric ecliptic cartesian z rate for the objects (au/day)
- 30. heliocentric ecliptic cartesian coordinates for the observatory (au)
- 31. heliocentric ecliptic cartesian coordinates for the observatory (au)
- 32. heliocentric ecliptic cartesian coordinates for the observatory (au) 
+0. modified julian date
+1. right ascension (deg)
+2. declination (deg)
+3. dra/dt sky-motion (deg/day, including cos(dec) factor)
+4. ddec/dt sky-motion (deg/day)
+5. solar phase angle (deg)
+6. solar elongation angle (deg)
+7. heliocentric distance (au)
+8. geocentric distance (au)
+9. predicted apparent V-band magnitude
+10. position angle for direction of motion (deg)
+11. topocentric ecliptic longitude (deg)
+12. topocentric ecliptic latitude (deg)
+13. opposition-centered topocentric ecliptic longitude (deg)
+14. opposition-centered topocentric ecliptic latitude (deg)
+15. heliocentric ecliptic longitude (deg)
+16. heliocentric ecliptic latitude (deg)
+17. opposition-centered heliocentric ecliptic longitude (deg)
+18. opposition-centered heliocentric ecliptic latitude (deg)
+19. topocentric object altitude (deg)
+20. topocentric solar altitude (deg)
+21. topocentric lunar altitude (deg)
+22. lunar phase [0...1]
+23. lunar elongation (deg, distance between the target and the Moon)
+24. heliocentric ecliptic cartesian x coordinate for the object (au)
+25. heliocentric ecliptic cartesian y coordinate for the object (au)
+26. heliocentric ecliptic cartesian z coordinate for the objects (au)
+27. heliocentric ecliptic cartesian x rate for the object (au/day)
+28. heliocentric ecliptic cartesian y rate for the object (au/day)
+29. heliocentric ecliptic cartesian z rate for the objects (au/day)
+30. heliocentric ecliptic cartesian coordinates for the observatory (au)
+31. heliocentric ecliptic cartesian coordinates for the observatory (au)
+32. heliocentric ecliptic cartesian coordinates for the observatory (au) 
 
-``pyoorb.oorb_ephemeris_basic`` only provides a subset of these properties, enabling fast computations and requiring less memory:
+``pyoorb.oorb_ephemeris_basic`` only provides a subset of these
+properties, enabling fast computations and requiring less memory:
 
-  0. modified julian date
-  1. right ascension (deg)
-  2. declination (deg)
-  3. dra/dt sky-motion (deg/day, including cos(dec) factor)
-  4. ddec/dt sky-motion (deg/day)
-  5. solar phase angle (deg)
-  6. solar elongation angle (deg)
-  7. heliocentric distance (au)
-  8. geocentric distance (au)
-  9. predicted apparent V-band magnitude
- 10. position angle for direction of motion (deg)
+0. modified julian date
+1. right ascension (deg)
+2. declination (deg)
+3. dra/dt sky-motion (deg/day, including cos(dec) factor)
+4. ddec/dt sky-motion (deg/day)
+5. solar phase angle (deg)
+6. solar elongation angle (deg)
+7. heliocentric distance (au)
+8. geocentric distance (au)
+9. predicted apparent V-band magnitude
+10. position angle for direction of motion (deg)
 
      
 Acknowledgements and License Information
@@ -329,6 +329,6 @@ see <http://www.lsstcorp.org/LegalNotices/>.
 
 Original wrapper developer: F. Pierfederici <fpierfed@gmail.com>
 
-This code has been modified by Michael Mommert
-(<mommermiscience@gmail.com>) to be of use to a broader community in the
-framework of the `sbpy project <http://sbpy.org>`_.
+This code has been modified by Michael Mommert to be of use to a
+broader community in the framework of the `sbpy project
+<http://sbpy.org>`_.
