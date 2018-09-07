@@ -19,6 +19,8 @@ documentation will be added in the near future. Please refer to the
 Jupyter notebook
 <https://github.com/rhiannonlynne/notebooks/blob/master/PyOorb%20Demo.ipynb>`_.
 
+Convenience functions for the use of this module will be provided in
+the framework of the `sbpy <http://sbpy.org>`_ project.
 
 Installation
 ------------
@@ -70,8 +72,8 @@ Documentation/API
 Defining Orbits 
 ^^^^^^^^^^^^^^^^
 
-`pyoorb` uses the same input orbit format in all functions. Orbits
-have to be in the form of a `numpy.array` (one-dimensional for one
+pyoorb uses the same input orbit format in all functions. Orbits
+have to be in the form of a numpy.array (one-dimensional for one
 orbit, two-dimensional for multiple orbits). very orbit array has to
 contain the following 12 properties (in this order), some of which
 depend on the type of the elements provided (``COM`` for cometary
@@ -101,37 +103,207 @@ coordinates):
     parameter (``COM``)
 
 In order to provide compatibility with the underlying FORTRAN library,
-only use double values and set the corresponding order for the array
-(``order='F'``). The following lines provide an example orbit array:
+only use double values (``dtype=np.double``) and set the corresponding
+order for the array (``order='F'``). The following lines provide an
+example orbit array defining three individual orbits using the
+Keplerian orbit definition:
 
     >>> import numpy as np
-    >>> orbits = np.array([[0,1,2],  # id
-    ...                    [2.45123, 1.2343, 7.1235],  # a 
-    ...                    [0.1234, 0.05453, 0.0000234],  # e
-    ...                    [3.6, 14.5322, 0.002323],  # i
-    ...                    [231.34534543, 23.345345, 45.42342],  # longnode
-    ...                    [345.4324324, 125.243324, 45.34242],  # argper
-    ...                    [13.234234, 56.234234, 184.234324],  # mean anom
-    ...                    [3, 3, 3],  # orbit type
-    ...                    [53124.0, 51624.0, 52623.0],  # epoch
-    ...                    [1, 1, 1],  # timescale type
-    ...                    [12.5, 6.3, 20.5],  # absolute magnitude
-    ...                    [0.15, 0.2, 0.15]],  # slope parameter
-    ...                   dtype=np.double, order='F')
-    
+    >>> orbits = np.array(
+    ...    np.array([[0, 1, 2],  # id
+    ...              [1.46905, 2.49241, 2.43064],  # a
+    ...              [0.33435, 0.78954, 0.70177],  # e
+    ...              np.deg2rad([14.3024, 7.99749, 0.52734]),  # incl
+    ...              np.deg2rad([224.513, 124.587, 334.990]),  # longnode
+    ...              np.deg2rad([27.5419, 267.104, 205.376]),  # argper
+    ...              np.deg2rad([324.697, 297.655, 5.56391]),  # mean anom
+    ...              [3, 3, 3],  # orbit type
+    ...              [51544.5, 51544.5, 51544.5],  # epoch
+    ...              [1, 1, 1],  # timescale type
+    ...              [12.5, 6.3, 20.5],  # absolute magnitude
+    ...              [0.15, 0.15, 0.15]]).transpose(),  # slope parameter
+    ...    dtype=np.double, order='F')
+
+Note that angles have to be provided in radians, not in degrees;
+epochs have to be provided as modified Julian dates. Also note that
+the inner array is transposed; orbit arrays consist of a single array
+(a single orbit) or a nested array of single orbit arrays.
+
+
+Initializing pyoorb
+^^^^^^^^^^^^^^^^^^^
+
+Before any pyoorb functionality can be used, the module has to be
+initialized using the following lines:
+
+    >>> import os
+    >>> import pyoorb as oo
+    >>> ephfile = os.path.join(os.getenv('OORB_DATA'), 'de430.dat')
+    >>> oo.pyoorb.oorb_init(ephfile)
+
+Note that this requires the ``'OORB_DATA'`` environment variable to be
+properly defined (see installation guide above).
+
 
 Orbital Element Transformation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Function ``pyoorb.oorb_element_transformation`` provides
+transformations between different orbital element
+definitions. Required parameters are ``in_orbits`` (an orbit array as
+defined above) and ``in_element_type`` (the orbital element type
+integer code: ``CART``: 1, ``COM``: 2, ``KEP``: 3). The function
+outputs the orbit array as defined above using the element scheme
+defined through ``in_element_type``, as well as the corresponding
+error code.
+
+The following example transforms the orbit array defined above from a
+Keplerian to a cartesian definition:
+
+    >>> new_orbits, err = oo.pyoorb.oorb_element_transformation(
+    ...     in_orbits=orbits,
+    ...     in_element_type=1)
+    >>> print(err)
+    0
+    >>> print(new_orbits)
+    [[ 0.00000000e+00 -1.13248995e+00 -1.21090780e-01 -1.80398368e-01
+       5.81046365e-03 -1.61918824e-02  3.98214412e-03  1.00000000e+00
+       5.15445000e+04  1.00000000e+00  1.25000000e+01  1.50000000e-01]
+                                     ...
+     [ 2.00000000e+00 -6.02921087e-01 -5.37976414e-01 -6.83341536e-03
+       1.03814468e-02 -2.24243823e-02 -1.46645896e-04  1.00000000e+00
+       5.15445000e+04  1.00000000e+00  2.05000000e+01  1.50000000e-01]]    
+
+The definitions of the individual columns in provided above.
 
 Orbit Propagation
 ^^^^^^^^^^^^^^^^^
 
+The function ``pyoorb.oorb_propagation`` propagates one or more orbits
+(``in_orbits``) to a desired epoch (``in_epoch``). The epoch has to be
+provided as an array with ``dtype=np.double, order='F'`` (see example
+below) and has to contain two elements: the epoch as modified Julian
+date and the corresponding timescale type (``UTC``: 1, ``UT1``: 2,
+``TT``: 3, ``TAI``: 4). The user can decide between an N-body
+integration (``in_dynmodel='N'``) or a faster but less accurate
+two-body integration (``in_dynmodel='2'``).
 
-Ephemerides Computation
-^^^^^^^^^^^^^^^^^^^^^^^
-   
+The following example creates a target epoch and propagates all three
+orbits defined above using an N-body integration:
 
+    >>> epoch = np.array([51232.23, 3], dtype=np.double, order='F')
+    >>> orb, err = oo.pyoorb.oorb_propagation(in_orbits=orbits,
+    ...                                       in_epoch=epoch,
+    ...                                       in_dynmodel='N')
+    >>> print(err)
+    0
+    >>> print(orb)
+    [[0.00000000e+00 1.46902259e+00 3.34239111e-01 2.49612224e-01
+      3.91849109e+00 4.81057800e-01 2.64937688e+00 3.00000000e+00
+      5.12322300e+04 3.00000000e+00 0.00000000e+00 0.00000000e+00]
+     [1.00000000e+00 2.49303082e+00 7.89455978e-01 1.39563343e-01
+      2.17499921e+00 4.66102654e+00 3.83095531e+00 3.00000000e+00
+      5.12322300e+04 3.00000000e+00 0.00000000e+00 0.00000000e+00]
+     [2.00000000e+00 2.43234703e+00 7.01646868e-01 9.21820573e-03
+      5.85002081e+00 3.58026888e+00 4.96413849e+00 3.00000000e+00
+      5.12322300e+04 3.00000000e+00 0.00000000e+00 0.00000000e+00]]
+
+Ephemeris Computations
+^^^^^^^^^^^^^^^^^^^^^^
+
+The function ``pyoorb.oorb_ephemeris_full`` computes ephemeris for
+orbits ``in_orbits`` relative to observer location ``in_obscode`` (the
+official `Minor Planet Center observatory code
+<https://minorplanetcenter.net/iau/lists/ObsCodesF.html>`_) and for
+epochs ``in_date_ephems``. Epochs are defined as arrays with
+``dtype=np.double, order='F'`` (see example below) containing
+two-element arrays with the epoch as modified Julian date and the
+corresponding timescale type (``UTC``: 1, ``UT1``: 2, ``TT``: 3,
+``TAI``: 4). The user can decide between an N-body
+integration (``in_dynmodel='N'``) or a faster but less accurate
+two-body integration (``in_dynmodel='2'``).
+
+The following example computes ephemeris for the orbits defined above,
+as seen from Maunkea, and for a range of epochs:
+
+    >>> mjds = np.arange(51232, 51233, 1/24)
+    >>> epochs = np.array(list(zip(mjds, [1]*len(mjds))), dtype=np.double, order='F')
+    >>> eph, err = oo.pyoorb.oorb_ephemeris_full(in_orbits=orbits,
+    ...                                          in_obscode='568',
+    ...                                          in_date_ephems=epochs,
+    ...                                          in_dynmodel='N')
+    >>> print(err)
+    0
+    >>> print(eph)
+
+    [[[ 5.12320000e+04  2.97420305e+01  9.39898382e+00 ... -8.88643901e-01
+        4.34680947e-01  1.86372479e-05]
+      [ 5.12320417e+04  2.97612057e+01  9.40381070e+00 ... -8.88970865e-01
+        4.34043644e-01  1.44636163e-05]
+      [ 5.12320833e+04  2.97803611e+01  9.40862679e+00 ... -8.89300047e-01
+        4.33405588e-01  1.05174851e-05]
+      ...
+      [ 5.12328750e+04  1.71222795e+01  7.66784905e+00 ... -8.95406065e-01
+        4.21023347e-01  2.93152579e-05]
+      [ 5.12329167e+04  1.71324739e+01  7.67202457e+00 ... -8.95715537e-01
+        4.20379156e-01  2.60843567e-05]
+      [ 5.12329583e+04  1.71426400e+01  7.67619777e+00 ... -8.96026864e-01
+        4.19736086e-01  2.22713554e-05]]]
+
+``eph`` is in this case a nested array with one element per input
+orbit, one element per epoch, and 33 properties that are calculated by
+pyoorb. In the case of ``pyoorb.oorb_ephemeris_full``, these
+properties are:
+
+  0. modified julian date
+  1. right ascension (deg)
+  2. declination (deg)
+  3. dra/dt sky-motion (deg/day, including cos(dec) factor)
+  4. ddec/dt sky-motion (deg/day)
+  5. solar phase angle (deg)
+  6. solar elongation angle (deg)
+  7. heliocentric distance (au)
+  8. geocentric distance (au)
+  9. predicted apparent V-band magnitude
+ 10. position angle for direction of motion (deg)
+ 11. topocentric ecliptic longitude (deg)
+ 12. topocentric ecliptic latitude (deg)
+ 13. opposition-centered topocentric ecliptic longitude (deg)
+ 14. opposition-centered topocentric ecliptic latitude (deg)
+ 15. heliocentric ecliptic longitude (deg)
+ 16. heliocentric ecliptic latitude (deg)
+ 17. opposition-centered heliocentric ecliptic longitude (deg)
+ 18. opposition-centered heliocentric ecliptic latitude (deg)
+ 19. topocentric object altitude (deg)
+ 20. topocentric solar altitude (deg)
+ 21. topocentric lunar altitude (deg)
+ 22. lunar phase [0...1]
+ 23. lunar elongation (deg, distance between the target and the Moon)
+ 24. heliocentric ecliptic cartesian x coordinate for the object (au)
+ 25. heliocentric ecliptic cartesian y coordinate for the object (au)
+ 26. heliocentric ecliptic cartesian z coordinate for the objects (au)
+ 27. heliocentric ecliptic cartesian x rate for the object (au/day)
+ 28. heliocentric ecliptic cartesian y rate for the object (au/day)
+ 29. heliocentric ecliptic cartesian z rate for the objects (au/day)
+ 30. heliocentric ecliptic cartesian coordinates for the observatory (au)
+ 31. heliocentric ecliptic cartesian coordinates for the observatory (au)
+ 32. heliocentric ecliptic cartesian coordinates for the observatory (au) 
+
+``pyoorb.oorb_ephemeris_basic`` only provides a subset of these properties, enabling fast computations and requiring less memory:
+
+  0. modified julian date
+  1. right ascension (deg)
+  2. declination (deg)
+  3. dra/dt sky-motion (deg/day, including cos(dec) factor)
+  4. ddec/dt sky-motion (deg/day)
+  5. solar phase angle (deg)
+  6. solar elongation angle (deg)
+  7. heliocentric distance (au)
+  8. geocentric distance (au)
+  9. predicted apparent V-band magnitude
+ 10. position angle for direction of motion (deg)
+
+     
 Acknowledgements and License Information
 ----------------------------------------
 
@@ -155,7 +327,7 @@ You should have received a copy of the LSST License Statement and
 the GNU General Public License along with this program.  If not,
 see <http://www.lsstcorp.org/LegalNotices/>.
 
-original wrapper developer: F. Pierfederici <fpierfed@gmail.com>
+Original wrapper developer: F. Pierfederici <fpierfed@gmail.com>
 
 This code has been modified by Michael Mommert
 (<mommermiscience@gmail.com>) to be of use to a broader community in the
