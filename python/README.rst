@@ -74,7 +74,7 @@ Defining Orbits
 
 pyoorb uses the same input orbit format in all functions. Orbits
 have to be in the form of a numpy.array (one-dimensional for one
-orbit, two-dimensional for multiple orbits). very orbit array has to
+orbit, two-dimensional for multiple orbits). Every orbit array has to
 contain the following 12 properties (in this order), some of which
 depend on the type of the elements provided (``COM`` for cometary
 orbits, ``KEP`` for Keplerian orbits, and ``CART`` for cartesian
@@ -104,9 +104,23 @@ coordinates):
 
 In order to provide compatibility with the underlying FORTRAN library,
 only use double values (``dtype=np.double``) and set the corresponding
-order for the array (``order='F'``). The following lines provide an
-example orbit array defining three individual orbits using the
-Keplerian orbit definition:
+order for the array (``order='F'``). Angles have to be provided in
+radians, not in degrees; epochs have to be provided as modified Julian
+dates.
+
+The following example defines a single orbit:
+
+    >>> import numpy as np
+    >>> orbits = np.array([[0, 1.46905, 0.33435, np.deg2rad(14.3024),
+    ...                     np.deg2rad(224.513), np.deg2rad(27.5419),
+    ...                     np.deg2rad(324.697), 3, 51544.5, 1, 12.5, 0.15]],
+    ...                   dtype=np.double, order='F')
+
+Note that ``orbits`` is an array of arrays, where the latter ones
+define the orbits. If you want to define more than one orbit, you can
+simply add more orbit arrays. A more convenient way is shown in the
+next example that uses an array transposition and defines a total of
+three orbits:
 
     >>> import numpy as np
     >>> orbits = np.array(
@@ -124,10 +138,6 @@ Keplerian orbit definition:
     ...              [0.15, 0.15, 0.15]]).transpose(),  # slope parameter
     ...    dtype=np.double, order='F')
 
-Note that angles have to be provided in radians, not in degrees;
-epochs have to be provided as modified Julian dates. Also note that
-the inner array is transposed; orbit arrays consist of a single array
-(a single orbit) or a nested array of single orbit arrays.
 
 
 Initializing pyoorb
@@ -141,8 +151,11 @@ initialized using the following lines:
     >>> ephfile = os.path.join(os.getenv('OORB_DATA'), 'de430.dat')
     >>> oo.pyoorb.oorb_init(ephfile)
 
-Note that this requires the ``'OORB_DATA'`` environment variable to be
-properly defined (see installation guide above).
+The initialization requires the ``'OORB_DATA'`` environment variable
+to be properly defined (see installation guide above). Note that in
+this example the ``DE430`` planetary and lunar ephemerides are used;
+other definition files can be used, but those have to be present in
+the ``'OORB_DATA'`` directory.
 
 
 Orbital Element Transformation
