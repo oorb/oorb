@@ -27,7 +27,7 @@
 # @author  MG, JM
 # @version 2009-12-01
 #
-# updated 2018-07-17 Michael Mommert
+# updated 2018-09-06 Michael Mommert, sbpy.org
 
 #!/usr/bin/env python
 
@@ -100,6 +100,32 @@ if __name__ == "__main__":
     ephem_dates[0][:] = [55148.0, 1.0]
     ephem_dates[1][:] = [55150.0, 1.0]
 
+    print('calling oorb_element_transformation')
+    new_orb, err = pyoorb.pyoorb.oorb_element_transformation(
+        in_orbits=orbits,
+        in_element_type=1)
+    print("error code:", err)
+    for i in range(0, 3):
+        print(new_orb[i])
+
+    print('calling oorb_propagate (n-body)')
+    new_orb, err = pyoorb.pyoorb.oorb_propagation(
+        in_orbits=orbits,
+        in_epoch=ephem_dates[0],
+        in_dynmodel='N')
+    print("error code:", err)
+    for i in range(0, 3):
+        print(new_orb[i])
+
+    print('calling oorb_propagate (2-body)')
+    new_orb, err = pyoorb.pyoorb.oorb_propagation(
+        in_orbits=orbits,
+        in_epoch=ephem_dates[0],
+        in_dynmodel='2')
+    print("error code:", err)
+    for i in range(0, 3):
+        print(new_orb[i])
+
     print("calling oorb_ephemeris_covariance")
     eph, err = pyoorb.pyoorb.oorb_ephemeris_covariance(orbits,
                                                        covariances,
@@ -110,19 +136,21 @@ if __name__ == "__main__":
         for j in range(0, 2):
             print(eph[i][j])
 
-    print("calling oorb_ephemeris")
-    eph, err = pyoorb.pyoorb.oorb_ephemeris(in_orbits=orbits,
-                                            in_obscode=obscode,
-                                            in_date_ephems=ephem_dates)
+    print("calling oorb_ephemeris_full (n-body)")
+    eph, err = pyoorb.pyoorb.oorb_ephemeris_full(in_orbits=orbits,
+                                                 in_obscode=obscode,
+                                                 in_date_ephems=ephem_dates,
+                                                 in_dynmodel='N')
     print("error code:", err)
     for i in range(0, 3):
         for j in range(0, 2):
             print(eph[i][j])
 
-    print("calling oorb_ephemeris_2b")
-    eph, err = pyoorb.pyoorb.oorb_ephemeris_2b(in_orbits=orbits,
-                                               in_obscode=obscode,
-                                               in_date_ephems=ephem_dates)
+    print("calling oorb_ephemeris_full (2-body)")
+    eph, err = pyoorb.pyoorb.oorb_ephemeris_full(in_orbits=orbits,
+                                                 in_obscode=obscode,
+                                                 in_date_ephems=ephem_dates,
+                                                 in_dynmodel='2')
     print("error code:", err)
     for i in range(0, 3):
         for j in range(0, 2):
