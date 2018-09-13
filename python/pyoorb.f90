@@ -343,6 +343,16 @@ CONTAINS
           error_code = 58
           RETURN
        END IF
+
+       ! convert angles to degrees
+       IF (element_types(NINT(in_orbits(i,8))) .EQ. "keplerian" .OR.  &
+           element_types(NINT(in_orbits(i,8))) .EQ. "cometary") THEN
+          out_orbits(i,4) = out_orbits(i,4)/rad_deg
+          out_orbits(i,5) = out_orbits(i,5)/rad_deg
+          out_orbits(i,6) = out_orbits(i,6)/rad_deg
+          out_orbits(i,7) = out_orbits(i,7)/rad_deg
+       END IF
+          
        ! Set element type (same as input element type)
        out_orbits(i,8) = in_orbits(i,8)
        out_orbits(i,9) = in_epoch(1)
