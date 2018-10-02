@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2018-03-12
+!! @version 2018-10-02
 !!  
 MODULE Observations_cl
 
@@ -3119,7 +3119,7 @@ CONTAINS
     TYPE (SphericalCoordinates) :: obs_scoord, ephemeris
     TYPE (CartesianCoordinates) :: obsy_ccoord, geocenter_ccoord, &
          satellite_ccoord
-    CHARACTER(len=512) :: line
+    CHARACTER(len=1024) :: line
     CHARACTER(len=FNAME_LEN) :: fname, suffix
     CHARACTER(len=DESIGNATION_LEN) :: number, designation
     CHARACTER(len=132), DIMENSION(5) :: records
@@ -3127,19 +3127,24 @@ CONTAINS
     CHARACTER(len=124) :: line1, line2, line_, str, filter, obstype
     CHARACTER(len=7) :: nr_str
     CHARACTER(len=4) :: timescale, obsy_code, strk_class
+    REAL(hp) :: g_mag, g_flux, g_flux_err
     REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr
-    REAL(bp), DIMENSION(6,6) :: covariance
+    REAL(bp), DIMENSION(6,6) :: covariance, covariance_sys
     REAL(bp), DIMENSION(6) :: coordinates, stdev_, mean
     REAL(bp), DIMENSION(3) :: position, velocity, pos1, pos2
     REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd, dt, &
          ecl_lon, ecl_lat, angscan, pos_unc_along, pos_unc_across, &
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
          rmin, rarcmin, mag_unc, s2n, mjd_tt, mjd_tcb, strk_len, &
-         strk_len_unc, strk_direction, strk_direction_unc
+         strk_len_unc, strk_direction, strk_direction_unc, &
+         position_angle_scan,  &
+         epoch, epoch_err, epoch_utc
+    INTEGER(ihp) :: observation_id, solution_id, source_id
     INTEGER :: i, j, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
-         border1, border2, err_verb_
+         border1, border2, err_verb_, level_of_confidence, &
+         number_mp
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat
 
@@ -4191,7 +4196,7 @@ CONTAINS
           ! Create observation object:
           CALL NULLIFY(this%obs_arr(iobs))
           SELECT CASE (records(1)(21:21))
-          CASE (" ", "C", "A", "T", "M", "P", "c")
+          CASE (" ", "C", "A", "T", "M", "P", "c", "E")
              obsy_ccoord = getObservatoryCCoord(obsies, obsy_code, t)
              CALL NEW(this%obs_arr(iobs), number=number, designation=designation, &
                   discovery=discovery, note1=records(1)(124:124), &
@@ -4372,6 +4377,158 @@ CONTAINS
                discovery=discovery, note1=" ", note2="S", &
                obs_scoord=obs_scoord, covariance=covariance, &
                obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
+               obsy=obsy, obsy_ccoord=obsy_ccoord, &
+               satellite_ccoord=satellite_ccoord, &
+               coord_unit=2)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (135)", 1)
+             RETURN
+          END IF
+
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+
+       END DO
+
+    CASE ("gdr2")
+
+       ! Full SSO data dump from Gaia Data Release 2
+
+       covariance = 0.0_bp
+       position = 0.0_bp
+       velocity = 0.0_bp
+       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+       ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
+       mjd_tcb = 55197.0_bp
+       i = 0 
+       DO
+
+          READ(getUnit(obsf), "(A)", iostat=err) line
+          IF (err > 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (1).", 1)
+             RETURN
+          ELSE IF (err < 0) THEN ! end-of-file
+             EXIT
+          ELSE IF (line(1:1) == "#") THEN
+             CYCLE
+          END IF
+
+          READ(line, *, iostat=err) solution_id, source_id, &
+               observation_id, number_mp, epoch, epoch_err, epoch_utc, &
+               position(2), position(3), covariance_sys(2,2), &
+               covariance_sys(3,3), covariance_sys(2,3), &
+               covariance(2,2), covariance(3,3), covariance(2,3), &
+               g_mag, g_flux, g_flux_err, coordinates(1:6), &
+               position_angle_scan, level_of_confidence
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (2).", 1)
+             RETURN
+          END IF
+
+          CALL toString(number_mp, number, error)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+
+          ! Convert RA & Dec from degrees to radians
+          position(2:3) = position(2:3)*rad_deg
+
+          ! Random component of the uncertainty
+          ! Convert correlation to covariance
+          covariance(2,3) = covariance(2,3) * &
+               covariance(2,2) * covariance(3,3)
+          ! Copy covariance to the other off-diagonal element
+          covariance(3,2) = covariance(2,3)
+          ! Convert standard deviations to variances
+          covariance(2,2) = covariance(2,2)**2
+          covariance(3,3) = covariance(3,3)**2
+          ! Convert units of covariance matrix from milliarcsec^2 to
+          ! radians^2
+          covariance(2:3,2:3) = covariance(2:3,2:3) * &
+               (rad_asec/1000.0_bp)**2
+
+          ! Systematic component of the uncertainty
+          ! Convert correlation to covariance
+          covariance_sys(2,3) = covariance_sys(2,3) * &
+               covariance_sys(2,2) * covariance_sys(3,3)
+          ! Copy covariance to the other off-diagonal element
+          covariance_sys(3,2) = covariance_sys(2,3)
+          ! Convert standard deviations to variances
+          covariance_sys(2,2) = covariance_sys(2,2)**2
+          covariance_sys(3,3) = covariance_sys(3,3)**2
+          ! Convert units of covariance matrix from milliarcsec^2 to
+          ! radians^2
+          covariance_sys(2:3,2:3) = covariance_sys(2:3,2:3) * &
+               (rad_asec/1000.0_bp)**2
+          ! Add one to observation counter
+          i = i + 1
+          IF (i == 1) THEN
+             discovery = .TRUE.
+          ELSE
+             discovery = .FALSE.
+          END IF
+
+          CALL NEW(t, mjd_tcb + epoch, "TCB")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+          obsy = getObservatory(obsies, "247")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (120)", 1)
+             RETURN
+          END IF
+          ! Transform barycentric spacecraft coordinates to
+          ! heliocentric spacecraft coordinates
+          mjd_tt = getMJD(t, "TT")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (121)", 1)
+             RETURN
+          END IF
+          planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (122)", 1)
+             RETURN
+          END IF
+          CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (125)", 1)
+             RETURN
+          END IF
+          DEALLOCATE(planeph, stat=err)
+          CALL NEW(obs_scoord, position, velocity, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (130)", 1)
+             RETURN
+          END IF
+          satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
+          CALL rotateToEquatorial(satellite_ccoord)
+          CALL rotateToEquatorial(obsy_ccoord)
+          coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+          CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+          CALL NULLIFY(this%obs_arr(i))
+          CALL NEW(this%obs_arr(i), number=number, designation=" ", &
+               discovery=discovery, note1=" ", note2="S", &
+               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_mask=obs_mask, mag=REAL(g_mag,bp), filter="G", &
                obsy=obsy, obsy_ccoord=obsy_ccoord, &
                satellite_ccoord=satellite_ccoord, &
                coord_unit=2)
