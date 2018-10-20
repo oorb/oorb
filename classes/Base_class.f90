@@ -113,6 +113,7 @@ MODULE Base_cl
   INTEGER, PARAMETER :: DESIGNATION_LEN = 16
   INTEGER, PARAMETER :: OBSY_CODE_LEN = 4
   CHARACTER(len=FNAME_LEN) :: OORB_DATA_DIR
+  INCLUDE "../prefix.h"
 
   CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = "de405.dat"
   ! OBS CODES
@@ -610,19 +611,33 @@ CONTAINS
   END FUNCTION rotationMatrix
 
 
+  FUNCTION resolveDirectory(subdir, envvar) RESULT(s2)
+    CHARACTER(*), INTENT(IN) :: subdir, envvar
+    CHARACTER(FNAME_LEN) :: s2
+
+    ! If overriden by an environmental variable, prefer that
+    CALL getenv(envvar, s2)
+    IF (LEN_TRIM(s2) /= 0) THEN
+       RETURN
+    END IF
+
+    ! If PREFIX has not been set, default to current directory
+    ! for every subdir (backwards compatibility)
+    IF (LEN_TRIM(PREFIX) == 0) THEN
+       s2 = "."
+       RETURN
+    END IF
+
+    ! Otherwise, return <PREFIX>/<subdir>
+    s2 = TRIM(PREFIX) // "/" // subdir
+
+  END FUNCTION resolveDirectory
 
 
   SUBROUTINE setAccessToDataFiles()
 
     IMPLICIT NONE
-
-    ! only use with gfortran
-    !CALL get_environment_variable("OORB_DATA", OORB_DATA_DIR)
-    ! only use with g95
-    CALL getenv("OORB_DATA", OORB_DATA_DIR)
-    IF (LEN_TRIM(OORB_DATA_DIR) == 0) THEN
-       OORB_DATA_DIR = "."
-    END IF
+    OORB_DATA_DIR = resolveDirectory("data", "OORB_DATA")
 
   END SUBROUTINE setAccessToDataFiles
 

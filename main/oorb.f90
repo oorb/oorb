@@ -418,7 +418,7 @@ PROGRAM oorb
      WRITE(stdout,"(A)") " or"
      WRITE(stdout,"(A)") "oorb [ --version | --help | --task=TASK ] [ options ]"
      WRITE(stdout,"(A)") ""
-     WRITE(stdout,"(A)") ""
+     WRITE(stdout, "(A)") ""
      STOP
   END IF
 
