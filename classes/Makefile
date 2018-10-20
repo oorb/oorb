@@ -34,6 +34,8 @@ OBJECTFILES := $(notdir $(patsubst %.f90,%.o,$(F90_CLASS_SOURCES)))
 all: modules $(OBJECTFILES)
 
 # Compile object files:
+Base_class.o: ../prefix.h
+
 %.o : %.f90
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../modules $<
 

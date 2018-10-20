@@ -28,6 +28,7 @@
 # Version: 2009-11-09
 
 include make.config
+include Makefile.include
 
 PREFIX ?= /opt/oorb
 
