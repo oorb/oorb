@@ -30,7 +30,7 @@ include ../../make.config
 include ../../Makefile.include
 
 # TYPE OF EPHEMERIS [405|406|430|431]
-EPH_TYPE = 430
+EPH_TYPE ?= 430
 # FTP client
 #FTP_CLIENT = wget -nv -c
 FTP_CLIENT = curl -L -O -\# -C - -f
