@@ -106,7 +106,7 @@ if __name__ == "__main__":
     new_orb, err = pyoorb.pyoorb.oorb_element_transformation(
         in_orbits=orbits,
         in_element_type=1)
-    print("error code:", err)
+    if err != 0: raise Exception("OpenOrb Exception: error code = %d" % err)
     for i in range(0, 3):
         print(new_orb[i])
 
@@ -115,7 +115,7 @@ if __name__ == "__main__":
         in_orbits=orbits,
         in_epoch=ephem_dates[0],
         in_dynmodel='N')
-    print("error code:", err)
+    if err != 0: raise Exception("OpenOrb Exception: error code = %d" % err)
     for i in range(0, 3):
         print(new_orb[i])
 
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         in_orbits=orbits,
         in_epoch=ephem_dates[0],
         in_dynmodel='2')
-    print("error code:", err)
+    if err != 0: raise Exception("OpenOrb Exception: error code = %d" % err)
     for i in range(0, 3):
         print(new_orb[i])
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
                                                        covariances,
                                                        obscode,
                                                        ephem_dates)
-    print("error code:", err)
+    if err != 0: raise Exception("OpenOrb Exception: error code = %d" % err)
     for i in range(0, 3):
         for j in range(0, 2):
             print(eph[i][j])
@@ -143,7 +143,7 @@ if __name__ == "__main__":
                                                  in_obscode=obscode,
                                                  in_date_ephems=ephem_dates,
                                                  in_dynmodel='N')
-    print("error code:", err)
+    if err != 0: raise Exception("OpenOrb Exception: error code = %d" % err)
     for i in range(0, 3):
         for j in range(0, 2):
             print(eph[i][j])
@@ -153,7 +153,7 @@ if __name__ == "__main__":
                                                  in_obscode=obscode,
                                                  in_date_ephems=ephem_dates,
                                                  in_dynmodel='2')
-    print("error code:", err)
+    if err != 0: raise Exception("OpenOrb Exception: error code = %d" % err)
     for i in range(0, 3):
         for j in range(0, 2):
             print(eph[i][j])
