@@ -58,7 +58,7 @@ MODULE planetary_data
   USE sort
   IMPLICIT NONE
   PRIVATE
-  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = 'de405.dat'
+  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = 'de430.dat'
   INTEGER, PARAMETER            :: min_lu = 10
   INTEGER, PARAMETER            :: max_lu = 99
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4

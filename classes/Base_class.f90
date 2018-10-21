@@ -116,7 +116,7 @@ MODULE Base_cl
   CHARACTER(len=FNAME_LEN) :: OORB_DATA_DIR
   INCLUDE "../prefix.h"
 
-  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = "de405.dat"
+  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = "de430.dat"
   ! OBS CODES
   CHARACTER(len=FNAME_LEN), PARAMETER :: CODE_FNAME = "OBSCODE.dat"
   ! Default name of the file containing the difference between ET and UT:
