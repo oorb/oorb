@@ -38,7 +38,9 @@ import os
 if __name__ == "__main__":
     print("starting...")
     print("calling oorb_init():")
-    ephfile = os.path.join(os.getenv('OORB_DATA'), 'de430.dat')
+    ephfile = ""
+    if os.getenv('OORB_DATA'):
+      ephfile = os.path.join(os.getenv('OORB_DATA'), 'de430.dat')
     pyoorb.pyoorb.oorb_init(ephfile)
     # orb is id, 6 elements, epoch_mjd, H, G, element type index
     # keplerian appears to be element type index 3
