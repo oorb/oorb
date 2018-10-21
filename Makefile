@@ -37,6 +37,11 @@ backup:
 	$(SHELL) -c "if test -d ../backup_$(PROJNAME); then true; else mkdir ../backup_$(PROJNAME); fi"
 	cp -a * ../backup_$(PROJNAME)
 
+# Build binary and Python module
+all:
+	cd $(MAINPATH)   && $(MAKE) oorb
+	cd $(PYTHONPATH) && $(MAKE) pyoorb
+
 # Make tar-ball:
 tar: all_clean
 	cd .. ; tar cvf $(PROJNAME)_v$(VERSION).tar $(PROJNAME) ; gzip $(PROJNAME)_v$(VERSION).tar
