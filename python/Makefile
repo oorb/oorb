@@ -46,6 +46,9 @@ liboorb.$(LIBEXT): modules classes main liboorb.o
 	../$(MODULEPATH)/*.o
 
 pyoorb: liboorb
+	[[ ! -z "$(LDFLAGS)" ]] && echo "$$LDFLAGS" | grep -E -v -q -- "(-bundle|-shared)" && { \
+	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS -bundle" || LDFLAGS="$$LDFLAGS -shared"; \
+	}; \
 	f2py -m pyoorb pyoorb.f90 --build-dir ./build -c --noarch -loorb -L../lib \
 	--f90exec=$(FC) --f90flags="$(FC_INC)../$(CLASSPATH) $(FC_INC)../$(MODULEPATH)" 
 
