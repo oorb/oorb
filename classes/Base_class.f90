@@ -40,9 +40,11 @@
 MODULE Base_cl
 
   USE utilities
+  USE parameters
   IMPLICIT NONE
   PRIVATE :: calendarDateToJulianDate
   PRIVATE :: coordinatedUniversalTime
+  PRIVATE :: FNAME_LEN             !! defined in module parameters
 
   INTEGER, PARAMETER :: stderr = 0 !! Standard error logical unit. 
   !!                                  Shouldn't be connected to a file.
@@ -103,7 +105,6 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: smamax   = 500.0_bp                !! Maximum for semimajor axis (AU).
   REAL(bp), PARAMETER :: rmoon    = 2.57e-3_bp              !! Earth-Moon mean distance (AU).
   REAL(bp), PARAMETER :: kgm3_smau3 = (km_au)**3/kg_solar   !! density conversion
-  INTEGER, PARAMETER :: FNAME_LEN = 512
   INTEGER, PARAMETER :: DIR_LEN = 256
   INTEGER, PARAMETER :: OBS_RECORD_LEN = 256
   INTEGER, PARAMETER :: ELEMENT_TYPE_LEN = 16

@@ -58,7 +58,7 @@ MODULE planetary_data
   USE sort
   IMPLICIT NONE
   PRIVATE
-  CHARACTER(len=256), PARAMETER :: EPH_FNAME = 'de405.dat'
+  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = 'de405.dat'
   INTEGER, PARAMETER            :: min_lu = 10
   INTEGER, PARAMETER            :: max_lu = 99
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4
@@ -239,7 +239,7 @@ CONTAINS
     IMPLICIT NONE
     LOGICAL, INTENT(inout)                 :: error
     CHARACTER(len=*), OPTIONAL, INTENT(in) :: filename
-    CHARACTER(len=256)                     :: fname, OORB_DATA_DIR
+    CHARACTER(len=FNAME_LEN)               :: fname, OORB_DATA_DIR
     CHARACTER(len=3)                       :: dtype
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: tmp
     INTEGER                                :: err, i, lu, count, fnstart
@@ -250,7 +250,7 @@ CONTAINS
        RETURN
     END IF
 
-    IF (PRESENT(filename) .AND. LEN_TRIM(filename) <= 256) THEN
+    IF (PRESENT(filename) .AND. LEN_TRIM(filename) <= FNAME_LEN) THEN
        fname = TRIM(filename)
     ELSE
        ! only use with gfortran
