@@ -433,7 +433,7 @@ CONTAINS
     ! (31) heliocentric ecliptic cartesian coordinates for the observatory (au)                
     ! (32) heliocentric ecliptic cartesian coordinates for the observatory (au)                
     ! (33) heliocentric ecliptic cartesian coordinates for the observatory (au)
-    ! (34) true anomaly (currently only a dummy value)
+    ! (34) true anomaly
     REAL(8), DIMENSION(in_norb,in_ndate,34), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:34)
     ! error_code: output error code
     INTEGER, INTENT(out)                                :: error_code
@@ -913,7 +913,7 @@ CONTAINS
     ! (8) heliocentric distance (au)                                                          
     ! (9) geocentric distance (au)                                                            
     ! (10) predicted apparent V-band magnitude
-    ! (11) true anomaly (currently only a dummy value)
+    ! (11) true anomaly
 
     
     REAL(8), DIMENSION(in_norb,in_ndate,11), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:11)
