@@ -801,17 +801,13 @@ CONTAINS
              STOP
           END IF
 
-          ! true anomaly does not work properly
-          ! elements = getElements(orb_lt_corr_arr(i,j), "cometary")
+          ! calculate true anomaly
           elements = getElements(orb_arr(1), "cometary")
           IF (elements(2) < 1.0_bp) THEN
              t = getTime(observers(j))
-             !mjd_tt = getMJD(t, "TT")
-             !WRITE (*,*)  mjd_tt
              ! Compute eccentric and true anomalies if orbit is elliptic:
-             !CALL solveKeplerEquation(orb_arr(1), orb_arr(1)%t, ecc_anom)
              CALL solveKeplerEquation(orb_arr(1), t, ecc_anom)
-             call NULLIFY(t)
+             CALL NULLIFY(t)
              ta_s = SIN(ecc_anom)
              ta_c = COS(ecc_anom)
              fak = SQRT(1 - elements(2) * elements(2))
@@ -1142,17 +1138,13 @@ CONTAINS
           vec3 = cross_product(obsy_obj,obsy_sun)
           solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
 
-          ! true anomaly does not work properly
-          ! elements = getElements(orb_lt_corr_arr(i,j), "cometary")
+          ! calculate true anomaly
           elements = getElements(orb_arr(1), "cometary")
           IF (elements(2) < 1.0_bp) THEN
              t = getTime(observers(j))
-             !mjd_tt = getMJD(t, "TT")
-             !WRITE (*,*)  mjd_tt
              ! Compute eccentric and true anomalies if orbit is elliptic:
-             !CALL solveKeplerEquation(orb_arr(1), orb_arr(1)%t, ecc_anom)
              CALL solveKeplerEquation(orb_arr(1), t, ecc_anom)
-             call NULLIFY(t)
+             CALL NULLIFY(t)
              ta_s = SIN(ecc_anom)
              ta_c = COS(ecc_anom)
              fak = SQRT(1 - elements(2) * elements(2))
@@ -1176,7 +1168,6 @@ CONTAINS
           out_ephems(i,j,11) = true_anom/rad_deg                         ! true anomaly (deg)                                                           
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
-          !call nullify(t)
 
           WRITE (*,*) true_anom/rad_deg
           
