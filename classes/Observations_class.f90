@@ -4421,7 +4421,7 @@ CONTAINS
           END IF
 
           READ(line, *, iostat=err) solution_id, source_id, &
-               observation_id, number_mp, epoch, epoch_err, epoch_utc, &
+               observation_id, number, epoch, epoch_err, epoch_utc, &
                position(2), position(3), covariance_sys(2,2), &
                covariance_sys(3,3), covariance_sys(2,3), &
                covariance(2,2), covariance(3,3), covariance(2,3), &
@@ -4431,13 +4431,6 @@ CONTAINS
              error = .TRUE.
              CALL errorMessage("Observations / readObservationFile", &
                   "Error while reading observations from file (2).", 1)
-             RETURN
-          END IF
-
-          CALL toString(number_mp, number, error)
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (115)", 1)
              RETURN
           END IF
 
