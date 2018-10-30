@@ -297,9 +297,10 @@ the case of ``pyoorb.oorb_ephemeris_full``, these properties are:
 27. heliocentric ecliptic cartesian x rate for the object (au/day)
 28. heliocentric ecliptic cartesian y rate for the object (au/day)
 29. heliocentric ecliptic cartesian z rate for the objects (au/day)
-30. heliocentric ecliptic cartesian coordinates for the observatory (au)
-31. heliocentric ecliptic cartesian coordinates for the observatory (au)
-32. heliocentric ecliptic cartesian coordinates for the observatory (au) 
+30. heliocentric ecliptic cartesian x coordinate for the observatory (au)
+31. heliocentric ecliptic cartesian y coordinate for the observatory (au)
+32. heliocentric ecliptic cartesian z coordinate for the observatory (au)
+33. true anomaly (deg)
 
 ``pyoorb.oorb_ephemeris_basic`` only provides a subset of these
 properties, enabling fast computations and requiring less memory:
@@ -314,7 +315,8 @@ properties, enabling fast computations and requiring less memory:
 7. heliocentric distance (au)
 8. geocentric distance (au)
 9. predicted apparent V-band magnitude
-10. position angle for direction of motion (deg)
+10. true anomaly (deg)
+
 
      
 Acknowledgements and License Information

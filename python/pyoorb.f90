@@ -433,7 +433,7 @@ CONTAINS
     ! (31) heliocentric ecliptic cartesian coordinates for the observatory (au)                
     ! (32) heliocentric ecliptic cartesian coordinates for the observatory (au)                
     ! (33) heliocentric ecliptic cartesian coordinates for the observatory (au)
-    ! (34) true anomaly (currently only a dummy value)
+    ! (34) true anomaly
     REAL(8), DIMENSION(in_norb,in_ndate,34), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:34)
     ! error_code: output error code
     INTEGER, INTENT(out)                                :: error_code
@@ -587,7 +587,7 @@ CONTAINS
           error_code = 40
           RETURN
        END IF
-       CALL NULLIFY(orb_arr(1))
+       !CALL NULLIFY(orb_arr(1))
    
        ! Now export the ephem_arr to a flat array.
        DO j=1,SIZE(observers)
@@ -801,22 +801,21 @@ CONTAINS
              STOP
           END IF
 
-          ! ! true anomaly does not work properly
-          ! elements = getElements(orb_lt_corr_arr(i,j), "cometary")
-          ! IF (elements(2) < 1.0_bp) THEN
-          !    ! Compute eccentric and true anomalies if orbit is elliptic:
-          !    CALL solveKeplerEquation(orb_lt_corr_arr(i,j), orb_lt_corr_arr(i,j)%t, ecc_anom)
-          !    ! line above modified from:
-          !    ! CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
-          !    ta_s = SIN(ecc_anom)
-          !    ta_c = COS(ecc_anom)
-          !    fak = SQRT(1 - elements(2) * elements(2))
-          !    true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
-          ! ELSE
-          !    ecc_anom = -99.0_bp
-          !    true_anom = -99.0_bp
-          ! END IF
-          true_anom = -99.0_bp
+          ! calculate true anomaly
+          elements = getElements(orb_arr(1), "cometary")
+          IF (elements(2) < 1.0_bp) THEN
+             t = getTime(observers(j))
+             ! Compute eccentric and true anomalies if orbit is elliptic:
+             CALL solveKeplerEquation(orb_arr(1), t, ecc_anom)
+             CALL NULLIFY(t)
+             ta_s = SIN(ecc_anom)
+             ta_c = COS(ecc_anom)
+             fak = SQRT(1 - elements(2) * elements(2))
+             true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
+          ELSE
+             ecc_anom = -99.0_bp
+             true_anom = -99.0_bp
+          END IF
           
           ! Write the output ephem array.
           out_ephems(i,j,1) = mjd                                        ! modified julian date
@@ -852,14 +851,13 @@ CONTAINS
           out_ephems(i,j,31) = h_ecl_car_coord_obsy(1)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
           out_ephems(i,j,32) = h_ecl_car_coord_obsy(2)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
           out_ephems(i,j,33) = h_ecl_car_coord_obsy(3)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
-          out_ephems(i,j,34) = true_anom                                 ! true anomaly (deg)                                                           
-          
+          out_ephems(i,j,34) = true_anom/rad_deg                         ! true anomaly (deg)                                                           
 
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
           
        END DO
-
+       CALL NULLIFY(orb_arr(1))
        DEALLOCATE(ephemerides, orb_lt_corr_arr)
 
     END DO
@@ -915,7 +913,7 @@ CONTAINS
     ! (8) heliocentric distance (au)                                                          
     ! (9) geocentric distance (au)                                                            
     ! (10) predicted apparent V-band magnitude
-    ! (11) true anomaly (currently only a dummy value)
+    ! (11) true anomaly
 
     
     REAL(8), DIMENSION(in_norb,in_ndate,11), INTENT(out) :: out_ephems ! (1:norb,1:ndate,1:11)
@@ -955,6 +953,10 @@ CONTAINS
          phase, &
          solar_elongation, &
          vmag, &
+         ta_s, &
+         ta_c, &
+         fak, &
+         ecc_anom, &
          true_anom
     INTEGER :: i, &
          j
@@ -1046,7 +1048,7 @@ CONTAINS
           error_code = 40
           RETURN
        END IF
-       CALL NULLIFY(orb_arr(1))
+
    
        ! Now export the ephem_arr to a flat array.
        DO j=1,SIZE(observers)
@@ -1066,7 +1068,6 @@ CONTAINS
           mjd = getMJD(t, timescales(NINT(in_date_ephems(j,2))))
           mjd_tt = getMJD(t, "TT")
           CALL NULLIFY(t)
-
 
           ! r, Delta, phase angle
           CALL NEW(ccoord, ephemerides(1,j))
@@ -1137,22 +1138,21 @@ CONTAINS
           vec3 = cross_product(obsy_obj,obsy_sun)
           solar_elongation = ATAN2(SQRT(SUM(vec3**2)),DOT_PRODUCT(obsy_obj,obsy_sun))
 
-          ! ! true anomaly does not work properly
-          ! elements = getElements(orb_lt_corr_arr(i,j), "cometary")
-          ! IF (elements(2) < 1.0_bp) THEN
-          !    ! Compute eccentric and true anomalies if orbit is elliptic:
-          !    CALL solveKeplerEquation(orb_lt_corr_arr(i,j), orb_lt_corr_arr(i,j)%t, ecc_anom)
-          !    ! line above modified from:
-          !    ! CALL solveKeplerEquation(orb_arr_in(i), orb_arr_in(i)%t, ecc_anom)
-          !    ta_s = SIN(ecc_anom)
-          !    ta_c = COS(ecc_anom)
-          !    fak = SQRT(1 - elements(2) * elements(2))
-          !    true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
-          ! ELSE
-          !    ecc_anom = -99.0_bp
-          !    true_anom = -99.0_bp
-          ! END IF
-          true_anom = -99.0_bp
+          ! calculate true anomaly
+          elements = getElements(orb_arr(1), "cometary")
+          IF (elements(2) < 1.0_bp) THEN
+             t = getTime(observers(j))
+             ! Compute eccentric and true anomalies if orbit is elliptic:
+             CALL solveKeplerEquation(orb_arr(1), t, ecc_anom)
+             CALL NULLIFY(t)
+             ta_s = SIN(ecc_anom)
+             ta_c = COS(ecc_anom)
+             fak = SQRT(1 - elements(2) * elements(2))
+             true_anom = MODULO(ATAN2(fak * ta_s, ta_c - elements(2)),two_pi)
+          ELSE
+             ecc_anom = -99.0_bp
+             true_anom = -99.0_bp
+          END IF
           
           ! Write the output ephem array.
           out_ephems(i,j,1) = mjd                                        ! modified julian date
@@ -1165,12 +1165,14 @@ CONTAINS
           out_ephems(i,j,8) = SQRT(heliocentric_r2)                      ! heliocentric distance (au)
           out_ephems(i,j,9) = coordinates(1)                             ! geocentric distance (au)
           out_ephems(i,j,10) = vmag                                      ! predicted apparent V-band magnitude
-          out_ephems(i,j,11) = true_anom                                 ! true anomaly (deg)                                                           
+          out_ephems(i,j,11) = true_anom/rad_deg                         ! true anomaly (deg)                                                           
           CALL NULLIFY(ephemerides(1,j))
           CALL NULLIFY(orb_lt_corr_arr(1,j))
+
+          WRITE (*,*) true_anom/rad_deg
           
        END DO
-
+       CALL NULLIFY(orb_arr(1))
        DEALLOCATE(ephemerides, orb_lt_corr_arr)
 
     END DO
