@@ -58,7 +58,7 @@ MODULE planetary_data
   USE sort
   IMPLICIT NONE
   PRIVATE
-  CHARACTER(len=256), PARAMETER :: EPH_FNAME = 'de405.dat'
+  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = 'de430.dat'
   INTEGER, PARAMETER            :: min_lu = 10
   INTEGER, PARAMETER            :: max_lu = 99
   INTEGER, PARAMETER            :: RECORD_LENGTH = 4
@@ -239,9 +239,10 @@ CONTAINS
     IMPLICIT NONE
     LOGICAL, INTENT(inout)                 :: error
     CHARACTER(len=*), OPTIONAL, INTENT(in) :: filename
-    CHARACTER(len=256)                     :: fname, OORB_DATA_DIR
+    CHARACTER(len=FNAME_LEN)               :: fname, OORB_DATA_DIR
+    CHARACTER(len=3)                       :: dtype
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: tmp
-    INTEGER                                :: err, i, lu, count
+    INTEGER                                :: err, i, lu, count, fnstart
     LOGICAL                                :: done, used
 
     ! Make sure this is the first call to this routine
@@ -249,7 +250,7 @@ CONTAINS
        RETURN
     END IF
 
-    IF (PRESENT(filename) .AND. LEN_TRIM(filename) <= 256) THEN
+    IF (PRESENT(filename) .AND. LEN_TRIM(filename) <= FNAME_LEN) THEN
        fname = TRIM(filename)
     ELSE
        ! only use with gfortran
@@ -294,19 +295,25 @@ CONTAINS
 
     ! Read deXXX.dat (or whatever you call the JPL Planetary Ephemeris file):
     !WRITE(0,"(A,1X,A)") "Using ephemeris file ", TRIM(fname)
-    IF (INDEX(fname,"405") /= 0) THEN
+    fnstart = INDEX(fname,"/",back=.TRUE.)
+    IF (INDEX(fname,"405",back=.TRUE.) .GT. fnstart) THEN
+       dtype = "405"
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_405, action='READ', iostat=err)
-    ELSE IF (INDEX(fname,"406") /= 0) THEN
+    ELSE IF (INDEX(fname,"406",back=.TRUE.) .GT. fnstart) THEN
+       dtype = "406"
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_406, action='READ', iostat=err)
-    ELSE IF (INDEX(fname,"430") /= 0) THEN
+    ELSE IF (INDEX(fname,"430",back=.TRUE.) .GT. fnstart) THEN
+       dtype = "430"
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_430, action='READ', iostat=err)
-    ELSE IF (INDEX(fname,"431") /= 0) THEN
+    ELSE IF (INDEX(fname,"431",back=.TRUE.) .GT. fnstart) THEN
+       dtype = "431"
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_431, action='READ', iostat=err)
-    ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
+    ELSE IF (INDEX(fname,"inpop10b",back=.TRUE.) .GT. fnstart) THEN
+       dtype = "10b"
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_INPOP10B, action='READ', iostat=err)
     ELSE
@@ -336,15 +343,15 @@ CONTAINS
        RETURN
     END IF
 
-    IF (INDEX(fname,"405") /= 0) THEN
+    IF (dtype == "405") THEN
        ALLOCATE(tmp(NCOEFF_405,NRECORD_MAX), stat=err)
-    ELSE IF (INDEX(fname,"406") /= 0) THEN
+    ELSE IF (dtype == "406") THEN
        ALLOCATE(tmp(NCOEFF_406,NRECORD_MAX), stat=err)
-    ELSE IF (INDEX(fname,"430") /= 0) THEN
+    ELSE IF (dtype == "430") THEN
        ALLOCATE(tmp(NCOEFF_430,NRECORD_MAX), stat=err)
-    ELSE IF (INDEX(fname,"431") /= 0) THEN
+    ELSE IF (dtype == "431") THEN
        ALLOCATE(tmp(NCOEFF_431,NRECORD_MAX), stat=err)
-    ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
+    ELSE IF (dtype == "10b") THEN
        ALLOCATE(tmp(NCOEFF_INPOP10B,NRECORD_MAX), stat=err)
     ELSE
        error = .TRUE.
@@ -377,7 +384,7 @@ CONTAINS
 
     ! Planets' and Moon's GMs
     planetary_mu = 0.0_rprec8
-    IF (INDEX(fname,"405") /= 0 .OR. INDEX(fname,"406") /= 0) THEN
+    IF (dtype == "405" .OR. dtype == "406") THEN
 
        !  (1) Mercury,
        !  (2) Venus,
@@ -401,7 +408,7 @@ CONTAINS
        ! (13) Earth-Moon barycenter,
        planetary_mu(13) = cval(11)
 
-    ELSE IF (INDEX(fname,"430") /= 0 .OR. INDEX(fname,"431") /= 0) THEN
+    ELSE IF (dtype == "430" .OR. dtype == "431") THEN
 
        !  (1) Mercury,
        !  (2) Venus,
@@ -425,7 +432,7 @@ CONTAINS
        ! (13) Earth-Moon barycenter,
        planetary_mu(13) = cval(14)
 
-    ELSE IF (INDEX(fname,"inpop10b") /= 0) THEN
+    ELSE IF (dtype == "10b") THEN
 
        !  (1) Mercury,
        !  (2) Venus,

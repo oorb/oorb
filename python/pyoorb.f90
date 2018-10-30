@@ -88,7 +88,7 @@ CONTAINS
     END IF
 
     ! Read de430.dat
-    IF (PRESENT(ephemeris_fname)) THEN
+    IF (PRESENT(ephemeris_fname) .AND. LEN_TRIM(ephemeris_fname) /= 0) THEN
        CALL JPL_ephemeris_init(error, ephemeris_fname)
        IF (error) THEN
           error_code = 3

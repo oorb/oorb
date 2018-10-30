@@ -111,7 +111,7 @@ CONTAINS
     ! Initialize the OpenOrb module.
     !
     ! @param ephemFileName: full path of the JPL ephem file (usually 
-    !        $OORB_DATA/JPL_ephemeris/de405.dat).
+    !        $OORB_DATA/JPL_ephemeris/de430.dat).
     ! @param verbosity: verbosity level for OpenOrb calls [0, 5] (default 0)
     ! @return errorCode: int error code. 0 = success, otherwise, failure.
 

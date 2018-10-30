@@ -369,7 +369,7 @@ PROGRAM oorb
   orbit_format_out = "des"
   element_type_comp_prm = "keplerian"
   element_type_out_prm = "keplerian"
-  planetary_ephemeris_fname = "de405.dat"
+  planetary_ephemeris_fname = "de430.dat"
   err_verb = 1
   info_verb = 1
   frame = "ecliptic"
@@ -418,7 +418,7 @@ PROGRAM oorb
      WRITE(stdout,"(A)") " or"
      WRITE(stdout,"(A)") "oorb [ --version | --help | --task=TASK ] [ options ]"
      WRITE(stdout,"(A)") ""
-     WRITE(stdout,"(A)") ""
+     WRITE(stdout, "(A)") ""
      STOP
   END IF
 

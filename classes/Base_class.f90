@@ -40,9 +40,11 @@
 MODULE Base_cl
 
   USE utilities
+  USE parameters
   IMPLICIT NONE
   PRIVATE :: calendarDateToJulianDate
   PRIVATE :: coordinatedUniversalTime
+  PRIVATE :: FNAME_LEN             !! defined in module parameters
 
   INTEGER, PARAMETER :: stderr = 0 !! Standard error logical unit. 
   !!                                  Shouldn't be connected to a file.
@@ -103,7 +105,6 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: smamax   = 500.0_bp                !! Maximum for semimajor axis (AU).
   REAL(bp), PARAMETER :: rmoon    = 2.57e-3_bp              !! Earth-Moon mean distance (AU).
   REAL(bp), PARAMETER :: kgm3_smau3 = (km_au)**3/kg_solar   !! density conversion
-  INTEGER, PARAMETER :: FNAME_LEN = 512
   INTEGER, PARAMETER :: DIR_LEN = 256
   INTEGER, PARAMETER :: OBS_RECORD_LEN = 256
   INTEGER, PARAMETER :: ELEMENT_TYPE_LEN = 16
@@ -113,8 +114,9 @@ MODULE Base_cl
   INTEGER, PARAMETER :: DESIGNATION_LEN = 16
   INTEGER, PARAMETER :: OBSY_CODE_LEN = 4
   CHARACTER(len=FNAME_LEN) :: OORB_DATA_DIR
+  INCLUDE "../prefix.h"
 
-  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = "de405.dat"
+  CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = "de430.dat"
   ! OBS CODES
   CHARACTER(len=FNAME_LEN), PARAMETER :: CODE_FNAME = "OBSCODE.dat"
   ! Default name of the file containing the difference between ET and UT:
@@ -610,19 +612,33 @@ CONTAINS
   END FUNCTION rotationMatrix
 
 
+  FUNCTION resolveDirectory(subdir, envvar) RESULT(s2)
+    CHARACTER(*), INTENT(IN) :: subdir, envvar
+    CHARACTER(FNAME_LEN) :: s2
+
+    ! If overriden by an environmental variable, prefer that
+    CALL getenv(envvar, s2)
+    IF (LEN_TRIM(s2) /= 0) THEN
+       RETURN
+    END IF
+
+    ! If PREFIX has not been set, default to current directory
+    ! for every subdir (backwards compatibility)
+    IF (LEN_TRIM(PREFIX) == 0) THEN
+       s2 = "."
+       RETURN
+    END IF
+
+    ! Otherwise, return <PREFIX>/<subdir>
+    s2 = TRIM(PREFIX) // "/" // subdir
+
+  END FUNCTION resolveDirectory
 
 
   SUBROUTINE setAccessToDataFiles()
 
     IMPLICIT NONE
-
-    ! only use with gfortran
-    !CALL get_environment_variable("OORB_DATA", OORB_DATA_DIR)
-    ! only use with g95
-    CALL getenv("OORB_DATA", OORB_DATA_DIR)
-    IF (LEN_TRIM(OORB_DATA_DIR) == 0) THEN
-       OORB_DATA_DIR = "."
-    END IF
+    OORB_DATA_DIR = resolveDirectory("data", "OORB_DATA")
 
   END SUBROUTINE setAccessToDataFiles
 
