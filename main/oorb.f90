@@ -2464,6 +2464,7 @@ PROGRAM oorb
            DEALLOCATE(repetition_arr_cmp, stat=err)
            DEALLOCATE(reg_apr_arr_cmp, stat=err)
            DEALLOCATE(jac_arr_cmp, stat=err)
+           DEALLOCATE(sor_rho_arr, stat=err)
 
            IF (info_verb >= 2) THEN
               WRITE(stdout,"(3(1X,A))") "Object", &
