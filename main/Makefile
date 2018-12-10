@@ -89,6 +89,13 @@ neopop_module.o : classes neopop_module.f90
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
 	$(FC_INC)../$(MODULEPATH) neopop_module.f90
 
+# Compile and link classes to the ephemeris_linking program:
+ephemeris_linking: classes $(IOMOD).o
+	$(FC) $(FCOPTIONS) ephemeris_linking.f90 \
+	-o ephemeris_linking $(FC_INC)../$(CLASSPATH) \
+	$(FC_INC)../$(MODULEPATH) \
+	../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o $(IOMOD).o
+
 $(IOMOD).o : classes $(IOMOD).f90
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
 	$(FC_INC)../$(MODULEPATH) $(IOMOD).f90
