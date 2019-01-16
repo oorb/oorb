@@ -7048,8 +7048,8 @@ CONTAINS
           DEALLOCATE(scoords_tc, stat=err)
           IF (PRESENT(partials)) THEN
              DEALLOCATE(partials, stat=err)
-             RETURN
           END IF
+          RETURN
        END IF
     END DO
 
