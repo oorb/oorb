@@ -29,8 +29,16 @@ of the resulting orbits.
 In OOrb, tools for making ephemeris predictions and classification of
 objects (i.e., NEO-MBO-TNO) are also available.
 
+# Installation using conda #
 
-# Installation #
+The easiest way to install OOrb on Linux and OSX 64-bit systems is using the conda installer, which requires some form of this package manager to be installed on your system (e.g., conda, anaconda, miniconda):
+
+> `conda config --add channels conda-forge`
+> `conda install openorb`
+
+For more details on the OOrb conda package please refer to [this website](https://github.com/conda-forge/openorb-feedstock).
+
+# Manual Installation #
 
 ## Requirements ##
 
