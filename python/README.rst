@@ -28,9 +28,10 @@ the `sbpy.data` module for `more information
 Installation
 ------------
 
-``pyoorb`` is automatically installed alongside ``oorb`` if the conda
-installer has been used. This is the **recommended installation
-method** and by far the easiest method, as well.
+``pyoorb`` is automatically installed alongside ``oorb`` if the `conda
+installer <https://github.com/conda-forge/openorb-feedstock>`_ has
+been used. This is the **recommended installation method** and by far
+the easiest method, as well.
 
 Manual installation procedures are provided here in case you do not
 want to use the conda installer:
@@ -107,10 +108,8 @@ coordinates):
 9. `epoch` of the osculating elements (modified Julian date)
 10. `timescale type` of the epochs provided; integer value: ``UTC``:
     1, ``UT1``: 2, ``TT``: 3, ``TAI``: 4
-11. `absolute magnitude` (``KEP`` or ``CART``) or `M1` parameter
-    (``COM``)
-12. `photometric slope parameter` (``KEP`` or ``CART``) or `K1`
-    parameter (``COM``)
+11. `absolute magnitude` of the target 
+12. `photometric slope parameter` of the target 
 
 In order to provide compatibility with the underlying FORTRAN library,
 only use double values (``dtype=np.double``) and set the corresponding
