@@ -29,8 +29,17 @@ of the resulting orbits.
 In OOrb, tools for making ephemeris predictions and classification of
 objects (i.e., NEO-MBO-TNO) are also available.
 
+# Installation using conda #
 
-# Installation #
+The easiest way to install OOrb on Linux and OSX 64-bit systems is using the conda installer, which requires some form of this package manager to be installed on your system (e.g., conda, anaconda, miniconda):
+
+> `conda config --add channels conda-forge`
+
+> `conda install openorb`
+
+For more details on the OOrb conda package please refer to [this website](https://github.com/conda-forge/openorb-feedstock).
+
+# Manual Installation #
 
 ## Requirements ##
 
@@ -61,7 +70,7 @@ where `COMPILER` is `gfortran`, `g95`, `intel`, `absoft`, `compaq`, `ibm`, `lahe
 Now you have a working executable called `oorb` in the `OORBROOT/main/` directory. To do something useful, you need to provide the software additional data files which will be prepared in the next section.
 
 
-## Generating and updating additional data files ##
+## Generating and updating additional data files after manual installation ##
 
 ### Planetary ephemerides ###
 
@@ -117,6 +126,16 @@ Finally, you need to tell `oorb` where to find the different files. This is easi
 > `export OORB_CONF=OORBROOT/main/oorb.conf`
 
 > `export OORB_GNUPLOT_SCRIPTS_DIR=OORBROOT/gnuplot/`
+
+## Installing ephemerides files using the conda installer ##
+
+If the conda installer has been used to install OOrb, additional ephemerides files can be installed using:
+
+> `conda install openorb-data-de405`
+
+or
+
+> `conda install openorb-data-bc430`
 
 # Using oorb #
 
