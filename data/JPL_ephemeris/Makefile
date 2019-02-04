@@ -32,8 +32,8 @@ include ../../Makefile.include
 # TYPE OF EPHEMERIS [405|406|430|431]
 EPH_TYPE ?= 430
 # FTP client
-#FTP_CLIENT = wget -nv -c
-FTP_CLIENT = curl -L -O -\# -C - -f
+#FTP_CLIENT = wget -nv -c -O
+FTP_CLIENT = curl -L -s -C - -f --output
 # Output name of the program:
 EPH_BIN = de$(EPH_TYPE).dat
 # Name of ascii-to-binary converter program source file:
@@ -84,25 +84,36 @@ EPH_INPUT  = ascii.$(EPH_TYPE)
 PROJNAME = JPL_Ephemeris
 
 # Compile converter, build input file and convert ascii ephemeris files to a single binary file:
-eph : $(CONVERTER) $(EPH_INPUT)
-	rm -f $(EPH_BIN)
-	nice ./$(CONVERTER) --eph-type=$(EPH_TYPE) < $(EPH_INPUT)
-	cp $(EPH_BIN) ../
+.PHONY: eph
+eph : $(EPH_BIN)
+	cp $(EPH_BIN) ..
 
-test : $(TESTER)
+$(EPH_BIN) : $(CONVERTER) $(EPH_INPUT)
+	rm -f $(EPH_BIN)
+	DYLD_LIBRARY_PATH="../lib:$$CONDA_PREFIX/lib" ./$(CONVERTER) --eph-type=$(EPH_TYPE) < $(EPH_INPUT)
+
+test : $(TESTER) $(EPH_BIN) testpo.$(EPH_TYPE)
 	./$(TESTER) --eph-type=$(EPH_TYPE)
 
+# If the library hasn't been built yet, here's the rule to build it
+../../lib/liboorb.a:
+	$(MAKE) -C ../.. liboorb
+
 # Compile ascii-to-binary converter:
-$(CONVERTER): modules $(CONV_SRC)
-	$(FC) -o $(CONVERTER) $(FC_INC)../../modules ../../$(MODULEPATH)/*.o $(CONV_SRC)
+$(CONVERTER): $(CONV_SRC) ../../lib/liboorb.a
+	$(FC) -o $(CONVERTER) $(FC_INC)../../build $(CONV_SRC) ../../lib/liboorb.a 
 
 # Compile tester:
-$(TESTER): modules $(TEST_SRC)
-	$(FC) -o $(TESTER) $(FC_INC)../../modules ../../$(MODULEPATH)/*.o $(TESTER_SRC)
+$(TESTER): $(TEST_SRC) ../../lib/liboorb.a
+	$(FC) -o $(TESTER) $(FC_INC)../../build $(TESTER_SRC) ../../lib/liboorb.a
+
+# Download individual ephemeris files (via a temp file, so that partial downloads aren't
+# seen as successful by make
+$(EPH_ASCII_DE$(EPH_TYPE)) testpo.$(EPH_TYPE):
+	$(FTP_CLIENT) $@.tmp ftp://ssd.jpl.nasa.gov/pub/eph/planets/ascii/de$(EPH_TYPE)/$@ && mv $@.tmp $@
 
 # Build input file for ascii-to-binary converter:
-$(EPH_INPUT):
-	for F in $(EPH_ASCII_DE$(EPH_TYPE)) testpo.$(EPH_TYPE); do $(FTP_CLIENT) ftp://ssd.jpl.nasa.gov/pub/eph/planets/ascii/de$(EPH_TYPE)/$$F; done
+$(EPH_INPUT): $(EPH_ASCII_DE$(EPH_TYPE)) testpo.$(EPH_TYPE)
 	cat $(EPH_ASCII_DE$(EPH_TYPE)) > $(EPH_INPUT)
 
 # Write back-up:
@@ -115,11 +126,9 @@ tar: clean
 	rm -f $(PROJNAME)-*.tgz
 	tar cvzf $(PROJNAME)-$(EPH_TYPE).tgz *
 
-modules:
-	cd ../../$(MODULEPATH) ; $(MAKE) all
-
 # Clean up directory:
 clean:
 	rm -f *.o *~ core $(CONVERTER) $(TESTER) *.$(EPH_TYPE) \
-              $(EPH_ASCII_DE$(EPH_TYPE)) header.$(EPH_TYPE)*
+              $(EPH_ASCII_DE$(EPH_TYPE)) header.$(EPH_TYPE)* \
+              $(EPH_BIN)
 

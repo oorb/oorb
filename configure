@@ -120,6 +120,7 @@ elif [[ $1 == intel ]] ; then
     fi
     echo 'FC_INC = $(FC_INC_INTEL)' >> $include_file
     echo 'FC_SHARED = $(FC_SHARED_INTEL)' >> $include_file
+    echo 'F2PY_FCOMPILER = $(F2PY_FCOMPILER_INTEL)' >> $include_file
 
 elif [[ $1 == lahey ]] ; then
 
@@ -166,6 +167,7 @@ elif [[ $1 == gfortran ]] ; then
     fi
     echo 'FC_INC = $(FC_INC_GFORTRAN)' >> $include_file
     echo 'FC_SHARED = $(FC_SHARED_GFORTRAN)' >> $include_file
+    echo 'F2PY_FCOMPILER = $(F2PY_FCOMPILER_GFORTRAN)' >> $include_file
 
 else
 

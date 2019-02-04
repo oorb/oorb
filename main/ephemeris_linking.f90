@@ -54,6 +54,10 @@ PROGRAM ephemeris_linking
   USE data_structures
   USE sort
 
+#ifdef __INTEL_COMPILER
+  USE IFPORT
+#endif
+
   IMPLICIT NONE
   TYPE (rb_tree_r16_i4arr), POINTER :: &
        address_tree
@@ -343,6 +347,7 @@ PROGRAM ephemeris_linking
   REAL(bp) :: dt1, dt2
   REAL(hp) :: indx
   INTEGER :: nset, nset_max, iset, iset_, norb_, iorb
+  INTEGER :: ret
 
 !!$  ! Set path to configuration file:
 !!$  ! First, try the environment variable:
@@ -477,8 +482,8 @@ PROGRAM ephemeris_linking
      CALL NULLIFY(logfile)
      STOP
   END IF
-  ALLOCATE(epoch_arr(3), &
-       topocenter_arr(SIZE(epoch_arr)), &
+  ALLOCATE(epoch_arr(3))
+  ALLOCATE(topocenter_arr(SIZE(epoch_arr)), &
        coords(3*SIZE(epoch_arr)), &
        elm(3*SIZE(epoch_arr)), &
        bounds(3*SIZE(epoch_arr),2), &
@@ -759,7 +764,7 @@ PROGRAM ephemeris_linking
            IF (info_verb >= 1) THEN
               WRITE(lu,*) "[" // TRIM(orbid) // "] " // " ID of set read."
            END IF
-           CALL system("gunzip -c " // TRIM(orbid) // ".orb.gz > " // TRIM(orbid) // ".orb")
+           ret = system("gunzip -c " // TRIM(orbid) // ".orb.gz > " // TRIM(orbid) // ".orb")
            CALL NEW(orbfile,TRIM(orbid) // ".orb")
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
@@ -830,7 +835,7 @@ PROGRAM ephemeris_linking
               END IF
            END DO
            CALL NULLIFY(orbfile)
-           CALL system("rm -f " // TRIM(orbid) // ".orb")
+           ret = system("rm -f " // TRIM(orbid) // ".orb")
            IF (info_verb >= 1) THEN
               WRITE(lu,*) "[" // TRIM(orbid) // "] " // " Orbit file read."
            END IF
@@ -907,7 +912,7 @@ PROGRAM ephemeris_linking
         id_arr = id_arr_tmp(1:nset)
         deallocate(id_arr_tmp)
 
-        CALL system("ps ux | grep ephemeris_linking")
+        ret = system("ps ux | grep ephemeris_linking")
 
         ! Output addresses and corresponding sets, and build
         ! trial_linkage_tree:
@@ -987,7 +992,7 @@ PROGRAM ephemeris_linking
         CALL NULLIFY(addressfile)
         WRITE(lu,*) m, " addresses used."
 
-        CALL system("ps ux | grep ephemeris_linking")
+        ret = system("ps ux | grep ephemeris_linking")
 
         ! Output 2-linkages found
         triallinkfname = get_cl_option("--triallink-out=","triallink.out")
@@ -1127,9 +1132,9 @@ PROGRAM ephemeris_linking
            linkage = .FALSE.
            method = " "
 
-           CALL system("rm -f ephemeris_linking_tmp" // &
+           ret = system("rm -f ephemeris_linking_tmp" // &
                 TRIM(pidstr) // "." // TRIM(obs_type))
-           CALL system("grep " // TRIM(id1) // &
+           ret = system("grep " // TRIM(id1) // &
                 " " // TRIM(obsfname) // &
                 " > ephemeris_linking_tmp" // TRIM(pidstr) // &
                 "." // TRIM(obs_type) // &
@@ -1306,7 +1311,7 @@ PROGRAM ephemeris_linking
               CASE (2)
 
                  ! Similar orbits
-                 CALL system("gunzip -c " // TRIM(id1) &
+                 ret = system("gunzip -c " // TRIM(id1) &
                       // ".orb.gz > " // TRIM(id1) // &
                       ".orb")
                  CALL NEW(orbfile, TRIM(id1) // ".orb")
@@ -1364,10 +1369,10 @@ PROGRAM ephemeris_linking
                     END IF
                  END DO
                  CALL NULLIFY(orbfile)
-                 CALL system("rm -f " // TRIM(id1) // ".orb")
+                 ret = system("rm -f " // TRIM(id1) // ".orb")
                  WRITE(lu,*) "[" // TRIM(id1) // "] " // " Orbit file read."
 
-                 CALL system("gunzip -c " // TRIM(id2) &
+                 ret = system("gunzip -c " // TRIM(id2) &
                       // ".orb.gz > " // TRIM(id2) // &
                       ".orb")
                  CALL NEW(orbfile,TRIM(id2) // ".orb")
@@ -1424,7 +1429,7 @@ PROGRAM ephemeris_linking
                     END IF
                  END DO
                  CALL NULLIFY(orbfile)
-                 CALL system("rm -f " // TRIM(id2) // ".orb")
+                 ret = system("rm -f " // TRIM(id2) // ".orb")
                  WRITE(lu,*) "[" // TRIM(id2) // "] " // " Orbit file read."
 
                  ALLOCATE(elm_arr_1(SIZE(orb_arr_1,dim=1),7), &
@@ -1824,7 +1829,7 @@ PROGRAM ephemeris_linking
 
         END DO triallinkloop
 
-        CALL system("rm -f ephemeris_linking_tmp" // &
+        ret = system("rm -f ephemeris_linking_tmp" // &
              TRIM(pidstr) // "." // TRIM(obs_type))
         IF (nlink /= 0) THEN
            allocate(linkages_tmp(nlink,2))

@@ -4,6 +4,8 @@
 *.so
 python/build/
 main/oorb
+main/ephemeris_linking
+main/orbit_linking
 data/JPL_ephemeris/asc2eph
 data/JPL_ephemeris/de405.dat
 data/JPL_ephemeris/ephtester
@@ -22,5 +24,12 @@ data/JPL_ephemeris/ascp*.430
 data/JPL_ephemeris/ascii.430
 data/JPL_ephemeris/header.430*
 data/de430.dat
-lib/liboorb.*
-python/liboorb.*
+VERSION
+__pycache__
+.pytest_cache
+bin/
+lib/
+build/_pyoorb_build/
+build/*.pyf
+build/version.h
+python/pyoorb.name
