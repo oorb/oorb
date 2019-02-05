@@ -24,6 +24,7 @@ all: $(PROGRAMS) liboorb pyoorb
 .PHONY: clean
 clean:
 	rm -f *.o *.mod *.tmp
+	rm -f version.h
 	rm -f $(addprefix ../main/, $(PROGRAMS)) 
 	rm -f ../lib/liboorb.{$(LIBEXT),a}
 	rm -rf *.pyf ../python/$(PYOORB) ../python/pyoorb.name _pyoorb_build
@@ -54,6 +55,13 @@ $(addprefix ../main/, $(PROGRAMS)): ../main/%: %.o ../lib/liboorb.a
 	$(FC) $(FCOPTIONS) $^ -o $@.tmp
 	fix-rpath.sh $@.tmp
 	mv $@.tmp $@
+
+#
+# Build version include file. This is included by oorb.f90 to
+# compile-in the current version
+#
+version.h: ../VERSION
+	generate-version-h.sh $$(cat $<) > $@
 
 #
 # Build liboorb, static and dynamic (in lib/ directory)
@@ -108,9 +116,18 @@ pyoorb: ../lib/$(PYOORB)
 	echo $(PYOORB) > ../python/pyoorb.name
 	@ echo "Built the $(PYOORB) module."
 
-pyoorb.pyf: ../python/pyoorb.f90
-	f2py --quiet -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf
+pyoorb.pyf: ../VERSION ../python/pyoorb.f90
+	f2py --quiet -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
 	@ echo
+	@ # generate __version__ string code
+	generate-version-pyf.sh $$(cat ../VERSION) > version.pyf
+	@ # splice the generated version information so pyoorb.__version__ works
+	sed '/    interface  ! in :pyoorb/ r version.pyf' pyoorb.pyf.tmp > pyoorb.pyf.tmp2
+	@ # make sure it worked
+	@ grep -q '__version__' pyoorb.pyf.tmp2 || { echo "Failed to splice pyoorb.__version__ information into pyoorb.pyf. Verify the sed stanza in the Makefile is not out of date."; exit -1; }
+	mv pyoorb.pyf.tmp2 pyoorb.pyf
+	rm -f pyoorb.pyf.tmp version.pyf
+
 
 #
 # Rules to generate dependency information using gfortran's preprocessor.
@@ -124,7 +141,7 @@ pyoorb.pyf: ../python/pyoorb.f90
 # conventions on naming of .mod files.
 #
 .PHONY: depends
-depends: clean
+depends: clean version.h
 	make-fortran-deps.sh $(ALLSOURCES) > make.depends
 
 #

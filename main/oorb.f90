@@ -47,6 +47,8 @@ PROGRAM oorb
   USE io
 
   IMPLICIT NONE
+  INCLUDE "version.h"
+
   TYPE (PhysicalParameters) :: &
        physparam
   TYPE (StochasticOrbit), DIMENSION(:), ALLOCATABLE :: &
@@ -399,7 +401,7 @@ PROGRAM oorb
 
   IF (get_cl_option("--version",.FALSE.)) THEN
      WRITE(stdout,"(A)") ""
-     WRITE(stdout,"(A)") "OpenOrb v1.0.1"
+     WRITE(stdout,"(A)") "OpenOrb v" // VERSION
      WRITE(stdout,"(A)") "Copyright 2011 Mikael Granvik, Jenni Virtanen, Karri Muinonen,"
      WRITE(stdout,"(A)") "               Teemu Laakso, Dagmara Oszkiewicz"
      WRITE(stdout,"(A)") ""
