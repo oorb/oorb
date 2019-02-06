@@ -1,4 +1,6 @@
-OpenOrb (or OOrb) is an open-source orbit-computation package.
+# OpenOrb (or OOrb), an open-source orbit-computation package.
+
+[![Build Status](https://dev.azure.com/mjuric/oorb/_apis/build/status/mjuric.oorb?branchName=master)](https://dev.azure.com/mjuric/oorb/_build/latest?definitionId=1?branchName=master)
 
 More detailed documentation is available by doing
 

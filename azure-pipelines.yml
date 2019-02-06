@@ -1,0 +1,97 @@
+#
+# Parallel build
+#
+jobs:
+- template: azure-tpl-jobs.yml
+  parameters:
+    name: 'Linux_Conda'
+    vmImage: 'Ubuntu 16.04'
+- template: azure-tpl-jobs.yml
+  parameters:
+    name: 'MacOS_Conda'
+    vmImage: 'macOS-10.13'
+- job: 'Ubuntu_1604_py27'
+  condition: eq('a', 'a')
+  displayName: 'Ubuntu 16.04 Py27'
+  pool:
+    vmImage: 'Ubuntu 16.04'
+  steps:
+  - checkout: self
+    fetchDepth: 1
+  - script: |
+      set -xe
+      sudo apt-get update
+      sudo rm -f /usr/bin/conda
+      # sudo apt-get install -y git gfortran build-essential python3-dev python3-numpy python3-pytest
+      sudo apt-get install -y git gfortran build-essential python-dev python-numpy python-pytest
+
+      ./configure gfortran opt --prefix=/opt/test/openorb --with-pyoorb
+      make -j8
+      make ephem -j8
+      make test
+      sudo make install
+    displayName: 'Build'
+  - script: |
+      set -xe
+      SRCDIR=$PWD
+      cd /
+      python -c "import pyoorb; print('success.')"
+      python $SRCDIR/python/test.py
+    displayName: 'Test'
+- job: 'Ubuntu_1604_py35'
+  displayName: 'Ubuntu 16.04 Py35'
+  condition: eq('a', 'a')
+  pool:
+    vmImage: 'Ubuntu 16.04'
+  steps:
+  - checkout: self
+    fetchDepth: 1
+  - script: |
+      set -xe
+      sudo apt-get update
+      sudo rm -f /usr/bin/conda
+      sudo apt-get install -y git gfortran build-essential python3-dev python3-numpy python3-pytest
+      # Intentionally install python 2, to verify it doesn't get confused
+      sudo apt-get install -y git gfortran build-essential python-dev python-numpy python-pytest
+
+      ./configure gfortran opt --prefix=/opt/test/openorb --with-f2py=f2py3 --with-python=python3 --with-pytest=py.test-3 --with-pyoorb
+      make -j8
+      make ephem -j8
+      make test
+      sudo make install
+    displayName: 'Build'
+  - script: |
+      set -xe
+      SRCDIR=$PWD
+      cd /
+      python3 -c "import pyoorb; print('success.')"
+      python3 $SRCDIR/python/test.py
+    displayName: 'Test'
+- job: 'Ubuntu_1604_no_pyoorb'
+  condition: eq('a', 'a')
+  displayName: 'Ubuntu 16.04 (w/o pyoorb)'
+  pool:
+    vmImage: 'Ubuntu 16.04'
+  steps:
+  - checkout: self
+    fetchDepth: 1
+  - script: |
+      set -xe
+      sudo apt-get update
+      sudo rm -f /usr/bin/conda
+      sudo apt-get install -y git gfortran build-essential
+
+      ./configure gfortran opt
+      make -j8
+      make ephem -j8
+
+      sudo apt-get install -y python-pytest
+      make test
+      sudo make install
+    displayName: 'Build'
+  - script: |
+      set -xe
+      echo PATH="$PATH"
+      ls -l /usr/local/{bin,etc,lib,share}
+      [[ $(oorb --help | head -n 1) == "Usage:" ]] && echo yes
+    displayName: 'Test'
