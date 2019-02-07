@@ -109,3 +109,22 @@ else
 	@ echo WARNING: Not running pyoorb integration tests as data/de430.dat is not present. Run "'make ephem'" to build it first.
 endif
 endif
+
+#
+# Compute test coverage. Uses 'gcov' to compute how much of the code has
+# been covered by tests.  To run this rule you must have configured the
+# project with gfortran and the --coverage flag, and have gcov installed.
+#
+# This target is mainly intented to be driven from CI services and
+# visualized at codecov.io.  See https://codecov.io/gh/mjuric/oorb for
+# outputs.
+#
+# Google for 'lcov' if you want to create local visualizations.
+#
+.PHONY: coverage coverage-prereq
+coverage: coverage-prereq test
+	(cd build && gcov -b -o . *.o ../classes/*.f90 ../modules/*.f90 ../main/*.f90 ../prefix.h ../python/*.f90)
+
+coverage-prereq:
+	@test ! -z "$(findstring -lgcov, $(ADDLIBS))" || { echo "The project must be ./configure-d with --coverage flag to run 'make coverage'."; exit -1; }
+	@hash gcov 2>/dev/null || { echo "You need to have gcov installed to run test coverage analysis." && exit -1; }

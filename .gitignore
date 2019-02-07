@@ -34,3 +34,6 @@ build/*.pyf
 build/version.h
 python/pyoorb.name
 python/pyoorb.sp_dir
+*.gcov
+*.gcda
+*.gcno

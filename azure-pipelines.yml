@@ -39,7 +39,7 @@ jobs:
       python $SRCDIR/python/test.py
     displayName: 'Test'
 - job: 'Ubuntu_1604_py35'
-  displayName: 'Ubuntu 16.04 Py35'
+  displayName: 'Ubuntu 16.04 Py35 (w. codecov)'
   condition: eq('a', 'a')
   pool:
     vmImage: 'Ubuntu 16.04'
@@ -54,11 +54,17 @@ jobs:
       # Intentionally install python 2, to verify it doesn't get confused
       sudo apt-get install -y git gfortran build-essential python-dev python-numpy python-pytest
 
-      ./configure gfortran opt --prefix=/opt/test/openorb --with-f2py=f2py3 --with-python=python3 --with-pytest=py.test-3 --with-pyoorb
+      ./configure gfortran opt --prefix=/opt/test/openorb --with-f2py=f2py3 --with-python=python3 --with-pytest=py.test-3 --with-pyoorb --coverage
       make -j8
       make ephem -j8
-      make test
+      make coverage
+
+      bash <(curl -s https://codecov.io/bash) -Z
+
       sudo make install
+    env:
+      # NOTE: you must define this *secret* variable in Azure Pipelines
+      CODECOV_TOKEN: $(CODECOV_TOKEN)
     displayName: 'Build'
   - script: |
       set -xe

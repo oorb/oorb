@@ -65,6 +65,13 @@ do
 			eval "$(option_to_varname $key)=1"
 			shift;
 		;;
+		
+		--coverage)
+			COVERAGE=on
+			ADDLIBS="$ADDLIBS -lgcov"
+			ADDOPTS="$ADDOPTS -coverage"
+			shift;
+		;;
 
 		*)
 		POSITIONAL+=("$1")
@@ -73,6 +80,12 @@ do
 	esac
 done
 set -- "${POSITIONAL[@]}" # restore positional parameters
+
+# --coverage only works with gfortran; verify gfortran is being used
+if [[ ! -z $COVERAGE && $1 != gfortran ]]; then
+	echo "Error: --coverage option only works with the gfortran compiler".
+	exit -1
+fi
 
 # Make sure $PREFIX is an absolute path
 if [[ $PREFIX != /* ]]; then
@@ -180,9 +193,9 @@ elif [[ $1 == gfortran ]] ; then
 
     echo 'FC = $(FC_GFORTRAN)' > $include_file
     if [[ $2 == opt ]] ; then
-	echo 'FCOPTIONS = $(FCOPTIONS_OPT_GFORTRAN)' >> $include_file
+	echo 'FCOPTIONS = $(FCOPTIONS_OPT_GFORTRAN)'"$ADDOPTS" >> $include_file
     else
-	echo 'FCOPTIONS = $(FCOPTIONS_DEB_GFORTRAN)' >> $include_file
+	echo 'FCOPTIONS = $(FCOPTIONS_DEB_GFORTRAN)'"$ADDOPTS" >> $include_file
     fi
     echo 'FC_INC = $(FC_INC_GFORTRAN)' >> $include_file
     echo 'FC_SHARED = $(FC_SHARED_GFORTRAN)' >> $include_file
@@ -213,3 +226,4 @@ echo "PYOORB=$PYOORB" >> "$include_file"
 echo "PYTHON=$PYTHON" >> "$include_file"
 echo "F2PY=$F2PY"     >> "$include_file"
 echo "PYTEST=$PYTEST" >> "$include_file"
+echo "ADDLIBS=$ADDLIBS" >> "$include_file"
