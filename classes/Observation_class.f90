@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2018,2019                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2018-01-10
+!! @version 2019-02-20
 !!  
 MODULE Observation_cl
 
@@ -63,7 +63,8 @@ MODULE Observation_cl
   PRIVATE :: getObservatoryCCoord_Obs
   PRIVATE :: getObservatoryCode_Obs
   PRIVATE :: getStandardDeviations_Obs
-  PRIVATE :: setNumber_Obs
+  PRIVATE :: setNumber_Obs_char
+  PRIVATE :: setNumber_Obs_int
 
   TYPE Observation
      PRIVATE
@@ -180,7 +181,8 @@ MODULE Observation_cl
   END INTERFACE getStandardDeviations
 
   INTERFACE setNumber
-     MODULE PROCEDURE setNumber_Obs
+     MODULE PROCEDURE setNumber_Obs_char
+     MODULE PROCEDURE setNumber_Obs_int
   END INTERFACE setNumber
 
 CONTAINS
@@ -1976,7 +1978,30 @@ CONTAINS
 
   !! *Description*:
   !!
-  SUBROUTINE setNumber_Obs(this, number)
+  SUBROUTINE setNumber_Obs_char(this, number)
+
+    IMPLICIT NONE
+    TYPE (Observation), INTENT(inout) :: this
+    CHARACTER(len=*), INTENT(in)      :: number
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Observation / setNumber", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    this%number = number
+
+  END SUBROUTINE setNumber_Obs_char
+
+
+
+
+
+  !! *Description*:
+  !!
+  SUBROUTINE setNumber_Obs_int(this, number)
 
     IMPLICIT NONE
     TYPE (Observation), INTENT(inout) :: this
@@ -1996,8 +2021,7 @@ CONTAINS
        RETURN
     END IF
 
-
-  END SUBROUTINE setNumber_Obs
+  END SUBROUTINE setNumber_Obs_int
 
 
 

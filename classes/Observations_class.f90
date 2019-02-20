@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2018,2019                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV 
-!! @version 2018-10-02
+!! @version 2019-02-20
 !!  
 MODULE Observations_cl
 
@@ -87,15 +87,17 @@ MODULE Observations_cl
   PRIVATE :: clean_Obss
   PRIVATE :: getNumber_Obss
   PRIVATE :: getDeclinations_Obss
-  PRIVATE :: setNumber_Obss
-  PRIVATE :: sortObservations
   PRIVATE :: getDates_Obss
   PRIVATE :: getMinAndMaxValues_Obss
   PRIVATE :: getObservationMasks_Obss
+  PRIVATE :: getObservations_Obss
   PRIVATE :: getObservatoryCodes_Obss
   PRIVATE :: getStandardDeviations_Obss
   !  PRIVATE :: readGaiaFile
   PRIVATE :: reallocate_a1_Obss
+  PRIVATE :: setNumber_Obss_char
+  PRIVATE :: setNumber_Obss_int
+  PRIVATE :: sortObservations
 
   TYPE Observations
      PRIVATE
@@ -194,6 +196,10 @@ MODULE Observations_cl
      MODULE PROCEDURE getObservationMasks_Obss
   END INTERFACE getObservationMasks
 
+  INTERFACE getObservations
+     MODULE PROCEDURE getObservations_Obss
+  END INTERFACE getObservations
+
   INTERFACE getObservatoryCodes
      MODULE PROCEDURE getObservatoryCodes_Obss
   END INTERFACE getObservatoryCodes
@@ -213,7 +219,8 @@ MODULE Observations_cl
   END INTERFACE reallocate
 
   INTERFACE setNumber
-     MODULE PROCEDURE setNumber_Obss
+     MODULE PROCEDURE setNumber_Obss_char
+     MODULE PROCEDURE setNumber_Obss_int
   END INTERFACE setNumber
 
 CONTAINS
@@ -2559,10 +2566,10 @@ CONTAINS
   !!
   !! obs => getObservations(myobservations)
   !!
-  FUNCTION getObservations(this)
+  FUNCTION getObservations_Obss(this)
 
     TYPE (Observations), INTENT(in)           :: this
-    TYPE (Observation), DIMENSION(:), POINTER :: getObservations
+    TYPE (Observation), DIMENSION(:), POINTER :: getObservations_Obss
 
     INTEGER                                   :: i, err
 
@@ -2580,7 +2587,7 @@ CONTAINS
        RETURN
     END IF
 
-    ALLOCATE(getObservations(this%nobs), stat=err)
+    ALLOCATE(getObservations_Obss(this%nobs), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
        CALL errorMessage("Observations / getObservations", &
@@ -2589,17 +2596,17 @@ CONTAINS
     END IF
 
     DO i=1, this%nobs
-       getObservations(i) = copy(this%obs_arr(this%ind(i)))
+       getObservations_Obss(i) = copy(this%obs_arr(this%ind(i)))
        IF (err /= 0) THEN
           error = .TRUE.
           CALL errorMessage("Observations / getObservations", &
                "TRACE BACK", 1)
-          DEALLOCATE(getObservations, stat=err)
+          DEALLOCATE(getObservations_Obss, stat=err)
           RETURN
        END IF
     END DO
 
-  END FUNCTION getObservations
+  END FUNCTION getObservations_Obss
 
 
 
@@ -5560,7 +5567,50 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE setNumber_Obss(this, number)
+  SUBROUTINE setNumber_Obss_char(this, number)
+
+    IMPLICIT NONE
+    TYPE (Observations), INTENT(inout) :: this
+    CHARACTER(len=*), INTENT(in)       :: number
+    INTEGER                            :: i
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / setNumber", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    DO i=1,SIZE(this%obs_arr,dim=1)
+       CALL setNumber(this%obs_arr(i), number)
+       IF (error) THEN
+          CALL errorMessage("Observations / setNumber", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+    END DO
+
+    this%nobjects = 0
+    CALL sortObservations(this)
+    IF (error) THEN
+       CALL errorMessage("Observations / setNumber", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+
+  END SUBROUTINE setNumber_Obss_char
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! 
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE setNumber_Obss_int(this, number)
 
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout) :: this
@@ -5591,7 +5641,7 @@ CONTAINS
        RETURN
     END IF
 
-  END SUBROUTINE setNumber_Obss
+  END SUBROUTINE setNumber_Obss_int
 
 
 
