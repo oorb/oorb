@@ -96,6 +96,13 @@ ephemeris_linking: classes $(IOMOD).o
 	$(FC_INC)../$(MODULEPATH) \
 	../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o $(IOMOD).o
 
+# Compile and link classes to the orbit_linking program:
+orbit_linking: classes $(IOMOD).o
+	$(FC) $(FCOPTIONS) orbit_linking.f90 \
+	-o orbit_linking $(FC_INC)../$(CLASSPATH) \
+	$(FC_INC)../$(MODULEPATH) \
+	../$(CLASSPATH)/*.o ../$(MODULEPATH)/*.o $(IOMOD).o
+
 $(IOMOD).o : classes $(IOMOD).f90
 	$(FC) -c $(FCOPTIONS) $(FC_INC)../$(CLASSPATH) \
 	$(FC_INC)../$(MODULEPATH) $(IOMOD).f90
