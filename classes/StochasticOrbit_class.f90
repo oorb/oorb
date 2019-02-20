@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2018,2019                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2018-01-10
+!! @version 2019-02-20
 !!  
 MODULE StochasticOrbit_cl
 
@@ -74,6 +74,7 @@ MODULE StochasticOrbit_cl
   PRIVATE :: getPhaseAngle_SO_point
   PRIVATE :: getPhaseAngles_SO
   PRIVATE :: getObservationMasks_SO
+  PRIVATE :: getObservations_SO
   PRIVATE :: getRangeBounds_SO
   PRIVATE :: getResiduals_SO_obss
   PRIVATE :: getResiduals_SO_orb
@@ -309,6 +310,10 @@ MODULE StochasticOrbit_cl
   INTERFACE getObservationMasks
      MODULE PROCEDURE getObservationMasks_SO
   END INTERFACE getObservationMasks
+
+  INTERFACE getObservations
+     MODULE PROCEDURE getObservations_SO
+  END INTERFACE getObservations
 
   INTERFACE getRangeBounds
      MODULE PROCEDURE getRangeBounds_SO
@@ -2647,7 +2652,7 @@ CONTAINS
             "TRACE BACK (5).", 1)
        RETURN
     END IF
-    
+
     pdf => getDiscretePDF(this)
     pdf = pdf / SUM(pdf)
     IF (PRESENT(apriori)) THEN
