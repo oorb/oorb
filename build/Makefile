@@ -13,10 +13,16 @@ include ../Makefile.include
 
 #
 # Default rule builds all command-line executables and the pyoorb Python
-# module.
+# module (if configured with --with-pyoorb).
 #
+# All build targets
+ALLTARGETS=$(PROGRAMS) liboorb
+ifeq ("$(PYOORB)","1")
+ALLTARGETS+=pyoorb
+endif
+
 .PHONY: all
-all: $(PROGRAMS) liboorb pyoorb
+all: $(ALLTARGETS)
 
 #
 # Clean all temp files
@@ -27,7 +33,7 @@ clean:
 	rm -f version.h
 	rm -f $(addprefix ../main/, $(PROGRAMS)) 
 	rm -f ../lib/liboorb.{$(LIBEXT),a}
-	rm -rf *.pyf ../python/$(PYOORB) ../python/pyoorb.{name,sp_dir} _pyoorb_build
+	rm -rf *.pyf ../python/pyoorb.{so,dylib} ../python/pyoorb.*.so ../python/pyoorb.{name,sp_dir} _pyoorb_build
 	rm -rf ../bin ../lib
 
 #
@@ -82,19 +88,24 @@ else
 	ar rcs $@ $(LIBOBJECTS)
 endif
 
+ifeq ("$(PYOORB)","1")
 #
 # Build pyoorb
 #
 # These rules drop the compiled module both in python/ and lib/, the latter
 # for backwards compatibility.
 #
-.PHONY: pyoorb
-pyoorb: ../lib/$(PYOORB)
 
-../lib/$(PYOORB): ../python/$(PYOORB)
+# Full name of the pyoorb library (e.g., pyoorb.cpython-36m-darwin.so)
+PYOORB_SO            = pyoorb$(shell PYTHON=$(PYTHON) $(ROOT_DIR)/build-tools/get-python-extension-suffix.sh)
+
+.PHONY: pyoorb
+pyoorb: ../lib/$(PYOORB_SO)
+
+../lib/$(PYOORB_SO): ../python/$(PYOORB_SO)
 	mkdir -p ../lib && cp -a $< $@
 
-../python/$(PYOORB): ../lib/liboorb.a pyoorb.pyf pyoorb.o pyoorb.mod
+../python/$(PYOORB_SO): ../lib/liboorb.a pyoorb.pyf pyoorb.o pyoorb.mod
 	@ # Check for prerequisites and output a helpful message if they're not installed
 	@ hash $(F2PY) 2>/dev/null && hash $(PYTHON) 2>/dev/null || \
 		{ echo "****************************************************************************"; \
@@ -109,13 +120,13 @@ pyoorb: ../lib/$(PYOORB)
 	}; \
 	$(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
 	        $(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build" && \
-	mv $(PYOORB) ../python
+	mv $(PYOORB_SO) ../python
 	@ echo
 	@ # FIXME: this exists so `sudo make install` knows what to install. It's hacky this way
 	@ #        and should be made to be generated/updated like the VERSION file is.
-	echo $(PYOORB) > ../python/pyoorb.name
+	echo $(PYOORB_SO) > ../python/pyoorb.name
 	$(PYTHON) -c "import site; print(site.getsitepackages()[0])" > ../python/pyoorb.sp_dir
-	@ echo "Built the $(PYOORB) module."
+	@ echo "Built the $(PYOORB_SO) module."
 
 pyoorb.pyf: ../VERSION ../python/pyoorb.f90
 	$(F2PY) --quiet -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
@@ -128,7 +139,11 @@ pyoorb.pyf: ../VERSION ../python/pyoorb.f90
 	@ grep -q '__version__' pyoorb.pyf.tmp2 || { echo "Failed to splice pyoorb.__version__ information into pyoorb.pyf. Verify the sed stanza in the Makefile is not out of date."; exit -1; }
 	mv pyoorb.pyf.tmp2 pyoorb.pyf
 	rm -f pyoorb.pyf.tmp version.pyf
-
+else
+.PHONY: pyoorb
+pyoorb:
+	@echo "Not configured to build pyoorb. Rerun ./configure with --with-pyoorb switch and try again."
+endif
 
 #
 # Rules to generate dependency information using gfortran's preprocessor.

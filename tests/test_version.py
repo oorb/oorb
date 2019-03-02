@@ -8,9 +8,12 @@ from subprocess import check_output
 import os
 from pkg_resources import parse_version
 
+import pytest
+
 def shell(cmd):
 	return check_output(cmd, shell=True).decode('utf-8')
 
+@pytest.mark.skipif(os.environ.get("PYOORB", None) == "0", reason="pyoorb not built")
 def test_version_pyoorb():
 	expectver = check_output("./build-tools/compute-version.sh", shell=True).decode('utf-8').rstrip()
 

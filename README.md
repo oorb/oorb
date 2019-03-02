@@ -65,19 +65,17 @@ for Baer & Chesley (2017).
 For the impatient:
 
 ```
-./configure gfortran opt --prefix=/opt/oorb
+./configure gfortran opt --with-pyoorb
 
 make
-make test
 make ephem
+make test
 sudo make install
-
-export PATH="/opt/oorb/bin:$PATH"
-export PYTHONPATH="/opt/oorb/python:$PYTHONPATH"
 ```
 
-after which you'll have `oorb` on your path, and `pyoorb` loadable from
-Python. For more details, read below.
+after which you'll have `oorb` installed into `/usr/local/bin` and `pyoorb`
+installed into your Python's standard modules directory.  For more details,
+read below.
 
 ## Prerequisites ##
 
@@ -119,6 +117,8 @@ omit it from the line above.
 
 ## Building ##
 
+### OOrb Command Line Tools
+
 In the root directory of your OOrb installation (=`OORBROOT`) run
 
 ```bash
@@ -127,16 +127,15 @@ In the root directory of your OOrb installation (=`OORBROOT`) run
 
 where `COMPILER` is `gfortran`, `g95`, `intel`, `absoft`, `compaq`, `ibm`,
 `lahey`, or `sun`, and `TYPE` is either `opt` for optimized code or `deb`
-for code including debugging information.  The `--prefix` line is optional;
+for code including debugging information. The `--prefix` line is optional;
 if given it tells `make install` where to install the binaries and data
-files after they have been built (assuming you don't wish to run them from
-the source tree).
+files after they have been built.
 
 A commonly used configuration is:
-
 ```bash
 ./configure gfortran opt --prefix=/opt/oorb
 ```
+If left unspecified, the install prefix defaults to `/usr/local`.
 
 Once you have configured the source code, run `make` to build it:
 
@@ -144,19 +143,25 @@ Once you have configured the source code, run `make` to build it:
 make -j4
 ```
 
-The default is to build everything, including the Python bindings.  The
-`-j4` command line arguments tells `make` to compile up to four targets in
+The `-j4` command line arguments tells `make` to compile up to four targets in
 parallel (making a better use of today's multi-core machines).
-
-To build just OOrb, run:
-
-```bash
-make oorb -j4
-```
 
 Now you have a working executable called `oorb` in the `OORBROOT/bin/`
 directory.  To do something useful, you need to provide the software
 additional data files which will be prepared in the next section.
+
+
+### Building `pyoorb` -- the OOrb Python Bindings
+
+To build the Python bindings, you must configure OOrb with:
+
+```bash
+./configure COMPILER TYPE --with-pyoorb
+```
+
+They're not built by default, otherwise. Once configured, running `make` as
+discussed in the previous section will both build `oorb` and `pyoorb`.
+
 
 ### Other `configure` options
 
@@ -166,6 +171,7 @@ override default paths and/or executable names:
   * `--with-python=<python interpreter name/path>`
   * `--with-f2py=<f2py compuler name/path>`
   * `--with-pytest=<pytest executable name/path>`
+
 
 ## Generating and updating additional data files after building from source ##
 
@@ -226,14 +232,21 @@ make install
 ```
 
 This will copy all that's needed into the directory given by `--prefix` to
-`./configure` (or `/opt/oorb`, if none was given). To easily run the binaries and
-Python modules, add the `$PREFIX/bin` and `$PREFIX/python` paths to `PATH` and
-`PYTHONPATH`, respectivelly. For example:
+`./configure` (or `/usr/local`, if none was given). As most Unix
+distributions have `/usr/local/bin` on the default path, you should now be able
+to run oorb by typing `oorb`.
+
+If configured to build `pyoorb`, `pyoorb` will be installed into the default
+`site-path` path of the Python used to build it. This means you'll be able
+to `import pyoorb` from Python without any special setup. If you wish to
+install `pyoorb` elsewhere, you can customize its install path with:
 
 ```bash
-export PATH="/opt/oorb/bin:$PATH"
-export PYTHONPATH="/opt/oorb/python:$PYTHONPATH"
+env PYTHON_SITE_PATH=/where/pyoorb/should/be/installed make install 
 ```
+
+Note that you will have to add that path to `PYTHONPATH`, to make `pyoorb`
+discoverable to Python.
 
 ### Running from the source directory ##
 

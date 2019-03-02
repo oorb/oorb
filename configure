@@ -40,23 +40,29 @@ option_to_varname()
 	echo "$key" | awk '{print toupper($0)}'
 }
 
-POSITIONAL=()
 PREFIX='/usr/local'
-PYTHON="python"
+PYOORB=0
+
+PYTHON=python
 F2PY="f2py"
 PYTEST="py.test"
+ADDLIBS=
+ADDOPTS=
+COVERAGE=
+
+POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
 	key="$1"
 	case "$key" in
+		# Simple options with an argument
 		--prefix=*|--with-python=*|--with-f2py=*|--with-pytest=*)
 			eval "$(option_to_varname $key)='${key#*=}'"
 			shift;
 		;;
 
-		--prefix|--with-python|--with-f2py|--with-pytest)
-			eval "$(option_to_varname $key)='$2'"
-			shift;
+		--with-pyoorb)
+			eval "$(option_to_varname $key)=1"
 			shift;
 		;;
 
@@ -203,6 +209,7 @@ fi
 echo "PREFIX=$PREFIX" >> "$include_file"
 
 # Store the name of the python and f2py executables
+echo "PYOORB=$PYOORB" >> "$include_file"
 echo "PYTHON=$PYTHON" >> "$include_file"
 echo "F2PY=$F2PY"     >> "$include_file"
 echo "PYTEST=$PYTEST" >> "$include_file"

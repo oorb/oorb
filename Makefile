@@ -93,19 +93,19 @@ install:
 	install -m644 main/oorb.conf        $(PREFIX)/etc
 	cp -a $(shell find data -maxdepth 1 -type f) $(PREFIX)/share/oorb
 
-ifneq ("$(wildcard python/$(shell cat python/pyoorb.name 2>/dev/null))","")
+ifeq ("$(PYOORB)","1")
 	install       python/$(shell cat python/pyoorb.name) $(shell echo $${PYTHON_SITE_PATH:-$$(cat python/pyoorb.sp_dir)})
-else
-	@echo "Skipping installation of pyoorb as it hasn't been built."
 endif
 
 .PHONY: test
 test: all
 	@hash $(PYTEST) 2>/dev/null || { echo "You need to have pytest installed to run the tests." && exit -1; }
-	PYTHONPATH="lib:$$PYTHONPATH" $(PYTEST) tests
+	PYTHONPATH="lib:$$PYTHONPATH" PYOORB=$(PYOORB) $(PYTEST) tests
+ifeq ("$(PYOORB)","1")
 # integration tests, will run only if JPL ephemeris data has been downloaded
 ifneq ("$(wildcard data/de430.dat)","")
 	PYTHONPATH="lib:$$PYTHONPATH" OORB_DATA=data $(PYTHON) python/test.py
 else
 	@ echo WARNING: Not running pyoorb integration tests as data/de430.dat is not present. Run "'make ephem'" to build it first.
+endif
 endif
