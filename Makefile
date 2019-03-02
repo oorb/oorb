@@ -19,6 +19,12 @@
 #
 #	$ make install
 #
+# This will install OpenOrb to whatever you specified as --prefix when
+# running configure, and pyoorb to the standard modules location (i.e., the
+# "site-path") of python used to build pyoorb.  The location where pyoorb is
+# installed can be given explicitly via the PYTHON_SITE_PATH environmental
+# variable.
+#
 # FOR DEVELOPERS:
 #
 # * The build is executed in the build/ subdirectory.  All intermediate
@@ -47,7 +53,11 @@
 include make.config
 include Makefile.include
 
-PREFIX ?= /opt/oorb
+# Verify $PREFIX has been set -- this may happen if the developer
+# just `git pull`-ed the version of the code that introduced $(PREFIX).
+ifeq ("$(PREFIX)", "")
+    $(error "Install prefix is not set; please rerun ./configure and try again.")
+endif
 
 .PHONY: all
 all:
@@ -72,7 +82,7 @@ tar: clean
 
 .PHONY: install
 install:
-	install -d $(PREFIX)/{bin,etc,lib,data,python}
+	install -d $(PREFIX)/{bin,etc,lib,share/oorb}
 
 	for P in $(PROGRAMS); do \
 		install bin/$$P $(PREFIX)/bin; \
@@ -80,11 +90,14 @@ install:
 
 	install -m644 lib/liboorb.a         $(PREFIX)/lib
 	install       lib/liboorb.$(LIBEXT) $(PREFIX)/lib
+	install -m644 main/oorb.conf        $(PREFIX)/etc
+	cp -a $(shell find data -maxdepth 1 -type f) $(PREFIX)/share/oorb
 
-	install       python/$(shell cat python/pyoorb.name)      $(PREFIX)/python
-
-	install -m644 main/oorb.conf $(PREFIX)/etc
-	cp -a $(shell find data -maxdepth 1 -type f) $(PREFIX)/data
+ifneq ("$(wildcard python/$(shell cat python/pyoorb.name 2>/dev/null))","")
+	install       python/$(shell cat python/pyoorb.name) $(shell echo $${PYTHON_SITE_PATH:-$$(cat python/pyoorb.sp_dir)})
+else
+	@echo "Skipping installation of pyoorb as it hasn't been built."
+endif
 
 .PHONY: test
 test: all
