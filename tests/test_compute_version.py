@@ -72,6 +72,9 @@ def test_compute_version():
 		#
 		shell("""
 			git init
+			git config user.email "tuser@example.com"
+			git config user.name "Test User"
+
 			echo A dummy test repo >> README.md
 			git add README.md
 			git commit -m 'Initial commit'

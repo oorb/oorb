@@ -158,6 +158,14 @@ Now you have a working executable called `oorb` in the `OORBROOT/bin/`
 directory.  To do something useful, you need to provide the software
 additional data files which will be prepared in the next section.
 
+### Other `configure` options
+
+A few other options are available with `configure`, mostly allowing you to
+override default paths and/or executable names:
+
+  * `--with-python=<python interpreter name/path>`
+  * `--with-f2py=<f2py compuler name/path>`
+  * `--with-pytest=<pytest executable name/path>`
 
 ## Generating and updating additional data files after building from source ##
 

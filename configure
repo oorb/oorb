@@ -29,20 +29,33 @@
 # Version: 2009-11-13
 #
 
-# Extract options (--prefix)
+# Extract command-line options
+option_to_varname()
+{
+	# takes an option such as --with-foo as an argument
+	# and returns the corresponding variable name (FOO)
+	key="${1%=*}"
+	key="${key#--}"
+	key="${key#with-}"
+	echo "$key" | awk '{print toupper($0)}'
+}
+
 POSITIONAL=()
 PREFIX='/usr/local'
+PYTHON="python"
+F2PY="f2py"
+PYTEST="py.test"
 while [[ $# -gt 0 ]]
 do
 	key="$1"
 	case "$key" in
-		--prefix=*)
-			PREFIX="${key#*=}"
+		--prefix=*|--with-python=*|--with-f2py=*|--with-pytest=*)
+			eval "$(option_to_varname $key)='${key#*=}'"
 			shift;
 		;;
 
-		--prefix)
-			PREFIX="$2"
+		--prefix|--with-python|--with-f2py|--with-pytest)
+			eval "$(option_to_varname $key)='$2'"
 			shift;
 			shift;
 		;;
@@ -188,3 +201,8 @@ fi
 
 # Store PREFIX for use by 'make install'
 echo "PREFIX=$PREFIX" >> "$include_file"
+
+# Store the name of the python and f2py executables
+echo "PYTHON=$PYTHON" >> "$include_file"
+echo "F2PY=$F2PY"     >> "$include_file"
+echo "PYTEST=$PYTEST" >> "$include_file"

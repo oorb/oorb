@@ -96,7 +96,7 @@ pyoorb: ../lib/$(PYOORB)
 
 ../python/$(PYOORB): ../lib/liboorb.a pyoorb.pyf pyoorb.o pyoorb.mod
 	@ # Check for prerequisites and output a helpful message if they're not installed
-	@ hash f2py 2>/dev/null && hash python 2>/dev/null || \
+	@ hash $(F2PY) 2>/dev/null && hash $(PYTHON) 2>/dev/null || \
 		{ echo "****************************************************************************"; \
 		  echo "  You need python and f2py (part of numpy) to build pyoorb."; \
 		  echo "  If you don't care about building pyoorb, run 'make oorb' instead."; \
@@ -107,18 +107,18 @@ pyoorb: ../lib/$(PYOORB)
 	@ [[ ! -z "$(LDFLAGS)" ]] && echo "$$LDFLAGS" | grep -E -v -q -- "(-bundle|-shared)" && { \
 	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS -bundle" || LDFLAGS="$$LDFLAGS -shared"; \
 	}; \
-	f2py --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
-	$(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build" && \
+	$(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
+	        $(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build" && \
 	mv $(PYOORB) ../python
 	@ echo
 	@ # FIXME: this exists so `sudo make install` knows what to install. It's hacky this way
 	@ #        and should be made to be generated/updated like the VERSION file is.
 	echo $(PYOORB) > ../python/pyoorb.name
-	python -c "import site; print(site.getsitepackages()[0])" > ../python/pyoorb.sp_dir
+	$(PYTHON) -c "import site; print(site.getsitepackages()[0])" > ../python/pyoorb.sp_dir
 	@ echo "Built the $(PYOORB) module."
 
 pyoorb.pyf: ../VERSION ../python/pyoorb.f90
-	f2py --quiet -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
+	$(F2PY) --quiet -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
 	@ echo
 	@ # generate __version__ string code
 	generate-version-pyf.sh $$(cat ../VERSION) > version.pyf
