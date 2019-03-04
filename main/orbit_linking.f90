@@ -54,6 +54,10 @@ PROGRAM orbit_linking
   USE data_structures
   USE sort
 
+#ifdef __INTEL_COMPILER
+  USE IFPORT
+#endif
+
   IMPLICIT NONE
   TYPE (rb_tree_i8_i4arr), POINTER :: address_tree
   TYPE (rb_tree_ch32_8r8), POINTER :: tree_2bmc
@@ -234,6 +238,7 @@ PROGRAM orbit_linking
        common_epoch, &
        at_least_one_correct, &
        insert_header
+  INTEGER :: ret
 
   IF (get_cl_option("--help", .FALSE.)) THEN
      WRITE(stdout,*) "orbit_linking options:"
@@ -480,7 +485,7 @@ PROGRAM orbit_linking
            IF (info_verb >= 1) THEN
               WRITE(lu,*) "[" // TRIM(orbid) // "] " // " ID of set read."
            END IF
-           CALL system("gunzip -c " // TRIM(orbid) // ".orb.gz > " // TRIM(orbid) // ".orb")
+           ret = system("gunzip -c " // TRIM(orbid) // ".orb.gz > " // TRIM(orbid) // ".orb")
            CALL NEW(orbfile,TRIM(orbid) // ".orb")
            IF (error) THEN
               CALL errorMessage("orbit_linking", &
@@ -551,7 +556,7 @@ PROGRAM orbit_linking
               END IF
            END DO
            CALL NULLIFY(orbfile)
-           CALL system("rm -f " // TRIM(orbid) // ".orb")
+           ret = system("rm -f " // TRIM(orbid) // ".orb")
            IF (info_verb >= 1) THEN
               WRITE(lu,*) "[" // TRIM(orbid) // "] " // " Orbit file read."
            END IF
@@ -720,7 +725,7 @@ PROGRAM orbit_linking
         END DO
         id_arr => reallocate(id_arr, nset)
 
-        CALL system("ps ux | grep orbit_linking")
+        ret = system("ps ux | grep orbit_linking")
 
         key3 = " "
         m = 0
@@ -1288,10 +1293,10 @@ PROGRAM orbit_linking
            END IF
 
            ! Read the observations refering to the address:
-           CALL system("rm -f orbit_linking_tmp" // &
+           ret = system("rm -f orbit_linking_tmp" // &
                 TRIM(pidstr) // "." // TRIM(obs_type))
            DO i=1,SIZE(id_arr_)
-              CALL system("grep " // TRIM(id_arr_(i)) // &
+              ret = system("grep " // TRIM(id_arr_(i)) // &
                    " " // TRIM(obsfname) // &
                    " >> orbit_linking_tmp" // TRIM(pidstr) // &
                    "." // TRIM(obs_type))
@@ -2104,7 +2109,7 @@ PROGRAM orbit_linking
            END DO
            CALL delete_tree(tree_2blsl)
         END IF
-        CALL system("rm -f orbit_linking_tmp" // TRIM(pidstr) // &
+        ret = system("rm -f orbit_linking_tmp" // TRIM(pidstr) // &
              "." // TRIM(obs_type))
 
 
@@ -2282,10 +2287,10 @@ PROGRAM orbit_linking
            END IF
 
            ! Extract observations:
-           CALL system("rm -f orbit_linking_tmp" // &
+           ret = system("rm -f orbit_linking_tmp" // &
                 TRIM(pidstr) // "." // TRIM(obs_type))
            DO j=1,3
-              CALL system("grep " // TRIM(id_arr3(j)) // &
+              ret = system("grep " // TRIM(id_arr3(j)) // &
                    " " // TRIM(obsfname) // &
                    " >> orbit_linking_tmp" // TRIM(pidstr) // &
                    "." // TRIM(obs_type))
@@ -2982,7 +2987,7 @@ PROGRAM orbit_linking
                  IF (info_verb >= 1) THEN
                     WRITE(lu,"(1X,A,2(1X,F20.5))") TRIM(id2), residuals(j,2:3)/rad_amin
                  END IF
-                 CALL system("grep " // TRIM(id2) // &
+                 ret = system("grep " // TRIM(id2) // &
                       " " // TRIM(obsallfname) // &
                       " > orbit_linking_tmp" // TRIM(pidstr) // &
                       "." // TRIM(obs_type))
@@ -3408,7 +3413,7 @@ PROGRAM orbit_linking
         END DO
         DEALLOCATE(obss_sep_arr, orb_arr, id_arr_prm, &
              obs_arr_all_first)
-        CALL system("rm -f orbit_linking_tmp" // TRIM(pidstr) // &
+        ret = system("rm -f orbit_linking_tmp" // TRIM(pidstr) // &
              "." // TRIM(obs_type))
 
      CASE (5)
