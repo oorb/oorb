@@ -118,7 +118,8 @@ pyoorb: ../lib/$(PYOORB_SO)
 	@ [[ ! -z "$(LDFLAGS)" ]] && echo "$$LDFLAGS" | grep -E -v -q -- "(-bundle|-shared)" && { \
 	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS -bundle" || LDFLAGS="$$LDFLAGS -shared"; \
 	}; \
-	$(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
+	: \ "# We override whatever is in F77= as that confuses f2py when used with Intel Compilers (conda compiler packages set it)"
+	F77= $(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
 	        $(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build" && \
 	mv $(PYOORB_SO) ../python
 	@ echo
