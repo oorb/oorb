@@ -1,0 +1,114 @@
+parameters.o:  ../modules/parameters.f90
+	$(OBJBUILDCMD)
+parameters.mod: ../modules/parameters.f90 parameters.o
+	$(MODBUILDCMD)
+utilities.o:  ../modules/utilities.f90 parameters.mod
+	$(OBJBUILDCMD)
+utilities.mod: ../modules/utilities.f90 parameters.mod utilities.o
+	$(MODBUILDCMD)
+random.o:  ../modules/random.f90 parameters.mod
+	$(OBJBUILDCMD)
+random.mod: ../modules/random.f90 parameters.mod random.o
+	$(MODBUILDCMD)
+sort.o:  ../modules/sort.f90 parameters.mod utilities.mod
+	$(OBJBUILDCMD)
+sort.mod: ../modules/sort.f90 parameters.mod utilities.mod sort.o
+	$(MODBUILDCMD)
+statistics.o:  ../modules/statistics.f90 parameters.mod  utilities.mod sort.mod
+	$(OBJBUILDCMD)
+statistics.mod: ../modules/statistics.f90 parameters.mod  utilities.mod sort.mod statistics.o
+	$(MODBUILDCMD)
+functions.o:  ../modules/functions.f90 parameters.mod
+	$(OBJBUILDCMD)
+functions.mod: ../modules/functions.f90 parameters.mod functions.o
+	$(MODBUILDCMD)
+linal.o:  ../modules/linal.f90 parameters.mod utilities.mod
+	$(OBJBUILDCMD)
+linal.mod: ../modules/linal.f90 parameters.mod utilities.mod linal.o
+	$(MODBUILDCMD)
+estimators.o:  ../modules/estimators.f90 parameters.mod  linal.mod statistics.mod parameters.mod
+	$(OBJBUILDCMD)
+estimators.mod: ../modules/estimators.f90 parameters.mod  linal.mod statistics.mod parameters.mod estimators.o
+	$(MODBUILDCMD)
+planetary_data.o:  ../modules/planetary_data.f90  parameters.mod linal.mod sort.mod
+	$(OBJBUILDCMD)
+planetary_data.mod: ../modules/planetary_data.f90  parameters.mod linal.mod sort.mod planetary_data.o
+	$(MODBUILDCMD)
+cl_options.o:  ../modules/cl_options.f90 parameters.mod
+	$(OBJBUILDCMD)
+cl_options.mod: ../modules/cl_options.f90 parameters.mod cl_options.o
+	$(MODBUILDCMD)
+integrators.o:  ../modules/integrators.f90  planetary_data.mod linal.mod
+	$(OBJBUILDCMD)
+integrators.mod: ../modules/integrators.f90  planetary_data.mod linal.mod integrators.o
+	$(MODBUILDCMD)
+data_structures.o:  ../modules/data_structures.f90  parameters.mod utilities.mod
+	$(OBJBUILDCMD)
+data_structures.mod: ../modules/data_structures.f90  parameters.mod utilities.mod data_structures.o
+	$(MODBUILDCMD)
+Base_class.o:  ../classes/Base_class.f90  ../classes/../prefix.h utilities.mod parameters.mod
+	$(OBJBUILDCMD)
+base_cl.mod: ../classes/Base_class.f90  ../classes/../prefix.h utilities.mod parameters.mod Base_class.o
+	$(MODBUILDCMD)
+Unit_class.o:  ../classes/Unit_class.f90 base_cl.mod
+	$(OBJBUILDCMD)
+unit_cl.mod: ../classes/Unit_class.f90 base_cl.mod Unit_class.o
+	$(MODBUILDCMD)
+File_class.o:  ../classes/File_class.f90 base_cl.mod  unit_cl.mod utilities.mod
+	$(OBJBUILDCMD)
+file_cl.mod: ../classes/File_class.f90 base_cl.mod  unit_cl.mod utilities.mod File_class.o
+	$(MODBUILDCMD)
+Time_class.o:  ../classes/Time_class.f90 base_cl.mod  file_cl.mod utilities.mod
+	$(OBJBUILDCMD)
+time_cl.mod: ../classes/Time_class.f90 base_cl.mod  file_cl.mod utilities.mod Time_class.o
+	$(MODBUILDCMD)
+Observatory_class.o:  ../classes/Observatory_class.f90  base_cl.mod
+	$(OBJBUILDCMD)
+observatory_cl.mod: ../classes/Observatory_class.f90  base_cl.mod Observatory_class.o
+	$(MODBUILDCMD)
+SphericalCoordinates_class.o:   ../classes/SphericalCoordinates_class.f90 base_cl.mod time_cl.mod  random.mod utilities.mod linal.mod
+	$(OBJBUILDCMD)
+sphericalcoordinates_cl.mod: ../classes/SphericalCoordinates_class.f90 base_cl.mod time_cl.mod  random.mod utilities.mod linal.mod SphericalCoordinates_class.o
+	$(MODBUILDCMD)
+CartesianCoordinates_class.o:   ../classes/CartesianCoordinates_class.f90 base_cl.mod time_cl.mod  sphericalcoordinates_cl.mod
+	$(OBJBUILDCMD)
+cartesiancoordinates_cl.mod: ../classes/CartesianCoordinates_class.f90 base_cl.mod time_cl.mod  sphericalcoordinates_cl.mod CartesianCoordinates_class.o
+	$(MODBUILDCMD)
+Observation_class.o:  ../classes/Observation_class.f90  base_cl.mod time_cl.mod observatory_cl.mod sphericalcoordinates_cl.mod  cartesiancoordinates_cl.mod utilities.mod
+	$(OBJBUILDCMD)
+observation_cl.mod: ../classes/Observation_class.f90  base_cl.mod time_cl.mod observatory_cl.mod sphericalcoordinates_cl.mod  cartesiancoordinates_cl.mod utilities.mod Observation_class.o
+	$(MODBUILDCMD)
+Observatories_class.o:   ../classes/Observatories_class.f90 base_cl.mod file_cl.mod  observatory_cl.mod time_cl.mod cartesiancoordinates_cl.mod utilities.mod  planetary_data.mod linal.mod
+	$(OBJBUILDCMD)
+observatories_cl.mod: ../classes/Observatories_class.f90 base_cl.mod file_cl.mod  observatory_cl.mod time_cl.mod cartesiancoordinates_cl.mod utilities.mod  planetary_data.mod linal.mod Observatories_class.o
+	$(MODBUILDCMD)
+Orbit_class.o:  ../classes/Orbit_class.f90 base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  utilities.mod planetary_data.mod integrators.mod linal.mod sort.mod  functions.mod
+	$(OBJBUILDCMD)
+orbit_cl.mod: ../classes/Orbit_class.f90 base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  utilities.mod planetary_data.mod integrators.mod linal.mod sort.mod  functions.mod Orbit_class.o
+	$(MODBUILDCMD)
+Observations_class.o:   ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod  sort.mod linal.mod
+	$(OBJBUILDCMD)
+observations_cl.mod: ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod  sort.mod linal.mod Observations_class.o
+	$(MODBUILDCMD)
+StochasticOrbit_class.o:   ../classes/StochasticOrbit_class.f90 base_cl.mod orbit_cl.mod  observations_cl.mod sphericalcoordinates_cl.mod  cartesiancoordinates_cl.mod time_cl.mod planetary_data.mod linal.mod  estimators.mod statistics.mod
+	$(OBJBUILDCMD)
+stochasticorbit_cl.mod: ../classes/StochasticOrbit_class.f90 base_cl.mod orbit_cl.mod  observations_cl.mod sphericalcoordinates_cl.mod  cartesiancoordinates_cl.mod time_cl.mod planetary_data.mod linal.mod  estimators.mod statistics.mod StochasticOrbit_class.o
+	$(MODBUILDCMD)
+PhysicalParameters_class.o:   ../classes/PhysicalParameters_class.f90 base_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observations_cl.mod stochasticorbit_cl.mod utilities.mod  planetary_data.mod linal.mod sort.mod statistics.mod
+	$(OBJBUILDCMD)
+physicalparameters_cl.mod: ../classes/PhysicalParameters_class.f90 base_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observations_cl.mod stochasticorbit_cl.mod utilities.mod  planetary_data.mod linal.mod sort.mod statistics.mod PhysicalParameters_class.o
+	$(MODBUILDCMD)
+io.o:  ../main/io.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod orbit_cl.mod stochasticorbit_cl.mod  utilities.mod
+	$(OBJBUILDCMD)
+io.mod: ../main/io.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod orbit_cl.mod stochasticorbit_cl.mod  utilities.mod io.o
+	$(MODBUILDCMD)
+oorb.o:  ../main/oorb.f90 version.h base_cl.mod file_cl.mod time_cl.mod  cartesiancoordinates_cl.mod sphericalcoordinates_cl.mod  observatories_cl.mod orbit_cl.mod observation_cl.mod observations_cl.mod  stochasticorbit_cl.mod physicalparameters_cl.mod cl_options.mod  planetary_data.mod statistics.mod io.mod
+	$(OBJBUILDCMD)
+ephemeris_linking.o:  ../main/ephemeris_linking.f90 base_cl.mod  file_cl.mod time_cl.mod orbit_cl.mod stochasticorbit_cl.mod io.mod  cl_options.mod utilities.mod data_structures.mod sort.mod
+	$(OBJBUILDCMD)
+orbit_linking.o:  ../main/orbit_linking.f90 base_cl.mod file_cl.mod  time_cl.mod orbit_cl.mod stochasticorbit_cl.mod io.mod cl_options.mod  utilities.mod data_structures.mod sort.mod
+	$(OBJBUILDCMD)
+pyoorb.o:  ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod
+	$(OBJBUILDCMD)
+pyoorb.mod: ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod pyoorb.o
+	$(MODBUILDCMD)

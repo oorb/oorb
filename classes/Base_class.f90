@@ -622,13 +622,6 @@ CONTAINS
        RETURN
     END IF
 
-    ! If PREFIX has not been set, default to current directory
-    ! for every subdir (backwards compatibility)
-    IF (LEN_TRIM(PREFIX) == 0) THEN
-       s2 = "."
-       RETURN
-    END IF
-
     ! Otherwise, return <PREFIX>/<subdir>
     s2 = TRIM(PREFIX) // "/" // subdir
 
@@ -638,7 +631,7 @@ CONTAINS
   SUBROUTINE setAccessToDataFiles()
 
     IMPLICIT NONE
-    OORB_DATA_DIR = resolveDirectory("data", "OORB_DATA")
+    OORB_DATA_DIR = resolveDirectory("share/oorb", "OORB_DATA")
 
   END SUBROUTINE setAccessToDataFiles
 

@@ -38,18 +38,20 @@ want to use the conda installer:
 
 0. This is not a requirement but highly recommended: get the latest
    version of `Anaconda <https://www.anaconda.com/download>`_ Python
-   3.6 and make it your default Python before you install OpenOrb.
+   3.6 and make it your default Python before you install OpenOrb. Ensure
+   you have ``numpy`` and ``pytest`` installed by running:
+
+       >>> conda install numpy pytest
 
 1. Follow the OpenOrb installation guidelines including the generation
    and updating of the data files (no need to update ``ET minus UT``
    and ``TAI minus UTC``)
 
-2. From the ``oorb/python``
-   directory, run the following commands to build pyoorb:
+2. From the root directory, run:
 
-       >>> make clean
-       >>> make
        >>> make pyoorb
+
+   The shared library will be built in ``oorb/python``.
        
 3. A few environment variables have to be set before pyoorb can be
    used from any location on your machine. In order to do so, open
@@ -76,6 +78,11 @@ want to use the conda installer:
    functions and should generate a lot of numerical output. Each
    function should complete with error code 0.
 
+   For a more comprehensive list of tests, run:
+
+       >>> make test
+
+   from the root ``oorb`` directory.
 
 Documentation/API
 -----------------

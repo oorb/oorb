@@ -2,9 +2,10 @@ OpenOrb (or OOrb) is an open-source orbit-computation package.
 
 More detailed documentation is available by doing
 
-> `cd doc`
-
-> `make pdf`
+```bash
+cd doc
+make pdf
+```
 
 which should produce a PDF document 'OpenOrb_Tutorial_vN.N.pdf'.
 
@@ -29,58 +30,161 @@ of the resulting orbits.
 In OOrb, tools for making ephemeris predictions and classification of
 objects (i.e., NEO-MBO-TNO) are also available.
 
-# Installation using conda #
+# Installation using `conda` #
 
-The easiest way to install OOrb on Linux and OSX 64-bit systems is using the conda installer, which requires some form of this package manager to be installed on your system (e.g., conda, anaconda, miniconda):
+The easiest way to install OOrb on Linux and OSX 64-bit systems is using the
+conda installer, which requires some form of this package manager to be
+installed on your system (e.g., conda, anaconda, miniconda):
 
-> `conda config --add channels conda-forge`
+```bash
+conda install -c defaults -c conda-forge openorb
+```
 
-> `conda install openorb`
+For more details on the OOrb conda package please refer to [this
+website](https://github.com/conda-forge/openorb-feedstock).
 
-For more details on the OOrb conda package please refer to [this website](https://github.com/conda-forge/openorb-feedstock).
+## Installing additional ephemerides files ##
 
-# Manual Installation #
+OpenOrb comes with JPL's DE430 by default. Additional ephemerides 
+can be installed using:
 
-## Requirements ##
+```bash
+conda install -c defaults -c conda-forge openorb-data-de405
+```
 
-  * svn
-  * make
-  * a Fortran 90/95 compiler
-  * ncftpget
-  * gnuplot
-  * latex
-  * dvips
-  * ...
+for JPL's DE405 or
+
+```bash
+conda install -c defaults -c conda-forge openorb-data-bc430
+```
+
+for Baer & Chesley (2017).
+
+# Building from source #
+
+For the impatient:
+
+```
+./configure gfortran opt --with-pyoorb
+
+make
+make ephem
+make test
+sudo make install
+```
+
+after which you'll have `oorb` installed into `/usr/local/bin` and `pyoorb`
+installed into your Python's standard modules directory.  For more details,
+read below.
+
+## Prerequisites ##
+
+To build OOrb:
+
+  * GNU `make`
+  * a Fortran 90/95 compiler (`gfortran` is best tested)
+  * `curl` (usually comes with macOS and Linux by default)
+
+To build the python bindings:
+
+  * `python` 2.7 or >=3.5
+  * `numpy`
+
+To run unit tests:
+
+  * `pytest`
+
+To build the documentation:
+
+  * `gnuplot`
+  * `latex`
+  * `dvips`
+
+An easy way to bootstrap a complete build environment is with
+[`conda`](https://conda.io/en/latest/), which comes preinstalled with
+the [Anaconda Python Distribution](https://www.anaconda.com/distribution/),
+or [Miniconda](https://conda.io/en/latest/miniconda.html). For example,
+this will install everything that's needed (including the compilers) on a
+macOS machine:
+
+```bash
+conda create -n oorb-dev python numpy pytest gfortran_osx-64
+conda activate oorb-dev
+```
+
+On Linux it's probably better to use your distribution's `gfortran`; simply
+omit it from the line above.
+
+## Building ##
+
+### OOrb Command Line Tools
+
+In the root directory of your OOrb installation (=`OORBROOT`) run
+
+```bash
+./configure COMPILER TYPE --prefix INSTALL_PATH
+```
+
+where `COMPILER` is `gfortran`, `g95`, `intel`, `absoft`, `compaq`, `ibm`,
+`lahey`, or `sun`, and `TYPE` is either `opt` for optimized code or `deb`
+for code including debugging information. The `--prefix` line is optional;
+if given it tells `make install` where to install the binaries and data
+files after they have been built.
+
+A commonly used configuration is:
+```bash
+./configure gfortran opt --prefix=/opt/oorb
+```
+If left unspecified, the install prefix defaults to `/usr/local`.
+
+Once you have configured the source code, run `make` to build it:
+
+```bash
+make -j4
+```
+
+The `-j4` command line arguments tells `make` to compile up to four targets in
+parallel (making a better use of today's multi-core machines).
+
+Now you have a working executable called `oorb` in the `OORBROOT/bin/`
+directory.  To do something useful, you need to provide the software
+additional data files which will be prepared in the next section.
 
 
-## Compiling ##
+### Building `pyoorb` -- the OOrb Python Bindings
 
-In the root directory of your OOrb installation (=`OORBROOT`) do
+To build the Python bindings, you must configure OOrb with:
 
-> `make all_clean`
+```bash
+./configure COMPILER TYPE --with-pyoorb
+```
 
-> `./configure COMPILER TYPE`
-
-where `COMPILER` is `gfortran`, `g95`, `intel`, `absoft`, `compaq`, `ibm`, `lahey`, or `sun`, and `TYPE` is either `opt` for optimized code or `deb` for code including debugging information. Then do
-
-> `cd main/`
-
-> `make oorb`
-
-Now you have a working executable called `oorb` in the `OORBROOT/main/` directory. To do something useful, you need to provide the software additional data files which will be prepared in the next section.
+They're not built by default, otherwise. Once configured, running `make` as
+discussed in the previous section will both build `oorb` and `pyoorb`.
 
 
-## Generating and updating additional data files after manual installation ##
+### Other `configure` options
+
+A few other options are available with `configure`, mostly allowing you to
+override default paths and/or executable names:
+
+  * `--with-python=<python interpreter name/path>`
+  * `--with-f2py=<f2py compuler name/path>`
+  * `--with-pytest=<pytest executable name/path>`
+
+
+## Generating and updating additional data files after building from source ##
 
 ### Planetary ephemerides ###
 
-The [DE405](http://ssd.jpl.nasa.gov/?planet_eph_export) planetary ephemerides provided by the [Solar System Dynamics Group](http://ssd.jpl.nasa.gov/) at the Jet Propulsion Laboratory need to be converted to binary format (e.g., `de405.dat`) only once by doing
+The [DE405](http://ssd.jpl.nasa.gov/?planet_eph_export) planetary
+ephemerides provided by the [Solar System Dynamics
+Group](http://ssd.jpl.nasa.gov/) at the Jet Propulsion Laboratory need to be
+converted to binary format (e.g., `de405.dat`) only once by doing:
 
-> `cd OORBROOT/data/JPL_ephemeris/`
-
-> `make`
-
-> `make test`
+```bash
+make ephem
+```
 
 ### BC430 Asteroid ephemerides ### 
 
@@ -117,25 +221,47 @@ Update via the OOrb git repository by
 
 > `git pull TAI-UTC.dat`
 
-## Setting environment variables ##
+## Installing and Setting Up
 
-Finally, you need to tell `oorb` where to find the different files. This is easiest to do through environment variables which you declare in the configuration file for the shell (e.g., `.profile` on Mac OS X and `.bash_profile` on Linux). For the Bash shell you need to add the following lines to the configuration file of your shell:
+### Installing
 
-> `export OORB_DATA=OORBROOT/data`
+To install the binaries and data files to their destination directory, run:
 
-> `export OORB_CONF=OORBROOT/main/oorb.conf`
+```bash
+make install
+```
 
-> `export OORB_GNUPLOT_SCRIPTS_DIR=OORBROOT/gnuplot/`
+This will copy all that's needed into the directory given by `--prefix` to
+`./configure` (or `/usr/local`, if none was given). As most Unix
+distributions have `/usr/local/bin` on the default path, you should now be able
+to run oorb by typing `oorb`.
 
-## Installing ephemerides files using the conda installer ##
+If configured to build `pyoorb`, `pyoorb` will be installed into the default
+`site-path` path of the Python used to build it. This means you'll be able
+to `import pyoorb` from Python without any special setup. If you wish to
+install `pyoorb` elsewhere, you can customize its install path with:
 
-If the conda installer has been used to install OOrb, additional ephemerides files can be installed using:
+```bash
+env PYTHON_SITE_PATH=/where/pyoorb/should/be/installed make install 
+```
 
-> `conda install openorb-data-de405`
+Note that you will have to add that path to `PYTHONPATH`, to make `pyoorb`
+discoverable to Python.
 
-or
+### Running from the source directory ##
 
-> `conda install openorb-data-bc430`
+If you wish to run `oorb` from the source directory, you need to tell it
+where to find the different files.  This is easiest to do through
+environment variables which you declare in the configuration file for the
+shell (e.g., `.profile` on Mac OS X and `.bash_profile` on Linux).  For the
+Bash shell you need to add the following lines to the configuration file of
+your shell:
+
+```bash
+export OORB_DATA=OORBROOT/data
+export OORB_CONF=OORBROOT/main/oorb.conf
+export OORB_GNUPLOT_SCRIPTS_DIR=OORBROOT/gnuplot/
+```
 
 # Using oorb #
 
