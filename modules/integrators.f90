@@ -2129,6 +2129,7 @@ CONTAINS
     INTEGER :: i, iaddit, j, k, l, err, naddit
 
     naddit = 0
+    err = 0
 
     ! Number of basic perturbers, that is, perturbers whose orbits are
     ! not integrated.
@@ -2462,7 +2463,9 @@ CONTAINS
     IF (ASSOCIATED(asteroid_masses)) THEN
       DEALLOCATE(asteroid_masses)
     END IF
-    DEALLOCATE(wc, stat=err)
+    IF (ALLOCATED(wc)) THEN
+      DEALLOCATE(wc, stat=err)
+    END IF
     IF (err /= 0) THEN
        error = .TRUE.
        RETURN
