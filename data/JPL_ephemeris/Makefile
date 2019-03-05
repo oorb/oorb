@@ -101,11 +101,11 @@ test : $(TESTER) $(EPH_BIN) testpo.$(EPH_TYPE)
 
 # Compile ascii-to-binary converter:
 $(CONVERTER): $(CONV_SRC) ../../lib/liboorb.a
-	$(FC) -o $(CONVERTER) $(FC_INC)../../build $(CONV_SRC) ../../lib/liboorb.a 
+	$(FC) -o $(CONVERTER) $(FC_INC)../../build $(CONV_SRC) ../../lib/liboorb.a $(ADDLIBS) 
 
 # Compile tester:
 $(TESTER): $(TEST_SRC) ../../lib/liboorb.a
-	$(FC) -o $(TESTER) $(FC_INC)../../build $(TESTER_SRC) ../../lib/liboorb.a
+	$(FC) -o $(TESTER) $(FC_INC)../../build $(TESTER_SRC) ../../lib/liboorb.a $(ADDLIBS) 
 
 # Download individual ephemeris files (via a temp file, so that partial downloads aren't
 # seen as successful by make

@@ -1,4 +1,8 @@
-OpenOrb (or OOrb) is an open-source orbit-computation package.
+# OpenOrb (or OOrb), an open-source orbit-computation package.
+
+[![Build Status](https://dev.azure.com/mjuric/oorb/_apis/build/status/mjuric.oorb?branchName=master)](https://dev.azure.com/mjuric/oorb/_build/latest?definitionId=1?branchName=master)
+[![Test Coverage](https://codecov.io/gh/mjuric/oorb/branch/master/graph/badge.svg)](https://codecov.io/gh/mjuric/oorb)
+
 
 More detailed documentation is available by doing
 
@@ -172,6 +176,20 @@ override default paths and/or executable names:
   * `--with-f2py=<f2py compuler name/path>`
   * `--with-pytest=<pytest executable name/path>`
 
+
+### Building with test coverage logging (for developers)
+
+Running configure with:
+```bash
+./configure --coverage
+```
+will link OpenOrb with [`gcov`
+coverage](https://gcc.gnu.org/onlinedocs/gcc/Gcov.html) libraries. These
+allow the developers to monitor the extent to which the code is covered by
+the test suite.
+
+See additional information in the comments next to the `coverage` target in
+the [Makefile](Makefile).
 
 ## Generating and updating additional data files after building from source ##
 

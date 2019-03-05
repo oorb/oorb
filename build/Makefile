@@ -35,6 +35,7 @@ clean:
 	rm -f ../lib/liboorb.{$(LIBEXT),a}
 	rm -rf *.pyf ../python/pyoorb.{so,dylib} ../python/pyoorb.*.so ../python/pyoorb.{name,sp_dir} _pyoorb_build
 	rm -rf ../bin ../lib
+	find .. -name '*.gcno' -o -name '*.gcda' -o -name '*.gcov' -exec rm {} \;
 
 #
 # Convenience so we can run 'make oorb' (instead of 'make ../bin/oorb')
@@ -58,7 +59,7 @@ $(addprefix ../bin/, $(PROGRAMS)): ../bin/%: ../main/%
 	cp -a $< $@
 
 $(addprefix ../main/, $(PROGRAMS)): ../main/%: %.o ../lib/liboorb.a
-	$(FC) $(FCOPTIONS) $^ -o $@.tmp
+	$(FC) $(FCOPTIONS) $^ $(ADDLIBS) -o $@.tmp
 	fix-rpath.sh $@.tmp
 	mv $@.tmp $@
 
@@ -119,7 +120,7 @@ pyoorb: ../lib/$(PYOORB_SO)
 	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS -bundle" || LDFLAGS="$$LDFLAGS -shared"; \
 	}; \
 	F77= $(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
-	        $(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build" && \
+	        $(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build $(FCOPTIONS)" $(ADDLIBS) && \
 	mv $(PYOORB_SO) ../python
 	@ echo
 	@ # FIXME: this exists so `sudo make install` knows what to install. It's hacky this way

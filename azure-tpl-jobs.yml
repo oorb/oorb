@@ -1,0 +1,56 @@
+# Azure Pipelines CI job template
+
+parameters:
+  name: ''
+  vmImage: ''
+
+jobs:
+- job: ${{ parameters.name }}
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+  strategy:
+    matrix:
+      py27:
+        conda.py: 2.7
+      py36:
+        conda.py: 3.6
+      py37:
+        conda.py: 3.7
+  steps:
+  - checkout: self
+    fetchDepth: 1
+  - script: |
+      set -xe
+      # deal with an annoying nvm bug on macOS (cosmetic issue):
+      #   - https://github.com/Microsoft/vscode-docs/blob/master/docs/editor/integrated-terminal.md#why-is-nvm-complaining-about-a-prefix-option-when-the-integrated-terminal-is-launched
+      #   - https://github.com/creationix/nvm/issues/1690
+      #   - https://github.com/creationix/nvm/issues/1245
+      rm -rf ~/.nvm
+
+      export PATH="$CONDA/bin:$PATH"
+      conda create --yes --quiet -n oorb-dev python=$CONDA_PY numpy pytest $( [[ $(uname) == Darwin ]] && echo gfortran_osx-64 || echo gfortran_linux-64)
+      source activate oorb-dev
+
+      # conda's gfortran on Linux does not install a binary named 'gfortran'
+      echo "gfortran = $(which gfortran)"
+      [[ ! -f "$CONDA_PREFIX/bin/gfortran" && ! -z "$GFORTRAN" ]] && ln -s "$GFORTRAN" "$CONDA_PREFIX/bin/gfortran"
+      echo "gfortran = $(which gfortran)"
+
+      # configure and run
+      ./configure gfortran opt --prefix=/opt/test/openorb --with-pyoorb
+      make -j8
+      make ephem -j8
+      make test
+      sudo make install
+    displayName: 'Build'
+  - script: |
+      set -xe
+
+      export PATH="$CONDA/bin:$PATH"
+      source activate oorb-dev
+
+      SRCDIR=$PWD
+      cd /
+      python -c "import pyoorb; print('success.')"
+      python $SRCDIR/python/test.py
+    displayName: 'Test'
