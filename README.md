@@ -88,6 +88,7 @@ To build OOrb:
   * GNU `make`
   * a Fortran 90/95 compiler (`gfortran` is best tested)
   * `curl` (usually comes with macOS and Linux by default)
+  * The `lapack` library (comes with macOS by default)
 
 To build the python bindings:
 
