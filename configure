@@ -46,7 +46,7 @@ PYOORB=0
 PYTHON=python
 F2PY="f2py"
 PYTEST="py.test"
-ADDLIBS=
+ADDLIBS="-llapack"
 ADDOPTS=
 COVERAGE=
 
