@@ -3135,23 +3135,31 @@ CONTAINS
     CHARACTER(len=7) :: nr_str
     CHARACTER(len=4) :: timescale, obsy_code, strk_class
     REAL(hp) :: g_mag, g_flux, g_flux_err
+    REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: covRandomTrs 
     REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: element_arr, covSystematicTrs
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: inratrs, indectrs, intimetrs, &
+         gaiaPosXTrs, gaiaPosYTrs, gaiaPosZTrs, gaiaVelXTrs, gaiaVelYTrs, &
+         gaiaVelZTrs, trsResult, collPos, collVel
+    REAL(bp), DIMENSION(10,15) :: transitTmp
     REAL(bp), DIMENSION(6,6) :: covariance, covariance_sys
     REAL(bp), DIMENSION(6) :: coordinates, stdev_, mean
-    REAL(bp), DIMENSION(3) :: position, velocity, pos1, pos2
+    REAL(bp), DIMENSION(3) :: position, velocity, pos1, pos2, &
+                              midGaia, midGaiaV
     REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd, dt, &
          ecl_lon, ecl_lat, angscan, pos_unc_along, pos_unc_across, &
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
          rmin, rarcmin, mag_unc, s2n, mjd_tt, mjd_tcb, strk_len, &
          strk_len_unc, strk_direction, strk_direction_unc, &
          position_angle_scan,  &
-         epoch, epoch_err, epoch_utc
+         epoch, epoch_err, epoch_utc,  epoch1, covcoeff
     INTEGER(ihp) :: observation_id, solution_id, source_id
     INTEGER :: i, j, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
          border1, border2, err_verb_, level_of_confidence, &
-         number_mp
+         number_mp, &
+         transitCounter, transitCounterAfter, &
+         numberOfTransits, finalNumberOfTransits, linecounter, sot, s
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat
 
@@ -3164,12 +3172,34 @@ CONTAINS
        RETURN
     END IF
 
-    nlines = getNrOfLines(obsf)
+    ! Decide which routine should read the input 
+    ! file by checking the suffix:
+    fname = getFileName(obsf)
+    indx = INDEX(fname, ".", back=.TRUE.)
+    IF (indx == 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / new", &
+            "Suffix required in file name.",1)
+    END IF
+    suffix = fname(indx+1:LEN_TRIM(fname))
+    CALL locase(suffix, error)
+    IF (error) THEN
+       CALL errorMessage("Observations / new", &
+            "The suffix string contains forbidden characters.", 1)
+       RETURN
+    END IF
+
+    IF (suffix .EQ. "gaianp") THEN
+         nlines = matchCharNrLines(obsf, "# Transit", 9)
+    ELSE
+         nlines = getNrOfLines(obsf)
+    END IF
     IF (error) THEN
        CALL errorMessage("Observations / readObservationFile", &
             "TRACE BACK (5)", 1)
        RETURN
     END IF
+
 
     ALLOCATE(this%obs_arr(nlines), stat=err)
     IF (err /= 0) THEN
@@ -3195,22 +3225,7 @@ CONTAINS
     END IF
     this%obs_note_arr = " "
 
-    ! Decide which routine should read the input 
-    ! file by checking the suffix:
-    fname = getFileName(obsf)
-    indx = INDEX(fname, ".", back=.TRUE.)
-    IF (indx == 0) THEN
-       error = .TRUE.
-       CALL errorMessage("Observations / new", &
-            "Suffix required in file name.",1)
-    END IF
-    suffix = fname(indx+1:LEN_TRIM(fname))
-    CALL locase(suffix, error)
-    IF (error) THEN
-       CALL errorMessage("Observations / new", &
-            "The suffix string contains forbidden characters.", 1)
-       RETURN
-    END IF
+
 
     IF (info_verb >= 1 .AND. PRESENT(stdev) .AND. &
          suffix == "mpc2") THEN
@@ -4400,6 +4415,299 @@ CONTAINS
           CALL NULLIFY(satellite_ccoord)
 
        END DO
+
+
+
+   ! Gaia SSO-ST input with normal-point treatment
+   CASE ("gaianp")
+   ! Gaia data release format parsed by parsegaiainput.sh 
+ 
+       covariance = 0.0_bp
+       position = 0.0_bp
+       velocity = 0.0_bp
+       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+       ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
+       mjd_tcb = 55197.0_bp
+       i = 0 
+       transitCounter=0
+       transitCounterAfter=0
+       numberOfTransits=0
+       linecounter=0
+       ! Read first to get the amount of transits
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(A132)") "Reading gaianp file..."
+       END IF
+       DO
+          
+          READ(getUnit(obsf), "(A)", iostat=err) line
+          linecounter=linecounter+1
+          IF (info_verb >= 2) THEN
+          WRITE(stdout,*) "LC: ", linecounter, "NT: ", numberOfTransits, &
+                     "TC: ", transitCounter, "TCA: ", transitCounterAfter
+          END IF
+          ! What can the line include?
+          ! 1. something erroneous            --> exit
+          ! 2. A transit separator            --> collapseTransit, clear temporary array, add to observations
+          ! 3. A first line transit separator --> initialize
+          ! 4. A comment                      --> cycle
+          ! 5. An actual data line!           --> read into temporary array
+          ! 6. An end separator               --> collapseTransit, clear temporary array, add to observations, exit sequence
+
+          IF (err > 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (1).", 1)
+             RETURN
+          ELSE IF (err < 0) THEN ! end-of-file
+             EXIT
+          ELSE IF (line(1:9) == "# Transit" .AND. numberOfTransits .EQ. 0) THEN ! .OR. line(1:1)==" ") THEN
+             transitCounter=0
+             numberOfTransits=numberOfTransits+1
+             CYCLE 
+          ELSE IF ((line(1:9) == "# Transit" .AND. numberOfTransits .GT. 0) .OR. (line(1:5) == "# End")) THEN
+             
+             ! collapseTransit
+             ALLOCATE(inratrs(transitCounterAfter))
+             ALLOCATE(indectrs(transitCounterAfter)) 
+             ALLOCATE(intimetrs(transitCounterAfter))
+             ALLOCATE(gaiaPosXTrs(transitCounterAfter))
+             ALLOCATE(gaiaPosYTrs(transitCounterAfter))
+             ALLOCATE(gaiaPosZTrs(transitCounterAfter))
+             ALLOCATE(gaiaVelXTrs(transitCounterAfter))
+             ALLOCATE(gaiaVelYTrs(transitCounterAfter))
+             ALLOCATE(gaiaVelZTrs(transitCounterAfter))
+             ALLOCATE(covRandomTrs(6,6,transitCounterAfter))
+             ALLOCATE(covSystematicTrs(6,6))
+             ALLOCATE(trsResult(7))
+             ALLOCATE(collPos(3))
+             ALLOCATE(collVel(3))
+             sot = transitCounterAfter
+             
+             ! Order of reading transitTmp
+             ! 1. RIGHT_ASCENSION
+             ! 2. RIGHT_ASCENSION_ERROR_SYSTEMATIC
+             ! 3. RIGHT_ASCENSION_ERROR_RANDOM
+             ! 4. DECLINATION
+             ! 5. DECLINATION_ERROR_SYSTEMATIC            
+             ! 6. DECLINATION_ERROR_RANDOM
+             ! 7. RADEC_COVARIANCE_SYSTEMATIC
+             ! 8. RADEC_COVARIANCE_RANDOM
+             ! 9. EPOCH (Gaiatime)
+             ! 10. OBSERVER_X_POS
+             ! 11. OBSERVER_Y_POS
+             ! 12. OBSERVER_Z_POS
+             ! 13. OBSERVER_X_VEL
+             ! 14. OBSERVER_Y_VEL
+             ! 15. OBSERVER_Z_VEL
+             
+             
+             ! Systematic is the same for all observations in one transit
+             covSystematicTrs(1,1)=ABS(transitTmp(1,5)) !2
+             covSystematicTrs(2,2)=ABS(transitTmp(1,2)) !5
+             covSystematicTrs(2,1)=ABS(transitTmp(1,7))
+             covSystematicTrs(1,2)=ABS(transitTmp(1,7))
+
+             
+             DO s=1,transitCounterAfter
+                epoch1=transitTmp(s,9)!+mjd_tcb, no, done later in the code
+                ! Do not do the whole time manipulation here, for now treat as just a number
+                ! ... or you  need to after all, barycenter!
+                inratrs(s)=transitTmp(s,1)*rad_deg!/rad_hour
+                indectrs(s)=transitTmp(s,4)*rad_deg!/rad_deg
+                intimetrs(s)=transitTmp(s,9)!+mjd_tcb ! done later
+                covRandomTrs(1,1,s)=transitTmp(s,6) ! 3
+                covRandomTrs(2,2,s)=transitTmp(s,3) ! 6
+                covRandomTrs(1,2,s)=transitTmp(s,8)
+                covRandomTrs(2,1,s)=transitTmp(s,8)
+                
+                                
+                gaiaPosXTrs(s)=transitTmp(s,10) ! - barycenter! or later?
+                gaiaPosYTrs(s)=transitTmp(s,11) ! - barycenter! or later?
+                gaiaPosZTrs(s)=transitTmp(s,12) ! - barycenter! or later?
+                gaiaVelXTrs(s)=transitTmp(s,13) ! - barycenter! or later?
+                gaiaVelYTrs(s)=transitTmp(s,14) ! - barycenter! or later?
+                gaiaVelZTrs(s)=transitTmp(s,15) ! - barycenter! or later?
+                
+                
+                
+             END DO
+             
+        
+             CALL collapseTransit(inratrs, indectrs, intimetrs, covRandomTrs, trsResult, error)
+             IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (999)", 1)
+                 RETURN
+              END IF 
+             CALL collapseGaiaPos(intimetrs, gaiaPosXTrs, gaiaPosYTrs, gaiaPosZTrs, &
+                  gaiaVelXTrs, gaiaVelYTrs, gaiaVelZTrs, midGaia)
+             CALL collapseGaiaVel(gaiaVelXTrs, gaiaVelYTrs, gaiaVelZTrs, midGaiaV)
+
+             covcoeff=1.0_bp
+             
+             position(2)=trsResult(1)
+             position(3)=trsResult(2)
+             !covariance(2,2)=covcoeff*transitCounterAfter*(trsResult(3) + covSystematicTrs(1,1))
+             !covariance(2,3)=covcoeff*transitCounterAfter*(trsResult(4) + covSystematicTrs(2,1))
+             !covariance(3,2)=covariance(2,3)
+             !covariance(3,3)=covcoeff*transitCounterAfter*(trsResult(6) + covSystematicTrs(2,2))
+             covariance(2,2)=(trsResult(3)) + covSystematicTrs(1,1)
+             covariance(2,3)=(trsResult(6)) + covSystematicTrs(2,1)
+             covariance(3,2)=covariance(2,3)
+             covariance(3,3)=(trsResult(4)) + covSystematicTrs(2,2)
+             
+             dt= trsResult(7)
+             
+             coordinates(1:3)=midGaia
+             coordinates(4:6)=midGaiaV
+             
+             
+             ! add observation
+             
+                           i = i + 1
+              IF (i == 1) THEN
+                 discovery = .TRUE.
+              ELSE
+                 discovery = .FALSE.
+              END IF
+              
+              CALL NEW(t, mjd_tcb + dt, "TCB")
+              IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (115)", 1)
+                 RETURN
+              END IF
+              obsy = getObservatory(obsies, "247")
+              IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (120)", 1)
+                 RETURN
+              END IF
+              ! Transform barycentric spacecraft coordinates to
+              ! heliocentric spacecraft coordinates
+              mjd_tt = getMJD(t, "TT")
+              IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (121)", 1)
+                 RETURN
+              END IF
+              planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+              IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (122)", 1)
+                 RETURN
+              END IF
+              CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
+              IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (125)", 1)
+                 RETURN
+              END IF
+              DEALLOCATE(planeph, stat=err)
+              CALL NEW(obs_scoord, position, velocity, "equatorial", t)
+              IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (130)", 1)
+                 RETURN
+              END IF
+              satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
+              CALL rotateToEquatorial(satellite_ccoord)
+              CALL rotateToEquatorial(obsy_ccoord)
+              coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
+              CALL NULLIFY(satellite_ccoord)
+              CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+              CALL NULLIFY(this%obs_arr(numberOfTransits))
+              ! At this point, we should have everything we need to perform the collapsing of the transit
+              
+              
+              CALL NEW(this%obs_arr(numberOfTransits), number=number, designation=" ", &
+                   discovery=discovery, note1=" ", note2="S", &
+                   obs_scoord=obs_scoord, covariance=covariance, &
+                   obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
+                   obsy=obsy, obsy_ccoord=obsy_ccoord, &
+                   satellite_ccoord=satellite_ccoord, &
+                   coord_unit=2)
+              IF (error) THEN
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "TRACE BACK (135)", 1)
+                 RETURN
+              END IF
+             
+              CALL NULLIFY(obs_scoord)
+              CALL NULLIFY(t)
+              CALL NULLIFY(obsy)
+              CALL NULLIFY(obsy_ccoord)
+              CALL NULLIFY(satellite_ccoord)
+              covariance=0.0_bp
+             
+              IF (info_verb >= 2) THEN  
+                  WRITE(*,*) "Testing gaianp..."
+                  WRITE(*,*) "Number of Transits: ", numberOfTransits
+              END IF
+             !WRITE(*,*) this%obs_arr(numberOfTransits)%covariance
+             
+             ! clear temporary  array
+             numberOfTransits=numberOfTransits+1
+             transitCounterAfter=0
+             transitCounter=0
+             transitTmp=0.0_bp
+
+             DEALLOCATE(inratrs)
+             DEALLOCATE(indectrs) 
+             DEALLOCATE(intimetrs)
+             DEALLOCATE(gaiaPosXTrs)
+             DEALLOCATE(gaiaPosYTrs)
+             DEALLOCATE(gaiaPosZTrs)
+             DEALLOCATE(gaiaVelXTrs)
+             DEALLOCATE(gaiaVelYTrs)
+             DEALLOCATE(gaiaVelZTrs)
+             DEALLOCATE(covRandomTrs)
+             DEALLOCATE(covSystematicTrs)
+             DEALLOCATE(trsResult)
+             DEALLOCATE(collPos)
+             DEALLOCATE(collVel)
+             CYCLE 
+          ELSE IF (line(1:1) == "#") THEN
+          ! Simple comment
+             CYCLE
+          !ELSE IF ((transitCounter .EQ. 1) .AND. (lineCounter .NE. 0) .AND. (numberOfTransits .GE. 0)) THEN
+          !   !! Collapse transit
+          ELSE IF ((lineCounter .GT. 1) .AND. (numberOfTransits .GT. 0)) THEN
+          ! Regular line, read to temporary array    
+              !lineCounter=lineCounter+1
+              transitCounter=transitCounter+1
+              READ(line, *, iostat=err) number, transitTmp(transitCounter,1), transitTmp(transitCounter,2), &
+                                        transitTmp(transitCounter,3), transitTmp(transitCounter,4), &
+                                        transitTmp(transitCounter,5), transitTmp(transitCounter,6), &
+                                        transitTmp(transitCounter,7), transitTmp(transitCounter,8), &
+                                        transitTmp(transitCounter,9), transitTmp(transitCounter,10), &
+                                        transitTmp(transitCounter,11), transitTmp(transitCounter,12), &
+                                        transitTmp(transitCounter,13), transitTmp(transitCounter,14), &
+                                        transitTmp(transitCounter,15)
+              IF (err /= 0) THEN
+                 error = .TRUE.
+                 CALL errorMessage("Observations / readObservationFile", &
+                      "Error while reading observations from file (2).", 1)
+                 RETURN
+              END IF
+              
+              transitCounterAfter=transitCounterAfter+1
+              !WRITE(*,*) "TransitTmp: ", transitTmp(transitCounter,:)
+              
+          END IF
+
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+
+       END DO
+
+
+
+
 
     CASE ("gdr2")
 
@@ -5896,7 +6204,233 @@ CONTAINS
   END SUBROUTINE writeObservationFile
 
 
-
+  ! Collapsing Gaia transit into a single normal point
+  ! See Fedorets et al. (2018), A&A 620, A101
+  SUBROUTINE collapseTransit(inra, indec, intime, covRandom, retqi, error1)
+  IMPLICIT NONE
+  REAL(bp), DIMENSION(:), INTENT(IN) :: inra, indec, intime
+  REAL(bp), DIMENSION(:,:,:), INTENT(IN) :: covRandom
+  REAL(bp), DIMENSION(7), INTENT(INOUT) :: retqi
+  REAL(bp), DIMENSION(4,4) :: lambdaq1, lambdaqi
+  REAL(bp), DIMENSION(2,2) :: tmp22, tmpres22
+  REAL(bp), DIMENSION(4) :: qi
+  REAL(bp), DIMENSION(1,4) :: qil
+  REAL(bp), DIMENSION(:), ALLOCATABLE :: yi
+  REAL(bp), DIMENSION(:,:), ALLOCATABLE :: cov, thetai, lambdayi, lambdayiinv, thetaiT, intg1, intg3, intg4, YIL
+  REAL(bp) :: ft, a, b, c, d, det
+  INTEGER :: sot, N2, i, j, k, l, ncol1, ncol2, ig, s, t, u
+  !CHARACTER(LEN=*) :: errstr
+  LOGICAL, INTENT(INOUT) :: error1
+  
+  sot=SIZE(inra)
+  IF (sot .EQ. 0) THEN
+  error = .TRUE.
+         CALL errorMessage("Observations / collapseTransit", &
+              "Failure in collapsing transit, could not read data.", 1)
+         RETURN
+      END IF
+      
+  N2=sot*2
+  
+  ALLOCATE(cov(N2, N2))
+  
+  cov=0.0_bp
+  ! Change to real indices when the real covRandom matrix is initailized
+  DO i=1,sot
+     cov(2*i-1,2*i-1)=covRandom(1,1,i)  ! ralon
+     !WRITE(*,*) "racov: ", cov(2*i-1,2*i-1)
+     cov(2*i,2*i)=    covRandom(2,2,i)     ! declat
+     !WRITE(*,*) "deccov: ", cov(2*i,2*i)
+     cov(2*i,2*i-1)=  covRandom(2,1,i)    ! covcov
+     !WRITE(*,*) "covcov: ", cov(2*i,2*i-1)
+     cov(2*i-1,2*i)=  covRandom(1,2,i)    !covcov
+     !WRITE(*,*) "covcov: ", cov(2*i-1,2*i)   
+  END DO   
+  
+  ft=computeFinalT(intime)
+  !WRITE(*,*) "Final time: ", ft
+  
+  ALLOCATE(yi(N2))
+  ALLOCATE(thetai(N2,4))
+  ALLOCATE(lambdayi(N2,N2))
+  ALLOCATE(lambdayiinv(N2,N2))
+  
+  DO j=1,sot
+     yi(2*j-1)=inra(j)
+     yi(2*j)=indec(j)
+  END DO
+  !WRITE(*,*) "YI: ", YI
+  
+  DO k=1,sot
+     thetai(2*k-1,1) = 1.0_bp
+     thetai(2*k-1,2) = 0.0_bp
+     thetai(2*k-1,3) = intime(k)-ft
+     thetai(2*k-1,4) = 0.0_bp
+  
+     thetai(2*k,1) = 0.0_bp
+     thetai(2*k,2) = 1.0_bp
+     thetai(2*k,3) = 0.0_bp
+     thetai(2*k,4) = intime(k)-ft
+  END DO
+  
+  lambdayiinv=0.0_bp
+  
+  DO l=1,sot
+     a=cov(2*l-1, 2*l-1)
+     b=cov(2*l, 2*l-1)
+     c=cov(2*l-1, 2*l)
+     d=cov(2*l, 2*l)    
+     
+     tmp22=0.0_bp
+        
+     tmp22(1,1)=a
+     tmp22(2,1)=b
+     tmp22(1,2)=c
+     tmp22(2,2)=d
+  
+     tmpres22=0.0_bp
+  
+     tmpres22=matinv(tmp22, errstr)
+        IF (LEN_TRIM(errstr) /= 0) THEN
+         error = .TRUE.
+         CALL errorMessage("Observations / collapseTransit", &
+              "From matinv in linal: " // TRIM(errstr), 1)
+         RETURN
+      END IF
+      
+     lambdayiinv(2*l-1,2*l-1)=tmpres22(1,1)
+     lambdayiinv(2*l,2*l-1)=  tmpres22(2,1)
+     lambdayiinv(2*l-1,2*l)=  tmpres22(1,2)
+     lambdayiinv(2*l,2*l)=    tmpres22(2,2) 
+  
+  END DO
+  
+  ALLOCATE(thetaiT(4,2*sot))
+  ALLOCATE(intg1(4,2*sot))
+  ALLOCATE(intg3(4,2*sot))
+  ALLOCATE(intg4(4,2*sot))
+  
+  thetaiT=TRANSPOSE(thetai)
+  !WRITE(*,*) "thetait: ", thetait
+  intg1=0.0_bp
+  intg1=MATMUL(thetaiT,lambdayiinv)
+  
+  lambdaq1=0.0_bp
+  lambdaq1=MATMUL(intg1,thetai)
+  
+  errstr = ""
+  lambdaqi=0.0_bp
+  lambdaqi=matinv(lambdaq1, errstr, "Cholesky")
+      IF (LEN_TRIM(errstr) /= 0) THEN
+         error = .TRUE.
+         CALL errorMessage("Observations / collapseTransit", &
+              "From matinv in linal: " // TRIM(errstr), 1)
+         RETURN
+      END IF
+  
+  intg3=0.0_bp
+  intg3=MATMUL(lambdaqi, thetaiT)
+  
+  intg4=0.0_bp
+  intg4=MATMUL(intg3,lambdayiinv)
+  
+  qi=MATMUL(intg4,yi)
+  
+  retqi(1)=qi(1)
+  retqi(2)=qi(2)
+  
+  retqi(3)=lambdaqi(1,1)
+  retqi(4)=lambdaqi(2,2)
+  retqi(5)=lambdaqi(2,1)
+  retqi(6)=lambdaqi(2,1) ! force same values for covariances for stability reasons
+  
+  retqi(7)=ft
+  
+  DEALLOCATE(cov)
+  DEALLOCATE(yi)
+  DEALLOCATE(thetai)
+  DEALLOCATE(lambdayi)
+  DEALLOCATE(lambdayiinv)
+  DEALLOCATE(thetaiT)
+  DEALLOCATE(intg1)
+  DEALLOCATE(intg3)
+  DEALLOCATE(intg4)
+  
+  
+  
+  END SUBROUTINE collapseTransit
+  
+  
+  
+  ! Description: Complementary function for Gaia transits
+  ! Calculates the midpoint time of a single GaiaTransit
+  REAL(bp) FUNCTION computeFinalT(intime)
+  IMPLICIT NONE
+  REAL(bp), DIMENSION(:), INTENT(IN):: intime
+  REAL(bp) :: sigmatime
+  INTEGER :: lt, ii
+  
+  lt=SIZE(intime)
+  sigmatime=0.0_bp
+  DO ii=1,lt
+     sigmatime=sigmatime+intime(ii)
+  END DO
+  computeFinalT=sigmatime/lt
+  
+  END FUNCTION
+  
+  
+  ! Description: Complementary function for Gaia transits
+  ! Calculates the midpoint time of a single GaiaTransit
+  SUBROUTINE collapseGaiaPos(intime,  gaiax, gaiay, gaiaz, gaiavx, gaiavy, gaiavz, midGaia)
+  IMPLICIT NONE
+  REAL(bp), DIMENSION(:), INTENT(IN) :: intime,  gaiax, gaiay, gaiaz, gaiavx, gaiavy, gaiavz
+  REAL(bp), DIMENSION(3), INTENT(OUT) :: midGaia
+  REAL(bp) :: ft, fx, fy, fz
+  
+  ft=computeFinalT(intime)
+  
+  fx=gaiax(1) + (ft-intime(1))*gaiavx(1)
+  fy=gaiay(1) + (ft-intime(1))*gaiavy(1)
+  fz=gaiaz(1) + (ft-intime(1))*gaiavz(1)
+  
+  midGaia(1)=fx
+  midGaia(2)=fy
+  midGaia(3)=fz
+  
+  END SUBROUTINE collapseGaiaPos
+  
+  
+  SUBROUTINE collapseGaiaVel(gaiavx, gaiavy, gaiavz, midGaiaV)
+  IMPLICIT NONE
+  REAL(bp), DIMENSION(:), INTENT(IN) :: gaiavx, gaiavy, gaiavz
+  REAL(bp), DIMENSION(3) :: midGaiaV
+  REAL(bp) :: vxsig, vysig, vzsig
+  INTEGER :: jj, mt
+  
+  mt=SIZE(gaiavx)
+  
+  vxsig=0.0_bp
+  vysig=0.0_bp
+  vzsig=0.0_bp
+  
+  DO jj=1,mt
+     vxsig=vxsig+gaiavx(jj);
+     vysig=vysig+gaiavy(jj);
+     vzsig=vzsig+gaiavz(jj);
+  END DO
+     
+  vxsig=vxsig/mt
+  vysig=vysig/mt
+  vzsig=vzsig/mt
+  
+  midGaiaV(1)=vxsig
+  midGaiaV(2)=vysig
+  midGaiaV(3)=vzsig
+  
+  
+  END SUBROUTINE collapseGaiaVel
+!
 
 
 END MODULE Observations_cl
