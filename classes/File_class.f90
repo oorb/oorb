@@ -533,6 +533,97 @@ CONTAINS
   END FUNCTION getNrOfLines
 
 
+  !! *Description*:
+  !!
+  !! Counts the number of lines in a file, which
+  !! match a given char.
+  !! Returns _error_ =
+  !!     - _false_, no errors occur.
+  !!     - _true_, if an error occurs during the procedure.
+  !!
+  !! *Usage*:
+  !!
+  !! type (File) :: myfile
+  !!
+  !! integer :: nr_of_lines
+  !!
+  !! ...
+  !!
+  !! nr_of_lines = MatchCharNrLines(myfile, error) 
+  !!
+  INTEGER FUNCTION matchCharNrLines(this, inchar, lchar)
+
+    IMPLICIT NONE
+    TYPE (File), INTENT(in)        :: this
+    CHARACTER(len=512)             :: line
+    CHARACTER(len=*), INTENT(IN)   :: inchar
+    CHARACTER(LEN(line)+1)         :: modchar, modline
+    INTEGER, INTENT(in)            :: lchar
+    CHARACTER(LEN=lchar)           :: modchar1, modline1
+    INTEGER                        :: i,j, err
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("File / matchCharNrLines", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (.NOT. this%opened) THEN
+       error = .TRUE.
+       CALL errorMessage("File / matchCharNrLines", &
+            "File has not yet been opened.", 1)
+       RETURN
+    END IF
+
+    REWIND(getUnit(this), iostat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("File / matchCharNrLines", &
+            "Error while rewinding the file.", 1)
+       RETURN
+    END IF
+
+
+    modchar=TRIM(inchar)
+    modchar1=modchar(1:lchar)
+
+    i = 0
+    j = 0
+    DO
+       READ(getUnit(this), "(a)", iostat=err) line
+       modline=TRIM(line)
+       modline1=modline(1:lchar)
+       IF (err == 0) THEN
+           i = i + 1
+           IF (modline1 .EQ. modchar1) THEN
+               j=j+1   
+           END IF
+       ELSE IF (err < 0) THEN
+          ! It's the end-of-file: 
+          EXIT
+       ELSE
+          error = .TRUE.
+          CALL errorMessage("File / getNrOfLines", &
+               "Error while counting lines in file.", 1)
+          RETURN
+       END IF
+    END DO
+
+    REWIND(getUnit(this), iostat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("File / getNrOfLines", &
+            "Error while rewinding the file.", 1)
+       RETURN
+    END IF
+
+    matchCharNrLines = j
+
+  END FUNCTION matchCharNrLines
+
+
+
 
 
 
