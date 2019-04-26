@@ -6,6 +6,14 @@
 #       http://lagrange.mechse.illinois.edu/f90_mod_deps/
 #
 
+# Verify we're using gfortran -- ifort is known to be buggy with dependency
+# generation
+
+($FC --version 2>/dev/null | grep -q "GNU Fortran") || {
+	echo "*** Running 'make depends' requires the compiler to be gfortran." >&2
+	exit -1
+}
+
 $FC -cpp -I. -M "$@" | while read line; do
 	IFS=":" read -r TARGETS DEPS <<< "$line"
 

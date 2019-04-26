@@ -159,7 +159,7 @@ endif
 #
 .PHONY: depends
 depends: clean version.h
-	make-fortran-deps.sh $(ALLSOURCES) > make.depends
+	FC=$(FC) make-fortran-deps.sh $(ALLSOURCES) > make.depends
 
 #
 # Recipes to build individual files, which are called by the rules generated
