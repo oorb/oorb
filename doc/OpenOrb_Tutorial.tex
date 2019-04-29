@@ -36,8 +36,8 @@
 \usepackage{latexsym}
 \usepackage{ae}
 \usepackage{aecompl}
-%\usepackage{acronym}
-%\usepackage{harvard}
+\usepackage{acronym}
+\usepackage{harvard}
 \usepackage{ae}    
 \usepackage{aecompl}  
 \usepackage{url}
@@ -91,8 +91,8 @@
 \begin{document}
 \maketitle
 
-%\citationstyle{agsm}
-%\citationmode{abbr}
+\citationstyle{agsm}
+\citationmode{abbr}
 
 \pagenumbering{roman}
 \setcounter{page}{1}
@@ -299,7 +299,7 @@ Access to the following data files is required to run \verb|oorb|:
   \item OBSCODE.dat \href{http://www.cfa.harvard.edu/iau/lists/ObsCodes.html}{http://www.cfa.harvard.edu/iau/lists/ObsCodes.html}
   \item TAI-UTC.dat \href{http://hpiers.obspm.fr/eop-pc/}{http://hpiers.obspm.fr/eop-pc/}
   \item ET-UT.dat \href{}{}
-  \item de405.dat
+  \item de430.dat
 \end{itemize}
 The most recent versions of the three first files are incorporated in
 the OpenOrb package. OBSCODE.dat is updated every night by the Minor
@@ -312,18 +312,18 @@ have been deleted. TAI-UTC.dat and ET-UT.dat have to be updated
 manually. A suitable interval to check the availability of updates is
 every six months or so.
 
-To generate the JPL planetary ephemeris file \verb|de405.dat|, go to
+To generate the JPL planetary ephemeris file \verb|de430.dat|, go to
 the \\ \verb|OpenOrb/data/JPL_ephemeris/| directory \\ \\ 
 \verb|cd ../data/JPL_ephemeris/| \\ \\ 
 and issue the following command: \\ \\ 
 \verb|make| \\ \\
-If successful, the ASCII versions of the de405 ephemerides will first
+If successful, the ASCII versions of the de430 ephemerides will first
 be automatically downloaded from the JPL FTP server, and then built to
-the binary file \verb|de405.dat|. Finally, \verb|de405.dat| is copied
+the binary file \verb|de430.dat|. Finally, \verb|de430.dat| is copied
 to the \verb|data| directory and the intermediate files are
-deleted. Note that you do not have to rebuild the \verb|de405.dat|
+deleted. Note that you do not have to rebuild the \verb|de430.dat|
 file every time you get a new version of OpenOrb. However, since
-\verb|de405.dat| is a binary file, it may have to be built separately
+\verb|de430.dat| is a binary file, it may have to be built separately
 for every operating system. The correctness of the generated ephemeris
 file can be checked with \\ \\
 \verb|make test| \\ \\
@@ -655,7 +655,7 @@ K. (2009). \emph{OpenOrb: Open-source asteroid-orbit-computation
 Science {\bf 44}(12), 1853--1861.
 
 
-\bibliographystyle{alpha}
+\bibliographystyle{agsm}
 \bibliography{asteroid,educational,fortran}
 %\nocite{mui1999a}
 
