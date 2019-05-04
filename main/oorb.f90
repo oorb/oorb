@@ -7590,7 +7590,7 @@ PROGRAM oorb
            mag = mags(j) - 5.0_bp*LOG10(SQRT(heliocentric_r2*ephemeris_r2))
 
            ! Filter transformations to V:
-           IF (obsy_code_arr(j) == "F51") THEN
+           IF (obsy_code_arr(j) == "F51" .and. obsy_code_arr(j) == "F52") THEN
 
               ! PS1SC internal analysis by A. Fitzsimmons 08-11-2011.
               ! Average results for (S+C).
@@ -7610,7 +7610,7 @@ PROGRAM oorb
               CASE default
                  IF (error) THEN
                     CALL errorMessage('oorb / phasecurve', &
-                         'Unknown filter for F51: ' // TRIM(filters(j)),1)
+                         'Unknown filter for F51 or F52: ' // TRIM(filters(j)),1)
                     STOP
                  END IF
               END SELECT
