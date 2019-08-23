@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2018,2019                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -23,10 +23,11 @@
 !
 !! *Module*description*:
 !!
-!! Contains integrators and force routines.
+!! Contains integrators, force routines, and a universal Kepler
+!! solver.
 !!
 !! @author  TL, MG, JV
-!! @version 2018-06-12
+!! @version 2019-08-23
 !!
 MODULE integrators
 
@@ -40,6 +41,8 @@ MODULE integrators
   INTEGER, PARAMETER :: prec = rprec8
   !! Value of pi (32 digits).
   REAL(prec), PARAMETER :: pi = 3.14159265358979323846264338327950_prec
+  !! Value of 2*pi (32 digits).
+  REAL(prec), PARAMETER :: two_pi = 2.0_prec*pi
   !! Gaussian gravitational constant.
   REAL(prec), PARAMETER :: ggc = 0.01720209895_prec
   !! Newtonian gravitational constant.
@@ -70,6 +73,7 @@ MODULE integrators
   ! NOTE: central_body should be an input argument in all
   ! the public routines, since from thereon it is currently
   ! passed on as an global module parameter.
+  PUBLIC :: kepler_step
   PUBLIC :: bulirsch_full_jpl
   PUBLIC :: gauss_radau_15_full_jpl
   PUBLIC :: set_relativity
@@ -2461,10 +2465,10 @@ CONTAINS
 
     END DO
     IF (ASSOCIATED(asteroid_masses)) THEN
-      DEALLOCATE(asteroid_masses)
+       DEALLOCATE(asteroid_masses)
     END IF
     IF (ALLOCATED(wc)) THEN
-      DEALLOCATE(wc, stat=err)
+       DEALLOCATE(wc, stat=err)
     END IF
     IF (err /= 0) THEN
        error = .TRUE.
@@ -2707,5 +2711,786 @@ CONTAINS
   END SUBROUTINE set_relativity
 
 
+
+
+!!!!!!!!!
+  !
+  ! Subroutines and functions that implement the universal Kepler
+  ! solver by Wisdom and Hernandez (2015, MNRAS 453,
+  ! 3015-3023). Translation from original C code to Fortran 90 by MG.
+
+  SUBROUTINE solve_universal_newton(r0, beta, b, eta, zeta, h, XX, SS2, CC2, error)
+
+    IMPLICIT NONE
+
+    REAL(prec) :: r0
+    REAL(prec) :: beta
+    REAL(prec) :: b
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: h
+    REAL(prec) :: XX
+    REAL(prec) :: SS2
+    REAL(prec) :: CC2
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec) :: x
+    REAL(prec) :: g1, g2, g3, arg
+    REAL(prec) :: s2, c2, xnew
+    INTEGER  :: count
+    REAL(prec) :: cc
+
+    xnew = XX
+
+    DO count=0,10
+       x = xnew
+       arg = b*x/2.0_prec
+       s2 = SIN(arg)
+       c2 = COS(arg)
+       g1 = 2.0_prec*s2*c2/b
+       g2 = 2.0_prec*s2*s2/beta
+       g3 = (x - g1)/beta
+       cc = eta*g1 + zeta*g2
+       xnew = (h + (x*cc - (eta*g2 + zeta*g3)))/(r0 + cc)
+       IF (ABS((x-xnew)/xnew) < 1.0e-8_prec) EXIT
+    END DO
+    IF (count > 10) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    ! compute the output
+    x = xnew
+    arg = b*x/2.0_prec
+    s2 = SIN(arg)
+    c2 = COS(arg)
+
+    XX = x
+    SS2 = s2
+    CC2 = c2
+
+  END SUBROUTINE solve_universal_newton
+
+
+
+
+  SUBROUTINE solve_universal_laguerre(r0, beta, b, eta, zeta, h, XX, SS2, CC2, error)
+
+    IMPLICIT NONE
+
+    REAL(prec) :: r0
+    REAL(prec) :: beta
+    REAL(prec) :: b
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: h
+    REAL(prec) :: XX
+    REAL(prec) :: SS2
+    REAL(prec) :: CC2
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec), PARAMETER :: c5=5.0_prec, c16 = 16.0_prec, c20 = 20.0_prec
+
+    REAL(prec) :: x
+    REAL(prec) :: g1, g2, g3
+    REAL(prec) :: arg, s2, c2, xnew, dx
+    REAL(prec) :: f, fp, fpp, g0
+    INTEGER  :: count
+    REAL(prec) :: cc
+
+    xnew = XX
+
+    DO count=0,10
+       x = xnew
+       arg = b*x/2.0_prec
+       s2 = SIN(arg)
+       c2 = COS(arg)
+       g1 = 2.0_prec*s2*c2/b
+       g2 = 2.0_prec*s2*s2/beta
+       g3 = (x - g1)/beta
+       f = r0*x + eta*g2 + zeta*g3 - h
+       fp = r0 + eta*g1 + zeta*g2
+       g0 = 1.0_prec - beta*g2
+       fpp = eta*g0 + zeta*g1
+       dx = -c5*f/(fp + SQRT(ABS(c16*fp*fp - c20*f*fpp)))
+       xnew = x + dx
+       IF (ABS(dx/xnew) < 2.0e-7_prec) EXIT
+    END DO
+    IF (count > 10) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    ! refine with a last newton
+    x = xnew
+    arg = b*x/2.0_prec
+    s2 = SIN(arg)
+    c2 = COS(arg)
+    g1 = 2.0_prec*s2*c2/b
+    g2 = 2.0_prec*s2*s2/beta
+    g3 = (x - g1)/beta
+    cc = eta*g1 + zeta*g2
+    xnew = (h + (x*cc - (eta*g2 + zeta*g3)))/(r0 + cc)
+
+    x = xnew
+    arg = b*x/2.0_prec
+    s2 = SIN(arg)
+    c2 = COS(arg)
+
+    XX = x
+    SS2 = s2
+    CC2 = c2
+
+  END SUBROUTINE solve_universal_laguerre
+
+
+
+
+  SUBROUTINE solve_universal_bisection(r0, beta, b, eta, zeta, h, XX, SS2, CC2, error)
+
+    IMPLICIT NONE
+    REAL(prec) :: r0
+    REAL(prec) :: beta
+    REAL(prec) :: b
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: h
+    REAL(prec) :: XX
+    REAL(prec) :: SS2
+    REAL(prec) :: CC2
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec) :: x
+    REAL(prec) :: g1, g2, g3
+    REAL(prec) :: arg, s2, c2
+    REAL(prec) :: f
+    REAL(prec) :: X_min, X_max, X_per_period, invperiod
+    INTEGER  :: count
+    REAL(prec) :: xnew
+
+    xnew = XX
+
+    ! bisection limits due to Rein et al.
+    invperiod = b*beta/(two_pi*planetary_mu(central_body))
+    X_per_period = two_pi/b
+    X_min = X_per_period * FLOOR(h*invperiod)
+    X_max = X_min + X_per_period
+    xnew = (X_max + X_min)/2.
+
+    DO count=0,100
+       x = xnew
+       arg = b*x/2.0_prec
+       s2 = SIN(arg)
+       c2 = COS(arg)
+       g1 = 2.0_prec*s2*c2/b
+       g2 = 2.0_prec*s2*s2/beta
+       g3 = (x - g1)/beta
+       f = r0*x + eta*g2 + zeta*g3 - h
+       IF (f >= 0.0_prec) THEN
+          X_max = x
+       ELSE
+          X_min = x
+       END IF
+       xnew = (X_max + X_min)/2.0_prec
+       IF (ABS((x - xnew)/xnew) < 1.e-9_prec) EXIT
+    END DO
+    IF (count > 100) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    x = xnew
+    arg = b*x/2.0_prec
+    s2 = SIN(arg)
+    c2 = COS(arg)
+
+    XX = x
+    SS2 = s2
+    CC2 = c2
+
+  END SUBROUTINE solve_universal_bisection
+
+
+
+
+  REAL(prec) FUNCTION usign(x)
+
+    IMPLICIT NONE
+    REAL(prec) :: x
+
+    IF (x > 0.0_prec) THEN
+       usign = 1.0_prec
+    ELSE IF (x < 0.0_prec) THEN
+       usign = -1.0_prec
+    ELSE
+       usign = 0.0_prec
+    END IF
+
+  END FUNCTION usign
+
+
+
+
+  REAL(prec) FUNCTION cubic1(a, b, c)
+
+    IMPLICIT NONE
+
+    REAL(prec) :: a
+    REAL(prec) :: b
+    REAL(prec) :: c
+
+    REAL(prec) :: Q, R
+    REAL(prec) :: theta, aa, bb
+
+    Q = (a*a - 3.0_prec*b)/9.0_prec
+    R = (2.0_prec*a*a*a - 9.0_prec*a*b + 27.0_prec*c)/54.0_prec
+
+    IF (R*R < Q*Q*Q) THEN
+
+       theta = ACOS(R/SQRT(Q*Q*Q))
+
+       WRITE(*,*) "three cubic roots ", & 
+            -2.0*SQRT(Q)*COS(theta/3.0) - a/3.0, &
+            -2.0*SQRT(Q)*COS((theta + two_pi)/3.0) - a/3.0, &
+            -2.0*SQRT(Q)*COS((theta - two_pi)/3.0) - a/3.0
+
+    ELSE
+
+       aa = -usign(R)*(ABS(R) + SQRT(R*R - Q*Q*Q))**(1.0_prec/3.0_prec)
+       IF (aa == 0.0_prec) THEN
+          bb = 0.0_prec
+       ELSE
+          bb = Q/aa
+       END IF
+       cubic1 = (aa + bb) - a/3.0_prec
+
+    END IF
+
+  END FUNCTION cubic1
+
+
+
+
+  SUBROUTINE solve_universal_parabolic(r0, beta, b, eta, zeta, h, XX, SS2, CC2)
+
+    IMPLICIT NONE
+
+    REAL(prec) :: r0
+    REAL(prec) :: beta
+    REAL(prec) :: b
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: h
+    REAL(prec) :: XX
+    REAL(prec) :: SS2
+    REAL(prec) :: CC2
+
+    REAL(prec) :: x
+    REAL(prec) :: s2, c2
+
+    b = 0.0_prec
+
+    s2 = 0.0_prec
+    c2 = 1.0_prec
+    !/*
+    !  g1 = x
+    !  g2 = x*x/2.0
+    !  g3 = x*x*x/6.0
+    !  g = eta*g1 + zeta*g2
+    ! */
+    !/*   f = r0*x + eta*g2 + zeta*g3 - h */
+    !/*   this is just a cubic equation */
+    x = cubic1(3.0_prec*eta/zeta, 6.0_prec*r0/zeta, -6.0_prec*h/zeta)
+
+    !s2 = 0.0
+    !c2 = 1.0
+    !/* g1 = 2.0*s2*c2/b */
+    !/* g2 = 2.0*s2*s2/beta */
+
+    XX = x
+    SS2 = s2
+    CC2 = c2
+
+  END SUBROUTINE solve_universal_parabolic
+
+
+
+
+  SUBROUTINE solve_universal_hyperb_newton(r0, minus_beta, b, eta, zeta, h, XX, SS2, CC2, error)
+
+    IMPLICIT NONE
+
+    REAL(prec) :: r0
+    REAL(prec) :: minus_beta
+    REAL(prec) :: b
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: h
+    REAL(prec) :: XX
+    REAL(prec) :: SS2
+    REAL(prec) :: CC2
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec) :: x
+    REAL(prec) :: g1, g2, g3
+    REAL(prec) :: arg, s2, c2, xnew
+    INTEGER  :: count
+    REAL(prec) :: g
+
+    xnew = XX
+
+    DO count=0,10
+       x = xnew
+       arg = b*x/2.0_prec
+       IF (ABS(arg) > 200.0_prec) THEN
+          error = .TRUE.
+          RETURN
+       END IF
+       s2 = SINH(arg)
+       c2 = COSH(arg)
+       g1 = 2.0_prec*s2*c2/b
+       g2 = 2.0_prec*s2*s2/minus_beta
+       g3 = -(x - g1)/minus_beta
+       g = eta*g1 + zeta*g2
+       xnew = (x*g - eta*g2 - zeta*g3 + h)/(r0 + g)
+       IF (ABS((x-xnew)/xnew) < 1.0e-9_prec) EXIT
+    END DO
+    IF (count > 10) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    x = xnew
+    arg = b*x/2.0_prec
+    s2 = SINH(arg)
+    c2 = COSH(arg)
+
+    XX = x
+    SS2 = s2
+    CC2 = c2
+
+  END SUBROUTINE solve_universal_hyperb_newton
+
+
+
+
+  SUBROUTINE solve_universal_hyperb_laguerre(r0, minus_beta, b, eta, zeta, h, XX, SS2, CC2, error)
+
+    IMPLICIT NONE
+
+    REAL(prec) :: r0
+    REAL(prec) :: minus_beta
+    REAL(prec) :: b
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: h
+    REAL(prec) :: XX
+    REAL(prec) :: SS2
+    REAL(prec) :: CC2
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec), PARAMETER :: c5=5.0_prec, c16 = 16.0_prec, c20 = 20.0_prec
+
+    REAL(prec) :: fp, fpp, dx
+    REAL(prec) :: den
+    REAL(prec) :: x
+    REAL(prec) :: g0, g1, g2, g3
+    REAL(prec) :: arg, s2, c2, xnew
+    INTEGER  :: count
+    REAL(prec) :: f, g
+
+    xnew = XX
+
+    DO count=0,20
+       x = xnew
+       arg = b*x/2.0_prec
+       IF (ABS(arg) > 50.0_prec) THEN
+          error = .TRUE.
+          RETURN
+       END IF
+       s2 = SINH(arg)
+       c2 = COSH(arg)
+       g1 = 2.0_prec*s2*c2/b
+       g2 = 2.0_prec*s2*s2/minus_beta
+       g3 = -(x - g1)/minus_beta
+       f = r0*x + eta*g2 + zeta*g3 - h
+       fp = r0 + eta*g1 + zeta*g2
+       g0 = 1.0_prec + minus_beta*g2
+       fpp = eta*g0 + zeta*g1
+       den = (fp + SQRT(ABS(c16*fp*fp - c20*f*fpp)))
+       IF (den == 0.0) THEN
+          error = .TRUE.
+          RETURN
+       END IF
+       dx = -c5*f/den
+       xnew = x + dx
+       IF (ABS((x-xnew)/xnew) < 1.0e-9_prec) EXIT
+
+    END DO
+    IF (count > 20) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    ! refine with a step of Newton
+    x = xnew
+    arg = b*x/2.0_prec
+    IF (ABS(arg) > 200.0_prec) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+    s2 = SINH(arg)
+    c2 = COSH(arg)
+    g1 = 2.0_prec*s2*c2/b
+    g2 = 2.0_prec*s2*s2/minus_beta
+    g3 = -(x - g1)/minus_beta
+    g = eta*g1 + zeta*g2
+    xnew = (x*g - eta*g2 - zeta*g3 + h)/(r0 + g)
+
+    x = xnew
+    arg = b*x/2.0_prec
+    s2 = SINH(arg)
+    c2 = COSH(arg)
+
+    XX = x
+    SS2 = s2
+    CC2 = c2
+
+  END SUBROUTINE solve_universal_hyperb_laguerre
+
+
+
+
+  SUBROUTINE solve_universal_hyperb_bisect(r0, minus_beta, b, eta, zeta, h, XX, SS2, CC2, error)
+
+    IMPLICIT NONE
+
+    REAL(prec) :: r0
+    REAL(prec) :: minus_beta
+    REAL(prec) :: b
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: h
+    REAL(prec) :: XX
+    REAL(prec) :: SS2
+    REAL(prec) :: CC2
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec) :: x
+    REAL(prec) :: g1, g2, g3
+    REAL(prec) :: arg, s2, c2, xnew
+    INTEGER  :: count
+    REAL(prec) :: X_min, X_max
+    REAL(prec) :: f
+    REAL(prec) :: err
+    REAL(prec) :: fmin, fmax
+
+    xnew = XX
+    X_min = 0.5_prec*xnew
+    X_max = 10.0_prec*xnew
+
+    x = X_min
+    arg = b*x/2.0_prec
+    IF (ABS(arg) > 200.0_prec) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+    s2 = SINH(arg)
+    c2 = COSH(arg)
+    g1 = 2.0_prec*s2*c2/b
+    g2 = 2.0_prec*s2*s2/minus_beta
+    g3 = -(x - g1)/minus_beta
+    fmin = r0*x + eta*g2 + zeta*g3 - h
+
+    x = X_max
+    arg = b*x/2.0_prec
+    IF (ABS(arg) > 200.0) THEN
+       x = 200.0_prec/(b/2.0_prec)
+       arg = 200.0_prec
+    END IF
+    s2 = SINH(arg)
+    c2 = COSH(arg)
+    g1 = 2.0_prec*s2*c2/b
+    g2 = 2.0_prec*s2*s2/minus_beta
+    g3 = -(x - g1)/minus_beta
+    fmax = r0*x + eta*g2 + zeta*g3 - h
+    IF (fmin*fmax > 0.0_prec) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    DO count=0,100
+       x = xnew
+       arg = b*x/2.0_prec
+       IF (ABS(arg) > 200.0_prec) THEN
+          error = .TRUE.
+          RETURN
+       END IF
+       s2 = SINH(arg)
+       c2 = COSH(arg)
+       g1 = 2.0_prec*s2*c2/b
+       g2 = 2.0_prec*s2*s2/minus_beta
+       g3 = -(x - g1)/minus_beta
+       f = r0*x + eta*g2 + zeta*g3 - h
+       IF (f >= 0.0_prec) THEN
+          X_max = x
+       ELSE
+          X_min = x
+       END IF
+       xnew = (X_max + X_min)/2.0_prec
+       IF (ABS((x-xnew)/xnew) < 1.0e-10_prec) EXIT
+    END DO
+    IF (count > 100) THEN
+       error = .TRUE.
+       RETURN
+    END IF
+
+    x = xnew
+    arg = b*x/2.0_prec
+    s2 = SINH(arg)
+    c2 = COSH(arg)
+
+    XX = x
+    SS2 = s2
+    CC2 = c2
+
+  END SUBROUTINE solve_universal_hyperb_bisect
+
+
+
+
+  SUBROUTINE kepler_step(ncenter, dt, s0, s, error)
+
+    IMPLICIT NONE
+    INTEGER, INTENT(in) :: ncenter
+    REAL(prec), INTENT(in) :: dt
+    REAL(prec), DIMENSION(6), INTENT(in) :: s0
+    REAL(prec), DIMENSION(6), INTENT(out) :: s
+    LOGICAL, INTENT(inout) :: error
+    REAL(prec) :: r0, v2, eta, beta, zeta, b
+
+    central_body = ncenter
+
+    r0 = SQRT(dot_PRODUCT(s0(1:3),s0(1:3)))
+    v2 = dot_PRODUCT(s0(4:6),s0(4:6))
+    eta = dot_PRODUCT(s0(1:3),s0(4:6))
+    beta = 2.0_prec*planetary_mu(central_body)/r0 - v2
+    zeta = planetary_mu(central_body) - beta*r0
+    b = SQRT(ABS(beta))
+
+    CALL kepler_step_depth(dt, beta, b, s0, s, 0, r0, v2, eta, zeta, error)
+    IF (error) THEN
+       WRITE(0,"(A)") "kepler_step: Failed 2-body propagation using universal Kepler solver."
+       RETURN
+    END IF
+
+  END SUBROUTINE kepler_step
+
+
+
+
+  RECURSIVE SUBROUTINE kepler_step_depth(dt, beta, b, s0, s, depth, r0, v2, eta, zeta, error)
+
+    IMPLICIT NONE
+    REAL(prec) :: dt
+    REAL(prec) :: beta
+    REAL(prec) :: b
+    REAL(prec), DIMENSION(6) :: s0
+    REAL(prec), DIMENSION(6) :: s
+    INTEGER :: depth 
+    REAL(prec) :: r0
+    REAL(prec) :: v2
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec), DIMENSION(6) :: ss
+
+    IF (depth > 30) THEN
+       error = .TRUE.
+       WRITE(0,"(A)") "kepler_step_depth: kepler depth exceeded."
+       RETURN
+    END IF
+
+    CALL kepler_step_internal(dt, beta, b, s0, s, r0, v2, eta, zeta, error)
+
+    IF (error) THEN
+       error = .FALSE.
+
+       CALL kepler_step_depth(dt/4.0, beta, b, s0, ss, depth+1, r0, v2, eta, zeta, error)
+
+       r0 = SQRT(dot_PRODUCT(ss(1:3),ss(1:3)))
+       v2 = dot_PRODUCT(ss(4:6),ss(4:6))
+       eta = dot_PRODUCT(ss(1:3),ss(4:6))
+       zeta = planetary_mu(central_body) - beta*r0
+
+       CALL kepler_step_depth(dt/4.0, beta, b, ss, s, depth+1, r0, v2, eta, zeta, error)
+
+       r0 = SQRT(dot_PRODUCT(s(1:3),s(1:3)))
+       v2 = dot_PRODUCT(s(4:6),s(4:6))
+       eta = dot_PRODUCT(s(1:3),s(4:6))
+       zeta = planetary_mu(central_body) - beta*r0
+
+       CALL kepler_step_depth(dt/4.0, beta, b, s, ss, depth+1, r0, v2, eta, zeta, error)
+
+       r0 = SQRT(dot_PRODUCT(ss(1:3),ss(1:3)))
+       v2 = dot_PRODUCT(ss(4:6),ss(4:6))
+       eta = dot_PRODUCT(ss(1:3),ss(4:6))
+       zeta = planetary_mu(central_body) - beta*r0
+
+       CALL kepler_step_depth(dt/4.0, beta, b, ss, s, depth+1, r0, v2, eta, zeta, error)
+
+    END IF
+
+  END SUBROUTINE kepler_step_depth
+
+
+
+
+  REAL(prec) FUNCTION new_guess(r0, eta, zeta, dt)
+
+    IMPLICIT NONE
+    REAL(prec) :: r0
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    REAL(prec) :: dt
+    REAL(prec) :: reta, disc
+
+    IF (zeta /= 0.0_prec) THEN
+       new_guess = cubic1(3.0_prec*eta/zeta, 6.0_prec*r0/zeta, -6.0_prec*dt/zeta)
+    ELSE IF (eta /= 0.0_prec) THEN
+       reta = r0/eta
+       disc = reta*reta + 8.0_prec*dt/eta
+       IF (disc >= 0.0_prec) THEN
+          new_guess = -reta + SQRT(disc)
+       ELSE
+          new_guess = dt/r0
+       END IF
+    ELSE 
+       new_guess = dt/r0
+    END IF
+
+  END FUNCTION new_guess
+
+
+
+
+  SUBROUTINE kepler_step_internal(dt, beta, b, s0, s, r0, v2, eta, zeta, error)
+
+    IMPLICIT NONE
+    REAL(prec) :: dt
+    REAL(prec) :: beta
+    REAL(prec) :: b
+    REAL(prec), DIMENSION(6) :: s0
+    REAL(prec), DIMENSION(6) :: s
+    REAL(prec) :: r0
+    REAL(prec) :: v2
+    REAL(prec) :: eta
+    REAL(prec) :: zeta
+    LOGICAL, INTENT(inout) :: error
+
+    REAL(prec) :: r
+    REAL(prec) :: c2, s2
+    REAL(prec) :: G1, G2
+    REAL(prec) :: a, x, x0
+    REAL(prec) :: c, ca, bsa
+    REAL(prec) :: ff, fp
+    REAL(prec) :: g, fdot, fhat, gdothat
+
+    IF (beta < 0.0_prec) THEN
+
+       x0 = new_guess(r0, eta, zeta, dt)
+
+       x = x0
+       CALL solve_universal_hyperb_newton(r0, -beta, b, eta, zeta, dt, x, s2, c2, error)
+
+       IF (error) THEN
+          error = .FALSE.
+          x = x0
+          CALL solve_universal_hyperb_laguerre(r0, -beta, b, eta, zeta, dt, x, s2, c2, error)
+       END IF
+
+
+       !if(flag == FAILURE) {
+       !  x = x0
+       !  flag = solve_universal_hyperb_bisect(r0, -beta, b, eta, zeta, dt, x, s2, c2, error)
+       !}
+       IF (error) THEN
+          RETURN
+       END IF
+
+       a = planetary_mu(central_body)/(-beta)
+       G1 = 2.0_prec*s2*c2/b
+       c = 2.0_prec*s2*s2
+       G2 = c/(-beta)
+       ca = c*a
+       r = r0 + eta*G1 + zeta*G2
+       bsa = (a/r)*(b/r0)*2.0_prec*s2*c2
+
+    ELSE IF (beta > 0.0_prec) THEN
+
+       x0 = dt/r0
+       ff = zeta*x0*x0*x0 + 3.0_prec*eta*x0*x0
+       fp = 3.0_prec*zeta*x0*x0 + 6.0_prec*eta*x0 + 6.0_prec*r0
+       x0 = x0 - ff/fp
+
+       x = x0
+       CALL solve_universal_newton(r0, beta, b, eta, zeta, dt, x, s2, c2, error)
+       IF (error) THEN
+          error = .FALSE.
+          x = x0
+          CALL solve_universal_laguerre(r0, beta, b, eta, zeta, dt, x, s2, c2, error)
+       END IF
+       !if(flag == FAILURE) {
+       !  x = x0
+       !  flag = solve_universal_bisection(r0, beta, b, eta, zeta, dt, &x, &s2, &c2)
+       !}
+
+       IF (error) THEN
+          RETURN
+       END IF
+
+       a = planetary_mu(central_body)/beta
+       G1 = 2.0_prec*s2*c2/b
+       c = 2.0_prec*s2*s2
+       G2 = c/beta
+       ca = c*a
+       r = r0 + eta*G1 + zeta*G2
+       bsa = (a/r)*(b/r0)*2.0_prec*s2*c2
+
+    ELSE
+
+       x = dt/r0
+
+       CALL solve_universal_parabolic(r0, beta, b, eta, zeta, dt, x, s2, c2)
+       IF (error) THEN
+          RETURN
+       END IF
+
+       G1 = x
+       G2 = x*x/2.0_prec
+       ca = planetary_mu(central_body)*G2
+       r = r0 + eta*G1 + zeta*G2
+       bsa = planetary_mu(central_body)*x/(r*r0)
+
+    END IF
+
+
+    ! f = 1.0 - (ca/r0)
+    fhat = -(ca/r0)
+    g = eta*G2 + r0*G1
+    fdot = -bsa
+    ! gdot = 1.0 - (ca/r)
+    gdothat = -(ca/r)
+
+    s(1:3) = s0(1:3) + (fhat*s0(1:3) + g*s0(4:6))
+    s(4:6) = s0(4:6) + (fdot*s0(1:3) + gdothat*s0(4:6))
+
+  END SUBROUTINE kepler_step_internal
+
+  !
+  ! End implementation of the universal Kepler solver by Wisdom and Hernandez.
+  !
+!!!!!!!!!!!!!!!!!!!!
 
 END MODULE integrators

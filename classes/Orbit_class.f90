@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2018,2019                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Grigori Fedorets                               !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2018-06-12
+!! @version 2019-08-23
 !!
 MODULE Orbit_cl
 
@@ -2626,7 +2626,8 @@ CONTAINS
 
     CASE ("cometary")
 
-       ! Make transformation cometary -> cartesian at periapsis:
+       ! Make transformation cometary -> cartesian at periapsis (and
+       ! epoch of periapsis!):
        celements(1:3) = (/ this%elements(1), 0.0_bp, 0.0_bp /)
        ! v^2 = mu * (2/r - 1/a) = mu * (1+e)/q
        celements(4:6) = (/ 0.0_bp, &
@@ -2639,7 +2640,8 @@ CONTAINS
        celements(1:3) = MATMUL(R,celements(1:3))
        celements(4:6) = MATMUL(R,celements(4:6))
 
-       ! Propagate elements (must use 2b!) to the initial epoch
+       ! Propagate Cartesian elements (must use 2b!) to the epoch of
+       ! the orbital elements:
        CALL NEW(t, this%elements(6), "TT")
        IF (error) THEN
           CALL errorMessage("Orbit / getCartesianElements", &
@@ -2664,6 +2666,8 @@ CONTAINS
                "TRACE BACK (25)", 1)
           RETURN
        END IF
+
+       ! Return the Cartesian elements:
        getCartesianElements = getElements(this_, "cartesian", frame_)
        IF (error) THEN
           CALL errorMessage("Orbit / getCartesianElements", &
@@ -8722,27 +8726,28 @@ CONTAINS
                      "Orbit / propagate_Orb_multiple:", &
                      "Carrying out 2-body propagation for orbit #", i, "..."
              END IF
-             r0      = SQRT(DOT_PRODUCT(this_arr(i)%elements(1:3),this_arr(i)%elements(1:3))) ! r_0
-             u       = DOT_PRODUCT(this_arr(i)%elements(1:3),this_arr(i)%elements(4:6)) 
-             alpha   = 2.0_bp*mu_/r0 - DOT_PRODUCT(this_arr(i)%elements(4:6),this_arr(i)%elements(4:6)) ! 
-             CALL solveKeplerEquation(r0, u, alpha, dt, stumpff_cs, ffs, s, &
-                  this_arr(i)%center)
-             IF (error) THEN
-                CALL errorMessage("Orbit / propagate (multiple)", &
-                     "2-body propagation using Stumpff-functions was unsuccessful.", 1)
-                IF (PRESENT(jacobian)) THEN
-                   DEALLOCATE(jacobian, stat=err)
-                END IF
-                DEALLOCATE(elm_arr, stat=err)
-                RETURN
-             END IF
-             f   = 1.0_bp - (mu_/r0) * stumpff_cs(2)
-             g   = dt - mu_*stumpff_cs(3)
-             df  = -mu_/(ffs(1)*r0) * stumpff_cs(1)
-             dg  = 1.0_bp - (mu_/ffs(1)) * stumpff_cs(2)
-             pos(1:3) = f * this_arr(i)%elements(1:3) +  g * this_arr(i)%elements(4:6)
-             vel(1:3) = df * this_arr(i)%elements(1:3) + dg * this_arr(i)%elements(4:6)
              IF (PRESENT(jacobian)) THEN
+                ! This calculation still relies on Stumpff functions...
+                r0      = SQRT(DOT_PRODUCT(this_arr(i)%elements(1:3),this_arr(i)%elements(1:3))) ! r_0
+                u       = DOT_PRODUCT(this_arr(i)%elements(1:3),this_arr(i)%elements(4:6)) 
+                alpha   = 2.0_bp*mu_/r0 - DOT_PRODUCT(this_arr(i)%elements(4:6),this_arr(i)%elements(4:6)) ! 
+                CALL solveKeplerEquation(r0, u, alpha, dt, stumpff_cs, ffs, s, &
+                     this_arr(i)%center)
+                IF (error) THEN
+                   CALL errorMessage("Orbit / propagate (multiple)", &
+                        "2-body propagation using Stumpff-functions was unsuccessful.", 1)
+                   IF (PRESENT(jacobian)) THEN
+                      DEALLOCATE(jacobian, stat=err)
+                   END IF
+                   DEALLOCATE(elm_arr, stat=err)
+                   RETURN
+                END IF
+                f   = 1.0_bp - (mu_/r0) * stumpff_cs(2)
+                g   = dt - mu_*stumpff_cs(3)
+                df  = -mu_/(ffs(1)*r0) * stumpff_cs(1)
+                dg  = 1.0_bp - (mu_/ffs(1)) * stumpff_cs(2)
+                pos(1:3) = f * this_arr(i)%elements(1:3) + g * this_arr(i)%elements(4:6)
+                !vel(1:3) = df * this_arr(i)%elements(1:3) + dg * this_arr(i)%elements(4:6)
                 CALL GaussfgJacobian(this_arr(i), r0, u, alpha, stumpff_cs, s, &
                      f, g, df, dg, pos, ffs(1), jacobian(i,:,:))
                 IF (error) THEN
@@ -8752,9 +8757,12 @@ CONTAINS
                    DEALLOCATE(elm_arr, stat=err)
                    RETURN
                 END IF
+                !this_arr(i)%elements(1:3) = pos(1:3)
+                !this_arr(i)%elements(4:6) = vel(1:3)
              END IF
-             this_arr(i)%elements(1:3) = pos(1:3)
-             this_arr(i)%elements(4:6) = vel(1:3)
+             ! Use the universal Kepler solver to propagate the state vector:
+             CALL kepler_step(this_arr(i)%center, dt, this_arr(i)%elements(1:6), elm(1:6), error)
+             this_arr(i)%elements(1:6) = elm(1:6)
              IF (info_verb >= 5) THEN
                 WRITE(stdout,"(2X,A,1X,A,I0,A)") &
                      "Orbit / propagate_Orb_multiple:", &
@@ -9049,7 +9057,7 @@ CONTAINS
           END IF
        END DO
 
-       IF (info_verb >= 3) THEN
+       IF (info_verb >= 4) THEN
           WRITE(stdout,"(2X,A,1X,A)") "Integrator:", integrator
           WRITE(stdout,"(2X,A,1X,I0)") "Number of standard perturbers:", &
                COUNT(this_arr(1)%perturbers_prm)
@@ -9137,7 +9145,7 @@ CONTAINS
 
           ! number of batches
           nbatch = CEILING(REAL(nthis)/simint)
-          IF (info_verb >= 3) THEN
+          IF (info_verb >= 4) THEN
              WRITE(stdout,*) "Number of batches to be integrated: ", nbatch
              WRITE(stdout,*) "Maximum number of orbits in each batch: ", simint
           END IF
