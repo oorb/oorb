@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2019-02-20
+!! @version 2019-10-29
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1670,6 +1670,7 @@ CONTAINS
             "StochasticOrbit / covarianceSampling:", &
             "Negative chi2 (", chi2, ") for ML solution."
     END IF
+
     ! Jeffrey's apriori:
     IF (this%regularization_prm) THEN
        ! Sigma_elements^(-1) = A^T Sigma_obs^(-1) A, where A is the
@@ -1774,7 +1775,8 @@ CONTAINS
        END IF
        WRITE(stdout,"(2X,A,1X,A)") &
             "StochasticOrbit / covarianceSampling:", &
-            "Starting sampling."
+            "Starting sampling..."
+       WRITE(stdout,*)
     END IF
 
     DO WHILE (iorb < this%cos_norb_prm .AND. itrial < this%cos_ntrial_prm)
@@ -2144,8 +2146,8 @@ CONTAINS
        iorb = iorb + 1
        orb_arr(iorb) = copy(orb)
        reg_apriori_arr(iorb) = apriori
-       pdf_arr(iorb) = apriori*EXP(-0.5_bp*(chi2 - COUNT(mask_measur)))
-       rchi2_arr(iorb) = chi2 - SUM(n0(1:6))
+       pdf_arr(iorb) = apriori*EXP(-0.5_bp*(chi2/COUNT(mask_measur)))
+       rchi2_arr(iorb) = chi2/(SUM(n0(1:6)) - 6)
        IF (this%jacobians_prm) THEN
           ! Determinant of Jacobian between topocentric spherical
           ! coordinates of the first and the last observation and
@@ -2202,7 +2204,7 @@ CONTAINS
           jacobian_arr(iorb,3) = 0.5_bp*elements(2) * &
                SIN(0.5_bp*elements(3)) / COS(0.5_bp*elements(3))**3
           IF (info_verb >= 3) THEN
-             WRITE(stdout,"(2X,A,1X,A,F15.12)") &
+             WRITE(stdout,"(2X,A,1X,A,F25.15)") &
                   "StochasticOrbit / covarianceSampling:", &
                   "Chi2 new: ", chi2
              WRITE(stdout,"(2X,A,1X,A,3(1X,F10.5))") &
@@ -2235,13 +2237,15 @@ CONTAINS
           WRITE(stdout,"(2X,A,1X,A,I0,1X,A)") &
                "StochasticOrbit / covarianceSampling:", &
                "Orbit #", iorb, "accepted."
-          WRITE(stdout,"(2X,A,1X,A)") &
-               "StochasticOrbit / covarianceSampling:", &
-               "Sample information matrix:"
-          CALL matrix_print(information_matrix_elem,stdout,errstr)
+          IF (this%regularization_prm) THEN
+             WRITE(stdout,"(2X,A,1X,A)") &
+                  "StochasticOrbit / covarianceSampling:", &
+                  "Sample information matrix:"
+             CALL matrix_print(information_matrix_elem,stdout,errstr)
+          END IF
           WRITE(stdout,"(2X,A,1X,A,1X,2"//TRIM(efrmt)//")") &
                "StochasticOrbit / covarianceSampling:", &
-               "Sample chi2, rchi2:", chi2, chi2-SUM(n0(1:6))
+               "Sample chi2, rchi2:", chi2, chi2/(SUM(n0(1:6)) - 6)
           WRITE(stdout,"(2X,A,1X,A,1X,1"//TRIM(efrmt)//")") &
                "StochasticOrbit / covarianceSampling:", &
                "Sample apriori:", apriori
@@ -2254,6 +2258,7 @@ CONTAINS
           WRITE(stdout,"(2X,A,1X,A,L1)") &
                "StochasticOrbit / covarianceSampling:", &
                "dchi2 filtering: ", this%dchi2_rejection_prm 
+          WRITE(stdout,*)
        END IF
 
     END DO
@@ -11257,7 +11262,7 @@ CONTAINS
          storb_integrator, &
          orb_integrator
     CHARACTER(len=64) :: &
-         frmt = "(F20.15,1X)", &
+         frmt = "(F25.15,1X)", &
          efrmt = "(E10.4,1X)"
     CHARACTER(len=64) :: &
          str
@@ -11585,7 +11590,7 @@ CONTAINS
        ! Probability density function value:
        pdf = EXP(-0.5_bp*(rchi2))
        IF (info_verb >= 3) THEN
-          WRITE(stdout,"(2X,A,1X,2"//TRIM(frmt)//")") "Sample chi2:", rchi2
+          WRITE(stdout,"(2X,A,1X,2"//TRIM(frmt)//")") "Sample reduced chi2:", rchi2
           WRITE(stdout,"(2X,A,1X,1"//TRIM(efrmt)//")") "Sample pdf:", pdf
           WRITE(stdout,*)
        END IF
@@ -11641,11 +11646,13 @@ CONTAINS
              elements(3:5) = elements(3:5)/rad_deg
           END IF
           IF (accept) THEN
-             WRITE(stdout,"(A,1X,9(F15.8,1X),A,1X,I0)") "CAR", &
+             WRITE(stdout,"(A,1X,9(F15.8,1X),A,1X,I0)") &
+                  TRIM(this%element_type_prm), &
                   elements, pdf, rchi2, a_r, &
                   "ACCEPTED", this%vomcmc_norb_cmp + 1
           ELSE
-             WRITE(stdout,"(A,1X,9(F15.8,1X),A,1X,I0)") "CAR", &
+             WRITE(stdout,"(A,1X,9(F15.8,1X),A,1X,I0)") &
+                  TRIM(this%element_type_prm), &
                   elements, pdf, rchi2, a_r, "REJECTED", &
                   this%vomcmc_ntrial_cmp - this%vomcmc_norb_cmp
           END IF
