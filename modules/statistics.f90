@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2018,2019                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2015-06-15
+!! @version 2019-10-29
 !!
 MODULE statistics
 
@@ -462,7 +462,7 @@ CONTAINS
     IF (PRESENT(bounds)) THEN
        ALLOCATE(indx_arr(ndata), stat=err)
        IF (err /= 0) THEN
-          errstr = " -> statistics : confidence_limits : Caould not allocate memory." // &
+          errstr = " -> statistics : confidence_limits : Could not allocate memory." // &
                TRIM(errstr)
           DEALLOCATE(pdf_, stat=err)
           DEALLOCATE(mask_, stat=err)
@@ -487,7 +487,8 @@ CONTAINS
              probability_mass_ = probability_mass_ + pdf_(indx_arr(i))
              IF (indata(indx_arr(i)) < bounds(1)) THEN
                 bounds(1) = indata(indx_arr(i))
-             ELSE IF (indata(indx_arr(i)) > bounds(2)) THEN
+             END IF
+             IF (indata(indx_arr(i)) > bounds(2)) THEN
                 bounds(2) = indata(indx_arr(i))               
              END IF
              IF (probability_mass_ >= probability_mass) THEN
