@@ -208,15 +208,13 @@ make ephem
 
 Usage of the BC430 asteroid ephemerides (Baer & Chesley, 2017)
 requires the files `asteroid_ephemeris.txt`, `asteroid_masses.txt`,
-and `asteroid_indices.txt`. These are now already included in the data
-directory as a tar.gz archive that must be unpacked, e.g. like so:
+and `asteroid_indices.txt`. These can be obtained as follows:
 
-```
-cd OORBROOT/data/
-tar xzf BC430.tar.gz
-```
+> cd `OORBROOT/data/`
 
-Alternatively, the files are also available directly through Baer's Google drive at
+> `./getBC430`
+
+or alternatively directly through Baer's Google drive at
 https://docs.google.com/document/d/1bZIpK99YNwYnxNLsaMsxfrY6fJ-wGRNWNcDzWmGvP9s/edit
 
 ### IAU/MPC Observatory codes and positions ###
