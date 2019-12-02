@@ -30,7 +30,7 @@
 # Author: LS
 # Date:   2018-02-05
 
-curl -L -O -\# -C - -f http://staff.not.iac.es/~siltala/asteroid_indices.txt
-curl -L -O -\# -C - -f http://staff.not.iac.es/~siltala/asteroid_masses.txt
-curl -L -O -\# -C - -f http://staff.not.iac.es/~siltala/asteroid_ephemeris.txt
+curl -L -O -\# -C - -f https://zenodo.org/record/3558850/files/BC430.tar.gz
+tar xzf BC430.tar.gz
+rm BC430.tar.gz
 
