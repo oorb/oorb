@@ -1546,7 +1546,7 @@ CONTAINS
        INQUIRE(unit=lu, opened=used, iostat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_init(): Error when inquiring for status of logical unit."
+          WRITE(0,*) "BC_ephemeris_init(): Error when inquiring for status of logical unit."
           RETURN
        END IF
        IF (used) THEN
@@ -1556,7 +1556,7 @@ CONTAINS
           ! A free unit could not be found:
           IF (count > max_lu) THEN
              error = .TRUE.
-             WRITE(0,*) "JPL_ephemeris_init(): Could not find a free logical unit."
+             WRITE(0,*) "BC_ephemeris_init(): Could not find a free logical unit."
              RETURN
           END IF
           lu = lu + 1
@@ -1613,6 +1613,8 @@ CONTAINS
        IF (asteroid_masks(i)) THEN
           READ(lu,*) asteroid_masses(k)
           k = k + 1
+        ELSE ! This happens if an asteroid has been commented out. This read statement's purpose
+          READ(lu,*)  ! is to advance to a new line without storing the mass anywhere.
        END IF
     END DO
     CLOSE(unit=lu)
