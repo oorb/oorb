@@ -273,6 +273,7 @@ MODULE StochasticOrbit_cl
   INTERFACE getChi2
      MODULE PROCEDURE getChi2_matrix
      MODULE PROCEDURE getChi2_this_orb
+     MODULE PROCEDURE getChi2_this_orb_arr
   END INTERFACE getChi2
 
   INTERFACE getCovarianceMatrix
@@ -2791,9 +2792,38 @@ CONTAINS
 
   END FUNCTION getChi2_this_orb
 
+  ! Integrates several objects simultaneously while taking asteroid-asteroid
+  ! perturbations into account.
+  FUNCTION getChi2_this_orb_arr(this_arr, orb_arr,residuals, obs_masks) result(chi2_arr)
 
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(inout), DIMENSION(:) :: this_arr
+    TYPE (Orbit), INTENT(in), DIMENSION(:) :: orb_arr
+    LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: obs_masks
+    REAL(bp) :: chi2_arr(size(this_arr))
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix => NULL()
+    TYPE (SparseArray), INTENT(inout):: residuals
+    INTEGER :: err, i,j, old_simint
+    REAL(bp), DIMENSION(:,:), POINTER :: additional_perturbers
 
+    old_simint = simint
+    simint = SIZE(this_arr)
+    residuals = getResiduals(this_arr, orb_arr)
 
+    DO i=1, SIZE(chi2_arr)
+       information_matrix => getBlockDiagInformationMatrix(this_arr(i)%obss)
+       IF (PRESENT(obs_masks)) THEN
+          chi2_arr(i) = chi_square(residuals%vectors(i)%elements, &
+               information_matrix, obs_masks, errstr)
+       ELSE
+          chi2_arr(i) = chi_square(residuals%vectors(i)%elements, &
+               information_matrix, this_arr(i)%obs_masks_prm, errstr)
+       END IF
+       DEALLOCATE(information_matrix)
+    END DO
+    simint = old_simint
+
+  END FUNCTION getChi2_this_orb_arr
 
   !! *Description*:
   !!
