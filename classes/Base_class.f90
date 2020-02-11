@@ -151,6 +151,14 @@ MODULE Base_cl
   ! Logical error flag
   LOGICAL :: error = .FALSE.
 
+  TYPE :: Vector
+     REAL(bp), DIMENSION(:,:), POINTER :: elements
+  END TYPE Vector
+
+  TYPE :: SparseArray
+     TYPE(Vector), DIMENSION(:), POINTER :: vectors
+  END TYPE SparseArray
+
 CONTAINS
 
 
