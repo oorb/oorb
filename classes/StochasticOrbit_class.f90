@@ -78,6 +78,7 @@ MODULE StochasticOrbit_cl
   PRIVATE :: getRangeBounds_SO
   PRIVATE :: getResiduals_SO_obss
   PRIVATE :: getResiduals_SO_orb
+  PRIVATE :: getResiduals_SO_orb_arr
   PRIVATE :: getResults_SO
   PRIVATE :: getSampleOrbit_SO
   PRIVATE :: getStandardDeviations_SO
@@ -322,6 +323,7 @@ MODULE StochasticOrbit_cl
   INTERFACE getResiduals
      MODULE PROCEDURE getResiduals_SO_obss
      MODULE PROCEDURE getResiduals_SO_orb
+     MODULE PROCEDURE getResiduals_SO_orb_arr
   END INTERFACE getResiduals
 
   INTERFACE getResults
@@ -5398,6 +5400,78 @@ CONTAINS
 
   END FUNCTION getResiduals_SO_orb
 
+  FUNCTION getResiduals_SO_orb_arr(this_arr, orb_arr) result(residuals)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), INTENT(in), DIMENSION(:)       :: this_arr
+    TYPE (Orbit), INTENT(in), DIMENSION(:)                 :: orb_arr
+    TYPE (SparseArray)                                     :: residuals
+    TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: obsy_ccoords
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER     :: temp_ccoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:,:), POINTER   :: computed_scoords, sorted_scoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER     :: observed_scoords => NULL()
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE                  :: observed_coords, computed_coords
+    REAL(bp), DIMENSION(:), ALLOCATABLE                    :: mjd_tt_arr, mjd_tt_arr_sorted, mjd_tt_arr_new
+    INTEGER                                                :: err, i,j,k, nstorb
+    INTEGER, DIMENSION(:), ALLOCATABLE                     :: nobs_arr,indx_arr
+
+    TYPE (Time)                                            :: t
+
+    nstorb = SIZE(this_arr)
+    ALLOCATE(nobs_arr(nstorb))
+    ! Initialize amount of objects in sparse array.
+    ALLOCATE(residuals%vectors(nstorb))
+
+    DO i=1,nstorb
+       nobs_arr(i) = getNrOfObservations(this_arr(i)%obss)
+       ! Initialize amount of observations for each object in sparse array + amount of residuals.
+       ALLOCATE(residuals%vectors(i)%elements(nobs_arr(i),6))
+    END DO
+    ALLOCATE(obsy_ccoords(SUM(nobs_arr(:))))
+
+    temp_ccoords => getObservatoryCCoords(this_arr(1)%obss)
+    obsy_ccoords(1:nobs_arr(1)) = temp_ccoords(:)
+    DEALLOCATE(temp_ccoords)
+    NULLIFY(temp_ccoords)
+
+    DO i=2,nstorb
+       temp_ccoords => getObservatoryCCoords(this_arr(i)%obss)
+       obsy_ccoords(1+SUM(nobs_arr(1:i-1)):SUM(nobs_arr(1:i-1))&
+            + nobs_arr(i)) = temp_ccoords(:)
+       DEALLOCATE(temp_ccoords)
+       NULLIFY(temp_ccoords)
+    END DO
+
+    CALL getEphemerides(orb_arr, obsy_ccoords, computed_scoords)
+
+    ! Here we compute the residuals for each object and appropriately store them in the result variable.
+    DO i=1,nstorb
+       ALLOCATE(observed_coords(nobs_arr(i),6), &
+            computed_coords(nobs_arr(i),6), stat=err)
+       observed_coords = 0.0_bp
+       computed_coords = 0.0_bp
+       observed_scoords => getObservationSCoords(this_arr(i)%obss)
+       DO j=1,nobs_arr(i)
+          observed_coords(j,:) = getCoordinates(observed_scoords(j))
+          computed_coords(j,:) = getCoordinates(computed_scoords(i,j+SUM(nobs_arr(1:i-1))))
+       END DO
+       residuals%vectors(i)%elements(:,1:6) = &
+            observed_coords(:,1:6) - computed_coords(:,1:6)
+       residuals%vectors(i)%elements(1:nobs_arr(i),2) = &
+            residuals%vectors(i)%elements(1:nobs_arr(i),2) * &
+            COS(observed_coords(1:nobs_arr(i),3))
+       DO j=1,nobs_arr(i)
+          IF (ABS(residuals%vectors(i)%elements(j,2)) > pi) THEN
+             residuals%vectors(i)%elements(j,2) = two_pi - &
+                  residuals%vectors(i)%elements(j,2)
+          END IF
+       END DO
+       DEALLOCATE(observed_scoords,observed_coords,computed_coords)
+
+    END DO
+
+    DEALLOCATE(obsy_ccoords, computed_scoords,nobs_arr)
+  END FUNCTION getResiduals_SO_orb_arr
 
 
 
