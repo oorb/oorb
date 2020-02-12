@@ -33,6 +33,7 @@ MODULE statistics
   USE parameters
   USE utilities
   USE sort
+  USE linal
 
   IMPLICIT NONE
 
@@ -53,6 +54,10 @@ MODULE statistics
      MODULE PROCEDURE confidence_limits_hist_r8
      MODULE PROCEDURE confidence_limits_sample_r8
   END INTERFACE confidence_limits
+
+  INTERFACE mahalanobis_distance
+    MODULE PROCEDURE mahalanobis_distance_r8
+  END INTERFACE mahalanobis_distance
 
 CONTAINS
 
@@ -616,6 +621,35 @@ CONTAINS
 
   END SUBROUTINE population_covariance
 
+  ! Given the covariance matrix and residuals of a given observation,
+  ! computes the Mahalanobis distance.
+
+  REAL(rprec8) FUNCTION mahalanobis_distance_r8(cov_matrix,residuals, errstr)
+
+    IMPLICIT NONE
+
+    REAL(rprec8), DIMENSION(:,:), INTENT(in)  :: cov_matrix, residuals
+    CHARACTER(len=*), INTENT(inout) :: errstr
+
+    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: inverse_cov_matrix
+    REAL(rprec8), DIMENSION(1,1)                :: mahalanobis
+    INTEGER n
+
+    n = size(cov_matrix,dim=1)
+    ALLOCATE(inverse_cov_matrix(n,n))
+
+    inverse_cov_matrix = matinv(cov_matrix,errstr)
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       errstr = " -> statistics : mahalanobis_distance : TRACE BACK." // &
+            TRIM(errstr)
+       RETURN
+    END IF
+
+    mahalanobis = SQRT(MATMUL(MATMUL(TRANSPOSE(residuals),inverse_cov_matrix),(residuals)))
+    mahalanobis_distance_r8 = mahalanobis(1,1)
+    DEALLOCATE(inverse_cov_matrix)
+
+  END FUNCTION mahalanobis_distance_r8
 
 
 
