@@ -56,7 +56,8 @@ PROGRAM oorb
   TYPE (StochasticOrbit) :: &
        storb
   TYPE (Orbit), DIMENSION(:,:), POINTER :: &
-       orb_lt_corr_arr2 => NULL()
+       orb_lt_corr_arr2 => NULL(), &
+       mcmc_orb_arr => NULL()
   TYPE (Orbit), DIMENSION(:), POINTER :: &
        orb_arr_in => NULL()
   TYPE (Orbit), DIMENSION(:), POINTER :: &
@@ -103,7 +104,9 @@ PROGRAM oorb
        orb_in_file, &                                               !! Input orbit file.
        orb_out_file, &                                              !! Output orbit file.
        out_file, &                                                  !! Generic output file.
-       tmp_file, &                                                     !! Generic temporary file.
+       cov_in_file, &                                               !! Input MCMC mass estimation covariance matrix.
+       mcmc_in_file, &                                              !! Input MCMC mass estimation file.
+       tmp_file, &                                                  !! Generic temporary file.
        tmp_file2
   CHARACTER(len=ELEMENT_TYPE_LEN), DIMENSION(:), ALLOCATABLE :: &
        element_type_pdf_arr_in                                      !! Element type of input orbital-element PDF.
@@ -137,6 +140,8 @@ PROGRAM oorb
        orb_in_fname, &                                              !! Path to input orbit file (incl. fname).
        orb_out_fname, &                                             !! Path to output orbit file (incl. fname).
        out_fname, &                                                 !! Path to generic output file (incl. fname).
+       mcmc_in_fname, &                                             !! Path to MCMC mass estimation input file (incl. fname).
+       cov_in_fname, &                                              !! Path to MCMC mass estimation covariance matrix file (inc. fname.)
        tmp_fname, &
        buffer, &
        line
@@ -185,7 +190,8 @@ PROGRAM oorb
        planeph => NULL(), &
        vov_map => NULL(), &
        vomcmc_map => NULL(), &
-       sor_rho_arr => NULL()
+       sor_rho_arr => NULL(), &
+       mcmc_cov_matrix => NULL()
   REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
        elements_arr, &
        ephem_, &
@@ -329,7 +335,8 @@ PROGRAM oorb
        vomcmc_type, vomcmc_type_prm, vomcmc_norb, vomcmc_ntrial, vomcmc_niter, &
        vomcmc_norb_iter, vomcmc_ntrial_iter, vomcmc_nmap, &
        year, year0, year1, &
-       loc, nfile
+       loc, nfile, &
+       itrial
   LOGICAL, DIMENSION(:,:), POINTER :: &
        obs_masks => NULL()
   LOGICAL, DIMENSION(:), POINTER :: &
@@ -601,6 +608,30 @@ PROGRAM oorb
           "the '--obs-in=FILE' option.", 1)
      STOP
   END IF
+
+  ! Read MCMC file if given
+
+   mcmc_in_fname = get_cl_option("--mcmc-in=", "")
+   IF (LEN_TRIM(mcmc_in_fname) /= 0) THEN
+      CALL NEW(mcmc_in_file, TRIM(mcmc_in_fname))
+      CALL setActionRead(mcmc_in_file)
+      CALL setStatusOld(mcmc_in_file)
+      CALL OPEN (mcmc_in_file)
+      CALL readMCMCmassfile(getUnit(mcmc_in_file), mcmc_orb_arr,iorb,itrial)
+   ELSE
+      iorb = 0
+      itrial = 0
+   END IF
+   ! Read MCMC .cov file if given
+
+   cov_in_fname = get_cl_option("--cov-in=", "")
+   IF (LEN_TRIM(cov_in_fname) /= 0) THEN
+      CALL NEW(cov_in_file, TRIM(cov_in_fname))
+      CALL setActionRead(cov_in_file)
+      CALL setStatusOld(cov_in_file)
+      CALL OPEN(cov_in_file)
+      CALL readMCMCcovfile(getUnit(cov_in_file), mcmc_cov_matrix)
+   END IF
 
   ! Read orbit file if given:
   orb_in_fname = get_cl_option("--orb-in=",orb_in_fname)
