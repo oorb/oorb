@@ -5296,7 +5296,77 @@ CONTAINS
 
   END SUBROUTINE writeVOVResults
 
+  SUBROUTINE readMCMCmassfile(lu, orb_arr, iorb, itrial)
 
+    IMPLICIT NONE
+    INTEGER, INTENT(in) :: lu
+    INTEGER, INTENT(inout) :: iorb, itrial 
+
+    TYPE (Orbit), DIMENSION(:,:), POINTER :: orb_arr
+    TYPE (Time) :: t
+    INTEGER nline, eastat
+    INTEGER ntotal, nperturber, ntest, i,j
+    REAL(bp) :: epoch, mass!, dummy
+    CHARACTER(len=10) :: dummy
+    REAL(bp), DIMENSION(6) :: elements_1, elements_2, elements_3
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: elements_arr
+
+    nline = 0
+    eastat = 0
+
+    ! Get amount of lines in the file and rewind
+    DO
+       READ(lu,*,iostat=eastat)
+       IF (eastat /= 0) EXIT
+       nline = nline + 1
+    END DO
+    REWIND(lu)
+
+    READ(lu,*) iorb, itrial, nperturber, ntest, epoch
+    ntotal = nperturber + ntest
+    REWIND(lu)
+    CALL NEW(t,epoch,"tt")
+    ALLOCATE(orb_arr(ntotal,nline))
+    ALLOCATE(elements_arr(ntotal,6))
+
+    DO i=1, nline
+       READ(lu, "(1(I7,1X),1(I10,1X), 2(I5,1X), 1(F8.2,1X))",ADVANCE="NO") iorb,itrial,nperturber,ntest,epoch
+       DO j=1, ntotal
+          READ(lu,"(1(A5,1X),1(3(F19.15,1X),3(F19.15,1X),3(E12.5,1X)))", ADVANCE="NO") dummy, elements_arr(1,1), &
+               elements_arr(1,2), elements_arr(1,3), elements_arr(1,4), elements_arr(1,5),elements_arr(1,6), mass, epoch, &
+               epoch
+          ! reads objct name, elements, mass, chi2, rchi2. Epoch is currently used as a dummy variable here..
+          CALL NEW(orb_arr(j,i), elements=elements_arr(1,:),element_type="cartesian",frame="equatorial",t=t,mass=mass)
+       END DO
+       READ(lu, *) dummy ! This gets us to a new line
+    END DO
+    CLOSE(lu)
+  END SUBROUTINE readMCMCmassfile
+
+  ! This subroutine reads .cov files outputted by the MCMC mass estimation algorithm.
+  SUBROUTINE readMCMCcovfile(lu,matrix)
+    IMPLICIT NONE 
+    INTEGER, INTENT(in) :: lu
+    REAL(bp), DIMENSION(:,:), POINTER :: matrix
+    INTEGER nline, i, eastat
+
+    nline = 0
+    ! Get amount of lines
+    READ(lu,*) ! This gets us past the header
+    DO
+       READ(lu,*,iostat=eastat)
+       IF (eastat /= 0) EXIT
+       nline = nline + 1
+
+    END DO
+    REWIND(lu)
+    ALLOCATE(matrix(nline,nline))
+    READ(lu, *) !again gets us past the header
+    DO i=1, nline 
+       READ(lu,*) matrix(i,:)
+    END DO
+    CLOSE(lu)
+  END SUBROUTINE readMCMCcovfile
 
 
 
