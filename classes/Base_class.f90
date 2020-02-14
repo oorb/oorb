@@ -150,6 +150,8 @@ MODULE Base_cl
   CHARACTER(len=1024) :: errstr = ""
   ! Logical error flag
   LOGICAL :: error = .FALSE.
+  ! Used to store the number of accepted MCMC proposals
+  INTEGER :: nrun = 0
 
   TYPE :: Vector
      REAL(bp), DIMENSION(:,:), POINTER :: elements
