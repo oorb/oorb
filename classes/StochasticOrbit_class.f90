@@ -357,6 +357,10 @@ MODULE StochasticOrbit_cl
      MODULE PROCEDURE getTime_SO
   END INTERFACE getTime
 
+  INTERFACE outlierDetection
+     MODULE PROCEDURE outlierDetection_SO_arr
+  END INTERFACE outlierDetection
+
   INTERFACE propagate
      MODULE PROCEDURE propagate_SO
   END INTERFACE propagate
@@ -19942,5 +19946,56 @@ CONTAINS
     END DO
 
   END SUBROUTINE updateMeanResids
+
+  ! Detects and masks outliers for storb objects
+  ! based on it's mean residuals.
+  SUBROUTINE outlierDetection_SO_arr(this)
+
+    IMPLICIT NONE
+
+    TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    REAL(bp), DIMENSION(:,:), POINTER :: stdev
+    REAL(bp), DIMENSION(:, :, :), POINTER :: cov_matrix_full
+    REAL(bp),DIMENSION(2,2) :: cov_matrix, inverse
+    REAL(bp), DIMENSION(2,1) :: temp_obs
+    INTEGER :: i, j, k, tot, lol
+    INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: mean
+    LOGICAL, DIMENSION(6) :: false_masks, true_masks
+    REAL(bp) :: mahalanobis
+
+    CHARACTER     :: err, errstr
+    false_masks = .FALSE.
+    true_masks = .TRUE.
+    ALLOCATE(mean(SIZE(this),2))
+    ALLOCATE(nobs_arr(SIZE(this)))
+    tot = 0
+    DO i=1,SIZE(this)
+       obs_masks => getObservationMasks(this(i))
+       nobs_arr(i) = SIZE(obs_masks,dim=1)*2
+       mean(i,1) = SUM(this(i)%mean_residuals(:,2))/SIZE(this(i)%mean_residuals(:,2))
+       mean(i,2) = SUM(this(i)%mean_residuals(:,3))/SIZE(this(i)%mean_residuals(:,3))
+
+       DO k=1, nobs_arr(i)/2
+          CALL setObservationMask(this(i), k, true_masks)
+       END DO
+
+       stdev => getStandardDeviations(this(i)%obss)
+       cov_matrix_full => getCovarianceMatrices(this(i)%obss)
+       DO j=1, nobs_arr(i)/2
+          cov_matrix(:,:) = cov_matrix_full(j,2:3,2:3)
+          mahalanobis = mahalanobis_distance(cov_matrix,temp_obs,errstr)
+          IF (mahalanobis > this(1)%outlier_multiplier_prm) THEN
+             CALL setObservationMask(this(i), j, false_masks)
+             tot = tot + 1
+          END IF
+       END DO
+       DEALLOCATE(obs_masks)
+       DEALLOCATE(stdev)
+    END DO
+    DEALLOCATE(nobs_arr,mean)
+    DEALLOCATE(cov_matrix_full)
+  END SUBROUTINE outlierDetection_SO_arr
 
 END MODULE StochasticOrbit_cl
