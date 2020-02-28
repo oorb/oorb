@@ -768,7 +768,7 @@ PROGRAM oorb
                             reg_apr_arr=reg_apr_arr_in(j:k-1), &
                             rchi2_arr=rchi2_arr_in(j:k-1), &
                             repetition_arr=repetition_arr_in(j:k-1), &
-                            obss=obss_sep(1))
+                            obss=obss_sep(1), id=id_arr_in(k-1))
                     END IF
                  END IF
                  IF (.NOT.exist(storb_arr_in(i))) THEN
@@ -776,7 +776,8 @@ PROGRAM oorb
                          element_type_pdf_arr_in(1), jac_arr=jac_arr_in(j:k-1,:), &
                          reg_apr_arr=reg_apr_arr_in(j:k-1), &
                          rchi2_arr=rchi2_arr_in(j:k-1), &
-                         repetition_arr=repetition_arr_in(j:k-1))
+                         repetition_arr=repetition_arr_in(j:k-1), &
+                         id=id_arr_in(k-1))
                  END IF
                  j = k
               END IF
@@ -790,7 +791,7 @@ PROGRAM oorb
                       reg_apr_arr=reg_apr_arr_in(j:), &
                       rchi2_arr=rchi2_arr_in(j:), &
                       repetition_arr=repetition_arr_in(j:), &
-                      obss=obss_sep(1))
+                      obss=obss_sep(1), id=id_arr_in(j))
               END IF
            END IF
            IF (.NOT.exist(storb_arr_in(i))) THEN
@@ -798,7 +799,8 @@ PROGRAM oorb
                    element_type_pdf_arr_in(1), jac_arr=jac_arr_in(j:,:), &
                    reg_apr_arr=reg_apr_arr_in(j:), &
                    rchi2_arr=rchi2_arr_in(j:), &
-                   repetition_arr=repetition_arr_in(j:))
+                   repetition_arr=repetition_arr_in(j:), &
+                   id=id_arr_in(j))
            END IF
            ALLOCATE(id_arr(nobj), HG_arr_storb_in(nobj,norb,4))
            id_arr = ""
@@ -840,13 +842,13 @@ PROGRAM oorb
                     IF (getID(obss_sep(1)) == id_arr_in(k-1)) THEN
                        CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
                             cov_type=element_type_in, element_type=element_type_in, &
-                            obss=obss_sep(1))
+                            obss=obss_sep(1), id=id_arr_in(k-1))
                     END IF
                  END IF
                  IF (.NOT.exist(storb_arr_in(i))) THEN
                     CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
                          cov_type=element_type_in, element_type=element_type_in, &
-                         obss=obss_sep(1))
+                         obss=obss_sep(1),id=id_arr_in(k-1))
                  END IF
                  j = k
               END IF
@@ -857,12 +859,13 @@ PROGRAM oorb
               IF (getID(obss_sep(1)) == id_arr_in(j)) THEN
                  CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
                       cov_type=element_type_in, element_type=element_type_in, &
-                      obss=obss_sep(1))
+                      obss=obss_sep(1),id=id_arr_in(j))
               END IF
            END IF
            IF (.NOT.exist(storb_arr_in(i))) THEN
               CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
-                   cov_type=element_type_in, element_type=element_type_in)
+                   cov_type=element_type_in, element_type=element_type_in, &
+                   id=id_arr_in(j))
            END IF
            ALLOCATE(id_arr(nobj), HG_arr_storb_in(nobj,norb,4))
            id_arr = ""
