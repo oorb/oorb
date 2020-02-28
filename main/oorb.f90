@@ -827,7 +827,7 @@ PROGRAM oorb
            ALLOCATE(id_arr_storb_in(nobj))
            id_arr_storb_in = id_arr
            HG_arr_storb_in => reallocate(HG_arr_storb_in, nobj, k_max, 4)
-           DEALLOCATE(id_arr, id_arr_in, HG_arr_in)
+           DEALLOCATE(id_arr, id_arr_in)
         ELSE IF (nobj == norb .AND. &
              ALL(cov_arr_in(:,1,1) >= 0.0_bp)) THEN
            ! Covariance matrix/ces available
@@ -892,7 +892,7 @@ PROGRAM oorb
            ALLOCATE(id_arr_storb_in(nobj))
            id_arr_storb_in = id_arr
            HG_arr_storb_in => reallocate(HG_arr_storb_in, nobj, k_max, 4)
-           DEALLOCATE(id_arr, id_arr_in, HG_arr_in)
+           DEALLOCATE(id_arr, id_arr_in)
         END IF
 
      CASE ("des")
@@ -926,7 +926,6 @@ PROGRAM oorb
         HG_arr_in(:,4) = 99.9_bp
         id_arr_in => reallocate(id_arr_in, norb)
         orb_arr_in => reallocate(orb_arr_in, norb)
-        HG_arr_in => reallocate(HG_arr_in, norb, 4)
 !!$        DO i=1,SIZE(id_arr_in)
 !!$           DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
 !!$              id_arr_in(i) = "0" // TRIM(id_arr_in(i))
