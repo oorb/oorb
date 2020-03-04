@@ -3768,6 +3768,13 @@ CONTAINS
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in) :: this
 
+    IF (TRIM(this%id_prm) == "") THEN
+       error = .TRUE.
+       CALL errorMessage("StochasticOrbit / getID", &
+         "Object does not contain an ID.", 1)
+       RETURN
+    END IF
+
     getID_SO = this%id_prm
 
   END FUNCTION getID_SO
