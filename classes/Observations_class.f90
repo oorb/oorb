@@ -4787,7 +4787,7 @@ CONTAINS
              discovery = .FALSE.
           END IF
 
-          CALL NEW(t, mjd_tcb + epoch, "TCB")
+          CALL NEW(t, mjd_tcb + epoch_utc, "UTC")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
