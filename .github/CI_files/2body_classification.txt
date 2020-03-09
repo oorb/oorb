@@ -1,0 +1,20 @@
+#     Designation          Group        Probability
+            K08K42V   Atira               0.0000000
+            K08K42V   NEO/Aten            0.0000000
+            K08K42V   NEO/Apollo          0.0460040
+            K08K42V   NEO/Amor            0.0006619
+            K08K42V   Aethra              0.0184768
+            K08K42V   Hungaria            0.0000000
+            K08K42V   Phocaea             0.0000000
+            K08K42V   MBO                 0.0000000
+            K08K42V   Hilda               0.0000000
+            K08K42V   Jupiter Trojan      0.0000000
+            K08K42V   Centaur             0.0251812
+            K08K42V   TNO/Inner belt      0.0004863
+            K08K42V   TNO/Plutino         0.3905710
+            K08K42V   TNO/Classical       0.0000000
+            K08K42V   TNO/Outer belt      0.0123389
+            K08K42V   TNO/Scattered       0.0000000
+            K08K42V   The rest            0.5062798
+            K08K42V   Hyperbolic          0.0000000
+
