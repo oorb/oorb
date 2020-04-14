@@ -7832,7 +7832,8 @@ PROGRAM oorb
           coordinates, elements(1:2), elements(3:6)/rad_deg, &
           planetary_masses(i), &
           planetary_densities(i)/kgm3_smau3/1000.0_bp, &
-          planetary_mu(i), 0.0_bp     
+          planetary_mu(i), 0.0_bp
+
      DO i=1,SIZE(planeph,dim=1)
         CALL NEW(ccoord, planeph(i,:), "equatorial", epoch)
         CALL rotateToEcliptic(ccoord)
