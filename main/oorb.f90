@@ -973,6 +973,8 @@ PROGRAM oorb
   IF (LEN_TRIM(orb_out_fname) == 0) THEN
      lu_orb_out = stdout
   ELSE
+     indx = INDEX(orb_out_fname,".",back=.TRUE.)
+     out_fname = orb_out_fname(1:indx-1)
      CALL NEW(orb_out_file,TRIM(orb_out_fname))
      CALL OPEN(orb_out_file)
      IF (error) THEN
