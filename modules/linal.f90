@@ -182,38 +182,52 @@ CONTAINS
   !! Cholesky decomposition.
   !!
   !! Given an N x N positive-definite symmetric matrix 'a', this routine
-  !! constructs its Cholesky decomposition, A = L · Transpose(L) . On
+  !! constructs its Cholesky decomposition, A = L Â· Transpose(L) . On
   !! input, only the upper triangle of 'a' needs to be given; it is not
   !! modified. The Cholesky factor L is returned in the lower triangle
   !! of 'a', except for its diagonal elements, which are returned in 'p',
   !! a vector of length N.
   !!
+  !! Depends on LAPACK.
+  !!
   SUBROUTINE cholesky_decomposition(a, p, error)
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(inout) :: a
+    REAL(rprec8), DIMENSION(SIZE(a,dim=1),SIZE(a,dim=2)) :: temp
     REAL(rprec8), DIMENSION(:), INTENT(out) :: p
     CHARACTER(len=*), INTENT(inout) :: error
-
+    CHARACTER uplo
     REAL(rprec8) :: summ
-    INTEGER(iprec4) :: i, n
+    INTEGER(iprec4) :: i, n,err
+
+    EXTERNAL DPOTRF ! Cholesky factorization function from LAPACK
 
     n = SIZE(a,dim=1)
+    uplo = "L"
+    temp = a
     IF (n /= SIZE(a,dim=2) .OR. n /= SIZE(p)) THEN
        error = " -> linal : cholesky_decomposition : Matrix and vector sizes are not compatible." // &
             TRIM(error)
        RETURN
     END IF
-    DO i=1,n
-       summ = a(i,i) - DOT_PRODUCT(a(i,1:i-1),a(i,1:i-1))
-       IF (summ <= 0.0_rprec8) THEN 
-          ! a, WITH rounding errors, is not positive definite
-          error = " -> linal : cholesky_decomposition : Matrix is not positive definite." // &
-               TRIM(error)
-          RETURN
+
+    CALL DPOTRF(uplo,n,temp,n,err)
+    IF (err > 0) THEN
+       error = " -> linal : cholesky_decomposition : Matrix is not positive definite." // &
+            TRIM(error)
+       RETURN
+    ELSE IF (err < 0) THEN
+       error = " -> linal : cholesky_decomposition : Illegal value in DPOTRF argument." // &
+            TRIM(error)
+       RETURN
+    END IF
+
+    DO i=1, n          ! This do loop here is because unlike LAPACK, we want to store
+       p(i) = temp(i,i) ! the diagonals in a separate vector.
+       IF (i > 1) THEN  ! I'm not sure if this is necessary but I'm doing it to not break anything.
+          a(i,1:i-1) = temp(i,1:i-1)
        END IF
-       p(i) = SQRT(summ)
-       a(i+1:n,i) = (a(i,i+1:n) - MATMUL(a(i+1:n,1:i-1),a(i,1:i-1)))/p(i)
     END DO
 
   END SUBROUTINE cholesky_decomposition
@@ -641,6 +655,8 @@ CONTAINS
 
     !! Finds the LU factorization of a given square matrix.
     !!
+    !! Depends on LAPACK.
+    !! 
     !! Input:  - Square matrix              A2LU(n,n)
     !! Output: - LU factorization           A2LU(n,n)
     !!         - Index vector               indx(n)
@@ -651,60 +667,16 @@ CONTAINS
     INTEGER, DIMENSION(SIZE(A2LU,dim=1)), INTENT(out) :: indx
     CHARACTER(len=*), INTENT(inout)                            :: error
 
-    REAL(rprec8), DIMENSION(:), ALLOCATABLE :: vv, helpvec
-    INTEGER :: n, i, imax, err
+    INTEGER :: n, err
+
+    EXTERNAL DGETRF ! Lapack LU factorization function
 
     n = SIZE(A2LU,dim=1)
-    ALLOCATE(vv(SIZE(indx)), helpvec(SIZE(indx)), stat=err)
+    CALL DGETRF(n, n, A2LU, n, indx, err)
+    
     IF (err /= 0) THEN
-       error = " -> linal : LU_factor : Could not allocate memory." // &
+       error = " -> linal : LU_factor : Matrix is numerically singular!" // &
             TRIM(error)
-       DEALLOCATE(vv, stat=err)
-       DEALLOCATE(helpvec, stat=err)
-       RETURN
-    END IF
-
-    ! Find scaling factor for each row so that the maximum 
-    ! element of the row is equal to one:
-    vv = MAXVAL(ABS(A2LU),dim=2)
-    IF (MINVAL(vv) < 1.0e-32_rprec8*EPSILON(vv)) THEN
-       error = " -> linal : LU_factor : Maximum element of a row too small." // &
-            TRIM(error)
-       DEALLOCATE(vv, stat=err)
-       DEALLOCATE(helpvec, stat=err)
-       RETURN
-    ELSE
-       vv = 1.0_rprec8 / vv
-    END IF
-
-    DO i=1,n
-       imax = (i-1) + imaxloc(vv(i:n)*ABS(A2LU(i:n,i)))
-       IF (i /= imax) THEN
-          helpvec = A2LU(imax,1:n)
-          A2LU(imax,1:n) = A2LU(i,1:n)
-          A2LU(i,1:n) = helpvec
-          vv(imax) = vv(i)
-       END IF
-       indx(i) = imax
-       ! Avoid division with zero:
-       IF (ABS(A2LU(i,i)) < 1.0e-32_rprec8*EPSILON(A2LU(i,i))) THEN
-          error = " -> linal : LU_factor : Division by almost zero." // &
-               TRIM(error)
-          DEALLOCATE(vv, stat=err)
-          DEALLOCATE(helpvec, stat=err)
-          RETURN
-       END IF
-       A2LU(i+1:n,i) = A2LU(i+1:n,i) / A2LU(i,i)
-       A2LU(i+1:n,i+1:n) = A2LU(i+1:n,i+1:n) - &
-            outer_product(A2LU(i+1:n,i),A2LU(i,i+1:n))
-    END DO
-
-    DEALLOCATE(vv, helpvec, stat=err)
-    IF (err /= 0) THEN
-       error = " -> linal : LU_factor : Could not deallocate memory." // &
-            TRIM(error)
-       DEALLOCATE(vv, stat=err)
-       DEALLOCATE(helpvec, stat=err)
        RETURN
     END IF
 
@@ -717,6 +689,8 @@ CONTAINS
   SUBROUTINE LU_factor_r16(A2LU, indx, error)
 
     !! Finds the LU factorization of a given square matrix.
+    !!
+    !! Does not currently use LAPACK (which lacks quad precision functions?)
     !!
     !! Input:  - Square matrix              A2LU(n,n)
     !! Output: - LU factorization           A2LU(n,n)
@@ -924,6 +898,8 @@ CONTAINS
 
     !! Returns the inverse of square matrix A using either the LU
     !! factorization algorithm or the Cholesky decomposition algorithm
+    !!
+    !! Depends on LAPACK.
     !! 
     !! Input:   - Square matrix              A(n,n)
     !!          - Inverse square matrix      inv_A(n,n)
@@ -936,10 +912,18 @@ CONTAINS
     CHARACTER(len=*), INTENT(in), OPTIONAL               :: method
 
     CHARACTER(len=16) :: method_
+    CHARACTER :: uplo
     REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: LU, L
     REAL(rprec8), DIMENSION(:), ALLOCATABLE :: p
     INTEGER, DIMENSION(:), ALLOCATABLE :: indx
-    INTEGER :: i, n, err
+    REAL(rprec8), DIMENSION(SIZE(A,1)) :: work  ! work array for LAPACK
+    INTEGER :: i, j, n, err
+
+    EXTERNAL DGETRI ! LAPACK function. Computes the inverse of a matrix using LU factorization
+    EXTERNAL DPOTRI ! LAPACK function. Does the same using Cholesky factorization.
+
+    error = ""
+    uplo = "L"
 
     n = SIZE(A,dim=1)
     IF (n /= SIZE(A,dim=2)) THEN
@@ -954,9 +938,7 @@ CONTAINS
     ELSE
        method_ = "LU"
     END IF
-
     IF (method_ == "LU") THEN
-
        ALLOCATE(LU(n,n), indx(n), stat=err)
        IF (err /= 0) THEN
           error = " -> linal : matinv : Could not allocate memory." // &
@@ -983,10 +965,10 @@ CONTAINS
           matinv_r8(i,i) = 1.0_rprec8
        END FORALL
 
-       ! Solve b from LUb = e_i and put A(:,i) = b:
-       DO i=1,n
-          CALL LU_solve(LU, indx, matinv_r8(1:n,i))
-       END DO
+       ! DGETRI computes the inverse of a matrix using the LU factorization
+       ! computed by DGETRF (within LU_factor)
+       CALL DGETRI(n, LU, n, indx, work, n, err)
+       matinv_r8 = LU
 
        DEALLOCATE(LU, indx, stat=err)
        IF (err /= 0) THEN
@@ -1018,22 +1000,29 @@ CONTAINS
           RETURN
        END IF
 
-       ! Initialize the identity matrix:
-       matinv_r8(:,:) = 0.0_rprec8
+       ! Initialize the matrix:
+       matinv_r8(:,:) = L
        FORALL(i=1:n)
-          matinv_r8(i,i) = 1.0_rprec8
+          matinv_r8(i,i) = p(i)
        END FORALL
 
        ! Solve b from L * Transpose(L) * b = e_i and put A(:,i) = b:
-       DO i=1,n
-          CALL cholesky_solve(L, p, matinv_r8(1:n,i), matinv_r8(1:n,i), error)
-          IF (LEN_TRIM(error) /= 0) THEN
-             error = " -> linal : matinv : ." // &
-                  TRIM(error)
-             DEALLOCATE(L, stat=err)
-             DEALLOCATE(p, stat=err)
-             RETURN
-          END IF
+       CALL DPOTRI(uplo,n,matinv_r8,n,err)
+       IF (err > 0) THEN
+          error = " -> linal : matinv : Computation failed due to zero element in the diagonal." // &
+               TRIM(error)
+          RETURN
+       ELSE IF (err < 0) THEN
+          error = " -> linal : matinv : Illegal value in DPOTRI argument." // &
+               TRIM(error)
+          RETURN
+       END IF
+
+       ! copy the lower triangle to the upper triangle
+       DO i=1, n
+         DO j=i, n
+           matinv_r8(i,j) = matinv_r8(j,i)
+         END DO
        END DO
 
        DEALLOCATE(L, p, stat=err)
