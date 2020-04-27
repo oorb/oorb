@@ -119,7 +119,7 @@ pyoorb: ../lib/$(PYOORB_SO)
 	@ [[ ! -z "$(LDFLAGS)" ]] && echo "$$LDFLAGS" | grep -E -v -q -- "(-bundle|-shared)" && { \
 	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS -bundle" || LDFLAGS="$$LDFLAGS -shared"; \
 	}; \
-	F77= $(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
+	F77= $(F2PY) -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
 	        $(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build $(FCOPTIONS)" $(ADDLIBS) && \
 	mv $(PYOORB_SO) ../python
 	@ echo
@@ -130,7 +130,7 @@ pyoorb: ../lib/$(PYOORB_SO)
 	@ echo "Built the $(PYOORB_SO) module."
 
 pyoorb.pyf: ../VERSION ../python/pyoorb.f90
-	$(F2PY) --quiet -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
+	$(F2PY) -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
 	@ echo
 	@ # generate __version__ string code
 	generate-version-pyf.sh $$(cat ../VERSION) > version.pyf
