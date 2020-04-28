@@ -96,7 +96,7 @@ jobs:
         brew install numpy
         pip3 install -U pytest
         ./configure gfortran opt --with-pyoorb --with-f2py=f2py3 --with-python=python3
-        make
+        make -j3
     - name: Build ephemerides
       run: |
         cd data/JPL_ephemeris
