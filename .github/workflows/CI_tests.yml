@@ -93,9 +93,8 @@ jobs:
     # Runs a set of commands using the runners shell
     - name: Compile oorb with gfortran
       run: |
-        brew install numpy
-        pip3 install -U pytest
-        ./configure gfortran opt --with-pyoorb --with-f2py=f2py3 --with-python=python3
+        pip3 install -U pytest numpy
+        ./configure gfortran opt --with-pyoorb --with-python=python3
         make -j3
     - name: Build ephemerides
       run: |
