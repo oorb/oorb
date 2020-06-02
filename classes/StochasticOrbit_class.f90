@@ -91,6 +91,7 @@ MODULE StochasticOrbit_cl
   PRIVATE :: setParameters_SO
   PRIVATE :: toCartesian_SO
   PRIVATE :: toKeplerian_SO
+  PRIVATE :: writeResiduals_SO_arr_sparse
 
   TYPE StochasticOrbit
      PRIVATE
@@ -360,6 +361,10 @@ MODULE StochasticOrbit_cl
   INTERFACE outlierDetection
      MODULE PROCEDURE outlierDetection_SO_arr
   END INTERFACE outlierDetection
+
+  INTERFACE writeResiduals_SO
+     MODULE PROCEDURE writeResiduals_SO_arr_sparse
+  END INTERFACE writeResiduals_SO
 
   INTERFACE propagate
      MODULE PROCEDURE propagate_SO
@@ -19866,6 +19871,48 @@ CONTAINS
     END IF
 
   END SUBROUTINE updateRanging
+
+  ! Prints out residuals for all objects.
+  SUBROUTINE writeResiduals_SO_arr_sparse(this, resids, output)
+    IMPLICIT NONE
+
+    TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this
+    TYPE(SparseArray), INTENT(IN) :: resids
+    INTEGER, INTENT(IN)           :: output
+
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    INTEGER :: i, j, k
+    INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
+
+    ALLOCATE(nobs_arr(SIZE(this)))
+
+    DO i=1, SIZE(this)
+       obs_masks => getObservationMasks(this(i))
+       nobs_arr(i) = SIZE(obs_masks,dim=1)*2
+       DO j=1, nobs_arr(i)/2
+          IF (i == 2) THEN
+             k = j + nobs_arr(1)/2
+          ELSE
+             k = j
+          END IF
+          IF (obs_masks(j,2) .EQV. .FALSE.) THEN
+             WRITE(output, "(1(I7,1X),2(F10.6,1X),1(I1))") k, resids%vectors(i)%elements(j,2:3)/rad_asec, 0
+          ELSE
+             WRITE(output, "(1(I7,1X),2(F10.6,1X),1(I1))") k, resids%vectors(i)%elements(j,2:3)/rad_asec, 1
+          END IF
+          IF (j == nobs_arr(i)/2) THEN
+             IF (i == SIZE(this)) THEN
+               WRITE(output, *) "END" ! Means we're done printing residuals
+             ELSE
+               WRITE(output, *) "* * * *" !Signifies us moving to another object
+             END IF
+          END IF
+       END DO
+       DEALLOCATE(obs_masks)
+    END DO
+    DEALLOCATE(nobs_arr)
+
+  END SUBROUTINE writeResiduals_SO_arr_sparse
 
   ! Prints out the mean MCMC residuals for all objects.
   SUBROUTINE writeMeanResids(this, orb_arr, output)

@@ -1521,7 +1521,7 @@ CONTAINS
          orb
     TYPE (Time) :: &
          epoch
-    TYPE (File) :: mcmc_out_file, meanres_file, cov_file
+    TYPE (File) :: mcmc_out_file, meanres_file, cov_file, res_file
     CHARACTER(len=DYN_MODEL_LEN) :: &
          dyn_model                                                 !! Dynamical model.
     CHARACTER(len=INTEGRATOR_LEN) :: &
@@ -1673,6 +1673,9 @@ CONTAINS
 
     CALL NEW(cov_file, TRIM(out_fname)//trim('.cov'))
     CALL OPEN(cov_file)
+
+    CALL NEW(res_file, TRIM(out_fname)//trim('.res'))
+    CALL OPEN(res_file)
 
     IF (err /= 0) THEN
        error = .TRUE.
@@ -1858,7 +1861,10 @@ CONTAINS
              WRITE(getUnit(meanres_file), *) "#", iorb
              CALL writeMeanResids(storb_arr,orb_arr,getUnit(meanres_file))
           END IF
-
+          IF (iorb == 0 .OR. MOD(iorb,5) == 0) THEN
+             WRITE(getUnit(res_file), *) "#", iorb
+             CALL writeResiduals_SO(storb_arr,resids,getUnit(res_file))
+          END IF
           ! Outlier detection happens here. We also need to get
           ! updated chi2 values after.
           IF (MOD(iorb,500) == 0) THEN
