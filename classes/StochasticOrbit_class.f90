@@ -92,6 +92,7 @@ MODULE StochasticOrbit_cl
   PRIVATE :: toCartesian_SO
   PRIVATE :: toKeplerian_SO
   PRIVATE :: writeResiduals_SO_arr_sparse
+  PRIVATE :: writeResiduals_SO_orb
 
   TYPE StochasticOrbit
      PRIVATE
@@ -364,6 +365,7 @@ MODULE StochasticOrbit_cl
 
   INTERFACE writeResiduals_SO
      MODULE PROCEDURE writeResiduals_SO_arr_sparse
+     MODULE PROCEDURE writeResiduals_SO_orb
   END INTERFACE writeResiduals_SO
 
   INTERFACE propagate
@@ -19913,6 +19915,50 @@ CONTAINS
     DEALLOCATE(nobs_arr)
 
   END SUBROUTINE writeResiduals_SO_arr_sparse
+
+  SUBROUTINE writeResiduals_SO_orb(this, orb_arr, output)
+    IMPLICIT NONE
+
+    TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this
+    TYPE(Orbit), DIMENSION(:), INTENT(IN) :: orb_arr
+    INTEGER, INTENT(IN)                   :: output
+    TYPE(SparseArray) :: residuals
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    INTEGER :: i, j, k
+    INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
+
+    ALLOCATE(nobs_arr(SIZE(this)))
+    residuals = getResiduals(this, orb_arr)
+
+    DO i=1, SIZE(this)
+       obs_masks => getObservationMasks(this(i))
+       nobs_arr(i) = SIZE(obs_masks,dim=1)*2
+       DO j=1, nobs_arr(i)/2
+          IF (i > 1) THEN
+             k = j + nobs_arr(i-1)/2
+          ELSE
+             k = j
+          END IF
+          IF (obs_masks(j,2) .EQV. .FALSE.) THEN
+             WRITE(output, "(1(I7,1X),2(F10.6,1X),1(I1))") k, residuals%vectors(i)%elements(j,2:3) / rad_asec, 0
+          ELSE
+             WRITE(output, "(1(I7,1X),2(F10.6,1X),1(I1))") k, residuals%vectors(i)%elements(j,2:3) / rad_asec, 1
+          END IF
+          IF (j == nobs_arr(i)/2) THEN
+             IF (i == SIZE(this)) THEN
+                WRITE(output, *) "END" !This signifies us moving to another object
+             ELSE
+                WRITE(output, *) "* * * *" !This signifies us moving to another object
+             END IF
+
+          END IF
+       END DO
+       DEALLOCATE(obs_masks)
+    END DO
+    DEALLOCATE(residuals%vectors)
+    DEALLOCATE(nobs_arr)
+  END SUBROUTINE writeResiduals_SO_orb
+
 
   ! Prints out the mean MCMC residuals for all objects.
   SUBROUTINE writeMeanResids(this, orb_arr, output)
