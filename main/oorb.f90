@@ -9575,6 +9575,86 @@ PROGRAM oorb
      END DO
      DEALLOCATE (storb_arr_in, proposal_density_masses, estimated_masses)
 
+  ! "marching" mass estimation algorithm
+
+  CASE ("mass_estimation_march")
+     out_fname = TRIM(get_cl_option("--output=","placeholder"))
+
+     ALLOCATE(orb_arr(size(storb_arr_in)))
+     CALL readConfigurationFile(conf_file, &
+                                t0=epoch, &
+                                dyn_model_init=dyn_model_init, &
+                                dyn_model=dyn_model, &
+                                integration_step=integration_step, &
+                                integrator=integrator, &
+                                perturbers=perturbers, &
+                                integrator_init=integrator_init, &
+                                integration_step_init=integration_step_init, &
+                                accwin_multiplier=accwin_multiplier, &
+                                smplx_niter=smplx_niter, &
+                                smplx_tol=smplx_tol, &
+                                smplx_force=smplx_force)
+     obss_sep => getSeparatedSets(obss_in)
+     obs = getObservation(obss_sep(2), 1)
+     dt = getObservationalTimespan(obss_sep(2))
+
+     IF (error) THEN
+        CALL errorMessage("oorb / massestanalysis / mass_estimation", &
+                          "TRACE BACK (10)", 1)
+        STOP
+     END IF
+
+     CALL NULLIFY (obss_in)
+     DO i = 1, SIZE(storb_arr_in)
+        DO j = 1, SIZE(obss_sep)
+           IF (getID(storb_arr_in(i)) == getID(obss_sep(j))) THEN
+              CALL includeObservations(storb_arr_in(i), obss_sep(j))
+              EXIT
+           END IF
+        END DO
+        IF (j > SIZE(obss_sep)) THEN
+           WRITE (stderr, *) "Could not find astrometry for "// &
+              TRIM(getID(storb_arr_in(i)))//"... Quitting."
+           STOP
+        END IF
+     END DO
+     CALL NULLIFY(obss_in)
+     DO i = 1, SIZE(obss_sep)
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep, stat=err)
+     DO i = 1, SIZE(storb_arr_in)
+        t = getTime(getNominalOrbit(storb_arr_in(i)))
+        CALL setParameters(storb_arr_in(i), &
+                           dyn_model=dyn_model, &
+                           perturbers=perturbers, &
+                           asteroid_perturbers=asteroid_perturbers, &
+                           integrator=integrator, &
+                           integration_step=integration_step, &
+                           outlier_rejection=outlier_rejection_prm, &
+                           outlier_multiplier=outlier_multiplier_prm, &
+                           t_inv=t, &
+                           element_type=element_type_comp_prm, &
+                           accept_multiplier=accwin_multiplier, &
+                           smplx_niter=smplx_niter, &
+                           smplx_tol=smplx_tol, &
+                           smplx_force=smplx_force)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                             "TRACE BACK (75)", 1)
+           STOP
+        END IF
+     END DO
+     WRITE(stdout, *) "Starting mass estimation..."
+     CALL massEstimation_march(storb_arr_in, orb_arr, HG_arr_in, dyn_model, integrator, &
+                               integration_step, perturbers, asteroid_perturbers, mass, out_fname)
+     WRITE(stdout, *) "Mass estimation is done."
+     WRITE(stdout, *) "Best mass is ", mass
+     DO i = 1, SIZE(storb_arr_in)
+        CALL NULLIFY(storb_arr_in(i))
+     END DO
+     DEALLOCATE(storb_arr_in)
+
   ! Computes residuals for each element from a MCMC mass estimation chain.
   CASE ("mass_residuals")
 
