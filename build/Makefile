@@ -79,12 +79,12 @@ liboorb: ../lib/liboorb.$(LIBEXT) ../lib/liboorb.a
 LIBOBJECTS=$(notdir ${LIBSOURCES:.f90=.o})
 ../lib/liboorb.$(LIBEXT): $(LIBOBJECTS)
 	mkdir -p ../lib
-	$(FC) $(FCOPTIONS) $(FC_SHARED) $(LIBOBJECTS) -o $@
+	$(FC) $(FCOPTIONS) $(FC_SHARED) $(LIBOBJECTS) $(ADDLIBS) -o $@
 
 ../lib/liboorb.a: $(LIBOBJECTS)
 	mkdir -p ../lib
 ifeq ($(shell uname),Darwin)
-	libtool -static -no_warning_for_no_symbols $(LIBOBJECTS) -o $@
+	libtool -static -no_warning_for_no_symbols $(LIBOBJECTS) -o $@ 
 else
 	ar rcs $@ $(LIBOBJECTS)
 endif

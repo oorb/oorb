@@ -1663,12 +1663,19 @@ CONTAINS
     mask_measur = this%obs_masks_prm
     ! Outlier rejection
     IF (this%outlier_rejection_prm) THEN
+       j = 0
        DO i=1,nobs
           IF (ANY(ABS(residuals2(i,2:3)) > &
                this%outlier_multiplier_prm*stdev_arr_measur(i,2:3))) THEN
              mask_measur(i,:) = .FALSE.
+             j = j + 1
           END IF
        END DO
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(2X,A,1X,A,1X,I0)") &
+               "StochasticOrbit / covarianceSampling:", &
+               "Number of outliers based on nominal orbit:", j
+       END IF       
     END IF
 
     ! Reference chi2 from the input orbit which is assumed to be the

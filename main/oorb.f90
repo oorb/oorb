@@ -464,6 +464,7 @@ PROGRAM oorb
        planetary_ephemeris_fname=planetary_ephemeris_fname, &
        err_verb=err_verb, &
        info_verb=info_verb, &
+       write_residuals=write_residuals, &
        element_type_comp=element_type_comp_prm, &
        element_type_out=element_type_out_prm, &
        obs_stdev_arr=obs_stdev_arr_prm, &
@@ -1019,6 +1020,8 @@ PROGRAM oorb
   IF (LEN_TRIM(orb_out_fname) == 0) THEN
      lu_orb_out = stdout
   ELSE
+     indx = INDEX(orb_out_fname,".",back=.TRUE.)
+     out_fname = orb_out_fname(1:indx-1)
      CALL NEW(orb_out_file,TRIM(orb_out_fname))
      CALL OPEN(orb_out_file)
      IF (error) THEN
@@ -1809,7 +1812,6 @@ PROGRAM oorb
      accwin_multiplier = -1.0_bp
      gaussian_rho = .FALSE.
      regularized = .FALSE.
-     write_residuals = .FALSE.
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
           dyn_model=dyn_model, &
@@ -1838,7 +1840,6 @@ PROGRAM oorb
           accwin_multiplier=accwin_multiplier, &
           regularized_pdf=regularized, &
           sor_random_obs=random_obs, sor_rho_gauss=gaussian_rho, &
-          write_residuals=write_residuals, &
           ls_correction_factor=ls_correction_factor, &
           ls_element_mask=ls_element_mask, &
           ls_niter_major_max=ls_niter_major_max, &
@@ -5629,6 +5630,14 @@ PROGRAM oorb
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
           accwin_multiplier=accwin_multiplier, &
+          regularized_pdf=regularized, &
+!          apriori_a_max=apriori_a_max, &
+!          apriori_a_min=apriori_a_min, &
+!          apriori_periapsis_max=apriori_periapsis_max, &
+!          apriori_periapsis_min=apriori_periapsis_min, &
+!          apriori_apoapsis_max=apriori_apoapsis_max, &
+!          apriori_apoapsis_min=apriori_apoapsis_min, &
+!          apriori_rho_min=apriori_rho_min, &
           cos_gaussian=cos_gaussian, &
           cos_nsigma=cos_nsigma, &
           cos_norb=cos_norb, &
@@ -5754,6 +5763,14 @@ PROGRAM oorb
              t_inv=t, &
              element_type=element_type_comp_prm, &
              accept_multiplier=accwin_multiplier, &
+             regularized_pdf=regularized, &
+!             apriori_a_max=apriori_a_max, &
+!             apriori_a_min=apriori_a_min, &
+!             apriori_periapsis_max=apriori_periapsis_max, &
+!             apriori_periapsis_min=apriori_periapsis_min, &
+!             apriori_apoapsis_max=apriori_apoapsis_max, &
+!             apriori_apoapsis_min=apriori_apoapsis_min, &
+!             apriori_rho_min=apriori_rho_min, &
              cos_gaussian=cos_gaussian, &
              cos_nsigma=cos_nsigma, &
              cos_norb=cos_norb, &
@@ -6106,6 +6123,7 @@ PROGRAM oorb
         END IF
      END DO
 
+     
 
   CASE ("residual-stamps")
 
@@ -6142,6 +6160,8 @@ PROGRAM oorb
         STOP
      END IF
 
+
+     
   CASE ("propagation")
 
      first = .TRUE.
@@ -6727,7 +6747,7 @@ PROGRAM oorb
 !!$              END IF
               IF (error) THEN
                  CALL errorMessage("oorb / propagation", &
-                      "Unable to propagate orbit for " // TRIM(id_arr_in(i)), 1)
+                      "Unable to write orbit for " // TRIM(id_arr_in(i)), 1)
                  STOP              
               END IF
               first = .FALSE.
@@ -7637,6 +7657,8 @@ PROGRAM oorb
            ! Compute reduced magnitude:
            mag = mags(j) - 5.0_bp*LOG10(SQRT(heliocentric_r2*ephemeris_r2))
 
+           obj_vmag = mag
+           
            ! Filter transformations to V:
            IF (obsy_code_arr(j) == "F51" .and. obsy_code_arr(j) == "F52") THEN
 
@@ -7715,8 +7737,6 @@ PROGRAM oorb
               END SELECT
 
            END IF
-!!$
-!!$           obj_vmag = mag
 
            obj_phase = obj_phase/rad_deg
            t = getTime(ephemerides(j))
@@ -7750,6 +7770,8 @@ PROGRAM oorb
 
      END DO
 
+
+
   CASE ("synthetic_phasecurve")
 
      H = get_cl_option("--H=", 0.0_bp)
@@ -7764,6 +7786,7 @@ PROGRAM oorb
      END DO
 
 
+     
   CASE ("classification")
 
      ! Compute probability for an object with the input
@@ -7804,6 +7827,7 @@ PROGRAM oorb
         CALL NULLIFY(storb_arr_in(i))
      END DO
      DEALLOCATE(storb_arr_in, id_arr_storb_in)
+
 
   CASE ("classification_apriori")
 
@@ -7873,12 +7897,19 @@ PROGRAM oorb
      coordinates = 0.0_bp
      elements = 0.0_bp
      i = 11
-     WRITE(stdout,"(A,17(1X,E25.18))") &
-          TRIM(planetary_locations(i)), 2400000.5_bp+mjd_tt, &
-          coordinates, elements(1:2), elements(3:6)/rad_deg, &
-          planetary_masses(i), &
-          planetary_densities(i)/kgm3_smau3/1000.0_bp, &
+
+     WRITE(stdout,"(18(1X,A))") "#Name", "Epoch_JD_TT", "X_au",&
+          "Y_au", "Z_au", "dXdt_au_day", "dYdt_au_day",&
+          "dZdt_au_day", "a_au", "e", "i_deg", "node_deg",&
+          "argperi_deg", "M0_deg", "mass_Msol", "density_gcm-3",&
+          "mu_au3d-2", "Hill_radius_au"
+     
+     WRITE(stdout,"(A,17(1X,E25.18))") TRIM(planetary_locations(i)),&
+          2400000.5_bp+mjd_tt, coordinates, elements(1:2),&
+          elements(3:6)/rad_deg, planetary_masses(i),&
+          planetary_densities(i)/kgm3_smau3/1000.0_bp,&
           planetary_mu(i), 0.0_bp     
+
      DO i=1,SIZE(planeph,dim=1)
         CALL NEW(ccoord, planeph(i,:), "equatorial", epoch)
         CALL rotateToEcliptic(ccoord)
@@ -9328,7 +9359,7 @@ PROGRAM oorb
      IF (ALLOCATED(storb_arr_in)) THEN
         ALLOCATE(orb_arr_in(SIZE(storb_arr_in)), id_arr_in(SIZE(storb_arr_in)))
         DO i=1,SIZE(storb_arr_in)
-           orb_arr_in(i) = getNominalOrbit(storb_arr_in(i))
+           orb_arr_in(i) = getNominalOrbit(storb_arr_in(i), ml_orbit=.true.)
            id_arr_in(i) = id_arr_storb_in(i)
         END DO
      END IF
@@ -9361,11 +9392,9 @@ PROGRAM oorb
         mean = 0.0_bp
         CALL getEphemerides(orb_arr_in(i), observers, ephemerides)
         IF (error) THEN
-           IF (error) THEN
-              CALL errorMessage('oorb / synthetic_astrometry', &
-                   'TRACE BACK (15)',1)
-              STOP
-           END IF
+           CALL errorMessage('oorb / synthetic_astrometry', &
+                'TRACE BACK (15)',1)
+           STOP
         END IF
         DO j=1,SIZE(ephemerides)
            CALL rotateToEquatorial(ephemerides(j))
@@ -9760,6 +9789,34 @@ PROGRAM oorb
      END DO
      DEALLOCATE(storb_arr_in)
 
+  CASE ("confidence_limits")
+
+     tmp_fname = get_cl_option("--data-in="," ")
+     IF (LEN_TRIM(tmp_fname) /= 0) THEN
+        call new(tmp_file, tmp_fname)
+        call setStatusOld(tmp_file)
+        call open(tmp_file)
+        i = getNrOfLines(tmp_file)
+        allocate(temp_arr(i,2))
+        temp_arr = 0.0_bp
+        do i=1,size(temp_arr,dim=1)
+           read(getUnit(tmp_file),*) temp_arr(i,:)
+        end do
+        CALL confidence_limits(temp_arr(:,1), temp_arr(:,2), &
+             probability_mass=0.6827_bp, peak=peak, bounds=bounds, &
+             errstr=errstr)
+        WRITE(stdout,'(A,3(1X,F12.6))') "68.27% (peak,min,max):", peak, bounds(1), bounds(2)
+        CALL confidence_limits(temp_arr(:,1), temp_arr(:,2), &
+             probability_mass=0.9973_bp, peak=peak, bounds=bounds, &
+             errstr=errstr)
+        WRITE(stdout,'(A,3(1X,F12.6))') "99.73% (peak,min,max):", peak, bounds(1), bounds(2)
+        DEALLOCATE(temp_arr)
+        call nullify(tmp_file)
+     else
+        CALL errorMessage("oorb / confidence_limits", &
+             "Specify data file with the '--data-in=[FILE]' option", 1)
+     end IF
+     
   CASE default
 
      IF (LEN_TRIM(task) == 0) THEN
