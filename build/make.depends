@@ -14,9 +14,9 @@ sort.o:  ../modules/sort.f90 parameters.mod utilities.mod
 	$(OBJBUILDCMD)
 sort.mod: ../modules/sort.f90 parameters.mod utilities.mod sort.o
 	$(MODBUILDCMD)
-statistics.o:  ../modules/statistics.f90 parameters.mod  utilities.mod sort.mod
+statistics.o:  ../modules/statistics.f90 parameters.mod  utilities.mod sort.mod linal.mod
 	$(OBJBUILDCMD)
-statistics.mod: ../modules/statistics.f90 parameters.mod  utilities.mod sort.mod statistics.o
+statistics.mod: ../modules/statistics.f90 parameters.mod  utilities.mod sort.mod linal.mod statistics.o
 	$(MODBUILDCMD)
 functions.o:  ../modules/functions.f90 parameters.mod
 	$(OBJBUILDCMD)

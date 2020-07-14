@@ -1491,6 +1491,853 @@ CONTAINS
 
 
 
+  !! MCMC mass estimation algorithm. See Siltala & Granvik (2020,2017)
+  !! https://doi.org/10.1051/0004-6361/201935608
+  !! https://doi.org/10.1016/j.icarus.2017.06.028
+  !! Author: LS, MG
+  SUBROUTINE massEstimation_MCMC(storb_arr, orb_arr, &
+       proposal_density_masses, norb, iorb_init, itrial_init, nburn_arr, &
+       estimated_masses, accepted_solutions, nominal_arr, &
+       adaptation, delayed_rejection,out_fname, input_cov_matrix)
+
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), DIMENSION(:), INTENT(inout) :: storb_arr
+    REAL(bp), DIMENSION(:), INTENT(in) :: proposal_density_masses
+    REAL(bp) :: nsigma_mass, nsigma_orbit
+    INTEGER, INTENT(in) :: norb
+    INTEGER, INTENT(inout) :: iorb_init, itrial_init 
+    INTEGER, DIMENSION(2), OPTIONAL :: nburn_arr
+    REAL(bp), DIMENSION(:,:), INTENT(out) :: estimated_masses
+    REAL(bp), DIMENSION(:,:), INTENT(inout) :: accepted_solutions
+    LOGICAL :: last
+    TYPE (SparseArray) :: resids
+    TYPE (Observations) :: obss
+    TYPE (Observations), DIMENSION(:), ALLOCATABLE :: obs_arr
+    TYPE (Orbit), DIMENSION(:), INTENT(out) :: nominal_arr
+    TYPE (Orbit), DIMENSION(:), INTENT(inout) :: &
+         orb_arr
+    TYPE (Orbit), DIMENSION(:,:), ALLOCATABLE :: orb_arr2
+    TYPE (Orbit) :: &
+         orb
+    TYPE (Time) :: &
+         epoch
+    TYPE (File) :: mcmc_out_file, meanres_file, cov_file, res_file
+    CHARACTER(len=DYN_MODEL_LEN) :: &
+         dyn_model                                                 !! Dynamical model.
+    CHARACTER(len=INTEGRATOR_LEN) :: &
+         integrator                                                !! Integrator.
+    CHARACTER(len=12) :: &
+         str1, &
+         str2
+    CHARACTER(len=256), INTENT(inout) :: &
+         adaptation
+    CHARACTER(len=64) :: &
+         efrmt = "(E11.4,1X)"
+    CHARACTER(len=FNAME_LEN):: &
+         out_fname
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix => NULL()
+
+    REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: &
+         A_arr
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         res, input_cov_matrix
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         cov_matrix, A_arr2, ok_cov_matrix, previous_cov_matrix
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: &
+         p2
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
+         additional_perturbers, &
+         additional_perturbers_, &
+         elements0_arr, &
+         mean_resids, &
+         elem_temp,&
+         ya_temp, &
+         deviates_matrix,&
+         lambda_arr,&
+         elements_arr!, &
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: &
+         chi2_arr, &
+         chi2_arr_updated, &
+         last_accepted_chi2_arr, &
+         mean_arr, &
+         old_mean, &
+         another_temp,&
+         ran_arr, &
+         deviates, &
+         last_proposal, &
+         rchi2_arr!, pdv_list
+    REAL(kind=16), DIMENSION(:), ALLOCATABLE :: pdv_list
+    REAL(bp), DIMENSION(8) :: temp ! LS uses this, will want to change sometime
+    REAL(bp), DIMENSION(6,6) :: &
+         covariance, &
+         covariance_temp, &
+         eigentestmatrix !remove later
+    REAL(bp), DIMENSION(6) :: &
+         elements, &
+         p, &
+         ran6, &
+         eigentestd
+    REAL(bp), DIMENSION(1,6) :: &
+         mean1_temp,&
+         mean2_temp
+    REAL(bp), DIMENSION(2) :: &
+         bounds
+    REAL(bp), DIMENSION(:,:,:), ALLOCATABLE:: &
+         covariance2
+    REAL(bp) :: &
+         integration_step, &
+         mjd_tt, &
+         peak, &
+         probability_mass, &
+         ran, &
+         tmp, tt, &
+         last_accepted_chi2
+    REAL(kind=16) :: pdv, a_r, expo, last_accepted_expo
+    TYPE (Time) :: t
+    INTEGER, DIMENSION(:), ALLOCATABLE :: &
+         indx_arr, &
+         nobs_arr
+    INTEGER :: &
+         err, &
+         i, &
+         iorb, &
+         itrial, &
+         ntrial, &
+         j, &
+         k, &
+         l, &
+         nperturber, &
+         nstorb, &
+         nrot,&
+         nchain, noutlier, &
+         proposal_stage,&
+         ncur
+    LOGICAL, DIMENSION(:,:), POINTER :: &
+         obs_masks
+    LOGICAL, DIMENSION(10) :: &
+         perturbers
+    LOGICAL :: &
+         accept, &
+         first, &
+         burnin_done, &
+         asteroid_perturbers, &
+         delayed_rejection, &
+         chi2_compared
+    ntrial = 10000000
+    burnin_done = .FALSE.
+    chi2_compared = .FALSE.
+    nstorb = SIZE(storb_arr)
+    nperturber = 0
+    last_accepted_chi2 = 0.0_bp
+    nchain = 1
+    ncur = 1
+    proposal_stage = 1
+    DO i=1,SIZE(proposal_density_masses)
+       IF (proposal_density_masses(i) > 0.0_bp) THEN
+          nperturber = nperturber + 1
+       END IF
+    END DO
+    ALLOCATE(additional_perturbers(nperturber,8), &
+         additional_perturbers_(nperturber-1,8), &
+         elements0_arr(nstorb,6), elements_arr(nstorb,6), &
+         chi2_arr(nstorb),chi2_arr_updated(nstorb), rchi2_arr(nstorb), &
+         nobs_arr(nstorb), obs_arr(nstorb), A_arr(nstorb,6,6), stat=err)
+    ALLOCATE(pdv_list(norb))
+    ALLOCATE(cov_matrix(6*nstorb+nperturber,6*nstorb+nperturber))
+    ALLOCATE(ok_cov_matrix(6*nstorb+nperturber,6*nstorb+nperturber))
+    ALLOCATE(previous_cov_matrix(6*nstorb+nperturber,6*nstorb+nperturber))
+    ALLOCATE(mean_arr(6*nstorb+nperturber), old_mean(6*nstorb+nperturber))
+    ALLOCATE(covariance2(nstorb,6,6))
+    ALLOCATE(A_arr2(6*nstorb+nperturber,6*nstorb+nperturber))
+    ALLOCATE(ya_temp(6*nstorb+nperturber,6*nstorb+nperturber))
+    ALLOCATE(p2(6*nstorb+nperturber))
+    ALLOCATE(another_temp(6*nstorb+nperturber))
+    ALLOCATE(ran_arr(6*nstorb+nperturber))
+    ALLOCATE(deviates(6*nstorb+nperturber),lambda_arr(1,6*nstorb+nperturber))
+    ALLOCATE(deviates_matrix(1,6*nstorb+nperturber))
+    ALLOCATE(elem_temp(1,6*nstorb+nperturber))
+    ALLOCATE(last_proposal(nstorb*8+3))
+    ALLOCATE(last_accepted_chi2_arr(nstorb))
+    lambda_arr(1,:) = 2.4_bp**2/(6.0_bp*nstorb+nperturber) ! Use this with AM; default scale factor for all
+    cov_matrix = 0.0_bp
+    A_arr2 = 0.0_bp
+    mean_arr = 0.0_bp
+    nsigma_mass = 1
+    nsigma_orbit = 1
+
+    CALL NEW(mcmc_out_file, TRIM(out_fname))
+    CALL OPEN(mcmc_out_file)
+
+    CALL NEW(meanres_file, TRIM(out_fname)//trim('.mean.res'))
+    CALL OPEN(meanres_file)
+
+    CALL NEW(cov_file, TRIM(out_fname)//trim('.cov'))
+    CALL OPEN(cov_file)
+
+    CALL NEW(res_file, TRIM(out_fname)//trim('.res'))
+    CALL OPEN(res_file)
+
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / massEstimation_MCMC:", &
+            "Could not allocate memory.", 1)
+       RETURN
+    END IF
+    ! Extract integration parameters
+    CALL getParameters(storb_arr(1), dyn_model=dyn_model, &
+         perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, integrator=integrator, &
+         integration_step=integration_step)
+
+    ! extract observational and orbital information
+    DO i=1,nstorb
+
+       obs_arr(i) = getObservations(storb_arr(i)) ! Need to store these for later
+       ! extract information on how many and which observations should
+       ! be used in the analysis
+       obs_masks => getObservationMasks(storb_arr(i))
+       nobs_arr(i) = COUNT(obs_masks)
+       DEALLOCATE(obs_masks)
+
+       t = getTime(orb_arr(i))
+       mjd_tt = getMJD(t,"TT")
+       elements0_arr(i,:) = getElements(orb_arr(i), "cartesian", "equatorial")
+       elements_arr(i,:) = elements0_arr(i,:)
+       mean_arr(1+(i-1)*6:6+(i-1)*6) = elements_arr(i,:)
+       ! prepare matrix needed for covariance sampling
+       covariance = getCovarianceMatrix(storb_arr(i), "cartesian", "equatorial")
+       DO j=1, 6
+          WRITE(stderr, *) covariance(j, :)
+       END DO
+       WRITE(stderr, * ) "----------------------------"
+       covariance2(i,:,:) = getCovarianceMatrix(storb_arr(i), "cartesian", "equatorial")
+       ! Merge covariance matrices into one
+       cov_matrix(1+(i-1)*6:6+(i-1)*6,1+(i-1)*6:6+(i-1)*6) = covariance(:,:)
+
+       ! populate perturber array for integrations
+       IF (i <= nperturber) THEN
+          additional_perturbers(i,1:6) = elements0_arr(i,:)
+          additional_perturbers(i,7) = getMJD(t, "TT")
+          additional_perturbers(i,8) = proposal_density_masses(i)
+
+       END IF
+       CALL NULLIFY(t)
+       CALL NULLIFY(obs_arr(i))
+    END DO
+    ! Add masses into cov matrix
+    IF (.NOT. ASSOCIATED(input_cov_matrix)) THEN 
+      DO i=1, nperturber
+         cov_matrix(6*nstorb+i, 6*nstorb+i) = proposal_density_masses(i)*1e-12
+      END DO
+    END IF
+    IF (ASSOCIATED(input_cov_matrix)) THEN
+      cov_matrix(:,:) = input_cov_matrix(:,:)
+    END IF
+    ok_cov_matrix = cov_matrix
+    A_arr2(:,:) = cov_matrix(:,:)
+    DO i=1,nstorb*6+nperturber
+       WRITE(stderr,*) cov_matrix(i,:)
+    END DO
+    WRITE(stderr, * ) "----------------------------"
+
+    CALL cholesky_decomposition(A_arr2(:,:), p2, errstr)
+
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("PhysicalParameters / massEstimation_MCMC:", &
+            "Cholesky decomposition unsuccessful:", 1)
+       WRITE(stderr,"(A)") TRIM(errstr)
+       RETURN
+    END IF
+    DO j=1,6*nstorb+nperturber
+       A_arr2(j,j) = p2(j)
+    END DO
+
+    iorb = iorb_init
+    itrial = itrial_init
+    first = .TRUE.
+    DO
+       IF ( PRESENT(nburn_arr) .EQV. .FALSE.) THEN
+          burnin_done = .TRUE.
+       END IF
+       ncur = ncur + 1
+       itrial = itrial + 1
+       IF (PRESENT(nburn_arr)) THEN
+          IF ((burnin_done .EQV. .FALSE.) .AND. (ncur > nburn_arr(nchain))) THEN
+             burnin_done = .TRUE.
+          END IF
+       END IF
+       DO i=1,nstorb
+          ! Compute goodness of fit
+          IF (i <= nperturber) THEN
+             k = 0
+             additional_perturbers_ = 0
+             DO j=1,nperturber
+                IF (j /= i) THEN
+                   k = k + 1
+                   additional_perturbers_(k,:) = additional_perturbers(j,:)
+                END IF
+             END DO
+             CALL setParameters(orb_arr(i), &
+                  dyn_model=dyn_model, &
+                  perturbers=perturbers, &
+                  asteroid_perturbers=asteroid_perturbers, &
+                  integrator=integrator, &
+                  integration_step=integration_step, &
+                  mass=additional_perturbers(i,8))
+          ELSE
+             CALL setParameters(orb_arr(i), &
+                  dyn_model=dyn_model, &
+                  perturbers=perturbers, &
+                  asteroid_perturbers=asteroid_perturbers, &
+                  integrator=integrator, &
+                  integration_step=integration_step)
+          END IF
+       END DO
+       WRITE(stderr, *) "----------------------------------"
+       chi2_arr = getChi2(storb_arr,orb_arr,residuals=resids)
+       rchi2_arr = chi2_arr / (nobs_arr - nstorb*6 - nperturber)
+       !       pdv = EXP(-0.5_bp*SUM(chi2_arr)/(SUM(nobs_arr)-nstorb*6-nperturber-1))
+       !       expo = -0.5_bp*(SUM(chi2_arr)-SUM(nobs_arr)-nstorb*6-nperturber)
+       expo = -0.5_bp*SUM(chi2_arr)
+       !expo = -0.5_bp*(SUM(chi2_arr)/(2*SUM(nobs_arr)-nstorb*6-nperturber))
+       pdv = EXP(expo)
+
+       WRITE(stderr, *) "iorb:", iorb
+       WRITE(stderr, *) "pdv:", pdv
+       WRITE(stderr, *) "chi2:", SUM(chi2_arr)
+       WRITE(stderr, *) "last accepted chi2:", last_accepted_chi2
+       WRITE(stderr, *) expo
+       IF (pdv == 0.0_bp) THEN
+          pdv = TINY(pdv)
+       END IF
+       ran = 1.0_bp
+       IF (first) THEN
+
+          accept = .TRUE.
+          last_accepted_chi2 = SUM(chi2_arr)
+          last_accepted_chi2_arr = chi2_arr
+          first = .FALSE.
+       ELSE
+          chi2_compared = .FALSE.
+          IF (expo - last_accepted_expo > 1000) THEN
+             a_r = 1.0_bp
+          ELSE IF  (expo - last_accepted_expo < -1000) THEN
+             a_r = 0.0_bp
+          ELSE
+             a_r = EXP(expo - last_accepted_expo)
+          END IF
+          IF (iorb > -1) THEN ! Experimental acceptance probability. Overrides the above
+             a_r = 1.0_bp
+             DO j=1, nstorb
+                a_r = a_r * EXP(-0.5_bp*(chi2_arr(j) - last_accepted_chi2_arr(j)))
+             END DO
+          END IF
+          WRITE(stderr, *) "a_r:", a_r
+
+
+          IF (info_verb >= 3) THEN
+             WRITE(stderr, *) "a_r:", a_r
+          END IF
+          IF (a_r > 1.0_bp) THEN
+             WRITE(stderr, *) "BETTER!"
+             a_r = 1.0_bp
+             accept = .TRUE.
+          ELSE
+             CALL randomNumber(ran)
+             IF (ran < a_r) THEN
+                accept = .TRUE.
+             ELSE IF (NINT(accepted_solutions(8*nstorb+3,iorb)) == 100) THEN
+                accept = .TRUE. !  Force accept new proposal if the chain is stuck for some reason.
+             ELSE
+                accept = .FALSE.
+                WRITE(stderr, *) "NOT ACCEPTED!"
+             END IF
+          END IF
+       END IF
+       IF (accept .EQV. .TRUE. .AND. chi2_compared .EQV. .FALSE.) THEN
+
+          CALL updateMeanResids(storb_arr,resids)
+          IF (iorb == 0 .OR. MOD(iorb,500) == 0) THEN ! Writes the residuals every 500 accepted proposals.
+             WRITE(getUnit(meanres_file), *) "#", iorb
+             CALL writeMeanResids(storb_arr,orb_arr,getUnit(meanres_file))
+          END IF
+          IF (iorb == 0 .OR. MOD(iorb,5) == 0) THEN
+             WRITE(getUnit(res_file), *) "#", iorb
+             CALL writeResiduals_SO(storb_arr,resids,getUnit(res_file))
+          END IF
+          ! Outlier detection happens here. We also need to get
+          ! updated chi2 values after.
+          IF (MOD(iorb,500) == 0) THEN
+             CALL outlierDetection(storb_arr)
+             IF (ASSOCIATED(resids%vectors(1)%elements)) THEN
+                DEALLOCATE(resids%vectors)
+             END IF
+             chi2_arr = getChi2(storb_arr,orb_arr,residuals=resids)
+             expo = -0.5_bp*SUM(chi2_arr)
+             pdv = EXP(expo)
+             noutlier = 0
+             DO j=1,nstorb
+
+                obs_arr(j) = getObservations(storb_arr(j)) ! Need to store these for later
+                ! extract information on how many and which observations should
+                ! be used in the analysis
+                obs_masks => getObservationMasks(storb_arr(j))
+                nobs_arr(j) = COUNT(obs_masks) ! We meed to update the total
+                noutlier = noutlier + SIZE(obs_masks,dim=1) - nobs_arr(j)
+                DEALLOCATE(obs_masks)          ! amount of used observations after outlier rejection.
+                ALLOCATE(mean_resids(getNrOfObservations(obs_arr(j)),6))
+                CALL getMeanResids(storb_arr(j),mean_resids)
+                information_matrix => getBlockDiagInformationMatrix(obs_arr(j))
+                obs_masks => getObservationMasks(storb_arr(j))
+                chi2_arr_updated(j) = chi_square(mean_resids, &
+                     information_matrix, obs_masks, errstr)
+                DEALLOCATE(obs_masks)
+                DEALLOCATE(mean_resids)
+                DEALLOCATE(information_matrix)
+                CALL NULLIFY(obs_arr(j))
+             END DO
+          END IF
+          iorb = iorb + 1
+          first = .FALSE.
+          last_accepted_expo = -0.5_bp*SUM(chi2_arr)
+          last_accepted_chi2 = SUM(chi2_arr)
+          last_accepted_chi2_arr = chi2_arr
+          last_accepted_expo = expo
+          WRITE(stderr, *) "ACCEPTED!"
+          IF (delayed_rejection) THEN
+             WRITE(stderr,*) "DR at stage", proposal_stage
+          END IF
+          IF (info_verb >= 3) THEN
+             WRITE(stderr, *) "iorb: ", iorb
+          END IF
+          DO i=1,nstorb
+             IF (i <= nperturber) THEN
+
+                accepted_solutions(8*(i-1)+1:8*i,iorb) = &
+                     (/ additional_perturbers(i,1:6), additional_perturbers(i,8), chi2_arr(i) /)
+             ELSE
+                accepted_solutions(8*(i-1)+1:8*i,iorb) = &
+                     (/ elements_arr(i,1:6), proposal_density_masses(i), chi2_arr(i) /)
+             END IF
+          END DO
+          accepted_solutions(8*nstorb+1:8*nstorb+3,iorb) = &
+               (/ SUM(chi2_arr), REAL(pdv,8), 1.0_bp /)
+          pdv_list(iorb) = pdv
+       ELSE
+          accepted_solutions(8*nstorb+3,iorb) = &
+               accepted_solutions(8*nstorb+3,iorb) + 1.0_bp
+       END IF
+       DO j=1, nstorb
+          DEALLOCATE(resids%vectors(j)%elements)
+       END DO
+       DEALLOCATE(resids%vectors)
+
+       IF (info_verb >= 3) THEN
+          IF (accept .EQV. .FALSE.) THEN
+             WRITE(stderr, *) "NOT ACCEPTED!!!"
+          END IF
+       END IF
+       IF (accept) THEN
+          ! Print out the current proposal matrix every 500 accepted proposals.
+          IF (MODULO(iorb,500) == 0) THEN 
+             REWIND(getUnit(cov_file))
+             WRITE(getUnit(cov_file), *) "# iorb at", iorb, "and itrial at:", itrial, &
+                  " and a total of", noutlier, "outliers. Prop. matrix follows:"
+             DO i=1,6*nstorb+nperturber
+                WRITE(getUnit(cov_file),*) cov_matrix(i,:)
+             END DO
+             ok_cov_matrix = cov_matrix
+          END IF
+          IF ((.NOT. first) .and. (iorb > 1)) THEN ! This is how many repetitions there were. can't be printed until the next
+            ! proposal gets accepted because we don't know the amount until then..
+             WRITE(getUnit(mcmc_out_file), "(1(I5))", advance="yes") NINT(accepted_solutions(8*nstorb+3,iorb-1))
+          END IF
+          WRITE(getUnit(mcmc_out_file), "(1(I7,1X),1(I10,1X), 2(I5,1X), 1(F8.2,1X))", advance="NO") iorb, itrial, nperturber, &
+                nstorb-nperturber, mjd_tt
+          DO i=1,nstorb
+             WRITE(getUnit(mcmc_out_file),"(A5,1X,1(3(F19.15,1X),3(F19.15,1X),3(E12.5,1X)))",advance="NO") &
+                  getID(storb_arr(i)), &
+                  accepted_solutions(8*(i-1)+1:8*i,iorb), rchi2_arr(i)!, & ! accepted: 6 fitted orbital elements, fitted mass, chi2
+          END DO
+          WRITE(getUnit(mcmc_out_file),"(3(F19.2,1X))", advance="NO") SUM(chi2_arr), &
+                SUM(chi2_arr)/(SUM(nobs_arr)-6*nstorb-nperturber), EXP(-0.5*SUM(chi2_arr)/SUM(nobs_arr))
+       END IF
+       IF (info_verb >= 3) THEN
+          WRITE(stderr, *) "-----------------------------------"
+       END IF
+       IF (iorb == norb) THEN
+          EXIT
+       END IF
+
+       ! Generate new trial orbits half way through / if chain gets stuck
+       old_mean = mean_arr
+       IF (iorb == norb/2) THEN
+          DO i=1,nperturber
+             additional_perturbers(i,8) = proposal_density_masses(i)*2.0
+          END DO
+          DO i=1,nstorb
+             ! When half-way through re-start chain from initial
+             ! orbits
+             elements_arr(i,:) = elements0_arr(i,:)
+             first = .TRUE.
+             IF (PRESENT(nburn_arr)) THEN
+                burnin_done = .FALSE.
+                ncur = 0
+                nchain = 2
+             END IF
+          END DO
+       END IF
+       IF (iorb == 5000 .AND. accept .AND. adaptation == "gaswam") THEN
+          adaptation = "ram" ! This block switches from aswam to ram.
+          itrial = 1
+          A_arr2(:,:) = lambda_arr(1,1)*A_arr2(:,:)
+       END IF
+       ! Adaptation occurs within this IF block.
+       IF ((iorb - iorb_init) > 1 .AND. iorb .NE. norb/2) THEN
+          IF (accept) THEN
+            previous_cov_matrix = cov_matrix
+          END IF
+          ! ----------------------- RAM ADAPTATION -------------------
+
+          IF (adaptation == "ram") THEN
+             lambda_arr(1,:) = 1.0_bp
+             deviates_matrix(1,:) = ran_arr(:)
+             cov_matrix = MATMUL(MATMUL(A_arr2,(identity_matrix(6*nstorb+nperturber)+(itrial**(-0.5_bp) &
+                  *(a_r - 0.237_bp) &
+                  *  MATMUL(TRANSPOSE(deviates_matrix),deviates_matrix)/matnorm(deviates_matrix)**2))),TRANSPOSE(A_arr2))
+          END IF
+
+          ! ---------------------- ASWAM SCALE ADAPTATION -----------
+
+          IF ((adaptation == "aswam" .OR. adaptation == "gaswam") .AND. (iorb - iorb_init) > 19) THEN
+
+             lambda_arr(1,:) = EXP(LOG(lambda_arr(1,1))+itrial**(-0.5_bp)*(a_r-0.237_bp)) !"Optimal": 0.237
+             WRITE(stderr, *) "lambda:", lambda_arr(1,1)
+             IF (.NOT. lambda_arr(1,1) / lambda_arr(1,1) == 1) THEN ! Apparently this catches NaNs
+               WRITE(stderr, *) "WARNING: NaN lambda detected! Resetting.."
+               lambda_arr(1,:) = 0.237_bp
+             END IF 
+          END IF
+
+          ! ------------------ ASWAM/AM COVARIANCE MATRIX UPDATE ------
+
+          IF ((adaptation == "aswam" .OR. adaptation == "am" .OR. adaptation == "gaswam") .AND. accept) THEN
+             DO i=1, nstorb ! Orbital elements mean
+                mean_arr(1+(i-1)*6:6+(i-1)*6) = ((iorb-1.0_bp)/iorb)*mean_arr(1+(i-1)*6:6+(i-1)*6) &
+                     + 1.0_bp/iorb*accepted_solutions(8*(i-1)+1:8*(i-1)+6,iorb)
+             END DO
+             DO i=1, nperturber !Mean masses
+                mean_arr(6*nstorb+i) = ((iorb-1.0_bp)/iorb)*mean_arr(6*nstorb+i) &
+                     + 1.0_bp/iorb*accepted_solutions(8*(i-1)+7,iorb)
+             END DO
+             IF ((iorb - iorb_init) > 19 .AND. iorb .NE. norb/2) THEN
+                IF (info_verb >= 3) THEN
+                   WRITE(stderr, *) "Adapting cov matrix.."
+                   WRITE(stderr, *) "Old covariance matrix:"
+                   DO j=1,6
+                      WRITE(stderr, *) covariance2(i,j,:)
+                   END DO
+                END IF
+                ya_temp = 0.0_bp
+                another_temp = 0.0_bp
+                DO j=1, iorb
+                   DO i=1, nstorb
+                      another_temp(1+(i-1)*6:6+(i-1)*6) =  &
+                           accepted_solutions(8*(i-1)+1:8*(i-1)+6,j) - mean_arr(1+(i-1)*6:6+(i-1)*6)
+                   END DO
+                   DO i=1, nperturber ! masses
+                      another_temp(6*nstorb+i) =  &
+                           accepted_solutions(8*(i-1)+7,j) - mean_arr(6*nstorb+i)
+                   END DO
+                   elem_temp(1,:) = another_temp(:)
+                   ya_temp = ya_temp + MATMUL(TRANSPOSE(elem_temp), elem_temp)
+                END DO
+                elem_temp(1,:) = another_temp(:)
+                cov_matrix = 1.0_bp/(iorb - 1.0_bp) * &
+                     ya_temp + 1e-23_bp*identity_matrix(6*nstorb+nperturber)
+             END IF
+          END IF
+          IF (adaptation .NE. "none") THEN
+
+             A_arr2(:,:) = cov_matrix(:,:)
+             CALL cholesky_decomposition(A_arr2(:,:), p2, errstr)
+             ! If Cholesky decomposition fails for some reason, fall back
+             ! with an earlier proposal matrix.
+             IF (LEN_TRIM(errstr) /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("PhysicalParameters / massEstimation_MCMC:", &
+                     "Cholesky decomposition unsuccessful:", 1)
+                WRITE(stderr,"(A)") TRIM(errstr)
+                WRITE(stderr, *) "Previous cov. matrix follows:"
+                DO j=1,6*nstorb+nperturber
+                   WRITE(stderr, *) previous_cov_matrix(j,:)
+                END DO
+                WRITE(stderr, *) "Resuming from earlier matrix."
+                A_arr2 = ok_cov_matrix
+                CALL cholesky_decomposition(A_arr2, p2, errstr)
+             END IF
+             DO j=1,6*nstorb+nperturber
+                A_arr2(j,j) = p2(j)
+                A_arr2(j,j+1:6*nstorb+nperturber) = 0.0_bp
+             END DO
+          END IF
+       END IF
+       !
+       elem_temp(1,:) = p2(:)
+       CALL randomGaussian(ran_arr)
+       !CALL randomNumber(ran_arr)
+       deviates = lambda_arr(1,:)*MATMUL(A_arr2(:,:),ran_arr)
+
+       ! Testing multivariate generation. 
+
+       ! CALL randomGaussianMultiVariate(deviates,cov_matrix)
+       ! New coordinates = last accepted coordinates + deviates:
+       ! Second stage proposal from Mira's symmetric delayed rejection algorithm.
+       IF ((accept .EQV. .FALSE.) .AND. (delayed_rejection) .AND. (proposal_stage == 1)) THEN
+          WRITE(0, *) "DEBUG: DR ON!"
+          ! This is triggered when we want to do DR and the previous first-stage proposal was rejeceted.
+          DO i=1,nstorb
+             IF (i <= nperturber) THEN
+                last_proposal(8*(i-1)+1:8*i) = &
+                     (/ additional_perturbers(i,1:6), additional_perturbers(i,8), chi2_arr(i) /)
+             ELSE
+                last_proposal(8*(i-1)+1:8*i) = &
+                     (/ elements_arr(i,1:6), proposal_density_masses(i), chi2_arr(i) /)
+             END IF
+          END DO
+          last_proposal(8*nstorb+1:8*nstorb+3) = &
+               (/ SUM(chi2_arr), REAL(pdv,8), 1.0_bp /)
+          proposal_stage = 2
+       ELSE
+          ! Currently, we do 2-stage proposals with DR. If the second is also rejected, return to "zero-stage".
+          proposal_stage = 1
+          last_proposal(:) = accepted_solutions(:,iorb)
+          !ELSE
+       END IF
+       DO i=1, nstorb
+          elements_arr(i, :) = last_proposal(8*(i-1)+1:8*(i-1)+6) + deviates(1+(i-1)*6:6+(i-1)*6)
+       END DO
+       DO i=1, nperturber
+          additional_perturbers(i,8) = last_proposal(8*(i-1)+7) + deviates(6*nstorb+i)
+          IF (additional_perturbers(i,8) < 0) THEN
+             WRITE(stderr, *) "WARNING: NEGATIVE MASS FOUND"
+          END IF
+       END DO
+       DO WHILE (ANY(additional_perturbers(:,8) < 0)) !Repeat if neg mass found---------------------
+          CALL randomGaussian(ran_arr)
+          deviates = lambda_arr(1,:)*MATMUL(A_arr2(:,:),ran_arr)
+          DO i=1, nstorb
+             elements_arr(i, :) = last_proposal(8*(i-1)+1:8*(i-1)+6) + deviates(1+(i-1)*6:6+(i-1)*6)
+          END DO
+          DO i=1, nperturber
+             additional_perturbers(i,8) = last_proposal(8*(i-1)+7) + deviates(6*nstorb+i)
+             IF (additional_perturbers(i,8) < 0) THEN
+                WRITE(stderr, *) "WARNING: NEGATIVE MASS FOUND"
+             END IF
+          END DO
+
+       END DO
+       !  END DO
+       DO i=1, nstorb
+          t = getTime(orb_arr(i))
+          CALL NULLIFY(orb_arr(i))
+          IF (i <= nperturber) THEN
+             additional_perturbers(i,1:6) = elements_arr(i,1:6)
+             CALL NEW(orb_arr(i), elements_arr(i,:), "cartesian", "equatorial", t, mass=additional_perturbers(i,8))
+          ELSE
+             CALL NEW(orb_arr(i), elements_arr(i,:), "cartesian", "equatorial", t)
+          END IF
+          CALL NULLIFY(t)
+       END DO
+    END DO
+
+    ! ----------------------------- MCMC IS DONE -----------------------
+    !final_solutions = accepted_solutions
+    ! Post-fit computation of statistics for masses
+    IF (last) THEN
+       ALLOCATE(indx_arr(norb))
+       WRITE(getUnit(mcmc_out_file), "(1(I5))", advance="yes") NINT(accepted_solutions(8*nstorb+3,iorb-1))
+       DO i=1,nperturber
+          ! Nominal:
+          estimated_masses(i,1) = accepted_solutions(8*i-1,MAXLOC(accepted_solutions(8*nstorb+2,1:iorb),dim=1))
+          ! N-sigma bounds:
+          DO j=1,3
+             IF (j == 1) THEN
+                probability_mass = 0.67_bp
+             ELSE IF (j == 2) THEN
+                probability_mass = 0.95_bp
+             ELSE IF (j == 3) THEN
+                probability_mass = 0.9973_bp
+             END IF
+             CALL credible_region(accepted_solutions(8*nstorb+1,1:iorb), & ! pdf
+                  probability_mass=probability_mass, &
+                  indx_arr=indx_arr, &
+                  errstr=errstr, &
+                  repetition_arr=NINT(accepted_solutions(8*nstorb+3,1:iorb))) ! repetitions
+             IF (LEN_TRIM(errstr) /= 0) THEN
+                WRITE(stderr,"(2A)") "Error: ", TRIM(errstr)
+                STOP
+             END IF
+             bounds = (/ HUGE(probability_mass), -HUGE(probability_mass) /)
+             DO k=1,iorb
+                IF (indx_arr(k) /= -1) THEN
+                   IF (accepted_solutions(8*(i-1)+7,indx_arr(k)) < bounds(1)) THEN
+                      bounds(1) = accepted_solutions(8*(i-1)+7,indx_arr(k))
+                   ELSE IF (accepted_solutions(8*(i-1)+7,indx_arr(k)) > bounds(2)) THEN
+                      bounds(2) = accepted_solutions(8*(i-1)+7,indx_arr(k))
+                   END IF
+                END IF
+             END DO
+             estimated_masses(i,2+2*(j-1):3+2*(j-1)) = bounds
+             IF (j == 1) THEN
+                WRITE(getUnit(mcmc_out_file),"(A,1X,E13.6)") "# Nominal: ", &
+                     estimated_masses(i,1)
+                WRITE(getUnit(mcmc_out_file),"(A,2(1X,E13.6))") "# 1-sigma: ", bounds
+             ELSE IF (j == 2) THEN
+                WRITE(getUnit(mcmc_out_file),"(A,2(1X,E13.6))") "# 2-sigma: ", bounds
+             ELSE IF (j == 3) THEN
+                WRITE(getUnit(mcmc_out_file),"(A,2(1X,E13.6))") "# 3-sigma: ", bounds
+             END IF
+          END DO
+       END DO
+
+       DO i=1,nstorb
+          CALL NULLIFY(storb_arr(i))
+          CALL NULLIFY(orb_arr(i))
+       END DO
+    END IF
+    IF (last .EQV. .FALSE.) THEN
+       i = 1
+       DO i=1,nstorb
+          t = getTime(orb_arr(i))
+          temp = accepted_solutions(8*(i-1)+1:8*i, MAXLOC(accepted_solutions(8*nstorb+2, 1:iorb), dim=1))
+          elements_arr(i, :) = temp(1:6)
+
+          CALL NULLIFY(orb_arr(i))
+          CALL NEW(orb_arr(i), elements_arr(i,:), "cartesian", "equatorial", t)
+          t = getTime(orb_arr(i))
+          nominal_arr(i) = copy(orb_arr(i))
+
+       END DO
+
+    END IF
+
+    DEALLOCATE(additional_perturbers, additional_perturbers_, &
+         indx_arr, A_arr, elements_arr, &
+         elements0_arr, chi2_arr, rchi2_arr, stat=err)
+
+  END SUBROUTINE massEstimation_MCMC
+
+  ! Asteroid mass estimation 'marching' algorithm.
+  ! Note that this is an approximation at best and should not be used by itself for
+  ! any serious work!
+  ! See Siltala & Granvik (2017)
+  ! https://doi.org/10.1016/j.icarus.2017.06.028
+  ! Author: LS
+  SUBROUTINE massEstimation_march(storb_arr, orb_arr, HG_arr, dyn_model, integrator, integration_step, &
+       perturbers, asteroid_perturbers, mass, out_fname)
+    IMPLICIT NONE
+    TYPE (StochasticOrbit), DIMENSION(:), INTENT(inout) :: storb_arr
+    TYPE (Orbit), DIMENSION(:), INTENT(inout) :: orb_arr
+    CHARACTER(len=FNAME_LEN), INTENT(in):: &
+         out_fname
+    TYPE (Orbit), DIMENSION(:,:), POINTER :: &
+         orb_arr2 => NULL()
+    TYPE (Time) :: t, t_prop
+    TYPE (File) :: march_out_file, res_file
+    INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
+    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
+    REAL(bp), DIMENSION(:,:), POINTER :: stdev_arr_measur, residuals
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: chi2_arr
+    REAL(bp), INTENT(in), DIMENSION(:,:) :: HG_arr
+    REAL(bp), DIMENSION(6) :: perturber_elems, rms6, elements
+    REAL(bp), DIMENSION(1,8) :: additional_perturber
+    REAL(bp), DIMENSION(2) :: chi2_arr2
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: marching_masses, chi2_sum_arr
+    REAL(bp) :: density, albedo, const, rough_estimate, lower_mass_bound, &
+         upper_mass_bound, chi_sum, integration_step, mass, avgstdev, &
+         rms1, rms2, best_chi, chi_perturber
+    LOGICAL, DIMENSION(10) :: &
+         perturbers
+    LOGICAL :: print_data, with_simplex, asteroid_perturbers
+    LOGICAL, DIMENSION(6) :: obs_masks2, obs_masks_true
+    INTEGER :: k, i, j,l,m, nobs
+    INTEGER :: outliertot
+    INTEGER, DIMENSION(6) :: n0
+    CHARACTER(len=DYN_MODEL_LEN) :: &
+         dyn_model                                                 !! Dynamical model.
+    CHARACTER(len=INTEGRATOR_LEN) :: &
+         integrator
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: residuals_, observed_coords, &
+         computed_coords, elements_arr, stdev, mean
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+         observed_scoords => NULL(), &
+         computed_scoords => NULL()
+    TYPE (Observations) :: obss
+    TYPE (SparseArray) :: resids
+
+    CALL NEW(march_out_file, TRIM(out_fname))
+    CALL OPEN(march_out_file)
+
+    CALL NEW(res_file, TRIM(out_fname)//trim('.res'))
+    CALL OPEN(res_file)
+
+    ALLOCATE(nobs_arr(size(orb_arr)))
+
+    DO i=1, size(orb_arr)
+       orb_arr(i) = getNominalOrbit(storb_arr(i))
+       CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
+            perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, integrator=integrator, &
+            integration_step=integration_step)
+    END DO
+    perturber_elems(:) = getElements(orb_arr(1), "cartesian", "equatorial")
+
+    ! Rough mass estimate to sample in approximately right range:
+    density = 2.5_bp ! g/cm3
+    density = density * 1.0e12_bp / kg_solar ! solar masses / km3
+    albedo = 0.15_bp
+    const = 391222381.5_bp * pi * density / (albedo*SQRT(albedo))
+    rough_estimate = const*10**(-0.6_bp*HG_arr(1,1))
+    WRITE(getUnit(march_out_file), *) "# Rough mass estimate for march:", rough_estimate
+    lower_mass_bound = 0.2_bp * rough_estimate
+    upper_mass_bound = 10.0_bp * rough_estimate
+
+    j = 50000
+    ALLOCATE(marching_masses(j))
+    marching_masses(1) = lower_mass_bound
+    j = 50000
+
+    DO i=2, j
+       marching_masses(i) = marching_masses(i-1) + rough_estimate*0.02_bp
+
+       IF (marching_masses(i) > upper_mass_bound) THEN
+          k = i
+          WRITE(stderr, *) "Testing with ", k, " masses."
+          EXIT
+       END IF
+       !       ELSE IF (i == j) THEN
+       !          WRITE(stderr, * ) "Too many masses!!!!"
+       !          STOP
+       !       END IF
+    END DO
+    ALLOCATE(chi2_arr(k,size(orb_arr)))
+    ALLOCATE(chi2_sum_arr(k))
+    DO i=1, k
+       CALL setParameters(orb_arr(1), mass=marching_masses(i))
+       chi2_arr(i,:) = getChi2(storb_arr, orb_arr, resids)
+       chi2_sum_arr(i) = SUM(chi2_arr(i,:))
+       WRITE(getUnit(march_out_file), *) marching_masses(i), chi2_arr(i,:), i, k
+    END DO
+    mass = marching_masses(MINLOC(chi2_sum_arr,dim=1))
+    WRITE(getUnit(march_out_file), *) "# Best mass: ", mass
+    ALLOCATE(stdev(2,2))
+    ALLOCATE(mean(2,2))
+
+    CALL writeResiduals_SO(storb_arr,orb_arr,getUnit(res_file))
+
+  END SUBROUTINE massEstimation_march
 
 
 END MODULE PhysicalParameters_cl

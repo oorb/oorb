@@ -56,7 +56,8 @@ PROGRAM oorb
   TYPE (StochasticOrbit) :: &
        storb
   TYPE (Orbit), DIMENSION(:,:), POINTER :: &
-       orb_lt_corr_arr2 => NULL()
+       orb_lt_corr_arr2 => NULL(), &
+       mcmc_orb_arr => NULL()
   TYPE (Orbit), DIMENSION(:), POINTER :: &
        orb_arr_in => NULL()
   TYPE (Orbit), DIMENSION(:), POINTER :: &
@@ -64,6 +65,8 @@ PROGRAM oorb
        orb_arr_ => NULL(), &       
        orb_arr_cmp => NULL(), &
        orb_lt_corr_arr => NULL()
+  TYPE (Orbit), DIMENSION(:), ALLOCATABLE :: & 
+       nominal_arr
   TYPE (Orbit) :: &
        orb, &
        ref_orb
@@ -103,7 +106,9 @@ PROGRAM oorb
        orb_in_file, &                                               !! Input orbit file.
        orb_out_file, &                                              !! Output orbit file.
        out_file, &                                                  !! Generic output file.
-       tmp_file, &                                                     !! Generic temporary file.
+       cov_in_file, &                                               !! Input MCMC mass estimation covariance matrix.
+       mcmc_in_file, &                                              !! Input MCMC mass estimation file.
+       tmp_file, &                                                  !! Generic temporary file.
        tmp_file2
   CHARACTER(len=ELEMENT_TYPE_LEN), DIMENSION(:), ALLOCATABLE :: &
        element_type_pdf_arr_in                                      !! Element type of input orbital-element PDF.
@@ -137,6 +142,8 @@ PROGRAM oorb
        orb_in_fname, &                                              !! Path to input orbit file (incl. fname).
        orb_out_fname, &                                             !! Path to output orbit file (incl. fname).
        out_fname, &                                                 !! Path to generic output file (incl. fname).
+       mcmc_in_fname, &                                             !! Path to MCMC mass estimation input file (incl. fname).
+       cov_in_fname, &                                              !! Path to MCMC mass estimation covariance matrix file (inc. fname.)
        tmp_fname, &
        buffer, &
        line
@@ -160,7 +167,8 @@ PROGRAM oorb
        frmt, &
        str, &
        suffix, &
-       task
+       task, &
+       adaptation
   CHARACTER(len=64) :: &
        sor_2point_method, &                                         !! Method used for 2-point boundary-value problem. 
        sor_2point_method_sw                                         !! Method used for 2-point boundary-value problem in stepwise Ranging.
@@ -185,7 +193,8 @@ PROGRAM oorb
        planeph => NULL(), &
        vov_map => NULL(), &
        vomcmc_map => NULL(), &
-       sor_rho_arr => NULL()
+       sor_rho_arr => NULL(), &
+       mcmc_cov_matrix => NULL()
   REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
        elements_arr, &
        ephem_, &
@@ -193,7 +202,9 @@ PROGRAM oorb
        jac_arr_in, &
        mean_arr, &
        temp_arr, &
-       histo1, histo2
+       histo1, histo2, &
+       estimated_masses, &
+       accepted_solutions
   REAL(bp), DIMENSION(6,6) :: &
        corr, &
        cov, &
@@ -217,10 +228,14 @@ PROGRAM oorb
        arc_arr, &
        rchi2_arr_in, &
        reg_apr_arr_in, &
-       real_arr
+       real_arr, &
+       proposal_density_masses, &
+       mass_arr_in
   REAL(bp), DIMENSION(10) :: &
        tisserands_parameters,  &
        jacobi_constants
+  REAL(bp), DIMENSION(8) :: & 
+       another_temp_arr
   REAL(bp), DIMENSION(7) :: &
        ran7
   REAL(bp), DIMENSION(6) :: &
@@ -291,7 +306,8 @@ PROGRAM oorb
        solar_alt, solar_alt_max, solelon_max, solelon_min, generat_multiplier, stdev, &
        step, sun_moon_r2, sunlat, sunlon, &
        timespan, tlat, tlon, toclat, toclon, tsclat, tsclon, &
-       ta_s, ta_c, fak, ecc_anom, true_anom, chi2, chi2_min
+       ta_s, ta_c, fak, ecc_anom, true_anom, chi2, chi2_min, &
+       mass, density, albedo, const
   INTEGER, DIMENSION(:), POINTER :: &
        repetition_arr_cmp => NULL(), &
        repetition_arr_in => NULL()
@@ -329,7 +345,8 @@ PROGRAM oorb
        vomcmc_type, vomcmc_type_prm, vomcmc_norb, vomcmc_ntrial, vomcmc_niter, &
        vomcmc_norb_iter, vomcmc_ntrial_iter, vomcmc_nmap, &
        year, year0, year1, &
-       loc, nfile
+       loc, nfile, &
+       itrial, nperturber, ntrial
   LOGICAL, DIMENSION(:,:), POINTER :: &
        obs_masks => NULL()
   LOGICAL, DIMENSION(:), POINTER :: &
@@ -363,7 +380,8 @@ PROGRAM oorb
        smplx_force, &
        dchi2_rejection, &
        write_residuals, &
-       asteroid_perturbers
+       asteroid_perturbers, &
+       delayed_rejection
   ! Defaults:
   error = .FALSE.
   task = " "
@@ -603,6 +621,30 @@ PROGRAM oorb
      STOP
   END IF
 
+  ! Read MCMC file if given
+
+   mcmc_in_fname = get_cl_option("--mcmc-in=", "")
+   IF (LEN_TRIM(mcmc_in_fname) /= 0) THEN
+      CALL NEW(mcmc_in_file, TRIM(mcmc_in_fname))
+      CALL setActionRead(mcmc_in_file)
+      CALL setStatusOld(mcmc_in_file)
+      CALL OPEN (mcmc_in_file)
+      CALL readMCMCmassfile(getUnit(mcmc_in_file), mcmc_orb_arr,iorb,itrial)
+   ELSE
+      iorb = 0
+      itrial = 0
+   END IF
+   ! Read MCMC .cov file if given
+
+   cov_in_fname = get_cl_option("--cov-in=", "")
+   IF (LEN_TRIM(cov_in_fname) /= 0) THEN
+      CALL NEW(cov_in_file, TRIM(cov_in_fname))
+      CALL setActionRead(cov_in_file)
+      CALL setStatusOld(cov_in_file)
+      CALL OPEN(cov_in_file)
+      CALL readMCMCcovfile(getUnit(cov_in_file), mcmc_cov_matrix)
+   END IF
+
   ! Read orbit file if given:
   orb_in_fname = get_cl_option("--orb-in=",orb_in_fname)
   IF (LEN_TRIM(orb_in_fname) /= 0) THEN
@@ -654,7 +696,8 @@ PROGRAM oorb
              element_type_pdf_arr_in(norb), cov_arr_in(norb,6,6), &
              HG_arr_in(norb,4), pdf_arr_in(norb), &
              rchi2_arr_in(norb), jac_arr_in(norb,3), &
-             reg_apr_arr_in(norb), repetition_arr_in(norb), stat=err)
+             reg_apr_arr_in(norb), repetition_arr_in(norb), &
+             mass_arr_in(norb), stat=err)
         IF (err /= 0) THEN
            CALL errorMessage("oorb", &
                 "Could not allocate memory (20).", 1)
@@ -663,6 +706,7 @@ PROGRAM oorb
         jac_arr_in = -1.0_bp
         pdf_arr_in = -1.0_bp
         cov_arr_in = -1.0_bp
+        mass_arr_in = 0.0_bp
         repetition_arr_in = 0
         id_arr_in = " "
         element_type_pdf_arr_in = " "
@@ -738,7 +782,7 @@ PROGRAM oorb
                             reg_apr_arr=reg_apr_arr_in(j:k-1), &
                             rchi2_arr=rchi2_arr_in(j:k-1), &
                             repetition_arr=repetition_arr_in(j:k-1), &
-                            obss=obss_sep(1))
+                            obss=obss_sep(1), id=id_arr_in(k-1))
                     END IF
                  END IF
                  IF (.NOT.exist(storb_arr_in(i))) THEN
@@ -746,7 +790,8 @@ PROGRAM oorb
                          element_type_pdf_arr_in(1), jac_arr=jac_arr_in(j:k-1,:), &
                          reg_apr_arr=reg_apr_arr_in(j:k-1), &
                          rchi2_arr=rchi2_arr_in(j:k-1), &
-                         repetition_arr=repetition_arr_in(j:k-1))
+                         repetition_arr=repetition_arr_in(j:k-1), &
+                         id=id_arr_in(k-1))
                  END IF
                  j = k
               END IF
@@ -760,7 +805,7 @@ PROGRAM oorb
                       reg_apr_arr=reg_apr_arr_in(j:), &
                       rchi2_arr=rchi2_arr_in(j:), &
                       repetition_arr=repetition_arr_in(j:), &
-                      obss=obss_sep(1))
+                      obss=obss_sep(1), id=id_arr_in(j))
               END IF
            END IF
            IF (.NOT.exist(storb_arr_in(i))) THEN
@@ -768,7 +813,8 @@ PROGRAM oorb
                    element_type_pdf_arr_in(1), jac_arr=jac_arr_in(j:,:), &
                    reg_apr_arr=reg_apr_arr_in(j:), &
                    rchi2_arr=rchi2_arr_in(j:), &
-                   repetition_arr=repetition_arr_in(j:))
+                   repetition_arr=repetition_arr_in(j:), &
+                   id=id_arr_in(j))
            END IF
            ALLOCATE(id_arr(nobj), HG_arr_storb_in(nobj,norb,4))
            id_arr = ""
@@ -795,7 +841,7 @@ PROGRAM oorb
            ALLOCATE(id_arr_storb_in(nobj))
            id_arr_storb_in = id_arr
            HG_arr_storb_in => reallocate(HG_arr_storb_in, nobj, k_max, 4)
-           DEALLOCATE(id_arr, id_arr_in, HG_arr_in)
+           DEALLOCATE(id_arr, id_arr_in)
         ELSE IF (nobj == norb .AND. &
              ALL(cov_arr_in(:,1,1) >= 0.0_bp)) THEN
            ! Covariance matrix/ces available
@@ -810,13 +856,13 @@ PROGRAM oorb
                     IF (getID(obss_sep(1)) == id_arr_in(k-1)) THEN
                        CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
                             cov_type=element_type_in, element_type=element_type_in, &
-                            obss=obss_sep(1))
+                            obss=obss_sep(1), id=id_arr_in(k-1))
                     END IF
                  END IF
                  IF (.NOT.exist(storb_arr_in(i))) THEN
                     CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
                          cov_type=element_type_in, element_type=element_type_in, &
-                         obss=obss_sep(1))
+                         obss=obss_sep(1),id=id_arr_in(k-1))
                  END IF
                  j = k
               END IF
@@ -827,12 +873,13 @@ PROGRAM oorb
               IF (getID(obss_sep(1)) == id_arr_in(j)) THEN
                  CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
                       cov_type=element_type_in, element_type=element_type_in, &
-                      obss=obss_sep(1))
+                      obss=obss_sep(1),id=id_arr_in(j))
               END IF
            END IF
            IF (.NOT.exist(storb_arr_in(i))) THEN
               CALL NEW(storb_arr_in(i), orb_arr_in(i), cov_arr_in(i,:,:), &
-                   cov_type=element_type_in, element_type=element_type_in)
+                   cov_type=element_type_in, element_type=element_type_in, &
+                   id=id_arr_in(j))
            END IF
            ALLOCATE(id_arr(nobj), HG_arr_storb_in(nobj,norb,4))
            id_arr = ""
@@ -859,7 +906,7 @@ PROGRAM oorb
            ALLOCATE(id_arr_storb_in(nobj))
            id_arr_storb_in = id_arr
            HG_arr_storb_in => reallocate(HG_arr_storb_in, nobj, k_max, 4)
-           DEALLOCATE(id_arr, id_arr_in, HG_arr_in)
+           DEALLOCATE(id_arr, id_arr_in)
         END IF
 
      CASE ("des")
@@ -893,7 +940,6 @@ PROGRAM oorb
         HG_arr_in(:,4) = 99.9_bp
         id_arr_in => reallocate(id_arr_in, norb)
         orb_arr_in => reallocate(orb_arr_in, norb)
-        HG_arr_in => reallocate(HG_arr_in, norb, 4)
 !!$        DO i=1,SIZE(id_arr_in)
 !!$           DO WHILE (LEN_TRIM(id_arr_in(i)) < 7)
 !!$              id_arr_in(i) = "0" // TRIM(id_arr_in(i))
@@ -9426,6 +9472,322 @@ PROGRAM oorb
         elements(3:6) = elements(3:6)/rad_deg
         WRITE(*,*) i, "KEP", elements, H, "56000.0 1 6 -1 OpenOrb"
      END DO
+
+  CASE ("mass_estimation_mcmc")
+     ! This is used to enable Mira's delayed rejection algorithm. May not currently work as expected
+     delayed_rejection = get_cl_option("--delayed-rejection", .false.)
+     nperturber = get_cl_option("--nperturber=", 1)
+     ALLOCATE (proposal_density_masses(SIZE(storb_arr_in)))
+     proposal_density_masses = -1.0_bp
+     norb = get_cl_option("--norb=", 50000) 
+     ntrial = get_cl_option("--ntrial=", 100*norb)
+     adaptation = TRIM(get_cl_option("--adaptation=", "none"))
+     out_fname = TRIM(get_cl_option("--output=","placeholder"))
+     ALLOCATE (elements_arr(2, 6))
+     ALLOCATE (accepted_solutions(SIZE(storb_arr_in)*8 + 3, norb))
+     ALLOCATE (nominal_arr(SIZE(storb_arr_in)))
+     IF (ASSOCIATED(mcmc_orb_arr)) THEN 
+        another_temp_arr(8) = -1.0_bp
+        ! Let's store the old accepted solutions here. We'll need them at least for adaptation.
+        DO i=1, size(mcmc_orb_arr,dim=2)
+          DO j=1, size(mcmc_orb_arr,dim=1)
+            CALL getParameters(mcmc_orb_arr(i,j),mass=another_temp_arr(7))
+            another_temp_arr(1:6) = getElements(mcmc_orb_arr(i,j), "cartesian", frame)
+            accepted_solutions(8*(j-1)+1*8:j,j) = another_temp_arr
+          END DO 
+        END DO
+     END IF 
+     DO i = 1, SIZE(storb_arr_in)
+        CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
+                           perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                           integrator=integrator, integration_step=integration_step, &
+                           outlier_multiplier=outlier_multiplier_prm)
+        IF (error) THEN
+           CALL errorMessage("oorb / propagation", &
+                             "TRACE BACK (75)", 1)
+           STOP
+        END IF
+     END DO
+     obss_sep => getSeparatedSets(obss_in)
+     obs = getObservation(obss_sep(2), 1)
+     dt = getObservationalTimespan(obss_sep(2))
+     t = getTime(obs)
+     mjd = getMJD(t, "TT")
+     mjd = REAL(NINT(mjd + dt/2.0_bp), bp)
+     CALL NULLIFY (t)
+     CALL NEW(t, mjd, "TT")
+     ! We have to have all perturbers at the same epoch so lets do that.
+     ! No need to do this if we use MCMC orbits because they're guaranteed to already be in the same epoch. 
+     DO i = 1, SIZE(storb_arr_in)
+        CALL propagate(storb_arr_in(i), t)
+     END DO
+     IF (error) THEN
+        CALL errorMessage("oorb / massestanalysis / mass_estimation", &
+                          "TRACE BACK (10)", 1)
+        STOP
+     END IF
+     CALL NULLIFY (obss_in)
+     DO i = 1, SIZE(storb_arr_in)
+        DO j = 1, SIZE(obss_sep)
+           IF (getID(storb_arr_in(i)) == getID(obss_sep(j))) THEN
+              CALL includeObservations(storb_arr_in(i), obss_sep(j))
+              EXIT
+           END IF
+        END DO
+        IF (j > SIZE(obss_sep)) THEN
+           WRITE (stderr, *) "Could not find astrometry for "// &
+              TRIM(getID(storb_arr_in(i)))//"... Quitting."
+           STOP
+        END IF
+     END DO
+     CALL NULLIFY (obss_in)
+     DO i = 1, SIZE(obss_sep)
+        CALL NULLIFY (obss_sep(i))
+     END DO
+     DEALLOCATE (obss_sep, stat=err)
+
+     ALLOCATE (estimated_masses(nperturber, 7))
+     mass = 0.0_bp
+     ALLOCATE (orb_arr(SIZE(storb_arr_in)))
+     DO i = 1, SIZE(storb_arr_in)
+       IF (ASSOCIATED(mcmc_orb_arr)) THEN
+          adaptation = "ram"
+          orb_arr(i) = mcmc_orb_arr(i,size(mcmc_orb_arr,dim=2))
+          mass = 1.0_bp
+          CALL getParameters(orb_arr(i),mass=proposal_density_masses(i))
+       ELSE 
+          orb_arr(i) = getNominalOrbit(storb_arr_in(i))
+       END IF 
+        CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
+                           perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                          integrator=integrator, integration_step=integration_step)
+     END DO
+     ! If masses aren't already known (from resuming a previous chain) this determines initial values
+     IF (mass == 0.0_bp) THEN
+        DO i = 1, nperturber
+           IF (mass_arr_in(i) <= 0.0_bp) THEN
+              IF (HG_arr_in(i,1) < 99.0_bp) THEN
+                 density = 1.0_bp ! g/cm3
+                 density = density*1.0e12_bp/kg_solar ! solar masses / km3
+                 albedo = 0.15_bp
+                 const = 391222381.5_bp*pi*density/(albedo*SQRT(albedo))
+                 proposal_density_masses(i) = const*10**(-0.6_bp*HG_arr_in(i, 1))
+             ELSE ! This happens if the orbit doesn't include brightness info for some reason.
+                 write(stderr, *) "Warning: No H magnitudes or masses in orb file. Very rough initial mass.."
+                 proposal_density_masses(i) = 0.5e-11_bp
+             END IF
+           ELSE
+              proposal_density_masses(i) = mass_arr_in(i)
+           END IF 
+           WRITE (stdout, "(A,I0,A,1X,E12.6)") "# Mass of perturber #", i, ":", proposal_density_masses(i)
+        END DO
+     END IF
+     WRITE (stderr, *) "Starting mass estimation..."
+     CALL massEstimation_MCMC(storb_arr_in, orb_arr, proposal_density_masses, norb, iorb_init=iorb, itrial_init=itrial, &
+                     estimated_masses=estimated_masses, accepted_solutions=accepted_solutions, nominal_arr=nominal_arr, &
+                     adaptation=adaptation, delayed_rejection=delayed_rejection,out_fname=out_fname, &
+                     input_cov_matrix=mcmc_cov_matrix)
+     WRITE (stderr, *) "Mass estimation is done."
+
+     DO i = 1, nperturber
+        DO j = 1, 3
+           IF (proposal_density_masses(i) >= estimated_masses(i, 2*j) .AND. &
+               proposal_density_masses(i) <= estimated_masses(i, 2*j + 1)) THEN
+              WRITE (stdout, "(A,1X,I0,1X,A,1X,I0,A)") "# Mass of perturber", i, "is a", j, "-sigma result."
+              EXIT
+           END IF
+        END DO
+     END DO
+
+     DO i = 1, SIZE(storb_arr_in)
+        CALL NULLIFY (storb_arr_in(i))
+     END DO
+     DEALLOCATE (storb_arr_in, proposal_density_masses, estimated_masses)
+
+  ! "marching" mass estimation algorithm
+
+  CASE ("mass_estimation_march")
+     out_fname = TRIM(get_cl_option("--output=","placeholder"))
+
+     ALLOCATE(orb_arr(size(storb_arr_in)))
+     CALL readConfigurationFile(conf_file, &
+                                t0=epoch, &
+                                dyn_model_init=dyn_model_init, &
+                                dyn_model=dyn_model, &
+                                integration_step=integration_step, &
+                                integrator=integrator, &
+                                perturbers=perturbers, &
+                                integrator_init=integrator_init, &
+                                integration_step_init=integration_step_init, &
+                                accwin_multiplier=accwin_multiplier, &
+                                smplx_niter=smplx_niter, &
+                                smplx_tol=smplx_tol, &
+                                smplx_force=smplx_force)
+     obss_sep => getSeparatedSets(obss_in)
+     obs = getObservation(obss_sep(2), 1)
+     dt = getObservationalTimespan(obss_sep(2))
+
+     IF (error) THEN
+        CALL errorMessage("oorb / massestanalysis / mass_estimation", &
+                          "TRACE BACK (10)", 1)
+        STOP
+     END IF
+
+     CALL NULLIFY (obss_in)
+     DO i = 1, SIZE(storb_arr_in)
+        DO j = 1, SIZE(obss_sep)
+           IF (getID(storb_arr_in(i)) == getID(obss_sep(j))) THEN
+              CALL includeObservations(storb_arr_in(i), obss_sep(j))
+              EXIT
+           END IF
+        END DO
+        IF (j > SIZE(obss_sep)) THEN
+           WRITE (stderr, *) "Could not find astrometry for "// &
+              TRIM(getID(storb_arr_in(i)))//"... Quitting."
+           STOP
+        END IF
+     END DO
+     CALL NULLIFY(obss_in)
+     DO i = 1, SIZE(obss_sep)
+        CALL NULLIFY(obss_sep(i))
+     END DO
+     DEALLOCATE(obss_sep, stat=err)
+     DO i = 1, SIZE(storb_arr_in)
+        t = getTime(getNominalOrbit(storb_arr_in(i)))
+        CALL setParameters(storb_arr_in(i), &
+                           dyn_model=dyn_model, &
+                           perturbers=perturbers, &
+                           asteroid_perturbers=asteroid_perturbers, &
+                           integrator=integrator, &
+                           integration_step=integration_step, &
+                           outlier_rejection=outlier_rejection_prm, &
+                           outlier_multiplier=outlier_multiplier_prm, &
+                           t_inv=t, &
+                           element_type=element_type_comp_prm, &
+                           accept_multiplier=accwin_multiplier, &
+                           smplx_niter=smplx_niter, &
+                           smplx_tol=smplx_tol, &
+                           smplx_force=smplx_force)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                             "TRACE BACK (75)", 1)
+           STOP
+        END IF
+     END DO
+     WRITE(stdout, *) "Starting mass estimation..."
+     CALL massEstimation_march(storb_arr_in, orb_arr, HG_arr_in, dyn_model, integrator, &
+                               integration_step, perturbers, asteroid_perturbers, mass, out_fname)
+     WRITE(stdout, *) "Mass estimation is done."
+     WRITE(stdout, *) "Best mass is ", mass
+     DO i = 1, SIZE(storb_arr_in)
+        CALL NULLIFY(storb_arr_in(i))
+     END DO
+     DEALLOCATE(storb_arr_in)
+
+  ! Computes residuals for each element from a MCMC mass estimation chain.
+  CASE ("mass_residuals")
+
+     out_fname = TRIM(get_cl_option("--output=","placeholder"))
+     CALL NEW(out_file, TRIM(out_fname))
+     CALL OPEN(out_file)
+
+     ALLOCATE (orb_arr(size(orb_arr_in)))
+     CALL NULLIFY (t)
+     CALL readConfigurationFile(conf_file, &
+                                 t0=epoch, &
+                                 dyn_model_init=dyn_model_init, &
+                                 dyn_model=dyn_model, &
+                                 integration_step=integration_step, &
+                                 integrator=integrator, &
+                                 perturbers=perturbers, &
+                                 asteroid_perturbers=asteroid_perturbers, &
+                                 integrator_init=integrator_init, &
+                                 integration_step_init=integration_step_init, &
+                                 accwin_multiplier=accwin_multiplier, &
+                                 smplx_niter=smplx_niter, &
+                                 smplx_tol=smplx_tol, &
+                                 smplx_force=smplx_force)
+     CALL NULLIFY (t)
+     IF (.NOT. exist(epoch)) THEN
+         CALL NULLIFY (t)
+     ELSE
+         CALL NULLIFY (t)
+         t = copy(epoch)
+     END IF
+     ! Including observations for each object in storb.
+     obss_sep => getSeparatedSets(obss_in)
+     obs = getObservation(obss_sep(2), 1)
+     dt = getObservationalTimespan(obss_sep(2))
+
+     IF (error) THEN
+         CALL errorMessage("oorb / massestanalysis / mass_residuals", &
+                           "TRACE BACK (10)", 1)
+         STOP
+     END IF
+     CALL NULLIFY (obss_in)
+     DO i = 1, SIZE(storb_arr_in)
+         DO j = 1, SIZE(obss_sep)
+           IF (getID(storb_arr_in(i)) == getID(obss_sep(j))) THEN
+               CALL includeObservations(storb_arr_in(i), obss_sep(j))
+               EXIT
+           END IF
+         END DO
+         IF (j > SIZE(obss_sep)) THEN
+           WRITE (stderr, *) "Could not find astrometry for "// &
+               TRIM(getID(storb_arr_in(i)))//"... Quitting."
+           STOP
+         END IF
+     END DO
+     CALL NULLIFY (obss_in)
+     DO i = 1, SIZE(obss_sep)
+         CALL NULLIFY (obss_sep(i))
+     END DO
+     DEALLOCATE (obss_sep, stat=err)
+
+     DO j=1, SIZE(mcmc_orb_arr,dim=2)
+         DO i=1, SIZE(storb_arr_in)
+           IF (ASSOCIATED(mcmc_orb_arr)) THEN
+               orb_arr(i) = mcmc_orb_arr(i,j)
+           ELSE
+               orb_arr(i) = orb_arr_in(i)
+           END IF
+           CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
+                 perturbers=perturbers, integrator=integrator, &
+                 integration_step=integration_step)
+         END DO
+
+         DO i = 1, SIZE(storb_arr_in)
+           t = getTime(orb_arr(i))
+           CALL propagate(orb_arr(i),t)
+           CALL setParameters(storb_arr_in(i), &
+                               dyn_model=dyn_model, &
+                               perturbers=perturbers, &
+                               asteroid_perturbers=asteroid_perturbers, &
+                               integrator=integrator, &
+                               integration_step=integration_step, &
+                               outlier_rejection=outlier_rejection_prm, &
+                               outlier_multiplier=outlier_multiplier_prm, &
+                               t_inv=t, &
+                               element_type=element_type_comp_prm, &
+                               accept_multiplier=accwin_multiplier, &
+                               smplx_niter=smplx_niter, &
+                               smplx_tol=smplx_tol, &
+                             smplx_force=smplx_force)
+           IF (error) THEN
+               CALL errorMessage("oorb / mass_residuals", &
+                                 "TRACE BACK (75)", 1)
+               STOP
+           END IF
+         END DO
+
+         WRITE(getUnit(out_file), *) "# ", j
+         CALL writeResiduals_SO(storb_arr_in,orb_arr,getUnit(out_file))
+     END DO
+
+     DO i = 1, SIZE(storb_arr_in)
+         CALL NULLIFY(storb_arr_in(i))
+     END DO
+     DEALLOCATE(storb_arr_in)
 
   CASE ("confidence_limits")
 
