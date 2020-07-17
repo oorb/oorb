@@ -19960,6 +19960,7 @@ CONTAINS
 
           END IF
        END DO
+       DEALLOCATE(residuals%vectors(i)%elements)
        DEALLOCATE(obs_masks)
     END DO
     DEALLOCATE(residuals%vectors)

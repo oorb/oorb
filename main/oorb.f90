@@ -9746,11 +9746,7 @@ PROGRAM oorb
 
      DO j=1, SIZE(mcmc_orb_arr,dim=2)
          DO i=1, SIZE(storb_arr_in)
-           IF (ASSOCIATED(mcmc_orb_arr)) THEN
-               orb_arr(i) = mcmc_orb_arr(i,j)
-           ELSE
-               orb_arr(i) = orb_arr_in(i)
-           END IF
+           orb_arr(i) = mcmc_orb_arr(i,j)
            CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
                  perturbers=perturbers, integrator=integrator, &
                  integration_step=integration_step)
