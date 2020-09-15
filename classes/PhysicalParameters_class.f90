@@ -2152,7 +2152,8 @@ CONTAINS
     END DO
 
     ! ----------------------------- MCMC IS DONE -----------------------
-    !final_solutions = accepted_solutions
+    ! We have to print out the number of accepted proposals for the last one separately.
+    WRITE(getUnit(mcmc_out_file), "(1(I5))", advance="yes") 1
     ! Post-fit computation of statistics for masses
     IF (last) THEN
        ALLOCATE(indx_arr(norb))
