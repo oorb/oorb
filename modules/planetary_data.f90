@@ -56,6 +56,7 @@ MODULE planetary_data
   USE parameters
   USE linal
   USE sort
+  USE utilities
   IMPLICIT NONE
   PRIVATE
   CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = 'de430.dat'
@@ -181,9 +182,6 @@ MODULE planetary_data
      MODULE PROCEDURE BC_masses_r8
   END INTERFACE BC_masses
 CONTAINS
-
-
-
 
 
   !! *Description*:
@@ -1566,7 +1564,9 @@ CONTAINS
           done = .TRUE.
        END IF
     END DO
-    CALL getenv("OORB_DATA", OORB_DATA_DIR)
+
+    OORB_DATA_DIR = resolveDirectory("share/oorb", "OORB_DATA")
+
     IF (LEN_TRIM(OORB_DATA_DIR) == 0) THEN
        OORB_DATA_DIR = "."
     END IF
