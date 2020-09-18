@@ -512,8 +512,8 @@ PROGRAM oorb
      STOP
   END IF
 
-  ! Set path to Gnuplot scripts using environment variable:
-  CALL getenv("OORB_GNUPLOT_SCRIPTS_DIR", gnuplot_scripts_dir)
+  ! Set path to Gnuplot scripts using the environment variable if it exists:
+  gnuplot_scripts_dir = resolveDirectory("share/oorb/gnuplot", "OORB_GNUPLOT_SCRIPTS_DIR")
 
   ! Read observation file if given:
   obs_fname = get_cl_option("--obs-in="," ")
