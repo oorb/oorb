@@ -346,7 +346,7 @@ PROGRAM oorb
        vomcmc_norb_iter, vomcmc_ntrial_iter, vomcmc_nmap, &
        year, year0, year1, &
        loc, nfile, &
-       itrial, nperturber, ntrial
+       itrial, nperturber, ntrial, resolution
   LOGICAL, DIMENSION(:,:), POINTER :: &
        obs_masks => NULL()
   LOGICAL, DIMENSION(:), POINTER :: &
@@ -9607,7 +9607,8 @@ PROGRAM oorb
   ! "marching" mass estimation algorithm
 
   CASE ("mass_estimation_march")
-     out_fname = TRIM(get_cl_option("--output=","placeholder"))
+     out_fname  = TRIM(get_cl_option("--output=","march_output"))
+     resolution = get_cl_option("--resolution=",0)
 
      ALLOCATE(orb_arr(size(storb_arr_in)))
      CALL readConfigurationFile(conf_file, &
@@ -9676,7 +9677,7 @@ PROGRAM oorb
      END DO
      WRITE(stdout, *) "Starting mass estimation..."
      CALL massEstimation_march(storb_arr_in, orb_arr, HG_arr_in, dyn_model, integrator, &
-                               integration_step, perturbers, asteroid_perturbers, mass, out_fname)
+                               integration_step, perturbers, asteroid_perturbers, mass, out_fname,resolution)
      WRITE(stdout, *) "Mass estimation is done."
      WRITE(stdout, *) "Best mass is ", mass
      DO i = 1, SIZE(storb_arr_in)
