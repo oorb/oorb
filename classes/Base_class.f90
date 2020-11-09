@@ -114,7 +114,6 @@ MODULE Base_cl
   INTEGER, PARAMETER :: DESIGNATION_LEN = 16
   INTEGER, PARAMETER :: OBSY_CODE_LEN = 4
   CHARACTER(len=FNAME_LEN) :: OORB_DATA_DIR
-  INCLUDE "../prefix.h"
 
   CHARACTER(len=FNAME_LEN), PARAMETER :: EPH_FNAME = "de430.dat"
   ! OBS CODES
@@ -620,22 +619,6 @@ CONTAINS
     rotationMatrix(i3,i3) = COS(alpha)
 
   END FUNCTION rotationMatrix
-
-
-  FUNCTION resolveDirectory(subdir, envvar) RESULT(s2)
-    CHARACTER(*), INTENT(IN) :: subdir, envvar
-    CHARACTER(FNAME_LEN) :: s2
-
-    ! If overriden by an environmental variable, prefer that
-    CALL getenv(envvar, s2)
-    IF (LEN_TRIM(s2) /= 0) THEN
-       RETURN
-    END IF
-
-    ! Otherwise, return <PREFIX>/<subdir>
-    s2 = TRIM(PREFIX) // "/" // subdir
-
-  END FUNCTION resolveDirectory
 
 
   SUBROUTINE setAccessToDataFiles()
