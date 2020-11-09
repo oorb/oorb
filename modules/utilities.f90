@@ -33,7 +33,7 @@ MODULE utilities
   USE parameters
 
   IMPLICIT NONE
-
+  INCLUDE "../prefix.h"
   PRIVATE :: integerToArray_ri8
   PRIVATE :: arrayToInteger_r8i8
   PRIVATE :: arrayToReal_r8r16
@@ -1666,6 +1666,21 @@ CONTAINS
 
   END SUBROUTINE toString_r8
 
+  !! Moved from Base_class.f90.
+  FUNCTION resolveDirectory(subdir, envvar) RESULT(s2)
+    CHARACTER(*), INTENT(IN) :: subdir, envvar
+    CHARACTER(FNAME_LEN) :: s2
+
+    ! If overriden by an environmental variable, prefer that
+    CALL getenv(envvar, s2)
+    IF (LEN_TRIM(s2) /= 0) THEN
+       RETURN
+    END IF
+
+    ! Otherwise, return <PREFIX>/<subdir>
+    s2 = TRIM(PREFIX) // "/" // subdir
+
+  END FUNCTION resolveDirectory
 
 
 
