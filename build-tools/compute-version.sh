@@ -38,7 +38,7 @@ DEFAULT_VERSION=v1.0.2
 
 compute_version() {
 	# See if we have any tags defined
-	GD=$(git describe --always --long --dirty --match 'v[0-9]*' 2>/dev/null)
+	GD=$(git describe --always --long --dirty --match 'v[0-9]*' --tags 2>/dev/null)
 	if [[ ! -z $GD ]]; then
 		IFS=- read TAG COUNT HASH DIRTY <<< "$GD"
 
