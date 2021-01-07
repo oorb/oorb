@@ -1879,8 +1879,8 @@ CONTAINS
                 ! extract information on how many and which observations should
                 ! be used in the analysis
                 obs_masks => getObservationMasks(storb_arr(j))
-                nobs_arr(j) = COUNT(obs_masks) ! We meed to update the total
-                noutlier = noutlier + SIZE(obs_masks,dim=1) - nobs_arr(j)
+                nobs_arr(j) = COUNT(obs_masks(:,2)) ! We meed to update the total
+                noutlier = noutlier + SIZE(obs_masks(:,2)) - nobs_arr(j)
                 DEALLOCATE(obs_masks)          ! amount of used observations after outlier rejection.
                 ALLOCATE(mean_resids(getNrOfObservations(obs_arr(j)),6))
                 CALL getMeanResids(storb_arr(j),mean_resids)
