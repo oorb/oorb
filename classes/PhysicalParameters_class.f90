@@ -1671,9 +1671,6 @@ CONTAINS
     CALL NEW(meanres_file, TRIM(out_fname)//trim('.mean.res'))
     CALL OPEN(meanres_file)
 
-    CALL NEW(cov_file, TRIM(out_fname)//trim('.cov'))
-    CALL OPEN(cov_file)
-
     CALL NEW(res_file, TRIM(out_fname)//trim('.res'))
     CALL OPEN(res_file)
 
@@ -1882,8 +1879,8 @@ CONTAINS
                 ! extract information on how many and which observations should
                 ! be used in the analysis
                 obs_masks => getObservationMasks(storb_arr(j))
-                nobs_arr(j) = COUNT(obs_masks) ! We meed to update the total
-                noutlier = noutlier + SIZE(obs_masks,dim=1) - nobs_arr(j)
+                nobs_arr(j) = COUNT(obs_masks(:,2)) ! We meed to update the total
+                noutlier = noutlier + SIZE(obs_masks(:,2)) - nobs_arr(j)
                 DEALLOCATE(obs_masks)          ! amount of used observations after outlier rejection.
                 ALLOCATE(mean_resids(getNrOfObservations(obs_arr(j)),6))
                 CALL getMeanResids(storb_arr(j),mean_resids)
@@ -1940,12 +1937,14 @@ CONTAINS
        IF (accept) THEN
           ! Print out the current proposal matrix every 500 accepted proposals.
           IF (MODULO(iorb,500) == 0) THEN 
-             REWIND(getUnit(cov_file))
+             CALL NEW(cov_file, TRIM(out_fname)//trim('.cov'))
+             CALL OPEN(cov_file)
              WRITE(getUnit(cov_file), *) "# iorb at", iorb, "and itrial at:", itrial, &
                   " and a total of", noutlier, "outliers. Prop. matrix follows:"
              DO i=1,6*nstorb+nperturber
                 WRITE(getUnit(cov_file),*) cov_matrix(i,:)
              END DO
+             CALL NULLIFY(cov_file)
              ok_cov_matrix = cov_matrix
           END IF
           IF ((.NOT. first) .and. (iorb > 1)) THEN ! This is how many repetitions there were. can't be printed until the next
@@ -2223,6 +2222,9 @@ CONTAINS
 
     END IF
 
+    CALL NULLIFY(mcmc_out_file)
+    CALL NULLIFY(meanres_file)
+    CALL NULLIFY(res_file)
     DEALLOCATE(additional_perturbers, additional_perturbers_, &
          indx_arr, A_arr, elements_arr, &
          elements0_arr, chi2_arr, rchi2_arr, stat=err)

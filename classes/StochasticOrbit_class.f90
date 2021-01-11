@@ -20086,6 +20086,7 @@ CONTAINS
        cov_matrix_full => getCovarianceMatrices(this(i)%obss)
        DO j=1, nobs_arr(i)/2
           cov_matrix(:,:) = cov_matrix_full(j,2:3,2:3)
+          temp_obs(:,1) = this(i)%mean_residuals(j,2:3)
           mahalanobis = mahalanobis_distance(cov_matrix,temp_obs,errstr)
           IF (mahalanobis > this(1)%outlier_multiplier_prm) THEN
              CALL setObservationMask(this(i), j, false_masks)
