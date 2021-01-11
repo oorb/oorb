@@ -6612,8 +6612,8 @@ CONTAINS
     REAL(bp), DIMENSION(6,6):: information_matrix_elem, &
          jacobian_matrix
     REAL(bp), DIMENSION(6) :: elements, rans, state, state_, &
-         proposal_density
-    REAL(bp), DIMENSION(3) :: pos, rms
+         proposal_density, rms
+    REAL(bp), DIMENSION(3) :: pos
     REAL(bp) :: chi2, ran, t1, t2, obs_coord, jac_sph_inv, &
          jac_sph_inv_, chi2_, chi2min, avalue, a, q, e, dchi2, chi2min_prm
     INTEGER, DIMENSION(:,:), POINTER :: obs_pair_arr => NULL()

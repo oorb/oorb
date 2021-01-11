@@ -1610,7 +1610,7 @@ CONTAINS
     IF (PRESENT(frmt)) THEN
        WRITE(str,TRIM(frmt),iostat=err) r
     ELSE
-       WRITE(str,'(F0.8)',iostat=err) r
+       WRITE(str,*,iostat=err) r
     END IF
     IF (err /= 0) THEN
        error = .TRUE.
@@ -1656,7 +1656,7 @@ CONTAINS
     IF (PRESENT(frmt)) THEN
        WRITE(str,TRIM(frmt),iostat=err) r
     ELSE
-       WRITE(str,'(F0.16)',iostat=err) r
+       WRITE(str,*,iostat=err) r
     END IF
     IF (err /= 0) THEN
        error = .TRUE.
