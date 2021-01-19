@@ -94,7 +94,10 @@ jobs:
     - name: Compile oorb with gfortran
       run: |
         pip3 install -U pytest numpy
-        brew cask install gfortran
+        # Note: Homebrew now installs gfortran as part of the gcc
+        # package which is installed on the Github runners by default.
+        # For some reason, gfortran still doesn't work without reinstalling gcc.
+        brew reinstall gcc
         ./configure gfortran opt --with-pyoorb --with-python=python3
         make -j3
     - name: Build ephemerides
