@@ -1816,6 +1816,8 @@ CONTAINS
           first = .FALSE.
        ELSE
           chi2_compared = .FALSE.
+          a_r = 1.0_bp
+
           IF (expo - last_accepted_expo > 1000) THEN
              a_r = 1.0_bp
           ELSE IF  (expo - last_accepted_expo < -1000) THEN
@@ -1823,12 +1825,12 @@ CONTAINS
           ELSE
              a_r = EXP(expo - last_accepted_expo)
           END IF
-          IF (iorb > -1) THEN ! Experimental acceptance probability. Overrides the above
-             a_r = 1.0_bp
-             DO j=1, nstorb
-                a_r = a_r * EXP(-0.5_bp*(chi2_arr(j) - last_accepted_chi2_arr(j)))
-             END DO
-          END IF
+
+          ! Alternative acceptance probability. See Siltala & Granvik (2021a)
+          !DO j=1, nstorb
+          !   a_r = a_r * EXP(-0.5_bp*(chi2_arr(j) - last_accepted_chi2_arr(j)))
+          !END DO
+
           WRITE(stderr, *) "a_r:", a_r
 
 
