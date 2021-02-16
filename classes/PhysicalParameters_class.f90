@@ -1831,12 +1831,14 @@ CONTAINS
           !   a_r = a_r * EXP(-0.5_bp*(chi2_arr(j) - last_accepted_chi2_arr(j)))
           !END DO
 
+          ! This catches NaN values (can occur with very bad proposals)
+          ! Values of infinity may also occur but they are handled by the next
+          ! if clause.
+          IF (a_r /= a_r) THEN 
+             a_r = 0.0_bp
+          END IF
           WRITE(stderr, *) "a_r:", a_r
 
-
-          IF (info_verb >= 3) THEN
-             WRITE(stderr, *) "a_r:", a_r
-          END IF
           IF (a_r > 1.0_bp) THEN
              WRITE(stderr, *) "BETTER!"
              a_r = 1.0_bp
