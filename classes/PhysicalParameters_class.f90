@@ -1868,7 +1868,7 @@ CONTAINS
           END IF
           ! Outlier detection happens here. We also need to get
           ! updated chi2 values after.
-          IF (MOD(iorb,500) == 0) THEN
+          IF (((iorb /= 0) .AND. (MOD(iorb,500) == 0 )) .OR. iorb == 15) THEN
              CALL outlierDetection(storb_arr)
              IF (ASSOCIATED(resids%vectors(1)%elements)) THEN
                 DEALLOCATE(resids%vectors)
