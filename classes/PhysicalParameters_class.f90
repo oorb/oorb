@@ -1592,7 +1592,7 @@ CONTAINS
          ran, &
          tmp, tt, &
          last_accepted_chi2
-    REAL(kind=16) :: pdv, a_r, expo, last_accepted_expo
+    REAL(hp) :: pdv, a_r, expo, last_accepted_expo
     TYPE (Time) :: t
     INTEGER, DIMENSION(:), ALLOCATABLE :: &
          indx_arr, &
@@ -1795,7 +1795,7 @@ CONTAINS
        rchi2_arr = chi2_arr / (nobs_arr - nstorb*6 - nperturber)
        !       pdv = EXP(-0.5_bp*SUM(chi2_arr)/(SUM(nobs_arr)-nstorb*6-nperturber-1))
        !       expo = -0.5_bp*(SUM(chi2_arr)-SUM(nobs_arr)-nstorb*6-nperturber)
-       expo = -0.5_bp*SUM(chi2_arr)
+       expo = -0.5_hp*SUM(chi2_arr)
        !expo = -0.5_bp*(SUM(chi2_arr)/(2*SUM(nobs_arr)-nstorb*6-nperturber))
        pdv = EXP(expo)
 
@@ -1816,12 +1816,12 @@ CONTAINS
           first = .FALSE.
        ELSE
           chi2_compared = .FALSE.
-          a_r = 1.0_bp
+          a_r = 1.0_hp
 
           IF (expo - last_accepted_expo > 1000) THEN
-             a_r = 1.0_bp
+             a_r = 1.0_hp
           ELSE IF  (expo - last_accepted_expo < -1000) THEN
-             a_r = 0.0_bp
+             a_r = 0.0_hp
           ELSE
              a_r = EXP(expo - last_accepted_expo)
           END IF
@@ -1835,13 +1835,13 @@ CONTAINS
           ! Values of infinity may also occur but they are handled by the next
           ! if clause.
           IF (a_r /= a_r) THEN 
-             a_r = 0.0_bp
+             a_r = 0.0_hp
           END IF
           WRITE(stderr, *) "a_r:", a_r
 
-          IF (a_r > 1.0_bp) THEN
+          IF (a_r > 1.0_hp) THEN
              WRITE(stderr, *) "BETTER!"
-             a_r = 1.0_bp
+             a_r = 1.0_hp
              accept = .TRUE.
           ELSE
              CALL randomNumber(ran)
