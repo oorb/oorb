@@ -9489,11 +9489,11 @@ PROGRAM oorb
      IF (ASSOCIATED(mcmc_orb_arr)) THEN 
         another_temp_arr(8) = -1.0_bp
         ! Let's store the old accepted solutions here. We'll need them at least for adaptation.
-        DO i=1, size(mcmc_orb_arr,dim=2)
-          DO j=1, size(mcmc_orb_arr,dim=1)
+        DO i=1, size(mcmc_orb_arr,dim=1)
+          DO j=1, size(mcmc_orb_arr,dim=2)
             CALL getParameters(mcmc_orb_arr(i,j),mass=another_temp_arr(7))
             another_temp_arr(1:6) = getElements(mcmc_orb_arr(i,j), "cartesian", frame)
-            accepted_solutions(8*(j-1)+1*8:j,j) = another_temp_arr
+            accepted_solutions(8*(i-1)+1:8*i,j) = another_temp_arr
           END DO 
         END DO
      END IF 
