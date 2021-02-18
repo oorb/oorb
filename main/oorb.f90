@@ -9551,7 +9551,6 @@ PROGRAM oorb
      ALLOCATE (orb_arr(SIZE(storb_arr_in)))
      DO i = 1, SIZE(storb_arr_in)
        IF (ASSOCIATED(mcmc_orb_arr)) THEN
-          adaptation = "ram"
           orb_arr(i) = mcmc_orb_arr(i,size(mcmc_orb_arr,dim=2))
           mass = 1.0_bp
           CALL getParameters(orb_arr(i),mass=proposal_density_masses(i))
