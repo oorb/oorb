@@ -381,7 +381,8 @@ PROGRAM oorb
        dchi2_rejection, &
        write_residuals, &
        asteroid_perturbers, &
-       delayed_rejection
+       delayed_rejection, &
+       mass_lock
   ! Defaults:
   error = .FALSE.
   task = " "
@@ -9477,6 +9478,8 @@ PROGRAM oorb
      ! This is used to enable Mira's delayed rejection algorithm. May not currently work as expected
      delayed_rejection = get_cl_option("--delayed-rejection", .false.)
      nperturber = get_cl_option("--nperturber=", 1)
+     mass_lock = get_cl_option("--lock", .false.)
+
      ALLOCATE (proposal_density_masses(SIZE(storb_arr_in)))
      proposal_density_masses = -1.0_bp
      norb = get_cl_option("--norb=", 50000) 
@@ -9585,7 +9588,7 @@ PROGRAM oorb
      CALL massEstimation_MCMC(storb_arr_in, orb_arr, proposal_density_masses, norb, iorb_init=iorb, itrial_init=itrial, &
                      estimated_masses=estimated_masses, accepted_solutions=accepted_solutions, nominal_arr=nominal_arr, &
                      adaptation=adaptation, delayed_rejection=delayed_rejection,out_fname=out_fname, &
-                     input_cov_matrix=mcmc_cov_matrix)
+                     input_cov_matrix=mcmc_cov_matrix, mass_lock=mass_lock)
      WRITE (stderr, *) "Mass estimation is done."
 
      DO i = 1, nperturber
