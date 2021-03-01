@@ -168,7 +168,8 @@ PROGRAM oorb
        str, &
        suffix, &
        task, &
-       adaptation
+       adaptation, &
+       initial_masses
   CHARACTER(len=64) :: &
        sor_2point_method, &                                         !! Method used for 2-point boundary-value problem. 
        sor_2point_method_sw                                         !! Method used for 2-point boundary-value problem in stepwise Ranging.
@@ -9479,17 +9480,19 @@ PROGRAM oorb
      delayed_rejection = get_cl_option("--delayed-rejection", .false.)
      nperturber = get_cl_option("--nperturber=", 1)
      mass_lock = get_cl_option("--lock", .false.)
-
-     ALLOCATE (proposal_density_masses(SIZE(storb_arr_in)))
-     proposal_density_masses = -1.0_bp
-     norb = get_cl_option("--norb=", 50000) 
+     norb = get_cl_option("--norb=", 50000)
      ntrial = get_cl_option("--ntrial=", 100*norb)
      adaptation = TRIM(get_cl_option("--adaptation=", "none"))
      out_fname = TRIM(get_cl_option("--output=","placeholder"))
+     initial_masses = TRIM(get_cl_option("--initial-masses=","none"))
+
+     ALLOCATE (proposal_density_masses(SIZE(storb_arr_in)))
      ALLOCATE (elements_arr(2, 6))
      ALLOCATE (accepted_solutions(SIZE(storb_arr_in)*8 + 3, norb))
      ALLOCATE (nominal_arr(SIZE(storb_arr_in)))
-     IF (ASSOCIATED(mcmc_orb_arr)) THEN 
+     proposal_density_masses = -1.0_bp
+
+     IF (ASSOCIATED(mcmc_orb_arr)) THEN
         another_temp_arr(8) = -1.0_bp
         ! Let's store the old accepted solutions here. We'll need them at least for adaptation.
         DO i=1, size(mcmc_orb_arr,dim=1)
@@ -9497,9 +9500,10 @@ PROGRAM oorb
             CALL getParameters(mcmc_orb_arr(i,j),mass=another_temp_arr(7))
             another_temp_arr(1:6) = getElements(mcmc_orb_arr(i,j), "cartesian", frame)
             accepted_solutions(8*(i-1)+1:8*i,j) = another_temp_arr
-          END DO 
+          END DO
         END DO
-     END IF 
+     END IF
+
      DO i = 1, SIZE(storb_arr_in)
         CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
                            perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
@@ -9511,6 +9515,7 @@ PROGRAM oorb
            STOP
         END IF
      END DO
+
      obss_sep => getSeparatedSets(obss_in)
      obs = getObservation(obss_sep(2), 1)
      dt = getObservationalTimespan(obss_sep(2))
@@ -9580,10 +9585,16 @@ PROGRAM oorb
              END IF
            ELSE
               proposal_density_masses(i) = mass_arr_in(i)
-           END IF 
+           END IF
            WRITE (stdout, "(A,I0,A,1X,E12.6)") "# Mass of perturber #", i, ":", proposal_density_masses(i)
         END DO
      END IF
+
+     ! Overrides the initial masses if the argument is given.
+     IF (initial_masses /= "none") THEN 
+       READ(initial_masses, *) proposal_density_masses(1:nperturber)
+     END IF
+
      WRITE (stderr, *) "Starting mass estimation..."
      CALL massEstimation_MCMC(storb_arr_in, orb_arr, proposal_density_masses, norb, iorb_init=iorb, itrial_init=itrial, &
                      estimated_masses=estimated_masses, accepted_solutions=accepted_solutions, nominal_arr=nominal_arr, &
