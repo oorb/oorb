@@ -98,6 +98,7 @@ MODULE Observations_cl
   PRIVATE :: setNumber_Obss_char
   PRIVATE :: setNumber_Obss_int
   PRIVATE :: sortObservations
+  PRIVATE :: GaiaRelativityCorrection
 
   TYPE Observations
      PRIVATE
@@ -4814,6 +4815,8 @@ CONTAINS
                   "TRACE BACK (122)", 1)
              RETURN
           END IF
+          ! Correct relativistic light deflection
+          CALL GaiaRelativityCorrection(position, coordinates, mjd_tt)
           CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
@@ -4952,6 +4955,11 @@ CONTAINS
           END IF
           newtransit = .FALSE.
 
+          ! Correct relativistic light deflection
+          CALL NEW(t, mjd_tcb + epoch_utc, "UTC")
+          mjd_tt = getMJD(t, "TT")
+          CALL GaiaRelativityCorrection(position, coordinates, mjd_tt)
+          CALL NULLIFY(T)
 
           IF (ABS(last_epoch - epoch_utc) < 0.01 .AND. (.NOT. completed)) THEN ! This means no new transit. 
              transitCounter = transitCounter + 1
@@ -6760,7 +6768,67 @@ CONTAINS
   
   
   END SUBROUTINE collapseGaiaVel
-!
 
+ !! *Description*:
+ !!
+ !! Subtract the incorrectly applied relativistic correction from Gaia DR2.
+ !! Based on code generously shared by F. Mignard. Only use this for DR2 data!
+ !!
+ SUBROUTINE GaiaRelativityCorrection(obj_coordinates,gaia_coordinates,epoch)
 
+   IMPLICIT NONE
+
+   REAL(bp), DIMENSION(3), INTENT(inout) :: obj_coordinates
+   REAL(bp), DIMENSION(6), INTENT(in)    :: gaia_coordinates
+   REAL(bp), INTENT(inout) :: epoch
+
+   REAL(bp), DIMENSION(3) :: cartesian_coordinates, obs_sun, u_os
+   REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
+   REAL(bp) :: d_sun, us, sin_theta, cos_theta, sin_phi
+   LOGICAL :: error
+   ! Parameters given from Mignard's code.
+   ! Best use the exact same values for these just in case as that is what DR2 used.
+   REAL(bp) :: xau, gms_c2
+   ! First, we convert the observations to Cartesian unit vectors.
+   error = .FALSE.
+   xau = 149598870.700_bp
+   gms_c2 = 1.32712440018e-11_bp/(299792.458_bp**2)
+
+   cartesian_coordinates    = 0.0_bp
+   cartesian_coordinates(1) = 1_bp * COS(obj_coordinates(2)*rad_deg) * COS(obj_coordinates(3)*rad_deg)
+   cartesian_coordinates(2) = 1_bp * SIN(obj_coordinates(2)*rad_deg) * COS(obj_coordinates(3)*rad_deg)
+   cartesian_coordinates(3) = 1_bp * SIN(obj_coordinates(3)*rad_deg)
+
+   ! Unit vector: observer to the Sun
+   planeph => JPL_ephemeris(epoch, 11, 12, error)
+   obs_sun = planeph(1,1:3) - gaia_coordinates(1:3)
+
+   d_sun = SQRT(DOT_PRODUCT(obs_sun, obs_sun))
+   u_os  = obs_sun / d_sun
+   us    = DOT_PRODUCT(cartesian_coordinates, u_os)
+
+   ! Applies the actual correction. Mignard's code has a subtraction so
+   ! to reverse it we sum the term instead.
+
+   cartesian_coordinates = cartesian_coordinates + 2.0_bp*(gms_c2/(d_sun*xau)) * &
+                           (u_os - us*cartesian_coordinates)/(1.0_bp - us)
+
+   ! Finally, we need to transform the cartesian coordinates back to RA & Dec.
+   ! Code copied from some other oorb routine.
+   obj_coordinates(1) = 1.0_bp
+   sin_theta = cartesian_coordinates(2) / &
+   SQRT(DOT_PRODUCT(cartesian_coordinates(1:2),cartesian_coordinates(1:2)))
+   cos_theta = cartesian_coordinates(1) / &
+   SQRT(DOT_PRODUCT(cartesian_coordinates(1:2),cartesian_coordinates(1:2)))
+   IF (ABS(cos_theta) > 1.0_bp) cos_theta = SIGN(1.0_bp, cos_theta)
+   obj_coordinates(2) = ACOS(cos_theta)
+   IF (sin_theta < 0.0_bp) obj_coordinates(2) = two_pi - obj_coordinates(2)
+   sin_phi = cartesian_coordinates(3)/obj_coordinates(1)
+   IF (ABS(sin_phi) > 1.0_bp) sin_phi = SIGN(1.0_bp, sin_phi)
+   obj_coordinates(3) = ASIN(sin_phi)
+   obj_coordinates(2:3) = obj_coordinates(2:3) / rad_deg
+
+   DEALLOCATE(planeph)
+
+ END SUBROUTINE GaiaRelativityCorrection
 END MODULE Observations_cl
