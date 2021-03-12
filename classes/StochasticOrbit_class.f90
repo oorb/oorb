@@ -361,7 +361,8 @@ MODULE StochasticOrbit_cl
 
   INTERFACE outlierDetection
      MODULE PROCEDURE outlierDetection_SO_arr
-  END INTERFACE outlierDetection
+     MODULE PROCEDURE outlierDetection_SO_arr_res
+ END INTERFACE outlierDetection
 
   INTERFACE writeResiduals_SO
      MODULE PROCEDURE writeResiduals_SO_arr_sparse
@@ -20055,49 +20056,170 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this
-    LOGICAL, DIMENSION(:,:), POINTER :: obs_masks
-    REAL(bp), DIMENSION(:,:), POINTER :: stdev
     REAL(bp), DIMENSION(:, :, :), POINTER :: cov_matrix_full
-    REAL(bp),DIMENSION(2,2) :: cov_matrix, inverse
-    REAL(bp), DIMENSION(2,1) :: temp_obs
-    INTEGER :: i, j, k, tot, lol
+    REAL(bp),DIMENSION(2,2) :: cov_matrix
+    REAL(bp), DIMENSION(2,1) :: this_res
+    INTEGER :: i, j
     INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: mean
     LOGICAL, DIMENSION(6) :: false_masks, true_masks
     REAL(bp) :: mahalanobis
 
     CHARACTER     :: err, errstr
     false_masks = .FALSE.
-    true_masks = .TRUE.
-    ALLOCATE(mean(SIZE(this),2))
+    true_masks =  (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
     ALLOCATE(nobs_arr(SIZE(this)))
-    tot = 0
     DO i=1,SIZE(this)
-       obs_masks => getObservationMasks(this(i))
-       nobs_arr(i) = SIZE(obs_masks,dim=1)*2
-       mean(i,1) = SUM(this(i)%mean_residuals(:,2))/SIZE(this(i)%mean_residuals(:,2))
-       mean(i,2) = SUM(this(i)%mean_residuals(:,3))/SIZE(this(i)%mean_residuals(:,3))
+       nobs_arr(i) = getNrOfObservations(this(i)%obss)
 
-       DO k=1, nobs_arr(i)/2
-          CALL setObservationMask(this(i), k, true_masks)
-       END DO
-
-       stdev => getStandardDeviations(this(i)%obss)
        cov_matrix_full => getCovarianceMatrices(this(i)%obss)
-       DO j=1, nobs_arr(i)/2
+       DO j=1, nobs_arr(i)
+          CALL setObservationMask(this(i), j, true_masks)
           cov_matrix(:,:) = cov_matrix_full(j,2:3,2:3)
-          temp_obs(:,1) = this(i)%mean_residuals(j,2:3)
-          mahalanobis = mahalanobis_distance(cov_matrix,temp_obs,errstr)
+          this_res(:,1) = this(i)%mean_residuals(j,2:3)
+          mahalanobis = mahalanobis_distance(cov_matrix,this_res,errstr)
           IF (mahalanobis > this(1)%outlier_multiplier_prm) THEN
              CALL setObservationMask(this(i), j, false_masks)
-             tot = tot + 1
           END IF
        END DO
-       DEALLOCATE(obs_masks)
-       DEALLOCATE(stdev)
     END DO
-    DEALLOCATE(nobs_arr,mean)
+    DEALLOCATE(nobs_arr)
     DEALLOCATE(cov_matrix_full)
   END SUBROUTINE outlierDetection_SO_arr
+
+  ! Detects and masks outliers for storb objects
+  ! based on input residuals.
+  SUBROUTINE outlierDetection_SO_arr_res(this, residuals)
+
+    IMPLICIT NONE
+
+    TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this
+    TYPE(SparseArray) :: residuals
+    REAL(bp), DIMENSION(:, :, :), POINTER :: cov_matrix_full
+    REAL(bp),DIMENSION(2,2) :: cov_matrix
+    REAL(bp), DIMENSION(2,1) :: this_res
+    INTEGER :: i, j
+    INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
+    LOGICAL, DIMENSION(6) :: false_masks, true_masks
+    REAL(bp) :: mahalanobis
+
+    CHARACTER     :: err, errstr
+    false_masks = .FALSE.
+    true_masks =  (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+    ALLOCATE(nobs_arr(SIZE(this)))
+    DO i=1,SIZE(this)
+       nobs_arr(i) = getNrOfObservations(this(i)%obss)
+
+       cov_matrix_full => getCovarianceMatrices(this(i)%obss)
+       DO j=1, nobs_arr(i)
+          CALL setObservationMask(this(i), j, true_masks)
+          cov_matrix(:,:) = cov_matrix_full(j,2:3,2:3)
+          this_res(:,1) = residuals%vectors(i)%elements(j,2:3)
+          mahalanobis = mahalanobis_distance(cov_matrix,this_res,errstr)
+          IF (mahalanobis > this(1)%outlier_multiplier_prm) THEN
+             CALL setObservationMask(this(i), j, false_masks)
+          END IF
+       END DO
+    END DO
+    DEALLOCATE(nobs_arr)
+    DEALLOCATE(cov_matrix_full)
+  END SUBROUTINE outlierDetection_SO_arr_res
+  !! *Description*:
+
+  !! Sets the mask of all Gaia observations in to false.
+  !! Used in e.g. mass_estimation_mcmc.
+  SUBROUTINE maskGaiaObservations_SO(this)
+
+    IMPLICIT NONE
+    TYPE(StochasticOrbit), INTENT(inout)                   :: this
+    CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: obscodes
+
+    LOGICAL, DIMENSION(6) :: masks
+    INTEGER :: i, nobs
+
+    masks = .FALSE.
+    nobs = getNrOfObservations(this%obss)
+    obscodes => getObservatoryCodes(this%obss)
+
+    DO i=1, nobs
+      IF (obscodes(i) == "247") THEN
+        CALL setObservationMask_one(this, i, masks)
+      END IF
+    END DO
+
+    DEALLOCATE(obscodes)
+  END SUBROUTINE maskGaiaObservations_SO
+
+
+  !! *Description*:
+
+  !! Sets the mask of percentage% Gaia observations to true.
+  !! Used in e.g. mass_estimation_mcmc.
+  SUBROUTINE unmaskGaiaObservations_SO(this, percentage)
+
+    IMPLICIT NONE
+    TYPE(StochasticOrbit), INTENT(inout)                   :: this
+    CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER    :: obscodes
+    REAL(bp), INTENT(in)                                   :: percentage
+
+    LOGICAL, DIMENSION(6) :: masks
+    INTEGER :: i, nobs, ngaiaobs, nunmask, randint, j
+    INTEGER , DIMENSION(:), ALLOCATABLE :: to_mask
+    REAL(bp) :: rand
+
+    masks =  (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+    nobs = getNrOfObservations(this%obss)
+    obscodes => getObservatoryCodes(this%obss)
+    ngaiaobs = 0
+
+    IF ((percentage < 0) .OR. (percentage > 1)) THEN
+       CALL errorMessage("StochasticOrbit / unmaskGaiaObservations", &
+                         "Invalid percentage given.", 1)
+       RETURN
+    END IF
+
+    ! First, determine how many Gaia observaitons there are, exactly.
+    ! And add existing unasked obs to the unmasking array.
+    j = 1
+ !   DO i=1, nobs
+ !     IF (obscodes(i) == "247") THEN
+ !       ngaiaobs = ngaiaobs + 1
+ !     END IF
+ !   END DO
+    ngaiaobs = COUNT(obscodes == "247")
+    nunmask = FLOOR(ngaiaobs*percentage) ! how many random obs to unmask
+    ALLOCATE(to_mask(nunmask))
+    to_mask = -1
+    ! Add existing unasked obs to the unmasking array.
+    j = 1
+    DO i=1, nobs
+      IF (obscodes(i) == "247") THEN
+        ngaiaobs = ngaiaobs + 1
+        IF (this%obs_masks_prm(i,2) .EQV. .TRUE. ) THEN
+          to_mask(j) = i
+          j = j + 1
+        END IF
+      END IF
+    END DO
+
+    ! Generate random obss indices and check if it's okay.
+    ! Hardly elegant, but very little time will be spent here.
+    DO i=j, nunmask
+       DO WHILE (.TRUE.)
+          CALL randomNumber(rand)
+          randint = CEILING(rand*nobs)
+          IF (ANY(to_mask == randint) .OR. (obscodes(randint) /= "247")) THEN
+             CYCLE ! already in the list or not a gaia observation
+          ELSE
+             to_mask(j) = randint
+             CALL setObservationMask_one(this,randint,masks)
+             EXIT
+          END IF
+      END DO
+    END DO
+
+    DEALLOCATE(obscodes,to_mask)
+
+  END SUBROUTINE unmaskGaiaObservations_SO
 
 END MODULE StochasticOrbit_cl
