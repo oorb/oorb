@@ -168,7 +168,7 @@ PROGRAM oorb
        str, &
        suffix, &
        task, &
-       adaptation, &
+       massest_mcmc_adaptation, &
        initial_masses
   CHARACTER(len=64) :: &
        sor_2point_method, &                                         !! Method used for 2-point boundary-value problem. 
@@ -347,7 +347,7 @@ PROGRAM oorb
        vomcmc_norb_iter, vomcmc_ntrial_iter, vomcmc_nmap, &
        year, year0, year1, &
        loc, nfile, &
-       itrial, nperturber, ntrial, resolution
+       itrial, nperturber, ntrial, resolution, massest_mcmc_norb
   LOGICAL, DIMENSION(:,:), POINTER :: &
        obs_masks => NULL()
   LOGICAL, DIMENSION(:), POINTER :: &
@@ -383,7 +383,7 @@ PROGRAM oorb
        write_residuals, &
        asteroid_perturbers, &
        delayed_rejection, &
-       mass_lock
+       massest_mcmc_lock
   ! Defaults:
   error = .FALSE.
   task = " "
@@ -418,6 +418,9 @@ PROGRAM oorb
   mjd_epoch = .TRUE.
   smplx_force = .FALSE.
   write_residuals = .FALSE.
+  massest_mcmc_lock = .FALSE.
+  massest_mcmc_norb = 50000
+  massest_mcmc_adaptation = "gaswam"
 
   IF (get_cl_option("--version",.FALSE.)) THEN
      WRITE(stdout,"(A)") ""
@@ -487,7 +490,10 @@ PROGRAM oorb
        pp_H_estimation=pp_H_estimation, &
        pp_G=pp_G, &
        pp_G_unc=pp_G_unc, &
-       asteroid_perturbers=asteroid_perturbers  )
+       asteroid_perturbers=asteroid_perturbers, &
+       massest_mcmc_adaptation=massest_mcmc_adaptation, &
+       massest_mcmc_norb=massest_mcmc_norb, &
+       massest_mcmc_lock=massest_mcmc_lock)
   IF (error) THEN
      CALL errorMessage("oorb", &
           "TRACE BACK (15)", 1)
@@ -9479,16 +9485,16 @@ PROGRAM oorb
      ! This is used to enable Mira's delayed rejection algorithm. May not currently work as expected
      delayed_rejection = get_cl_option("--delayed-rejection", .false.)
      nperturber = get_cl_option("--nperturber=", 1)
-     mass_lock = get_cl_option("--lock", .false.)
-     norb = get_cl_option("--norb=", 50000)
+     massest_mcmc_lock = get_cl_option("--lock", massest_mcmc_lock)
+     massest_mcmc_norb = get_cl_option("--norb=", massest_mcmc_norb)
      ntrial = get_cl_option("--ntrial=", 100*norb)
-     adaptation = TRIM(get_cl_option("--adaptation=", "none"))
+     massest_mcmc_adaptation = TRIM(get_cl_option("--adaptation=", massest_mcmc_adaptation))
      out_fname = TRIM(get_cl_option("--output=","placeholder"))
      initial_masses = TRIM(get_cl_option("--initial-masses=","none"))
 
      ALLOCATE (proposal_density_masses(SIZE(storb_arr_in)))
      ALLOCATE (elements_arr(2, 6))
-     ALLOCATE (accepted_solutions(SIZE(storb_arr_in)*8 + 3, norb))
+     ALLOCATE (accepted_solutions(SIZE(storb_arr_in)*8 + 3, massest_mcmc_norb))
      ALLOCATE (nominal_arr(SIZE(storb_arr_in)))
      proposal_density_masses = -1.0_bp
 
@@ -9596,10 +9602,11 @@ PROGRAM oorb
      END IF
 
      WRITE (stderr, *) "Starting mass estimation..."
-     CALL massEstimation_MCMC(storb_arr_in, orb_arr, proposal_density_masses, norb, iorb_init=iorb, itrial_init=itrial, &
-                     estimated_masses=estimated_masses, accepted_solutions=accepted_solutions, nominal_arr=nominal_arr, &
-                     adaptation=adaptation, delayed_rejection=delayed_rejection,out_fname=out_fname, &
-                     input_cov_matrix=mcmc_cov_matrix, mass_lock=mass_lock)
+     CALL massEstimation_MCMC(storb_arr_in, orb_arr, proposal_density_masses, massest_mcmc_norb, &
+                     iorb_init=iorb, itrial_init=itrial, estimated_masses=estimated_masses, &
+                     accepted_solutions=accepted_solutions, nominal_arr=nominal_arr, &
+                     adaptation=massest_mcmc_adaptation, delayed_rejection=delayed_rejection,out_fname=out_fname, &
+                     input_cov_matrix=mcmc_cov_matrix, mass_lock=massest_mcmc_lock)
      WRITE (stderr, *) "Mass estimation is done."
 
      DO i = 1, nperturber
