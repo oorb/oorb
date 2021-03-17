@@ -571,7 +571,8 @@ CONTAINS
        eph_lt_correction, eph_dt_since_last_obs, eph_obsy_code, &
        eph_date, &
        masked_obs, write_residuals, &
-       sor_rhofname)
+       sor_rhofname, &
+       massest_mcmc_lock, massest_mcmc_adaptation, massest_mcmc_norb)
 
     IMPLICIT NONE
     TYPE (File), INTENT(in) :: &
@@ -594,7 +595,8 @@ CONTAINS
          sor_2point_method_sw, &
          observation_format_out, &
          orbit_format_out, &
-         planetary_ephemeris_fname
+         planetary_ephemeris_fname, &
+         massest_mcmc_adaptation
     REAL(bp), DIMENSION(6,2), INTENT(inout), OPTIONAL :: &
          vov_scaling, &
          vomcmc_scaling
@@ -662,7 +664,8 @@ CONTAINS
          smplx_niter, &
          os_norb, &
          os_ntrial, &
-         os_sampling_type
+         os_sampling_type, &
+         massest_mcmc_norb
     LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: &
          eph_lt_correction, &
          perturbers
@@ -688,6 +691,7 @@ CONTAINS
          smplx_force, &
          generat_gaussian_deviates, &
          write_residuals, &
+         massest_mcmc_lock, &
          pp_H_estimation
 
     CHARACTER(len=256) :: line, par_id, par_val
@@ -1637,6 +1641,31 @@ CONTAINS
              CALL toInt(TRIM(par_val), os_sampling_type, error)
           END IF
 
+          ! MCMC MASS ESTIMATION PARAMETERS:
+       CASE ("massest.mcmc.adaptation")
+          IF (PRESENT(massest_mcmc_adaptation)) THEN
+             massest_mcmc_adaptation = TRIM(par_val)
+          END IF
+       CASE ("massest.mcmc.norb")
+          IF (PRESENT(massest_mcmc_norb)) THEN
+             CALL toInt(TRIM(par_val), massest_mcmc_norb, error)
+          END IF
+       CASE ("massest.mcmc.lock")
+          IF (PRESENT(massest_mcmc_lock)) THEN
+             IF (.NOT.error) THEN
+                SELECT CASE (ADJUSTL(par_val))
+                CASE ("t", "T")
+                   massest_mcmc_lock = .TRUE.
+                CASE ("f", "F")
+                   massest_mcmc_lock = .FALSE.
+                CASE default
+                   error = .TRUE.
+                   CALL errorMessage("io / readConfigurationFile", &
+                        "Cannot understand logical value: " // &
+                        TRIM(ADJUSTL(par_val)) // ".", 1)
+                END SELECT
+             END IF
+          END IF
 
           ! PHYSICAL PARAMETERS:
        CASE ("pp.H_estimation")
