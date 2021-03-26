@@ -365,7 +365,87 @@ CONTAINS
 
   END SUBROUTINE oorb_propagation
 
-  
+  SUBROUTINE oorb_observer(in_ndate, &
+       in_date_ephems,               &
+       in_obscode,                   &
+       out_obs,                      &
+       error_code)
+
+    ! in_ndate: number of input epochs
+    INTEGER, INTENT(in)                                 :: in_ndate
+    ! in_date_ephems: epochs for ephemeris:
+    ! (1) modified Julian date
+    ! (2) timescale type ('UTC': 1, 'UT1': 2, 'TT': 3, 'TAI': 4)
+    REAL(8), DIMENSION(in_ndate,2), INTENT(in)          :: in_date_ephems ! (1:ndate,1:2)
+    ! in_obscode: observatory code as defined by the Minor Planet Center
+    CHARACTER(len=*), INTENT(in)                        :: in_obscode
+    ! out_obs: output oberver location, 33 columns per target and epoch:
+    ! (1) modified julian date
+    ! (2 heliocentric ecliptic cartesian coordinates for the observatory (au)
+    ! (3) heliocentric ecliptic cartesian coordinates for the observatory (au)
+    ! (4) heliocentric ecliptic cartesian coordinates for the observatory (au)
+    REAL(8), DIMENSION(in_ndate,4), INTENT(out) :: out_obs ! (1:ndate,1:4)
+    ! error_code: output error code
+    INTEGER, INTENT(out)                                :: error_code
+
+    ! Internal variables.
+    TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: observers
+    TYPE (Time) :: t
+    INTEGER :: i
+    REAL(8) :: mjd
+    REAL(8), DIMENSION(6) :: h_ecl_car_coord_obsy
+
+    ! Init
+    errstr = ""
+    error_code = 0
+
+    ALLOCATE(observers(SIZE(in_date_ephems,dim=1)))
+    DO i=1,SIZE(in_date_ephems,dim=1)
+       CALL NEW(t, in_date_ephems(i,1), timescales(NINT(in_date_ephems(i,2))))
+       IF (error) THEN
+          ! Error in creating a new Time object.
+          error_code = 35
+          RETURN
+       END IF
+       ! Compute heliocentric observatory coordinates
+       observers(i) = getObservatoryCCoord(obsies, in_obscode, t)
+       IF (error) THEN
+          ! Error in getObservatoryCCoord()
+          error_code = 36
+          RETURN
+       END IF
+       CALL rotateToEquatorial(observers(i))
+
+       ! Parameters relevant for Earth-based observers
+       ! ephem date
+       t = getTime(observers(i))
+       mjd = getMJD(t, timescales(NINT(in_date_ephems(i,2))))
+
+       ! Extract heliocentric ecliptic cartesian coordinates for the observer
+       CALL rotateToEcliptic(observers(i))
+       h_ecl_car_coord_obsy = getCoordinates(observers(i))
+       IF (error) THEN
+          CALL errorMessage('oorb / ephemeris', &
+               'TRACE BACK (95)',1)
+          STOP
+       END IF
+
+       ! Write the output ephem array.
+       out_obs(i,1) = mjd                                       ! modified julian date
+       out_obs(i,2) = h_ecl_car_coord_obsy(1)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
+       out_obs(i,3) = h_ecl_car_coord_obsy(2)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
+       out_obs(i,4) = h_ecl_car_coord_obsy(3)                   ! heliocentric ecliptic cartesian coordinates for the observatory (au)
+
+       CALL NULLIFY(t)
+    END DO
+    DO i=1,SIZE(observers)
+      CALL NULLIFY(observers(i))
+    END DO
+    DEALLOCATE(observers)
+
+  END SUBROUTINE oorb_observer
+
+
   SUBROUTINE oorb_ephemeris_full(in_norb, &
        in_orbits,                    &
        in_obscode,                   &
