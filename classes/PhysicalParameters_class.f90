@@ -1711,7 +1711,7 @@ CONTAINS
        WRITE(stderr, * ) "----------------------------"
        covariance2(i,:,:) = getCovarianceMatrix(storb_arr(i), "cartesian", "equatorial")
        ! Merge covariance matrices into one
-       cov_matrix(1+(i-1)*6:6+(i-1)*6,1+(i-1)*6:6+(i-1)*6) = covariance(:,:)
+       cov_matrix(1+(i-1)*6:6+(i-1)*6,1+(i-1)*6:6+(i-1)*6) = covariance(:,:) * lambda_arr(1,1)
 
        ! populate perturber array for integrations
        IF (i <= nperturber) THEN
@@ -1728,7 +1728,7 @@ CONTAINS
     ! Add masses into cov matrix
     IF (.NOT. ASSOCIATED(input_cov_matrix)) THEN
       DO i=1, nperturber
-         cov_matrix(6*nstorb+i, 6*nstorb+i) = proposal_density_masses(i)*1e-12_bp
+         cov_matrix(6*nstorb+i, 6*nstorb+i) = proposal_density_masses(i)*1e-19_bp
       END DO
     END IF
 
