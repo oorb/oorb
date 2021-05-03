@@ -9695,6 +9695,31 @@ PROGRAM oorb
            STOP
         END IF
      END DO
+
+     t = getTime(obs)
+     mjd = getMJD(t, "TT")
+     mjd = REAL(NINT(mjd + dt/2.0_bp), bp)
+     CALL NULLIFY (t)
+     CALL NEW(t, mjd, "TT")
+     ! We have to have all perturbers at the same epoch so lets do that.
+     ! No need to do this if we use MCMC orbits because they're guaranteed to already be in the same epoch. 
+     DO i = 1, SIZE(storb_arr_in)
+        CALL propagate(storb_arr_in(i), t)
+     END DO
+
+     ! Initial orbits! Use MCMC orbits if given, --orb-in otherwise.
+     DO i = 1, SIZE(storb_arr_in)
+       IF (ASSOCIATED(mcmc_orb_arr)) THEN
+          orb_arr(i) = mcmc_orb_arr(i,size(mcmc_orb_arr,dim=2))
+       ELSE
+          orb_arr(i) = getNominalOrbit(storb_arr_in(i))
+       END IF
+        CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
+                           perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
+                           integrator=integrator, integration_step=integration_step)
+     END DO
+
+
      WRITE(stdout, *) "Starting mass estimation..."
      CALL massEstimation_march(storb_arr_in, orb_arr, HG_arr_in, dyn_model, integrator, &
                                integration_step, perturbers, asteroid_perturbers, mass, out_fname,resolution)

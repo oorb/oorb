@@ -2335,12 +2335,6 @@ CONTAINS
 
     ALLOCATE(nobs_arr(size(orb_arr)))
 
-    DO i=1, size(orb_arr)
-       orb_arr(i) = getNominalOrbit(storb_arr(i))
-       CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
-            perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, integrator=integrator, &
-            integration_step=integration_step)
-    END DO
     IF (resolution == 0) THEN
       resolution = 300 ! Default value if resolution is not given.
     END IF
@@ -2373,7 +2367,7 @@ CONTAINS
        CALL setParameters(orb_arr(1), mass=marching_masses(i))
        chi2_arr(i,:) = getChi2(storb_arr, orb_arr, resids)
        chi2_sum_arr(i) = SUM(chi2_arr(i,:))
-       WRITE(getUnit(march_out_file), *) marching_masses(i), chi2_arr(i,:), i, k
+       WRITE(getUnit(march_out_file), *) marching_masses(i), chi2_arr(i,:), chi2_sum_arr(i), i
     END DO
     mass = marching_masses(MINLOC(chi2_sum_arr,dim=1))
     WRITE(getUnit(march_out_file), *) "# Best mass: ", mass
