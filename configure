@@ -201,6 +201,12 @@ elif [[ $1 == gfortran ]] ; then
     echo 'FC_SHARED = $(FC_SHARED_GFORTRAN)' >> $include_file
     echo 'F2PY_FCOMPILER = $(F2PY_FCOMPILER_GFORTRAN)' >> $include_file
 
+elif [[ $1 == conda ]] ; then
+    echo "FC = ${FC}" > $include_file
+    echo "FCOPTIONS = $FFLAGS $LDFLAGS -cpp ""$ADDOPTS" >> $include_file
+    echo 'FC_INC = $(FC_INC_GFORTRAN)' >> $include_file
+    echo 'FC_SHARED = $(FC_SHARED_GFORTRAN)' >> $include_file
+    echo 'F2PY_FCOMPILER = $(F2PY_FCOMPILER_GFORTRAN)' >> $include_file
 else
 
     echo Erroneous compiler: $1
