@@ -194,6 +194,7 @@ PROGRAM orbit_linking
   INTEGER, DIMENSION(6) :: box_nrs
   INTEGER, DIMENSION(3) :: i4arr
   INTEGER :: &
+       getpid, system, &
        filter_start, &
        filter_stop, &
        ifilter, &
