@@ -283,6 +283,7 @@ PROGRAM ephemeris_linking
        j_min, &
        k_min
   INTEGER :: &
+       getpid, system, &
        task, &
        err, &
        i, &
