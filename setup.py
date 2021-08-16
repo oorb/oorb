@@ -1,6 +1,5 @@
 import os
 import subprocess
-import pathlib
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
@@ -11,6 +10,7 @@ extension = Extension(
     include_dirs=["../build"]
 )
 
+
 class PyoorbBuild(build_ext):
     def run(self):
         for ext in self.extensions:
@@ -18,7 +18,7 @@ class PyoorbBuild(build_ext):
 
     def build_extension(self, ext):
         try:
-            os.chdir("../")
+            self.spawn(["make", "-j4"])            
             self.spawn(["make", "pyoorb", "-j4"])
         finally:
             os.chdir("./python")
@@ -29,14 +29,23 @@ class PyoorbBuild(build_ext):
         self.move_file(src, dst)
 
 
-with open("../VERSION", "r") as f:
-    version = f.read().strip()
+def deduce_version():
+    # This is a gnarly hack, but it ensures consistency.
+    stdout = subprocess.PIPE
+    cmd_output = subprocess.run(
+        ["./build-tools/compute-version.sh",  "-u"],
+        stdout=stdout,
+    )
+    cmd_output.check_returncode()
+    return cmd_output.stdout.decode("utf8").strip()
 
 
 setup(
     name="pyoorb",
-    version=version,
+    version=deduce_version(),
     ext_modules=[extension],
+    install_requires=["numpy"],
+    license="GPL3",
     cmdclass={
         "build_ext": PyoorbBuild,
     }
