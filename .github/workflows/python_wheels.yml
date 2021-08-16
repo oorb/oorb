@@ -1,0 +1,41 @@
+name: Build Python Wheels
+
+# TODO: Shrink this down to pushes to master, perhaps. During development, this
+# needs to run more often to work out bugs.
+on:
+  - push
+  
+jobs:
+  build_wheels:
+    name: ${{ matrix.pyversion }}/${{ matrix.os }}/${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        pyversion: [cp38, cp39, cp310, cp311]
+        os: [macos-latest, ubuntu-latest]
+        arch: [x86_64, aarch64]
+        exclude:
+          # MacOS arm64 builds don't quite work because 'delocate' doesn't
+          # know how to work under emulation with gfortran.
+          - os: macos-latest
+            arch: aarch64
+        
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.11.4
+        env:
+          CIBW_BUILD: "${{ matrix.pyversion }}*"
+          CIBW_ARCHS: ${{ matrix.arch }}
+        with:
+           output-dir: wheelhouse
+           
+      - uses: actions/upload-artifact@v3
+        with:
+          path: ./wheelhouse/*.whl

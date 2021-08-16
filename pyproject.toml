@@ -1,0 +1,31 @@
+name = "pyoorb"
+license = "GPL-3.0-only"
+
+[build-system]
+requires = ["setuptools", "wheel", "numpy"]
+
+[tool.cibuildwheel]
+before-build = """
+pip install numpy &&
+./configure gfortran opt --with-pyoorb --with-f2py=f2py --with-python=python
+"""
+
+[tool.cibuildwheel.linux]
+before-all = """
+yum update -y &&
+yum install gcc-gfortran lapack-devel -y
+"""
+
+[[tool.cibuildwheel.overrides]]
+select = "*-musllinux*"
+before-all = "apk update && apk add gfortran lapack lapack-dev libgfortran"
+
+[[tool.cibuildwheel.overrides]]
+select = "*-manylinux_2_24*"
+before-all = "apt update -y && apt install gfortran liblapack-dev -y"
+
+[tool.cibuildwheel.macos]
+before-all = """
+brew install gfortran lapack --force
+brew reinstall gcc
+"""

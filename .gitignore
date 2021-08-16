@@ -35,3 +35,4 @@ python/pyoorb.sp_dir
 *.gcov
 *.gcda
 *.gcno
+wheelhouse/
