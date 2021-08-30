@@ -2061,15 +2061,15 @@ CONTAINS
 
           ! ------------------ ASWAM/AM COVARIANCE MATRIX UPDATE ------
 
-          IF ((adaptation == "aswam" .OR. adaptation == "am" .OR. adaptation == "gaswam") .AND. accept) THEN
+          IF (adaptation == "aswam" .OR. adaptation == "am" .OR. adaptation == "gaswam") THEN
              DO i=1, nstorb ! Orbital elements mean
-                mean_arr(1+(i-1)*6:6+(i-1)*6) = ((iorb-1.0_bp)/iorb)*mean_arr(1+(i-1)*6:6+(i-1)*6) &
-                     + 1.0_bp/iorb*accepted_solutions(8*(i-1)+1:8*(i-1)+6,iorb)
+                mean_arr(1+(i-1)*6:6+(i-1)*6) = ((itrial-1.0_bp)/itrial)*mean_arr(1+(i-1)*6:6+(i-1)*6) &
+                     + 1.0_bp/itrial*accepted_solutions(8*(i-1)+1:8*(i-1)+6,iorb)
              END DO
 
              DO i=1, nperturber !Mean masses
-                mean_arr(6*nstorb+i) = ((iorb-1.0_bp)/iorb)*mean_arr(6*nstorb+i) &
-                     + 1.0_bp/iorb*accepted_solutions(8*(i-1)+7,iorb)
+                mean_arr(6*nstorb+i) = ((itrial-1.0_bp)/itrial)*mean_arr(6*nstorb+i) &
+                     + 1.0_bp/itrial*accepted_solutions(8*(i-1)+7,iorb)
              END DO
 
              IF ((iorb - iorb_init) > 19 .AND. iorb .NE. norb/2) THEN
