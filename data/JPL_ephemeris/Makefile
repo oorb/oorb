@@ -29,7 +29,7 @@
 include ../../make.config
 include ../../Makefile.include
 
-# TYPE OF EPHEMERIS [405|406|430|431]
+# TYPE OF EPHEMERIS [405|406|430|431|441]
 EPH_TYPE ?= 430
 # FTP client
 #FTP_CLIENT = wget -nv -c -O
@@ -78,6 +78,14 @@ EPH_ASCII_DE431 = header.431_229 ascm13000.431 ascm12000.431 ascm11000.431 ascm1
                                  ascp07000.431 ascp08000.431 ascp09000.431 ascp10000.431 \
                                  ascp11000.431 ascp12000.431 ascp13000.431 ascp14000.431 \
                                  ascp15000.431 ascp16000.431
+EPH_ASCII_DE441 = header.441 ascm13000.441 ascm12000.441 ascm11000.441 ascm10000.441 \
+                            ascm09000.441 ascm08000.441 ascm07000.441 ascm06000.441 \
+                            ascm05000.441 ascm04000.441 ascm03000.441 ascm02000.441 \
+                            ascm01000.441 ascp00000.441 ascp01000.441 ascp02000.441 \
+                            ascp03000.441 ascp04000.441 ascp05000.441 ascp06000.441 \
+                            ascp07000.441 ascp08000.441 ascp09000.441 ascp10000.441 \
+                            ascp11000.441 ascp12000.441 ascp13000.441 ascp14000.441 \
+                            ascp15000.441 ascp16000.441
 # Input file for ascii-to-binary converter:
 EPH_INPUT  = ascii.$(EPH_TYPE)
 # Project name:
