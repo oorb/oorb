@@ -16,6 +16,7 @@ data/JPL_ephemeris/header.*
 data/JPL_ephemeris/*.405
 data/JPL_ephemeris/*.430
 data/JPL_ephemeris/*.431
+data/JPL_ephemeris/*.440
 data/JPL_ephemeris/*.441
 data/JPL_ephemeris/de*.dat
 data/JPL_ephemeris/ephtester

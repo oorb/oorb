@@ -78,6 +78,11 @@ EPH_ASCII_DE431 = header.431_229 ascm13000.431 ascm12000.431 ascm11000.431 ascm1
                                  ascp07000.431 ascp08000.431 ascp09000.431 ascp10000.431 \
                                  ascp11000.431 ascp12000.431 ascp13000.431 ascp14000.431 \
                                  ascp15000.431 ascp16000.431
+# ASCII version of de440 ephemeris files:
+EPH_ASCII_DE440 = header.440 ascp01550.440 ascp01650.440 ascp01750.440 ascp01850.440 \
+                             ascp01950.440 ascp02050.440 ascp02150.440 ascp02250.440 \
+                             ascp02350.440 ascp02450.440 ascp02550.440
+# ASCII versions of de441 ephemeris files:
 EPH_ASCII_DE441 = header.441 ascm13000.441 ascm12000.441 ascm11000.441 ascm10000.441 \
                             ascm09000.441 ascm08000.441 ascm07000.441 ascm06000.441 \
                             ascm05000.441 ascm04000.441 ascm03000.441 ascm02000.441 \
