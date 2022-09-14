@@ -11,7 +11,7 @@ Current State
 In its current state, the wrapper provides functionality for
 transformations between orbital element definitions, the computation
 of ephemerides, and orbit propagation - ranging and other orbit
-fitting capabilities will be added in the near future.
+fitting capabilities will be added in the future.
 
 Some documentation and installation guides can be found below - more
 documentation will be added in the near future. Please refer to the
@@ -103,13 +103,13 @@ coordinates):
 2. `perihelion distance` (au) for ``COM``, semimajor axis `a` (au) for
    ``KEP``, `x` (au) for ``CART``
 3. `eccentricity` for ``COM`` or ``KEP``, `y` (au) for ``CART``
-4. `inclination` (deg) for ``COM`` or ``KEP``, `z` (au) for ``CART``
-5. `longitude of the ascending node` (deg) for ``COM`` and ``KEP``,
+4. `inclination` (radians) for ``COM`` or ``KEP``, `z` (au) for ``CART``
+5. `longitude of the ascending node` (radians) for ``COM`` and ``KEP``,
    `dx/dt` (au/day) for ``CART``
-6. `argument of the periapsis` (deg) for ``COM`` and ``KEP``, `dy/dt`
-   (au/day) for ``CARqT``
+6. `argument of the periapsis` (radians) for ``COM`` and ``KEP``, `dy/dt`
+   (au/day) for ``CART``
 7. `epoch of perihelion` (modified Julian date) for ``COM``, mean
-   anomaly (deg) for ``KEP``, `dz/dt` for ``CART``
+   anomaly (radians) for ``KEP``, `dz/dt` for ``CART``
 8. `orbital element type`; integer value: ``CART``: 1, ``COM``: 2,
    ``KEP``: 3
 9. `epoch` of the osculating elements (modified Julian date)
@@ -120,9 +120,10 @@ coordinates):
 
 In order to provide compatibility with the underlying FORTRAN library,
 only use double values (``dtype=np.double``) and set the corresponding
-order for the array (``order='F'``). Angles have to be provided in
-radians, not in degrees; epochs have to be provided as modified Julian
-dates.
+order for the array (``order='F'``). Note that contrary to the formats 
+for input and output used in the Fortran version of OpenOrb, here the 
+orbital angles have to be provided in radians, not in degrees. Epochs 
+have to be provided as modified Julian dates.
 
 The following example defines a single orbit:
 

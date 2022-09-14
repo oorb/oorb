@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2018,2019                                           !
+! Copyright 2002-2021,2022                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2019-10-29
+!! @version 2022-09-07
 !!  
 MODULE StochasticOrbit_cl
 
@@ -246,7 +246,7 @@ MODULE StochasticOrbit_cl
      INTEGER                             :: os_ntrial_prm = 5000
      INTEGER                             :: os_sampling_type_prm = 1
 
-    ! Variables for MCMC mass estimation
+     ! Variables for MCMC mass estimation
      REAL(bp), DIMENSION(:,:), POINTER   :: mean_residuals    => NULL()
   END TYPE StochasticOrbit
 
@@ -362,7 +362,7 @@ MODULE StochasticOrbit_cl
   INTERFACE outlierDetection
      MODULE PROCEDURE outlierDetection_SO_arr
      MODULE PROCEDURE outlierDetection_SO_arr_res
- END INTERFACE outlierDetection
+  END INTERFACE outlierDetection
 
   INTERFACE writeResiduals_SO
      MODULE PROCEDURE writeResiduals_SO_arr_sparse
@@ -1676,7 +1676,7 @@ CONTAINS
           WRITE(stdout,"(2X,A,1X,A,1X,I0)") &
                "StochasticOrbit / covarianceSampling:", &
                "Number of outliers based on nominal orbit:", j
-       END IF       
+       END IF
     END IF
 
     ! Reference chi2 from the input orbit which is assumed to be the
@@ -2389,7 +2389,7 @@ CONTAINS
             "Could not allocate memory (10).", 1)
        RETURN
     END IF
-    this%pdf_arr_cmp = pdf_arr
+    this%pdf_arr_cmp = pdf_arr(1:iorb)
     IF (ASSOCIATED(this%jac_arr_cmp)) THEN
        DEALLOCATE(this%jac_arr_cmp, stat=err)
        IF (err /= 0) THEN
@@ -2420,7 +2420,7 @@ CONTAINS
             "Could not allocate memory (10).", 1)
        RETURN
     END IF
-    this%jac_arr_cmp = jacobian_arr
+    this%jac_arr_cmp = jacobian_arr(1:iorb,:)
     IF (ASSOCIATED(this%rchi2_arr_cmp)) THEN
        DEALLOCATE(this%rchi2_arr_cmp, stat=err)
        IF (err /= 0) THEN
@@ -2451,12 +2451,12 @@ CONTAINS
             "Could not allocate memory (10).", 1)
        RETURN
     END IF
-    this%rchi2_arr_cmp = rchi2_arr
+    this%rchi2_arr_cmp = rchi2_arr(1:iorb)
     DO i=1,SIZE(orb_arr)
        CALL NULLIFY(orb_arr(i))
     END DO
-    this%reg_apr_arr_cmp = reg_apriori_arr
-    this%res_arr_cmp = residuals3
+    this%reg_apr_arr_cmp = reg_apriori_arr(1:iorb)
+    this%res_arr_cmp = residuals3(1:iorb,:,:)
 
     CALL NULLIFY(orb_nominal)
 
@@ -2815,13 +2815,13 @@ CONTAINS
 
   ! Integrates several objects simultaneously while taking asteroid-asteroid
   ! perturbations into account.
-  FUNCTION getChi2_this_orb_arr(this_arr, orb_arr,residuals, obs_masks) result(chi2_arr)
+  FUNCTION getChi2_this_orb_arr(this_arr, orb_arr,residuals, obs_masks) RESULT(chi2_arr)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout), DIMENSION(:) :: this_arr
     TYPE (Orbit), INTENT(in), DIMENSION(:) :: orb_arr
     LOGICAL, DIMENSION(:,:), INTENT(in), OPTIONAL :: obs_masks
-    REAL(bp) :: chi2_arr(size(this_arr))
+    REAL(bp) :: chi2_arr(SIZE(this_arr))
     REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrix => NULL()
     TYPE (SparseArray), INTENT(inout):: residuals
     INTEGER :: err, i,j, old_simint
@@ -3824,7 +3824,7 @@ CONTAINS
     IF (TRIM(this%id_prm) == "") THEN
        error = .TRUE.
        CALL errorMessage("StochasticOrbit / getID", &
-         "Object does not contain an ID.", 1)
+            "Object does not contain an ID.", 1)
        RETURN
     END IF
 
@@ -5451,7 +5451,7 @@ CONTAINS
 
   END FUNCTION getResiduals_SO_orb
 
-  FUNCTION getResiduals_SO_orb_arr(this_arr, orb_arr) result(residuals)
+  FUNCTION getResiduals_SO_orb_arr(this_arr, orb_arr) RESULT(residuals)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(in), DIMENSION(:)       :: this_arr
@@ -19912,9 +19912,9 @@ CONTAINS
           END IF
           IF (j == nobs_arr(i)/2) THEN
              IF (i == SIZE(this)) THEN
-               WRITE(output, *) "END" ! Means we're done printing residuals
+                WRITE(output, *) "END" ! Means we're done printing residuals
              ELSE
-               WRITE(output, *) "* * * *" !Signifies us moving to another object
+                WRITE(output, *) "* * * *" !Signifies us moving to another object
              END IF
           END IF
        END DO
@@ -19999,9 +19999,9 @@ CONTAINS
           END IF
           IF (j == nobs_arr(i)/2) THEN
              IF (i == SIZE(this)) THEN
-               WRITE(output, *) "END" ! Means we're done printing residuals
+                WRITE(output, *) "END" ! Means we're done printing residuals
              ELSE
-               WRITE(output, *) "* * * *" !Signifies us moving to another object
+                WRITE(output, *) "* * * *" !Signifies us moving to another object
              END IF
           END IF
        END DO
@@ -20141,9 +20141,9 @@ CONTAINS
     obscodes => getObservatoryCodes(this%obss)
 
     DO i=1, nobs
-      IF (obscodes(i) == "247") THEN
-        CALL setObservationMask_one(this, i, masks)
-      END IF
+       IF (obscodes(i) == "247") THEN
+          CALL setObservationMask_one(this, i, masks)
+       END IF
     END DO
 
     DEALLOCATE(obscodes)
@@ -20174,18 +20174,18 @@ CONTAINS
 
     IF ((percentage < 0) .OR. (percentage > 1)) THEN
        CALL errorMessage("StochasticOrbit / unmaskGaiaObservations", &
-                         "Invalid percentage given.", 1)
+            "Invalid percentage given.", 1)
        RETURN
     END IF
 
     ! First, determine how many Gaia observaitons there are, exactly.
     ! And add existing unasked obs to the unmasking array.
     j = 1
- !   DO i=1, nobs
- !     IF (obscodes(i) == "247") THEN
- !       ngaiaobs = ngaiaobs + 1
- !     END IF
- !   END DO
+    !   DO i=1, nobs
+    !     IF (obscodes(i) == "247") THEN
+    !       ngaiaobs = ngaiaobs + 1
+    !     END IF
+    !   END DO
     ngaiaobs = COUNT(obscodes == "247")
     nunmask = FLOOR(ngaiaobs*percentage) ! how many random obs to unmask
     ALLOCATE(to_mask(nunmask))
@@ -20193,13 +20193,13 @@ CONTAINS
     ! Add existing unasked obs to the unmasking array.
     j = 1
     DO i=1, nobs
-      IF (obscodes(i) == "247") THEN
-        ngaiaobs = ngaiaobs + 1
-        IF (this%obs_masks_prm(i,2) .EQV. .TRUE. ) THEN
-          to_mask(j) = i
-          j = j + 1
-        END IF
-      END IF
+       IF (obscodes(i) == "247") THEN
+          ngaiaobs = ngaiaobs + 1
+          IF (this%obs_masks_prm(i,2) .EQV. .TRUE. ) THEN
+             to_mask(j) = i
+             j = j + 1
+          END IF
+       END IF
     END DO
 
     ! Generate random obss indices and check if it's okay.
@@ -20215,7 +20215,7 @@ CONTAINS
              CALL setObservationMask_one(this,randint,masks)
              EXIT
           END IF
-      END DO
+       END DO
     END DO
 
     DEALLOCATE(obscodes,to_mask)
