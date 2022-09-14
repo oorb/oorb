@@ -102,11 +102,19 @@ io.o:  ../main/io.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_
 	$(OBJBUILDCMD)
 io.mod: ../main/io.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod orbit_cl.mod stochasticorbit_cl.mod  utilities.mod io.o
 	$(MODBUILDCMD)
+neopop_module.o:  ../main/neopop_module.f90 base_cl.mod  random.mod
+	$(OBJBUILDCMD)
+neopop_module.mod: ../main/neopop_module.f90 base_cl.mod  random.mod neopop_module.o
+	$(MODBUILDCMD)
 oorb.o:  ../main/oorb.f90 version.h base_cl.mod file_cl.mod time_cl.mod  cartesiancoordinates_cl.mod sphericalcoordinates_cl.mod  observatories_cl.mod orbit_cl.mod observation_cl.mod observations_cl.mod  stochasticorbit_cl.mod physicalparameters_cl.mod cl_options.mod  planetary_data.mod statistics.mod io.mod
 	$(OBJBUILDCMD)
 ephemeris_linking.o:  ../main/ephemeris_linking.f90 base_cl.mod  file_cl.mod time_cl.mod orbit_cl.mod stochasticorbit_cl.mod io.mod  cl_options.mod utilities.mod data_structures.mod sort.mod
 	$(OBJBUILDCMD)
 orbit_linking.o:  ../main/orbit_linking.f90 base_cl.mod file_cl.mod  time_cl.mod orbit_cl.mod stochasticorbit_cl.mod io.mod cl_options.mod  utilities.mod data_structures.mod sort.mod
+	$(OBJBUILDCMD)
+neopop.o:  ../main/neopop.f90 base_cl.mod file_cl.mod time_cl.mod  cartesiancoordinates_cl.mod sphericalcoordinates_cl.mod  observatories_cl.mod orbit_cl.mod observation_cl.mod observations_cl.mod  stochasticorbit_cl.mod physicalparameters_cl.mod utilities.mod  cl_options.mod planetary_data.mod integrators.mod io.mod estimators.mod  neopop_module.mod
+	$(OBJBUILDCMD)
+oorb4research.o:  ../main/oorb4research.f90 base_cl.mod file_cl.mod  time_cl.mod cartesiancoordinates_cl.mod sphericalcoordinates_cl.mod  observatories_cl.mod orbit_cl.mod observation_cl.mod observations_cl.mod  stochasticorbit_cl.mod physicalparameters_cl.mod utilities.mod  cl_options.mod planetary_data.mod integrators.mod io.mod estimators.mod
 	$(OBJBUILDCMD)
 pyoorb.o:  ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod
 	$(OBJBUILDCMD)
