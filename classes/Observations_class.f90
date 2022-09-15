@@ -3133,7 +3133,8 @@ CONTAINS
     CHARACTER(len=132), DIMENSION(5) :: records
     CHARACTER(len=132) :: record
     CHARACTER(len=124) :: line1, line2, line_, str, filter, obstype
-    CHARACTER(len=7) :: nr_str
+    CHARACTER(len=7) :: nr_str, denomination, obs_rejected_by_fit
+    CHARACTER(len=20) :: astrometric_outcome_ccd
     CHARACTER(len=4) :: timescale, obsy_code, strk_class
     REAL(hp) :: g_mag, g_flux, g_flux_err
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: covRandomTrs 
@@ -3144,7 +3145,8 @@ CONTAINS
          gaiaVelZTrs, trsResult, collPos, collVel
     REAL(bp), DIMENSION(10,15) :: transitTmp
     REAL(bp), DIMENSION(6,6) :: covariance, covariance_sys, covariance_final
-    REAL(bp), DIMENSION(6) :: coordinates, coordinates_final, stdev_, mean
+    REAL(bp), DIMENSION(6) :: coordinates, coordinates_final, stdev_, mean, &
+         gaia_geocentric
     REAL(bp), DIMENSION(3) :: position, position_final, velocity, pos1, pos2, &
                               midGaia, midGaiaV
     REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd, dt, &
@@ -3152,13 +3154,14 @@ CONTAINS
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
          rmin, rarcmin, mag_unc, s2n, mjd_tt, mjd_tcb, strk_len, &
          strk_len_unc, strk_direction, strk_direction_unc, &
-         position_angle_scan,  &
+         position_angle_scan, al_orbit_residual, ac_orbit_residual, &
+         ra_orbit_residual, dec_orbit_residual, epoch_emission, &
          epoch, epoch_err, epoch_utc,  epoch1, last_epoch, covcoeff
-    INTEGER(ihp) :: observation_id, solution_id, source_id
+    INTEGER(ihp) :: observation_id, solution_id, source_id, transit_id
     INTEGER :: i, j, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
          border1, border2, err_verb_, level_of_confidence, &
-         number_mp, &
+         number_mp, fov, astrometric_outcome_transit, &
          transitCounter, transitCounterAfter, &
          numberOfTransits, finalNumberOfTransits, linecounter, sot, s
     LOGICAL, DIMENSION(6) :: obs_mask
@@ -4711,9 +4714,9 @@ CONTAINS
 
 
 
-    CASE ("gdr2")
+    CASE ("gdr2", "gdr3")
 
-       ! Full SSO data dump from Gaia Data Release 2
+       ! Full SSO data dump from Gaia Data Release 2 or 3
 
        covariance = 0.0_bp
        position = 0.0_bp
@@ -4737,13 +4740,25 @@ CONTAINS
              CYCLE
           END IF
 
-          READ(line, *, iostat=err) solution_id, source_id, &
-               observation_id, number, epoch, epoch_err, epoch_utc, &
-               position(2), position(3), covariance_sys(2,2), &
-               covariance_sys(3,3), covariance_sys(2,3), &
-               covariance(2,2), covariance(3,3), covariance(2,3), &
-               g_mag, g_flux, g_flux_err, coordinates(1:6), &
-               position_angle_scan, level_of_confidence
+          IF (suffix == "gdr2") THEN
+             READ(line, *, iostat=err) solution_id, source_id, &
+                  observation_id, number, epoch, epoch_err, epoch_utc, &
+                  position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance_sys(2,3), &
+                  covariance(2,2), covariance(3,3), covariance(2,3), &
+                  g_mag, g_flux, g_flux_err, coordinates(1:6), &
+                  position_angle_scan, level_of_confidence
+          ELSE IF (suffix == "gdr3") THEN
+              READ(line, *, iostat=err) solution_id, source_id, &
+                  denomination, transit_id, observation_id, number, epoch, &
+                  epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance_sys(2,3), &
+                  covariance(2,2), covariance(3,3), covariance(2,3), &
+                  g_mag, g_flux, g_flux_err, coordinates(1:6), gaia_geocentric(1:6), &
+                  position_angle_scan, astrometric_outcome_ccd, astrometric_outcome_transit, &
+                  epoch_emission, fov, level_of_confidence, ra_orbit_residual,dec_orbit_residual,& 
+                  al_orbit_residual,ac_orbit_residual, obs_rejected_by_fit
+          END IF
           IF (err /= 0) THEN
              error = .TRUE.
              CALL errorMessage("Observations / readObservationFile", &
@@ -4753,7 +4768,6 @@ CONTAINS
 
           ! Convert RA & Dec from degrees to radians
           position(2:3) = position(2:3)*rad_deg
-
           ! Random component of the uncertainty
           ! Convert correlation to covariance
           covariance(2,3) = covariance(2,3) * &
@@ -4815,8 +4829,10 @@ CONTAINS
                   "TRACE BACK (122)", 1)
              RETURN
           END IF
-          ! Correct relativistic light deflection
-          CALL GaiaRelativityCorrection(position, coordinates, mjd_tt)
+          ! Correct relativistic light deflection. This is only done for DR2
+          IF (TRIM(suffix) == "gdr2") THEN
+             CALL GaiaRelativityCorrection(position, coordinates, mjd_tt)
+          END IF
           CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
