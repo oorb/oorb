@@ -4,38 +4,171 @@ name: Build Python Wheels
 # needs to run more often to work out bugs.
 on:
   - push
-  
+
 jobs:
-  build_wheels:
-    name: ${{ matrix.pyversion }}/${{ matrix.os }}/${{ matrix.arch }}
+  build_x86_wheels:
+    name: Build ${{ matrix.pyversion }}/${{ matrix.os }}/x86
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         pyversion: [cp38, cp39, cp310, cp311]
         os: [macos-latest, ubuntu-latest]
-        arch: [x86_64, aarch64]
-        exclude:
-          # MacOS arm64 builds don't quite work because 'delocate' doesn't
-          # know how to work under emulation with gfortran.
-          - os: macos-latest
-            arch: aarch64
-        
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.11.4
+        env:
+          CIBW_BUILD: "${{ matrix.pyversion }}*"
+          CIBW_ARCHS: "x86_64"
+        with:
+           output-dir: wheelhouse
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: x86_wheels
+          path: ./wheelhouse/*.whl
+
+  build_aarch64_wheels:
+    name: Build ${{ matrix.pyversion }}/linux/aarch64
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pyversion: [cp38, cp39, cp310, cp311]
+
     steps:
       - uses: actions/checkout@v3
       - name: Set up QEMU
         if: runner.os == 'Linux'
         uses: docker/setup-qemu-action@v2
         with:
-          platforms: all
+          platforms: arm64
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.11.4
         env:
           CIBW_BUILD: "${{ matrix.pyversion }}*"
-          CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_ARCHS: aarch64
         with:
            output-dir: wheelhouse
-           
+
       - uses: actions/upload-artifact@v3
         with:
+          name: aarch64_wheels
           path: ./wheelhouse/*.whl
+
+  build_ephem:
+    name: Build ephemeris data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install gfortran liblapack-dev
+      - name: Compile oorb
+        run: |
+          ./configure gfortran opt
+          make -j2
+      - name: Build ephemerides
+        run: |
+          cd data/JPL_ephemeris
+          make -j2
+          make test
+          mv de430.dat ../
+      - name: Supply data to later tests
+        uses: actions/upload-artifact@v3
+        with:
+          name: oorb_data
+          path: ./data
+
+  test_x86_wheels:
+    name: Test ${{ matrix.pyversion }}/${{ matrix.os }}/x86
+    needs: [build_x86_wheels, build_ephem]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pyversion: ["3.8", "3.9", "3.10", "3.11"]
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.pyversion }}
+      - name: Get wheels
+        uses: actions/download-artifact@v3
+        with:
+          name: x86_wheels
+          path: /tmp/wheels
+      - name: Install pyoorb from wheel
+        run: |
+          # First, install with --no-index to make sure we don't hit up PyPI and only
+          # use the local wheel. Use --no-deps, because we don't have a local copy of
+          # any dependencies.
+          pip install --no-index --no-deps --find-links /tmp/wheels pyoorb
+          # Now that we are sure the local wheel works, install dependencies by repeating
+          # the command, but this time allowing the index and deps.
+          pip install --find-links /tmp/wheels pyoorb
+      - name: Get oorb data
+        uses: actions/download-artifact@v3
+        with:
+          name: oorb_data
+          path: /tmp/oorb_data
+      - name: Try importing pyoorb
+        run: |
+          export OORB_DATA=/tmp/oorb_data
+          python -c "import pyoorb; print('success.')"
+      - name: Checkout oorb for python/test.py
+        uses: actions/checkout@v3
+        with:
+          path: ./_oorb
+      - name: Execute tests
+        run: |
+          export OORB_DATA=/tmp/oorb_data
+          python ./_oorb/python/test.py
+
+  test_linux_aarch64_wheels:
+    # Runs in emulation, so this can be very slow!
+    name: Test ${{ matrix.pyversion }}/linux/aarch64
+    needs: [build_aarch64_wheels, build_ephem]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pyversion: ["3.8", "3.9", "3.10", "3.11"]
+
+    steps:
+      - name: Get wheels
+        uses: actions/download-artifact@v3
+        with:
+          name: aarch64_wheels
+          path: /tmp/artifacts/wheels
+      - name: Get oorb data
+        uses: actions/download-artifact@v3
+        with:
+          name: oorb_data
+          path: /tmp/artifacts/oorb_data
+      - name: Checkout oorb for python/test.py
+        uses: actions/checkout@v3
+        with:
+          path: ./_oorb
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: arm64
+      - name: Run tests in container
+        run: |
+          export DOCKER_IMAGE="arm64v8/python:${{ matrix.pyversion }}"
+          docker pull --platform linux/arm64 $DOCKER_IMAGE
+          docker run \
+            --platform linux/arm64 \
+            --volume /tmp/artifacts:/tmp/artifacts \
+            --volume $PWD/_oorb:/tmp/oorb_latest \
+            --env OORB_DATA=/tmp/artifacts/oorb_data \
+            $DOCKER_IMAGE \
+            /bin/bash -c "
+            pip install --no-index --no-deps --find-links /tmp/artifacts/wheels pyoorb && \
+            pip install --find-links /tmp/artifacts/wheels pyoorb && \
+            python /tmp/oorb_latest/python/test.py"
