@@ -67,13 +67,17 @@ MODULE planetary_data
   INTEGER, PARAMETER            :: RECORD_SIZE_406 =  1456
   INTEGER, PARAMETER            :: RECORD_SIZE_430 =  2036
   INTEGER, PARAMETER            :: RECORD_SIZE_431 =  2036
+  INTEGER, PARAMETER            :: RECORD_SIZE_440 =  2036
+  INTEGER, PARAMETER            :: RECORD_SIZE_441 =  2036
   INTEGER, PARAMETER            :: RECORD_SIZE_INPOP10B =  1876
   INTEGER, PARAMETER            :: NCOEFF_405 = 1018
   INTEGER, PARAMETER            :: NCOEFF_406 = 728
   INTEGER, PARAMETER            :: NCOEFF_430 = 1018
   INTEGER, PARAMETER            :: NCOEFF_431 = 1018
+  INTEGER, PARAMETER            :: NCOEFF_440 = 1018
+  INTEGER, PARAMETER            :: NCOEFF_441 = 1018
   INTEGER, PARAMETER            :: NCOEFF_INPOP10B = 938
-  INTEGER, PARAMETER            :: NRECORD_MAX = 250000 ! Fits all of de40x and de43x
+  INTEGER, PARAMETER            :: NRECORD_MAX = 250000 ! Fits all of de40x and de43x and de44x
   REAL(rprec8), PARAMETER       :: kgm3_smau3 = (1.4959787066e8_rprec8)**3/1.989100e30
 
   ! Planets' GMs are read from the ephemeris file
@@ -310,6 +314,14 @@ CONTAINS
        dtype = "431"
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
             recl=RECORD_LENGTH*RECORD_SIZE_431, action='READ', iostat=err)
+    ELSE IF (INDEX(fname,"440",back=.TRUE.) .GT. fnstart) THEN
+       dtype = "440"
+       OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
+            recl=RECORD_LENGTH*RECORD_SIZE_440, action='READ', iostat=err)
+    ELSE IF (INDEX(fname,"441",back=.TRUE.) .GT. fnstart) THEN
+       dtype = "441"
+       OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
+            recl=RECORD_LENGTH*RECORD_SIZE_441, action='READ', iostat=err)
     ELSE IF (INDEX(fname,"inpop10b",back=.TRUE.) .GT. fnstart) THEN
        dtype = "10b"
        OPEN(unit=lu, file=TRIM(fname), status='OLD', access='DIRECT', &
@@ -349,6 +361,10 @@ CONTAINS
        ALLOCATE(tmp(NCOEFF_430,NRECORD_MAX), stat=err)
     ELSE IF (dtype == "431") THEN
        ALLOCATE(tmp(NCOEFF_431,NRECORD_MAX), stat=err)
+    ELSE IF (dtype == "440") THEN
+       ALLOCATE(tmp(NCOEFF_440,NRECORD_MAX), stat=err)
+    ELSE IF (dtype == "441") THEN
+       ALLOCATE(tmp(NCOEFF_441,NRECORD_MAX), stat=err)
     ELSE IF (dtype == "10b") THEN
        ALLOCATE(tmp(NCOEFF_INPOP10B,NRECORD_MAX), stat=err)
     ELSE
@@ -406,7 +422,7 @@ CONTAINS
        ! (13) Earth-Moon barycenter,
        planetary_mu(13) = cval(11)
 
-    ELSE IF (dtype == "430" .OR. dtype == "431") THEN
+    ELSE IF (dtype == "430" .OR. dtype == "431" .OR. dtype == "440" .OR. dtype == "441") THEN
 
        !  (1) Mercury,
        !  (2) Venus,
