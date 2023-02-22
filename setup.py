@@ -27,7 +27,7 @@ class PyoorbBuild(build_ext):
         src = "../lib/" + self.get_ext_filename(ext.name)
         dst = self.get_ext_fullpath(ext.name)
         self.mkpath(os.path.dirname(dst))
-        self.move_file(src, dst)
+        self.copy_file(src, dst)
 
 
 def deduce_version():
