@@ -2,6 +2,7 @@ import os
 import subprocess
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
+from pathlib import Path
 
 
 extension = Extension(
@@ -41,7 +42,19 @@ def deduce_version():
 
 
 setup(
-    name="pyoorb",
+    name='pyoorb',
+    maintainer="oorb developers",
+    maintainer_email="oorb@googlegroups.com",
+    description="An open-source orbit-computation package for Solar System objects. ",
+    long_description=Path("README.md").read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
+    url="https://github.com/oorb/oorb",
+    author="Mikael Granvik et al.",
+    download_url="https://pypi.python.org/pypi/oorb",
+    project_urls={
+        "Bug Tracker": "https://github.com/oorb/oorb/issues",
+        "Source Code": "https://github.com/oorb/oorb",
+    },
     version=deduce_version(),
     ext_modules=[extension],
     install_requires=["numpy"],
