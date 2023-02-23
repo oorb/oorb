@@ -50,7 +50,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/oorb/oorb",
     author="Mikael Granvik et al.",
-    download_url="https://pypi.python.org/pypi/oorb",
+    download_url="https://pypi.python.org/pypi/pyoorb",
     project_urls={
         "Bug Tracker": "https://github.com/oorb/oorb/issues",
         "Source Code": "https://github.com/oorb/oorb",
