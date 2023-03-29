@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2021,2022                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG
-!! @version 2022-09-07
+!! @version 2023-03-29
 !!
 PROGRAM oorb
 
@@ -3647,7 +3647,7 @@ PROGRAM oorb
           accwin_multiplier=accwin_multiplier)
      IF (error) THEN
         CALL errorMessage("oorb / vov", &
-             "TRACE BACK (2)", 1)
+             "TRACE BACK (5)", 1)
         STOP
      END IF
      IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
@@ -3662,11 +3662,11 @@ PROGRAM oorb
         END IF
      END IF
 
-     DO i=j+1,SIZE(obss_sep,dim=1)
+     DO i=1,SIZE(obss_sep,dim=1)
         id = getID(obss_sep(i))
         IF (error) THEN
            CALL errorMessage("oorb / vov", &
-                "TRACE BACK (30)", 1)
+                "TRACE BACK (15)", 1)
            STOP
         END IF
         IF (info_verb >= 2) THEN
@@ -3682,7 +3682,7 @@ PROGRAM oorb
                     orb_arr => getSampleOrbits(storb_arr_in(j))
                     IF (error) THEN
                        CALL errorMessage("oorb / vov", &
-                            "TRACE BACK (35)", 1)
+                            "TRACE BACK (20)", 1)
                        STOP
                     END IF
                     norb = SIZE(orb_arr)
@@ -3692,7 +3692,7 @@ PROGRAM oorb
                     orb_arr(1) = getNominalOrbit(storb_arr_in(j))
                     IF (error) THEN
                        CALL errorMessage("oorb / vov", &
-                            "TRACE BACK (35)", 1)
+                            "TRACE BACK (25)", 1)
                        STOP
                     END IF
                     norb = 1
@@ -3717,7 +3717,7 @@ PROGRAM oorb
                  orb_arr(norb) = copy(orb_arr_in(j))
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (35)", 1)
+                         "TRACE BACK (30)", 1)
                     STOP
                  END IF
               END IF
@@ -3733,7 +3733,7 @@ PROGRAM oorb
         dt = getObservationalTimespan(obss_sep(i))
         IF (error) THEN
            CALL errorMessage("oorb / vov", &
-                "TRACE BACK (40)", 1)
+                "TRACE BACK (35)", 1)
            STOP
         END IF
         IF (.NOT.exist(epoch)) THEN
@@ -3741,20 +3741,20 @@ PROGRAM oorb
            obs = getObservation(obss_sep(i),1)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (45)", 1)
+                   "TRACE BACK (40)", 1)
               STOP
            END IF
            t = getTime(obs)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (50)", 1)
+                   "TRACE BACK (45)", 1)
               STOP
            END IF
            CALL NULLIFY(obs)
            mjd = getMJD(t, "tt")
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (65)", 1)
+                   "TRACE BACK (50)", 1)
               STOP
            END IF
            CALL NULLIFY(t)
@@ -3762,7 +3762,7 @@ PROGRAM oorb
            CALL NEW(t, mjd, "tt")   
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (70)", 1)
+                   "TRACE BACK (55)", 1)
               STOP
            END IF
         ELSE
@@ -3772,7 +3772,7 @@ PROGRAM oorb
         CALL propagate(orb_arr, t)
         IF (error) THEN
            CALL errorMessage("oorb / vov", &
-                "TRACE BACK (65)", 1)
+                "TRACE BACK (60)", 1)
            STOP
         END IF
         DO k=1,norb
@@ -3784,7 +3784,7 @@ PROGRAM oorb
                 integration_step=integration_step)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (35)", 1)
+                   "TRACE BACK (65)", 1)
               STOP
            END IF
         END DO
@@ -3891,19 +3891,19 @@ PROGRAM oorb
                  CALL NEW(out_file, "outliers." // TRIM(observation_format_out))
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (85)", 1)
+                         "TRACE BACK (110)", 1)
                     STOP
                  END IF
                  CALL setPositionAppend(out_file)
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (90)", 1)
+                         "TRACE BACK (115)", 1)
                     STOP
                  END IF
                  CALL OPEN(out_file)
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (95)", 1)
+                         "TRACE BACK (120)", 1)
                     STOP
                  END IF
                  WRITE(getUnit(out_file),"(1X)")
@@ -3921,13 +3921,13 @@ PROGRAM oorb
                       TRIM(observation_format_out))
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (100)", 1)
+                         "TRACE BACK (125)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(out_file)
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (105)", 1)
+                         "TRACE BACK (130)", 1)
                     STOP
                  END IF
               END IF
@@ -3936,13 +3936,13 @@ PROGRAM oorb
            CALL NEW(out_file, TRIM(id) // ".vov")
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (115)", 1)
+                   "TRACE BACK (135)", 1)
               STOP
            END IF
            CALL OPEN(out_file)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (10)", 1)
+                   "TRACE BACK (140)", 1)
               STOP
            END IF
            ! WRITE OBSERVATIONS:
@@ -3950,14 +3950,14 @@ PROGRAM oorb
                 TRIM(observation_format_out)) 
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (85)", 1)
+                   "TRACE BACK (145)", 1)
               STOP
            END IF
            WRITE(getUnit(out_file),"(A)") "#"
            CALL writeVOVResults(storb, obss_sep(i), getUnit(out_file))
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK ()", 1)
+                   "TRACE BACK (150)", 1)
               STOP
            END IF
            CALL NULLIFY(out_file)
@@ -3966,39 +3966,39 @@ PROGRAM oorb
            CALL NEW(out_file, TRIM(id) // ".nominal")
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (115)", 1)
+                   "TRACE BACK (165)", 1)
               STOP
            END IF
            CALL OPEN(out_file)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (10)", 1)
+                   "TRACE BACK (170)", 1)
               STOP
            END IF
            CALL writeNominalSolution(storb, obss_sep(i), &
                 element_type_out_prm, getUnit(out_file))
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK ()", 1)
+                   "TRACE BACK (175)", 1)
               STOP
            END IF
            CALL NULLIFY(out_file)
            orb_arr_cmp => getSampleOrbits(storb)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (120)", 1)
+                   "TRACE BACK (180)", 1)
               STOP
            END IF
            pdf_arr_cmp => getDiscretePDF(storb)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (125)", 1)
+                   "TRACE BACK (185)", 1)
               STOP
            END IF
            rchi2_arr_cmp => getReducedChi2Distribution(storb)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (130)", 1)
+                   "TRACE BACK (190)", 1)
               STOP
            END IF
            CALL getResults(storb, &
@@ -4006,23 +4006,11 @@ PROGRAM oorb
                 jac_arr=jac_arr_cmp)
            IF (error) THEN
               CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (135)", 1)
-              STOP
-           END IF
-           CALL NEW(orb_out_file, TRIM(id) // ".orb")
-           IF (error) THEN
-              CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (15)", 1)
-              STOP
-           END IF
-           CALL OPEN(orb_out_file)
-           IF (error) THEN
-              CALL errorMessage("oorb / vov", &
-                   "TRACE BACK (20)", 1)
+                   "TRACE BACK (195)", 1)
               STOP
            END IF
            DO l=1,SIZE(orb_arr_cmp,dim=1)
-              CALL writeOpenOrbOrbitFile(getUnit(orb_out_file), &
+              CALL writeOpenOrbOrbitFile(lu_orb_out, &
                    print_header=l==1.AND.i==1, &
                    element_type_out=element_type_out_prm, &
                    id=id, &
@@ -4035,16 +4023,15 @@ PROGRAM oorb
                    jac_equ_kep=jac_arr_cmp(l,3))
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (140)", 1)
+                      "TRACE BACK (210)", 1)
                  STOP
               END IF
            END DO
-           CALL NULLIFY(orb_out_file)
            IF (plot_results) THEN
               CALL toString(dt, str, error, frmt="(F10.2)")
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (145)", 1)
+                      "TRACE BACK (215)", 1)
                  STOP
               END IF
               str = TRIM(id) // "_"// TRIM(str)
@@ -4052,7 +4039,7 @@ PROGRAM oorb
                    "_vov_residual_stamps.ps",  compute=.TRUE.)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (142)", 1)
+                      "TRACE BACK (220)", 1)
                  STOP
               END IF
               IF (plot_open) THEN
@@ -4066,7 +4053,7 @@ PROGRAM oorb
                    vov_mapping_mask=vov_mapping_mask)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (135)", 1)
+                      "TRACE BACK (225)", 1)
                  STOP
               END IF
               ALLOCATE(elements_arr(SIZE(orb_arr_cmp,dim=1),7), stat=err)
@@ -4078,13 +4065,13 @@ PROGRAM oorb
               CALL NEW(tmp_file, TRIM(str)// "_vov_orbits.out")
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (150)", 1)
+                      "TRACE BACK (230)", 1)
                  STOP
               END IF
               CALL OPEN(tmp_file)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (155)", 1)
+                      "TRACE BACK (235)", 1)
                  STOP
               END IF
               DO l=1,SIZE(orb_arr_cmp,dim=1)
@@ -4094,14 +4081,14 @@ PROGRAM oorb
                  elements_arr(l,1:6) = getElements(orb_arr_cmp(l), element_type_comp_prm)
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (160)", 1)
+                         "TRACE BACK (240)", 1)
                     STOP
                  END IF
                  elements_arr(l,7) = pdf_arr_cmp(l)
                  t = getTime(orb_arr_cmp(l))
                  IF (error) THEN
                     CALL errorMessage("oorb / vov", &
-                         "TRACE BACK (165)", 1)
+                         "TRACE BACK (245)", 1)
                     STOP
                  END IF
                  IF (element_type_comp_prm == "keplerian") THEN
@@ -4123,32 +4110,32 @@ PROGRAM oorb
               orb = getNominalOrbit(storb)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (170)", 1)
+                      "TRACE BACK (250)", 1)
                  STOP
               END IF
               elements = getElements(orb, element_type_comp_prm)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (175)", 1)
+                      "TRACE BACK (255)", 1)
                  STOP
               END IF
               t = getTime(orb)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (180)", 1)
+                      "TRACE BACK (260)", 1)
                  STOP
               END IF
               CALL NULLIFY(orb)
               CALL NEW(tmp_file, TRIM(str)// "_vov_nominal_orbit.out")
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (185)", 1)
+                      "TRACE BACK (265)", 1)
                  STOP
               END IF
               CALL OPEN(tmp_file)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (190)", 1)
+                      "TRACE BACK (270)", 1)
                  STOP
               END IF
               IF (element_type_comp_prm == "keplerian") THEN
@@ -4165,13 +4152,13 @@ PROGRAM oorb
               CALL NEW(tmp_file, TRIM(str)// "_vov_sampling_grid.out")
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (195)", 1)
+                      "TRACE BACK (275)", 1)
                  STOP
               END IF
               CALL OPEN(tmp_file)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (200)", 1)
+                      "TRACE BACK (280)", 1)
                  STOP
               END IF
               DO l=1,vov_nmap,vov_nmap/10
@@ -4210,13 +4197,13 @@ PROGRAM oorb
                    "_vov_sample_standard_deviations.out")
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (205)", 1)
+                      "TRACE BACK (285)", 1)
                  STOP
               END IF
               CALL OPEN(tmp_file)
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (210)", 1)
+                      "TRACE BACK (290)", 1)
                  STOP
               END IF
               WRITE(getUnit(tmp_file), "(F22.15,1X)", &
@@ -4224,7 +4211,7 @@ PROGRAM oorb
                    getObservationalTimespan(obss_sep(i))
               IF (error) THEN
                  CALL errorMessage("oorb / vov", &
-                      "TRACE BACK (215)", 1)
+                      "TRACE BACK (295)", 1)
                  STOP
               END IF
               DO l=1,6
@@ -8055,8 +8042,6 @@ PROGRAM oorb
            error = .FALSE.
         END IF
      END DO
-     CALL NULLIFY(orb_out_file)
-
 
 
   CASE ("obsplanner")

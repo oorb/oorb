@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! @see Observations_class
 !! 
 !! @author  MG
-!! @version 2016-03-23
+!! @version 2023-03-29
 !!
 MODULE SphericalCoordinates_cl
 
@@ -582,10 +582,7 @@ CONTAINS
        END IF
     END DO
 
-    A = 0.0_bp
-    DO i=1,6
-       A(i,i:6) = covariance_(i,i:6)
-    END DO
+    A = covariance_
     CALL cholesky_decomposition(A, p, errstr)
     IF (LEN_TRIM(errstr) /= 0) THEN
        error = .TRUE.
@@ -594,10 +591,6 @@ CONTAINS
        WRITE(stderr,"(A)") TRIM(errstr)
        RETURN
     END IF
-    DO i=1,6
-       A(i,i:6) = 0.0_bp
-       A(i,i) = p(i)
-    END DO
 
     ! dx = A v + mean:
     CALL randomGaussian(norm)

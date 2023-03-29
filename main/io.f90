@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,8 +26,8 @@
 !! Contains routines for IO of options, orbits and residuals. To be
 !! called from main programs.
 !!
-!! @author  MG, JV
-!! @version 2018-01-10
+!! @author  MG, JV, LS
+!! @version 2023-03-29
 !!
 MODULE io
 
@@ -2134,7 +2134,7 @@ CONTAINS
 
     TYPE (Time) :: t
     CHARACTER(len=128) :: str
-    REAL(bp), DIMENSION(15) :: correlation
+    REAL(bp), DIMENSION(15) :: correlation, covariance
     REAL(bp), DIMENSION(6) :: elements, stdev
     REAL(bp) :: day, r, mjd
     INTEGER :: year, month, err, i
@@ -2465,10 +2465,202 @@ CONTAINS
           RETURN
        END IF
     END IF
+
+    stdev = -1.0_bp
+    IF (INDEX(header(4),"-0078-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) stdev(1)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (10).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0079-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) stdev(2)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (15).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0080-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) stdev(3)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (20).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0081-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) stdev(4)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (25).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0082-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) stdev(5)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (30).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0083-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) stdev(6)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (35).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0084-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(1)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (40).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0085-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(2)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (45).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0086-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(3)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (50).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0087-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(4)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (55).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0088-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(5)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (60).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0089-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(6)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (65).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0090-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(7)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (70).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0091-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(8)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (75).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0092-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(9)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (80).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0093-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(10)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (85).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0094-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(11)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (90).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0095-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(12)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (95).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0096-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(13)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (100).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0097-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(14)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (105).", 1)
+          RETURN
+       END IF
+    END IF
+    IF (INDEX(header(4),"-0098-") /= 0) THEN
+       READ(lu,"(1X,E23.15)", advance="no", iostat=err) covariance(15)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / readOpenOrbOrbitFile", &
+               "Read error (110).", 1)
+          RETURN
+       END IF
+    END IF
+    
     IF (PRESENT(cov)) THEN
        IF (INDEX(header(4),"-0009-") /= 0) THEN
           ! Standard deviations appear to be present, so build the
-          ! covariance using the available information.
+          ! covariance using the available information (correlations).
           IF (element_type_in == "keplerian") THEN
              stdev(3:6) = stdev(3:6)*rad_deg
           END IF
@@ -2484,6 +2676,25 @@ CONTAINS
           cov(4,5:6) = stdev(4)*stdev(5:6)*correlation(13:14)
           cov(5:6,4) = cov(4,5:6)
           cov(5,6) = stdev(5)*stdev(6)*correlation(15)
+          cov(6,5) = cov(5,6)
+       else IF (INDEX(header(4),"-0078-") /= 0) THEN
+          ! Standard deviations appear to be present, so build the
+          ! covariance using the available information (covariances).
+          IF (element_type_in == "keplerian") THEN
+             stdev(3:6) = stdev(3:6)*rad_deg
+          END IF
+          DO i=1,6
+             cov(i,i) = stdev(i)**2
+          END DO
+          cov(1,2:6) = covariance(1:5)
+          cov(2:6,1) = cov(1,2:6)
+          cov(2,3:6) = covariance(6:9)
+          cov(3:6,2) = cov(2,3:6)
+          cov(3,4:6) = covariance(10:12)
+          cov(4:6,3) = cov(3,4:6)
+          cov(4,5:6) = covariance(13:14)
+          cov(5:6,4) = cov(4,5:6)
+          cov(5,6) = covariance(15)
           cov(6,5) = cov(5,6)
        END IF
     END IF
@@ -2790,6 +3001,7 @@ CONTAINS
     REAL(bp), DIMENSION(6,6)   :: cov, corr
     REAL(bp), DIMENSION(6)     :: elements, sigmas
     REAL(bp) :: obsarc, rchi2
+    integer, dimension(6) :: indx
     INTEGER :: k, l, err, err_verb_
     LOGICAL, DIMENSION(:,:), POINTER :: &
          obs_masks => NULL()
@@ -2841,8 +3053,6 @@ CONTAINS
     END IF
     err_verb = err_verb_
     id = getID(obss)
-!!$    obsarc = getObservationalTimespan(obss)
-!!$    WRITE(lu,"(A,F14.4)") "#Observational arc = ",obsarc
 
     CALL getParameters(orb, dyn_model=dyn_model, integrator=integrator)
     WRITE(lu,"(A,A)") "#DYNAMICAL MODEL = ", TRIM(dyn_model)
@@ -2869,6 +3079,7 @@ CONTAINS
     END IF
     CALL NULLIFY(t)
     WRITE(lu,"(A)") "#"
+
     ! STANDARD DEVIATIONS:
     WRITE(lu,"(A6,2X,A7,1X)",advance="no") "#STDEV", id(1:7)
     IF (TRIM(element_type_) == "keplerian") THEN
@@ -2881,6 +3092,7 @@ CONTAINS
             "TRACE BACK (116)", 1)
        RETURN
     END IF
+
     DO l=1,6
        sigmas(l) = SQRT(cov(l,l))
        IF (TRIM(element_type_) == "keplerian" .AND. l >= 3) THEN
@@ -2891,6 +3103,7 @@ CONTAINS
     END DO
     WRITE(lu,*)
     WRITE(lu,"(A)") "#"
+
     ! CORRELATIONS:
     DO l=1,6
        DO k=1,6
@@ -2911,6 +3124,7 @@ CONTAINS
     WRITE(lu,"(A6,2X,A7,6(1X,F16.12))") &
          "#CORR ", id(1:7), corr(6,1:6)
     WRITE(lu,"(A)") "#"
+
     ! COVARIANCE:
     IF (TRIM(element_type_) == "keplerian") THEN
        cov(3:6,:) = cov(3:6,:)/rad_deg
@@ -2929,6 +3143,7 @@ CONTAINS
     WRITE(lu,"(A6,2X,A7,6(1X,E16.8))") &
          "#COV  ", id(1:7), cov(6,1:6)
     WRITE(lu,"(A)") "#"
+
     ! WRITE RESIDUAL BLOCK:
     obs_masks => getObservationMasks(storb)
     IF (error) THEN
@@ -2945,6 +3160,7 @@ CONTAINS
        RETURN
     END IF
     WRITE(lu,"(A)") "#"
+
     ! WRITE RMS:
     WRITE(lu,"(A6,2X,A7,3X,2(F11.6,1X))") "#RMS  ", id(1:7), &
          SQRT(SUM(residuals(:,2)**2.0_bp,obs_masks(:,2) &
@@ -2954,6 +3170,7 @@ CONTAINS
          .AND. obs_masks(:,3))/COUNT(obs_masks(:,2) &
          .AND. obs_masks(:,3)))/rad_asec
     WRITE(lu,"(A)") "#"
+
     ! WRITE REDUCED CHI2:
     CALL getParameters(storb, ls_element_mask=ls_element_mask)
     inform_mat_obs_bd => getBlockDiagInformationMatrix(obss)
@@ -2969,6 +3186,7 @@ CONTAINS
     WRITE(lu,"(A6,2X,A7,1X,F14.6)") "#RCHI2", id(1:7), rchi2
     WRITE(lu,"(A)") "#"
     DEALLOCATE(inform_mat_obs_bd, stat=err)
+
     ! WRITE OBSERVATIONAL TIMESPAN:
     obsarc = getObservationalTimespan(obss)
     WRITE(lu,"(A7,1X,A7,1X,F14.4)") "#OBSARC", id(1:7), obsarc
@@ -3274,111 +3492,217 @@ CONTAINS
           indx = indx + 13
        END IF
        IF (PRESENT(cov)) THEN
-          header(1)(indx:indx+16) = "    sigma e1    "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0009-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "    sigma e2    "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0011-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "    sigma e3    "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0010-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "    sigma e4    "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0012-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "    sigma e5    "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0013-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "    sigma e6    "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0014-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e1,e2)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0015-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e1,e3)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0016-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e1,e4)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0017-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e1,e5)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0018-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e1,e6)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0019-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e2,e3)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0020-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e2,e4)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0021-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e2,e5)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0022-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e2,e6)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0023-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e3,e4)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0024-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e3,e5)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0025-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e3,e6)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0026-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e4,e5)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0027-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e4,e6)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0028-----<"
-          indx = indx + 16
-          header(1)(indx:indx+16) = "   cor(e5,e6)   "
-          header(2)(indx:indx+16) = "                "
-          header(3)(indx:indx+16) = "                "
-          header(4)(indx:indx+16) = ">-----0029-----<"
-          indx = indx + 16
+          header(1)(indx:indx+24) = "        sigma e1        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0078---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        sigma e2        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0079---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        sigma e3        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0080---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        sigma e4        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0081---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        sigma e5        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0082---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        sigma e6        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0083---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(1,2)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0084---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(1,3)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0085---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(1,4)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0086---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(1,5)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0087---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(1,6)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0088---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(2,3)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0089---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(2,4)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0090---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(2,5)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0091---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(2,6)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0092---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(3,4)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0093---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(3,5)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0094---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(3,6)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0095---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(4,5)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0096---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(4,6)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0097---------<"
+          indx = indx + 24
+          header(1)(indx:indx+24) = "        cov(5,6)        "
+          header(2)(indx:indx+24) = "                        "
+          header(3)(indx:indx+24) = "                        "
+          header(4)(indx:indx+24) = ">---------0098---------<"
+          indx = indx + 24
+
+!!$          header(1)(indx:indx+16) = "    sigma e1    "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0009-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "    sigma e2    "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0011-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "    sigma e3    "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0010-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "    sigma e4    "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0012-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "    sigma e5    "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0013-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "    sigma e6    "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0014-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e1,e2)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0015-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e1,e3)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0016-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e1,e4)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0017-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e1,e5)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0018-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e1,e6)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0019-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e2,e3)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0020-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e2,e4)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0021-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e2,e5)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0022-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e2,e6)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0023-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e3,e4)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0024-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e3,e5)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0025-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e3,e6)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0026-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e4,e5)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0027-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e4,e6)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0028-----<"
+!!$          indx = indx + 16
+!!$          header(1)(indx:indx+16) = "   cor(e5,e6)   "
+!!$          header(2)(indx:indx+16) = "                "
+!!$          header(3)(indx:indx+16) = "                "
+!!$          header(4)(indx:indx+16) = ">-----0029-----<"
+!!$          indx = indx + 16          
        END IF
        IF (PRESENT(pdf)) THEN
           header(1)(indx:indx+19) = "    Unnormalized   "
@@ -3550,10 +3874,10 @@ CONTAINS
     IF (PRESENT(cov)) THEN
        stdev = (/ (SQRT(cov(i,i)), i=1,6) /)
        IF (element_type_out == "keplerian") THEN
-          WRITE(lu, "(6(1X,E15.7))", advance="no", iostat=err) &
+          WRITE(lu, "(6(1X,E23.15))", advance="no", iostat=err) &
                stdev(1:2), stdev(3:6)/rad_deg
        ELSE
-          WRITE(lu, "(6(1X,E15.7))", advance="no", iostat=err) &
+          WRITE(lu, "(6(1X,E23.15))", advance="no", iostat=err) &
                stdev(1:6)
        END IF
        IF (err /= 0) THEN
@@ -3564,13 +3888,42 @@ CONTAINS
        END IF
        DO i=1,5
           DO j=i+1,6
-             IF (stdev(i) == 0.0_bp .OR. stdev(j) == 0.0_bp) THEN
-                WRITE(lu, "(1X,E15.7)", advance="no", iostat=err) 0.0_bp
-             ELSE                
-                WRITE(lu, "(1X,E15.7)", advance="no", iostat=err) cov(i,j)/(stdev(i)*stdev(j))
+             WRITE(lu, "(1X,E23.15)", advance="no", iostat=err) cov(i,j)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / writeOpenOrbOrbitFile", &
+                     "Write error (11).", 1)
+                RETURN
              END IF
           END DO
        END DO
+
+!!$       This is obsolete but saved for reference:
+!!$       
+!!$       stdev = (/ (SQRT(cov(i,i)), i=1,6) /)
+!!$       IF (element_type_out == "keplerian") THEN
+!!$          WRITE(lu, "(6(1X,E15.7))", advance="no", iostat=err) &
+!!$               stdev(1:2), stdev(3:6)/rad_deg
+!!$       ELSE
+!!$          WRITE(lu, "(6(1X,E15.7))", advance="no", iostat=err) &
+!!$               stdev(1:6)
+!!$       END IF
+!!$       IF (err /= 0) THEN
+!!$          error = .TRUE.
+!!$          CALL errorMessage("io / writeOpenOrbOrbitFile", &
+!!$               "Write error (10).", 1)
+!!$          RETURN
+!!$       END IF
+!!$       DO i=1,5
+!!$          DO j=i+1,6
+!!$             IF (stdev(i) == 0.0_bp .OR. stdev(j) == 0.0_bp) THEN
+!!$                WRITE(lu, "(1X,E15.7)", advance="no", iostat=err) 0.0_bp
+!!$             ELSE                
+!!$                WRITE(lu, "(1X,E15.7)", advance="no", iostat=err) cov(i,j)/(stdev(i)*stdev(j))
+!!$             END IF
+!!$          END DO
+!!$       END DO
+       
     END IF
     IF (PRESENT(pdf)) THEN
        jac = 1.0_bp
@@ -5325,6 +5678,10 @@ CONTAINS
 
   END SUBROUTINE writeVOVResults
 
+
+
+
+  
   SUBROUTINE readMCMCmassfile(lu, orb_arr, iorb, itrial)
 
     IMPLICIT NONE
@@ -5370,10 +5727,17 @@ CONTAINS
        READ(lu, *) dummy ! This gets us to a new line
     END DO
     CLOSE(lu)
+
   END SUBROUTINE readMCMCmassfile
 
-  ! This subroutine reads .cov files outputted by the MCMC mass estimation algorithm.
+
+
+
+  
   SUBROUTINE readMCMCcovfile(lu,matrix)
+
+    ! This subroutine reads .cov files outputted by the MCMC mass estimation algorithm.
+    
     IMPLICIT NONE 
     INTEGER, INTENT(in) :: lu
     REAL(bp), DIMENSION(:,:), POINTER :: matrix
@@ -5386,7 +5750,6 @@ CONTAINS
        READ(lu,*,iostat=eastat)
        IF (eastat /= 0) EXIT
        nline = nline + 1
-
     END DO
     REWIND(lu)
     ALLOCATE(matrix(nline,nline))
@@ -5395,6 +5758,7 @@ CONTAINS
        READ(lu,*) matrix(i,:)
     END DO
     CLOSE(lu)
+
   END SUBROUTINE readMCMCcovfile
 
 
