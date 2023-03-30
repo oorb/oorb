@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -105,7 +105,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2015-10-28
+!! @version 2023-03-29
 !!
 MODULE linal
 
@@ -199,7 +199,7 @@ CONTAINS
     CHARACTER(len=*), INTENT(inout) :: error
     CHARACTER uplo
     REAL(rprec8) :: summ
-    INTEGER(iprec4) :: i, n,err
+    INTEGER(iprec4) :: i, n, err
 
     EXTERNAL DPOTRF ! Cholesky factorization function from LAPACK
 
@@ -216,6 +216,7 @@ CONTAINS
     IF (err > 0) THEN
        error = " -> linal : cholesky_decomposition : Matrix is not positive definite." // &
             TRIM(error)
+       write(0,*) err
        RETURN
     ELSE IF (err < 0) THEN
        error = " -> linal : cholesky_decomposition : Illegal value in DPOTRF argument." // &
@@ -223,13 +224,16 @@ CONTAINS
        RETURN
     END IF
 
-    DO i=1, n          ! This do loop here is because unlike LAPACK, we want to store
-       p(i) = temp(i,i) ! the diagonals in a separate vector.
-       IF (i > 1) THEN  ! I'm not sure if this is necessary but I'm doing it to not break anything.
-          a(i,1:i-1) = temp(i,1:i-1)
-       END IF
+    DO i=1, n          
+       p(i) = temp(i,i) ! Save the diagonals also in a separate vector.
+       if (i<n) then
+          ! Get rid of the upper diagonal matrix that contains the
+          ! covariance matrix:
+          temp(i,i+1:6) = 0.0_rprec8
+       end if
     END DO
-
+    a = temp
+    
   END SUBROUTINE cholesky_decomposition
 
 
@@ -255,7 +259,6 @@ CONTAINS
     REAL(rprec8), DIMENSION(:), INTENT(in) :: p, b
     REAL(rprec8), DIMENSION(:), INTENT(inout) :: x
     CHARACTER(len=*), INTENT(inout) :: error
-
     INTEGER(iprec4) :: i, n
 
     n = SIZE(a,dim=1)
@@ -660,12 +663,12 @@ CONTAINS
     !! Input:  - Square matrix              A2LU(n,n)
     !! Output: - LU factorization           A2LU(n,n)
     !!         - Index vector               indx(n)
-    !!         - Error (.false., if ok)     error
+    !!         - Error (empty, if ok)       error
 
     IMPLICIT NONE
     REAL(rprec8), DIMENSION(:,:), INTENT(inout)       :: A2LU
     INTEGER, DIMENSION(SIZE(A2LU,dim=1)), INTENT(out) :: indx
-    CHARACTER(len=*), INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                   :: error
 
     INTEGER :: n, err
 
@@ -698,9 +701,9 @@ CONTAINS
     !!         - Error (.false., if ok)     error
 
     IMPLICIT NONE
-    REAL(rprec16), DIMENSION(:,:), INTENT(inout)    :: A2LU
+    REAL(rprec16), DIMENSION(:,:), INTENT(inout)      :: A2LU
     INTEGER, DIMENSION(SIZE(A2LU,dim=1)), INTENT(out) :: indx
-    CHARACTER(len=*), INTENT(inout)                            :: error
+    CHARACTER(len=*), INTENT(inout)                   :: error
 
     REAL(rprec16), DIMENSION(:), ALLOCATABLE :: vv, helpvec
     INTEGER :: n, i, imax, err
@@ -1002,9 +1005,6 @@ CONTAINS
 
        ! Initialize the matrix:
        matinv_r8(:,:) = L
-       FORALL(i=1:n)
-          matinv_r8(i,i) = p(i)
-       END FORALL
 
        ! Solve b from L * Transpose(L) * b = e_i and put A(:,i) = b:
        CALL DPOTRI(uplo,n,matinv_r8,n,err)

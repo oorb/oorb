@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,8 +29,8 @@
 !!
 !! @see StochasticOrbit_class 
 !!
-!! @author  MG
-!! @version 2016-03-09
+!! @author  MG, LS
+!! @version 2023-03-29
 !!
 MODULE PhysicalParameters_cl
 
@@ -1755,9 +1755,9 @@ CONTAINS
        RETURN
     END IF
 
-    DO j=1,6*nstorb+nperturber
-       A_arr2(j,j) = p2(j)
-    END DO
+!!$    DO j=1,6*nstorb+nperturber
+!!$       A_arr2(j,j) = p2(j)
+!!$    END DO
 
     iorb = iorb_init
     itrial = itrial_init
@@ -2121,10 +2121,10 @@ CONTAINS
                 CALL cholesky_decomposition(A_arr2, p2, errstr)
              END IF
 
-             DO j=1,6*nstorb+nperturber
-                A_arr2(j,j) = p2(j)
-                A_arr2(j,j+1:6*nstorb+nperturber) = 0.0_bp
-             END DO
+!!$             DO j=1,6*nstorb+nperturber
+!!$                A_arr2(j,j) = p2(j)
+!!$                A_arr2(j,j+1:6*nstorb+nperturber) = 0.0_bp
+!!$             END DO
           END IF
        END IF
 

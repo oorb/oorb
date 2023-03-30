@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2021,2022                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO 
-!! @version 2022-09-07
+!! @version 2023-03-29
 !!  
 MODULE StochasticOrbit_cl
 
@@ -1514,7 +1514,8 @@ CONTAINS
     INTEGER, DIMENSION(:), ALLOCATABLE :: &
          failed_flag
     INTEGER, DIMENSION(6) :: &
-         n0
+         n0, &
+         indx
     INTEGER :: &
          i, j, &
          itrial, &
@@ -1741,14 +1742,7 @@ CONTAINS
             "StochasticOrbit / covarianceSampling:", &
             "Condition number for orbital-element covariance matrix:", cond_nr(cov, errstr)
     END IF
-
-    A = 0.0_bp
-    ! Code needs only the upper diagonal matrix as input. Lower
-    ! diagonal matrix will be populated with the Cholesky
-    ! decomposition and p will have the diagonal elements.
-    DO i=1,6
-       A(i,i:6) = cov(i,i:6)
-    END DO
+    A = cov
     CALL cholesky_decomposition(A, p, errstr)
     IF (LEN_TRIM(errstr) /= 0) THEN
        error = .TRUE.
@@ -1757,14 +1751,6 @@ CONTAINS
        WRITE(stderr,"(A)") TRIM(errstr)
        RETURN
     END IF
-    DO i=1,6
-       ! Get rid of the upper diagonal matrix that contains the
-       ! covariance matrix
-       A(i,i:6) = 0.0_bp
-       ! Insert diagonal elements to the Cholesky decomposition
-       A(i,i) = p(i)
-    END DO
-
     IF (info_verb >= 2) THEN
        WRITE(stdout,"(2X,A,1X,A)") &
             "StochasticOrbit / covarianceSampling:", &
@@ -2116,9 +2102,9 @@ CONTAINS
           ! chi2 filtering is used and dchi2 is too large.
           failed_flag(11) = failed_flag(11) + 1
           IF (info_verb >= 3) THEN
-             WRITE(stdout,"(2X,A,1X,A,1X,E10.5)") &
+             WRITE(stdout,"(2X,A,1X,A,3(1X,E10.5))") &
                   "StochasticOrbit / covarianceSampling:", &
-                  "Failed (dchi2 too large)", dchi2
+                  "Failed (dchi2 too large)", dchi2, chi2, this%chi2_min_prm
           END IF
           CALL NULLIFY(orb)
           DEALLOCATE(comp_scoords, partials_arr, stat=err)
