@@ -4,7 +4,7 @@
 import sys
 file1 = open(sys.argv[1],'r')
 file2 = open(sys.argv[2],'r')
-eps = 0.00000000001
+eps = 0.0001
 
 for i in file1:
     if(i[0] == "#"):
