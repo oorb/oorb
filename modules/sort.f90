@@ -34,7 +34,7 @@ MODULE sort
   USE utilities
 
   IMPLICIT NONE
-  INTEGER, PARAMETER :: NN = 15, NSTACK = 100
+  INTEGER, PARAMETER :: NN = 15, NSTACK = 200
 
   INTERFACE insertionSort
      MODULE PROCEDURE insertionSort_i8
