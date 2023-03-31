@@ -7479,6 +7479,7 @@ PROGRAM oorb
               CALL NULLIFY(orb_lt_corr_arr(j))
               CALL NULLIFY(ccoord)
               CALL NULLIFY(obsy_ccoord)
+              CALL NULLIFY(t)
 
 
            END DO
