@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Independent utilities.
 !!
 !! @author  MG
-!! @version 2018-01-10
+!! @version 2023-04-05
 !!
 MODULE utilities
 
@@ -34,8 +34,10 @@ MODULE utilities
 
   IMPLICIT NONE
   INCLUDE "../prefix.h"
-  PRIVATE :: integerToArray_ri8
-  PRIVATE :: arrayToInteger_r8i8
+  PRIVATE :: integerToArray_i16r8
+  PRIVATE :: integerToArray_i8r8
+  PRIVATE :: arrayToInteger_r8i16
+!!$  PRIVATE :: arrayToInteger_r8i8
   PRIVATE :: arrayToReal_r8r16
   PRIVATE :: cumulativeDistribution_2d_r8
   PRIVATE :: realToArray_r16r8
@@ -57,16 +59,17 @@ MODULE utilities
   PRIVATE :: reallocate_l_2
   PRIVATE :: secToHMS_r4
   PRIVATE :: secToHMS_r8
-  PRIVATE :: toInt_4
-  PRIVATE :: toReal_8
-  PRIVATE :: toReal_16
+  PRIVATE :: toInt_i4
+  PRIVATE :: toReal_r8
+  PRIVATE :: toReal_r16
   PRIVATE :: toString_i4
   PRIVATE :: toString_i8
   PRIVATE :: toString_r4
   PRIVATE :: toString_r8
 
   INTERFACE arrayToInteger
-     MODULE PROCEDURE arrayToInteger_r8i8
+     MODULE PROCEDURE arrayToInteger_r8i16
+!!$     MODULE PROCEDURE arrayToInteger_r8i8
   END INTERFACE arrayToInteger
 
   INTERFACE arrayToReal
@@ -78,7 +81,8 @@ MODULE utilities
   END INTERFACE cumulativeDistribution
 
   INTERFACE integerToArray
-     MODULE PROCEDURE integerToArray_ri8
+     MODULE PROCEDURE integerToArray_i8r8
+     MODULE PROCEDURE integerToArray_i16r8
   END INTERFACE integerToArray
 
   INTERFACE imaxloc
@@ -86,7 +90,7 @@ MODULE utilities
      MODULE PROCEDURE imaxloc_i8
      MODULE PROCEDURE imaxloc_r4
      MODULE PROCEDURE imaxloc_r8
-     MODULE PROCEDURE imaxloc_r16
+!!$     MODULE PROCEDURE imaxloc_r16
   END INTERFACE imaxloc
 
   INTERFACE iminloc
@@ -94,7 +98,7 @@ MODULE utilities
      MODULE PROCEDURE iminloc_i8
      MODULE PROCEDURE iminloc_r4
      MODULE PROCEDURE iminloc_r8
-     MODULE PROCEDURE iminloc_r16
+!!$     MODULE PROCEDURE iminloc_r16
   END INTERFACE iminloc
 
   INTERFACE realToArray
@@ -109,8 +113,8 @@ MODULE utilities
      MODULE PROCEDURE reallocate_r8_1
      MODULE PROCEDURE reallocate_r8_2
      MODULE PROCEDURE reallocate_r8_3
-     MODULE PROCEDURE reallocate_r16_1
-     MODULE PROCEDURE reallocate_r16_2
+!!$     MODULE PROCEDURE reallocate_r16_1
+!!$     MODULE PROCEDURE reallocate_r16_2
      MODULE PROCEDURE reallocate_i1_1
      MODULE PROCEDURE reallocate_i4_1
      MODULE PROCEDURE reallocate_i4_2
@@ -125,12 +129,12 @@ MODULE utilities
      MODULE PROCEDURE swap_i8
      MODULE PROCEDURE swap_scalar_r8
      MODULE PROCEDURE swap_vector_r8
-     MODULE PROCEDURE swap_r16
+!!$     MODULE PROCEDURE swap_r16
      MODULE PROCEDURE swap_ch
   END INTERFACE swap
 
   INTERFACE toInt
-     MODULE PROCEDURE toInt_4
+     MODULE PROCEDURE toInt_i4
   END INTERFACE toInt
 
   INTERFACE secToHMS
@@ -139,8 +143,8 @@ MODULE utilities
   END INTERFACE secToHMS
 
   INTERFACE toReal
-     MODULE PROCEDURE toReal_8
-     MODULE PROCEDURE toReal_16
+     MODULE PROCEDURE toReal_r8
+!!$     MODULE PROCEDURE toReal_r16
   END INTERFACE toReal
 
   INTERFACE toString
@@ -158,19 +162,19 @@ CONTAINS
 
 
 
-  INTEGER(iprec8) FUNCTION arrayToInteger_r8i8(array, elements, bin_size, nbins, bounds, error)
+  INTEGER(iprec16) FUNCTION arrayToInteger_r8i16(array, elements, bin_size, nbins, bounds, error)
 
     IMPLICIT NONE
-    REAL(rprec8), DIMENSION(:), INTENT(in)     :: array    ! input array
-    LOGICAL, DIMENSION(:), INTENT(in)          :: elements ! used elements
-    REAL(rprec8), DIMENSION(:), INTENT(in)     :: bin_size ! bin sizes
-    INTEGER, DIMENSION(:), INTENT(in)          :: nbins     ! number of bins
-    REAL(rprec8), DIMENSION(:,:), INTENT(in)   :: bounds   ! variable bounds
-    LOGICAL, INTENT(out)                       :: error
-    INTEGER(iprec8), DIMENSION(:), ALLOCATABLE :: kp
-    INTEGER, DIMENSION(:), ALLOCATABLE         :: help, nbins_
-    INTEGER(iprec8)                            :: bins_coeff, intgr
-    INTEGER                                    :: ncolumn, i, j, err
+    REAL(rprec8), DIMENSION(:), INTENT(in)      :: array    ! input array
+    LOGICAL, DIMENSION(:), INTENT(in)           :: elements ! used elements
+    REAL(rprec8), DIMENSION(:), INTENT(in)      :: bin_size ! bin sizes
+    INTEGER, DIMENSION(:), INTENT(in)           :: nbins    ! number of bins
+    REAL(rprec8), DIMENSION(:,:), INTENT(in)    :: bounds   ! variable bounds
+    LOGICAL, INTENT(out)                        :: error
+    INTEGER(iprec16), DIMENSION(:), ALLOCATABLE :: kp
+    INTEGER, DIMENSION(:), ALLOCATABLE          :: help, nbins_
+    INTEGER(iprec16)                            :: bins_coeff, intgr
+    INTEGER                                     :: ncolumn, i, j, err
 
     ! Make an index (help) of the elements that are used:
     ncolumn = COUNT(elements)
@@ -195,13 +199,13 @@ CONTAINS
     DO i=1,SIZE(kp)
        ! Compute a value describing a single elements position:
        kp(i) = INT((array(help(i)) - bounds(help(i),1)) / &
-            bin_size(help(i)),4) + 1
+            bin_size(help(i)),iprec16) + 1_iprec16
     END DO
 
     ! If one or more of the elements are out of bounds, skip the
     ! array:
     IF (ANY(kp>nbins_) .OR. ANY(kp<0)) THEN
-       arrayToInteger_r8i8 = 0_iprec8
+       arrayToInteger_r8i16 = 0_iprec16
        DEALLOCATE(kp, stat=err)
        DEALLOCATE(help, stat=err)
        DEALLOCATE(nbins_, stat=err)
@@ -210,15 +214,15 @@ CONTAINS
 
     ! Transform bin coordinates to a single integer value
     ! (size(kp) == size(help)):
-    intgr = 0_iprec8
+    intgr = 0_iprec16
     DO i=1,SIZE(kp)
-       bins_coeff = 1_iprec8
+       bins_coeff = 1_iprec16
        DO j=2,i
-          bins_coeff = bins_coeff*INT(nbins_(j-1),iprec8)
+          bins_coeff = bins_coeff*INT(nbins_(j-1),iprec16)
        END DO
-       intgr = intgr + INT((kp(i) - 1),iprec8)*bins_coeff
+       intgr = intgr + INT((kp(i) - 1),iprec16)*bins_coeff
     END DO
-    intgr = intgr + 1_iprec8
+    intgr = intgr + 1_iprec16
 
     DEALLOCATE(kp, help, nbins_, stat=err)
     IF (err /= 0) THEN
@@ -226,9 +230,85 @@ CONTAINS
        DEALLOCATE(help, stat=err)
        DEALLOCATE(nbins_, stat=err)
     END IF
-    arrayToInteger_r8i8 = intgr
+    arrayToInteger_r8i16 = intgr
 
-  END FUNCTION arrayToInteger_r8i8
+  END FUNCTION arrayToInteger_r8i16
+
+
+
+
+
+!!$  INTEGER(iprec8) FUNCTION arrayToInteger_r8i8(array, elements, bin_size, nbins, bounds, error)
+!!$
+!!$    IMPLICIT NONE
+!!$    REAL(rprec8), DIMENSION(:), INTENT(in)     :: array    ! input array
+!!$    LOGICAL, DIMENSION(:), INTENT(in)          :: elements ! used elements
+!!$    REAL(rprec8), DIMENSION(:), INTENT(in)     :: bin_size ! bin sizes
+!!$    INTEGER, DIMENSION(:), INTENT(in)          :: nbins     ! number of bins
+!!$    REAL(rprec8), DIMENSION(:,:), INTENT(in)   :: bounds   ! variable bounds
+!!$    LOGICAL, INTENT(out)                       :: error
+!!$    INTEGER(iprec8), DIMENSION(:), ALLOCATABLE :: kp
+!!$    INTEGER, DIMENSION(:), ALLOCATABLE         :: help, nbins_
+!!$    INTEGER(iprec8)                            :: bins_coeff, intgr
+!!$    INTEGER                                    :: ncolumn, i, j, err
+!!$
+!!$    ! Make an index (help) of the elements that are used:
+!!$    ncolumn = COUNT(elements)
+!!$    ALLOCATE(kp(ncolumn), help(ncolumn), nbins_(ncolumn), stat=err)
+!!$    IF (err /= 0) THEN
+!!$       error = .TRUE.
+!!$       DEALLOCATE(kp, stat=err)
+!!$       DEALLOCATE(help, stat=err)
+!!$       DEALLOCATE(nbins_, stat=err)
+!!$       RETURN
+!!$    END IF
+!!$    j = 0
+!!$    DO i=1,SIZE(elements)
+!!$       IF (elements(i)) THEN
+!!$          j = j + 1
+!!$          help(j) = i
+!!$          nbins_(j) = nbins(i)
+!!$       END IF
+!!$    END DO
+!!$
+!!$    ! Compute coordinates of the bin:
+!!$    DO i=1,SIZE(kp)
+!!$       ! Compute a value describing a single elements position:
+!!$       kp(i) = INT((array(help(i)) - bounds(help(i),1)) / &
+!!$            bin_size(help(i)),iprec8) + 1_iprec8
+!!$    END DO
+!!$
+!!$    ! If one or more of the elements are out of bounds, skip the
+!!$    ! array:
+!!$    IF (ANY(kp>nbins_) .OR. ANY(kp<0)) THEN
+!!$       arrayToInteger_r8i8 = 0_iprec8
+!!$       DEALLOCATE(kp, stat=err)
+!!$       DEALLOCATE(help, stat=err)
+!!$       DEALLOCATE(nbins_, stat=err)
+!!$       RETURN
+!!$    END IF
+!!$
+!!$    ! Transform bin coordinates to a single integer value
+!!$    ! (size(kp) == size(help)):
+!!$    intgr = 0_iprec8
+!!$    DO i=1,SIZE(kp)
+!!$       bins_coeff = 1_iprec8
+!!$       DO j=2,i
+!!$          bins_coeff = bins_coeff*INT(nbins_(j-1),iprec8)
+!!$       END DO
+!!$       intgr = intgr + INT((kp(i) - 1_iprec8),iprec8)*bins_coeff
+!!$    END DO
+!!$    intgr = intgr + 1_iprec8
+!!$
+!!$    DEALLOCATE(kp, help, nbins_, stat=err)
+!!$    IF (err /= 0) THEN
+!!$       DEALLOCATE(kp, stat=err)
+!!$       DEALLOCATE(help, stat=err)
+!!$       DEALLOCATE(nbins_, stat=err)
+!!$    END IF
+!!$    arrayToInteger_r8i8 = intgr
+!!$
+!!$  END FUNCTION arrayToInteger_r8i8
 
 
 
@@ -273,7 +353,7 @@ CONTAINS
        ! Compute a value describing a single elements position:
        tmp = array(help(i)) - bounds(help(i),1)
        tmp = tmp / bin_size(help(i))
-       kp(i) = INT(tmp,4) + 1
+       kp(i) = INT(tmp,iprec8) + 1_iprec8
     END DO
 
     ! If one or more of the elements are out of bounds, skip the
@@ -462,19 +542,19 @@ CONTAINS
 
 
 
-  FUNCTION integerToArray_ri8(intgr, elements, bin_size, nbins, bounds, error)
+  FUNCTION integerToArray_i16r8(intgr, elements, bin_size, nbins, bounds, error)
 
     IMPLICIT NONE
-    INTEGER(iprec8), INTENT(in)              :: intgr    ! input integer
+    INTEGER(iprec16), INTENT(in)              :: intgr    ! input integer
     LOGICAL, DIMENSION(:), INTENT(in)        :: elements ! used elements
     REAL(rprec8), DIMENSION(:), INTENT(in)   :: bin_size ! bin sizes
     INTEGER, DIMENSION(:), INTENT(in)        :: nbins     ! number of bins
     REAL(rprec8), DIMENSION(:,:), INTENT(in) :: bounds   ! variable bounds
     LOGICAL, INTENT(out)                     :: error
-    REAL(rprec8), DIMENSION(SIZE(elements))  :: integerToArray_ri8
+    REAL(rprec8), DIMENSION(SIZE(elements))  :: integerToArray_i16r8
 
-    INTEGER(iprec8)                    :: intgr_coeff, bins_coeff
-    INTEGER, DIMENSION(:), ALLOCATABLE :: kp, nbins_
+    INTEGER(iprec16)                    :: intgr_coeff, bins_coeff
+    INTEGER(iprec16), DIMENSION(:), ALLOCATABLE :: kp, nbins_
     INTEGER                            :: ncolumn, i, j, k, err
 
     ! Make an index (help) of the elements that are used:
@@ -496,32 +576,32 @@ CONTAINS
 
     ! Transform integer to bin coordinates
     ! (size(kp) == size(help)):
-    bins_coeff = 1_rprec8
+    bins_coeff = 1_iprec16
     DO i=ncolumn, 1, -1
        intgr_coeff = intgr
        DO j=i+1, ncolumn
-          bins_coeff = 1_rprec8
+          bins_coeff = 1_iprec16
           DO k=1,j-1
-             bins_coeff = bins_coeff*INT(nbins_(k),rprec8)
+             bins_coeff = bins_coeff*nbins_(k)
           END DO
-          intgr_coeff = intgr_coeff - INT((kp(j)-1)*bins_coeff,rprec8)
+          intgr_coeff = intgr_coeff - (kp(j)-1_iprec16)*bins_coeff
        END DO
-       bins_coeff = 1_rprec8
+       bins_coeff = 1_iprec16
        DO j=1,i-1
-          bins_coeff = bins_coeff*INT(nbins_(j),rprec8)
+          bins_coeff = bins_coeff*nbins_(j)
        END DO
-       kp(i) = 1 + INT(intgr_coeff/REAL(bins_coeff),iprec4)
+       kp(i) = 1_iprec16 + INT(intgr_coeff/REAL(bins_coeff,rprec8),iprec16)
     END DO
-    kp(1) = kp(1) - 1
+    kp(1) = kp(1) - 1_iprec16
 
     ! Transform bin coordinates to real values: 
     j = 0
     DO i=1,SIZE(elements)
        IF (elements(i)) THEN
           j = j + 1
-          integerToArray_ri8(i) = bounds(i,1) + kp(j)*bin_size(i)
+          integerToArray_i16r8(i) = bounds(i,1) + kp(j)*bin_size(i)
        ELSE
-          integerToArray_ri8(i) = -1.0_rprec8
+          integerToArray_i16r8(i) = -1.0_rprec8
        END IF
     END DO
 
@@ -531,7 +611,82 @@ CONTAINS
        DEALLOCATE(nbins_, stat=err)
     END IF
 
-  END FUNCTION integerToArray_ri8
+  END FUNCTION integerToArray_i16r8
+
+
+
+
+
+  FUNCTION integerToArray_i8r8(intgr, elements, bin_size, nbins, bounds, error)
+
+    IMPLICIT NONE
+    INTEGER(iprec8), INTENT(in)              :: intgr    ! input integer
+    LOGICAL, DIMENSION(:), INTENT(in)        :: elements ! used elements
+    REAL(rprec8), DIMENSION(:), INTENT(in)   :: bin_size ! bin sizes
+    INTEGER, DIMENSION(:), INTENT(in)        :: nbins     ! number of bins
+    REAL(rprec8), DIMENSION(:,:), INTENT(in) :: bounds   ! variable bounds
+    LOGICAL, INTENT(out)                     :: error
+    REAL(rprec8), DIMENSION(SIZE(elements))  :: integerToArray_i8r8
+
+    INTEGER(iprec8)                    :: intgr_coeff, bins_coeff
+    INTEGER(iprec8), DIMENSION(:), ALLOCATABLE :: kp, nbins_
+    INTEGER                            :: ncolumn, i, j, k, err
+
+    ! Make an index (help) of the elements that are used:
+    ncolumn = COUNT(elements)
+    ALLOCATE(kp(ncolumn), nbins_(ncolumn), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       DEALLOCATE(kp, stat=err)
+       DEALLOCATE(nbins_, stat=err)
+       RETURN
+    END IF
+    j = 0
+    DO i=1,SIZE(elements)
+       IF (elements(i)) THEN
+          j = j + 1
+          nbins_(j) = nbins(i)
+       END IF
+    END DO
+
+    ! Transform integer to bin coordinates
+    ! (size(kp) == size(help)):
+    bins_coeff = 1_iprec8
+    DO i=ncolumn, 1, -1
+       intgr_coeff = intgr
+       DO j=i+1, ncolumn
+          bins_coeff = 1_iprec8
+          DO k=1,j-1
+             bins_coeff = bins_coeff*nbins_(k)
+          END DO
+          intgr_coeff = intgr_coeff - (kp(j)-1_iprec8)*bins_coeff
+       END DO
+       bins_coeff = 1_iprec8
+       DO j=1,i-1
+          bins_coeff = bins_coeff*nbins_(j)
+       END DO
+       kp(i) = 1_iprec8 + INT(intgr_coeff/REAL(bins_coeff,rprec8),iprec8)
+    END DO
+    kp(1) = kp(1) - 1_iprec8
+
+    ! Transform bin coordinates to real values: 
+    j = 0
+    DO i=1,SIZE(elements)
+       IF (elements(i)) THEN
+          j = j + 1
+          integerToArray_i8r8(i) = bounds(i,1) + kp(j)*bin_size(i)
+       ELSE
+          integerToArray_i8r8(i) = -1.0_rprec8
+       END IF
+    END DO
+
+    DEALLOCATE(kp, nbins_, stat=err)
+    IF (err /= 0) THEN
+       DEALLOCATE(kp, stat=err)
+       DEALLOCATE(nbins_, stat=err)
+    END IF
+
+  END FUNCTION integerToArray_i8r8
 
 
 
@@ -1354,7 +1509,7 @@ CONTAINS
   !! Converts a string to a integer(4) number. An error is reported if
   !! the string cannot be converted to number.
   !!
-  SUBROUTINE toInt_4(str, k, error)
+  SUBROUTINE toInt_i4(str, k, error)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(in) :: str
@@ -1366,8 +1521,8 @@ CONTAINS
     IF (err /= 0) THEN
        error = .TRUE.
     END IF
-
-  END SUBROUTINE toInt_4
+    
+  END SUBROUTINE toInt_i4
 
 
 
@@ -1378,7 +1533,7 @@ CONTAINS
   !! Converts a string to a real(prec8) number. An error is reported if
   !! the string cannot be converted to number.
   !!
-  SUBROUTINE toReal_8(str, r, error)
+  SUBROUTINE toReal_r8(str, r, error)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(in)   :: str
@@ -1404,7 +1559,7 @@ CONTAINS
     END IF
     r = plusminus * r
 
-  END SUBROUTINE toReal_8
+  END SUBROUTINE toReal_r8
 
 
 
@@ -1415,7 +1570,7 @@ CONTAINS
   !! Converts a string to a real(16) number. An error is reported if
   !! the string cannot be converted to number.
   !!
-  SUBROUTINE toReal_16(str, r, error)
+  SUBROUTINE toReal_r16(str, r, error)
 
     IMPLICIT NONE
     CHARACTER(len=*), INTENT(in)   :: str
@@ -1441,7 +1596,7 @@ CONTAINS
     END IF
     r = plusminus * r
 
-  END SUBROUTINE toReal_16
+  END SUBROUTINE toReal_r16
 
 
 

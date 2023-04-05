@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2016-03-23
+!! @version 2023-04-05
 !!
 MODULE Base_cl
 
@@ -53,13 +53,13 @@ MODULE Base_cl
   INTEGER, PARAMETER :: stdout = 6 !! Standard output logical unit 
   !!                                  (refers usually to the screen).
   INTEGER, PARAMETER :: debug  = 7 !! Debugging logical unit. 
-  INTEGER, PARAMETER :: cbp =  SELECTED_REAL_KIND(p=12) !! Base precision kind for type complex.
-  INTEGER, PARAMETER :: hp  =  SELECTED_REAL_KIND(p=18) !! High precision kind for type real.
-  INTEGER, PARAMETER :: bp  =  SELECTED_REAL_KIND(p=12) !! Base precision kind for type real.
-  INTEGER, PARAMETER :: lp  =  SELECTED_REAL_KIND(p=12)  !! Low precision kind for type real. p=6
-  INTEGER, PARAMETER :: ihp =  SELECTED_INT_KIND(12)    !! High precision kind for type integer.
-  INTEGER, PARAMETER :: ibp =  SELECTED_INT_KIND(7)     !! Base precision kind for type integer.
-  INTEGER, PARAMETER :: ilp =  SELECTED_INT_KIND(4)     !! Low precision kind for type integer.
+  INTEGER, PARAMETER :: cbp =  SELECTED_REAL_KIND(p=15) !! Base precision kind for type complex.
+  INTEGER, PARAMETER :: hp  =  SELECTED_REAL_KIND(p=15) !! High precision kind for type real.
+  INTEGER, PARAMETER :: bp  =  SELECTED_REAL_KIND(p=15) !! Base precision kind for type real.
+  INTEGER, PARAMETER :: lp  =  SELECTED_REAL_KIND(p=6)  !! Low precision kind for type real. p=6
+  INTEGER, PARAMETER :: ihp =  SELECTED_INT_KIND(36)    !! High precision kind for type integer.
+  INTEGER, PARAMETER :: ibp =  SELECTED_INT_KIND(18)     !! Base precision kind for type integer.
+  INTEGER, PARAMETER :: ilp =  SELECTED_INT_KIND(9)     !! Low precision kind for type integer.
   REAL(bp) :: timezone = 10.0_bp  !! Difference between UT and local time [h]. Default: 10 (HST).
   CHARACTER(len=3), DIMENSION(12), PARAMETER :: month_abbr = (/ &
        "Jan", &

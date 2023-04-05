@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,17 +26,18 @@
 !! Parameters for modules.
 !!
 !! @author  MG
-!! @version 2009-04-17
+!! @version 2023-04-05
 !!
 MODULE parameters
 
   IMPLICIT NONE
   INTEGER, PARAMETER :: iprec1 = SELECTED_INT_KIND(2)
-  INTEGER, PARAMETER :: iprec4 = SELECTED_INT_KIND(7)
-  INTEGER, PARAMETER :: iprec8 = SELECTED_INT_KIND(12)
+  INTEGER, PARAMETER :: iprec4 = SELECTED_INT_KIND(9)
+  INTEGER, PARAMETER :: iprec8 = SELECTED_INT_KIND(18)
+  INTEGER, PARAMETER :: iprec16 = SELECTED_INT_KIND(36)
   INTEGER, PARAMETER :: rprec4 = SELECTED_REAL_KIND(p=6)
-  INTEGER, PARAMETER :: rprec8 = SELECTED_REAL_KIND(p=12)
-  INTEGER, PARAMETER :: rprec16 = SELECTED_REAL_KIND(p=18)
+  INTEGER, PARAMETER :: rprec8 = SELECTED_REAL_KIND(p=15)
+  INTEGER, PARAMETER :: rprec16 = SELECTED_REAL_KIND(p=15)
 
   INTEGER, PARAMETER :: FNAME_LEN = 512
 

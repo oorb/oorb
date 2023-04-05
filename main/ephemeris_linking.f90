@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -39,7 +39,7 @@
 !!     Astronomy, Faculty of Science, University of Helsinki.
 !!
 !!   @author  MG 
-!!   @version 2018-12-10
+!!   @version 2023-04-03
 !!
 PROGRAM ephemeris_linking
 
@@ -59,11 +59,11 @@ PROGRAM ephemeris_linking
 #endif
 
   IMPLICIT NONE
-  TYPE (rb_tree_r16_i4arr), POINTER :: &
+  TYPE (rb_tree_i16_i4arr), POINTER :: &
        address_tree
   TYPE (rb_tree_ch32), POINTER :: &
        trial_linkage_tree
-  TYPE (rb_tree_node_r16_i4arr), POINTER :: &
+  TYPE (rb_tree_node_i16_i4arr), POINTER :: &
        address_tree_node1, &
        address_tree_node2
   TYPE (rb_tree_node_ch32), POINTER :: &
@@ -135,7 +135,7 @@ PROGRAM ephemeris_linking
   CHARACTER(len=FNAME_LEN), DIMENSION(:), POINTER :: &
        obsfnames, &
        outfnames
-  CHARACTER(len=DESIGNATION_LEN), DIMENSION(:,:), allocatable :: &
+  CHARACTER(len=DESIGNATION_LEN), DIMENSION(:,:), ALLOCATABLE :: &
        correct_linkages, &
        correct_linkages_tmp, &
        linkages, &
@@ -270,14 +270,9 @@ PROGRAM ephemeris_linking
        chi2, &
        chi2_, &
        computed_upper_bound
-  REAL(hp), DIMENSION(:,:), POINTER :: &
-       indx_arr
-  REAL(hp), DIMENSION(:), POINTER :: &
-       trial_indxs
   INTEGER, DIMENSION(:), POINTER :: &
        nind_arr
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
-       indx_arr_, &
        box_nrs
   INTEGER, DIMENSION(3) :: &
        j_min, &
@@ -346,7 +341,7 @@ PROGRAM ephemeris_linking
        found
 
   REAL(bp) :: dt1, dt2
-  REAL(hp) :: indx
+  INTEGER(ihp) :: indx
   INTEGER :: nset, nset_max, iset, iset_, norb_, iorb
   INTEGER :: ret
 
@@ -457,14 +452,14 @@ PROGRAM ephemeris_linking
      CALL OPEN(logfile)
      IF (error) THEN
         CALL errorMessage("ephemeris_linking", &
-             "TRACE BACK (10)", 1)
+             "TRACE BACK (15)", 1)
         CALL NULLIFY(logfile)
         STOP
      END IF
      lu = getUnit(logfile)
      IF (error) THEN
         CALL errorMessage("ephemeris_linking", &
-             "TRACE BACK (15)", 1)
+             "TRACE BACK (20)", 1)
         CALL NULLIFY(logfile)
         STOP
      END IF
@@ -479,7 +474,7 @@ PROGRAM ephemeris_linking
   CALL NEW(epoch, 2007, 1, 1.0_bp, "TT")
   IF (error) THEN
      CALL errorMessage("ephemeris_linking", &
-          "TRACE BACK (20)", 1)
+          "TRACE BACK (25)", 1)
      CALL NULLIFY(logfile)
      STOP
   END IF
@@ -496,7 +491,7 @@ PROGRAM ephemeris_linking
   CALL NEW(epoch_arr(3), 2004, 1, 28.0_bp, "TT")
   IF (error) THEN
      CALL errorMessage("ephemeris_linking", &
-          "TRACE BACK (50)", 1)
+          "TRACE BACK (30)", 1)
      STOP
   END IF
   CALL NEW(obsies)
@@ -516,9 +511,9 @@ PROGRAM ephemeris_linking
         box_nrs(i) = box_nrs(i) - 1
      END IF
   END DO
-  indx = 1.0_hp
+  indx = 1_ihp
   DO i=1,SIZE(box_nrs)
-     indx = indx*REAL(box_nrs(i),hp)
+     indx = indx*box_nrs(i)
   END DO
   WRITE(lu,*) "Number of addresses in the binned phase space is ", indx
   c1 = 1.25_bp ! = 5/4
@@ -546,14 +541,14 @@ PROGRAM ephemeris_linking
         CALL NEW(obsfile, TRIM(obsfname))
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1090)", 1)
+                "TRACE BACK (35)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         CALL setStatusOld(obsfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1095)", 1)
+                "TRACE BACK (40)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -561,7 +556,7 @@ PROGRAM ephemeris_linking
         CALL OPEN(obsfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1100)", 1)
+                "TRACE BACK (45)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -573,7 +568,7 @@ PROGRAM ephemeris_linking
         END IF
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1105)", 1)
+                "TRACE BACK (50)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -587,7 +582,7 @@ PROGRAM ephemeris_linking
      obss_sep_arr => getSeparatedSets(obss)
      IF (error) THEN
         CALL errorMessage("ephemeris_linking", &
-             "TRACE BACK (1110)", 1)
+             "TRACE BACK (55)", 1)
         CALL NULLIFY(logfile)
         STOP
      END IF
@@ -602,14 +597,14 @@ PROGRAM ephemeris_linking
         des1 = getDesignation(obss_sep_arr(i))
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1115)", 1)
+                "TRACE BACK (60)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         id1 = getID(obss_sep_arr(i))
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1120)", 1)
+                "TRACE BACK (65)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -617,19 +612,19 @@ PROGRAM ephemeris_linking
            IF (des1 == getDesignation(obss_sep_arr(j))) THEN
               IF (error) THEN
                  CALL errorMessage("ephemeris_linking", &
-                      "TRACE BACK (1125)", 1)
+                      "TRACE BACK (70)", 1)
                  CALL NULLIFY(logfile)
                  STOP
               END IF
               id2 = getID(obss_sep_arr(j))
               IF (error) THEN
                  CALL errorMessage("ephemeris_linking", &
-                      "TRACE BACK (1130)", 1)
+                      "TRACE BACK (75)", 1)
                  CALL NULLIFY(logfile)
                  STOP
               END IF
               k = k + 1
-              IF (.NOT.AllOCATED(correct_linkages)) THEN
+              IF (.NOT.ALLOCATED(correct_linkages)) THEN
                  ALLOCATE(correct_linkages(k,2), stat=err)
                  IF (err /= 0) THEN
                     CALL errorMessage("ephemeris_linking", &
@@ -638,12 +633,12 @@ PROGRAM ephemeris_linking
                     STOP
                  END IF
               ELSE IF (k > SIZE(correct_linkages,dim=1)) THEN
-                 allocate(correct_linkages_tmp(size(correct_linkages,dim=1),2))
+                 ALLOCATE(correct_linkages_tmp(SIZE(correct_linkages,dim=1),2))
                  correct_linkages_tmp = correct_linkages
-                 deallocate(correct_linkages)
-                 allocate(correct_linkages(2*k,2))
+                 DEALLOCATE(correct_linkages)
+                 ALLOCATE(correct_linkages(2*k,2))
                  correct_linkages = correct_linkages_tmp
-                 deallocate(correct_linkages_tmp)
+                 DEALLOCATE(correct_linkages_tmp)
               END IF
               IF (TRIM(id1) < TRIM(id2)) THEN
                  correct_linkages(k,1:2) = (/ id1, id2 /)
@@ -659,17 +654,17 @@ PROGRAM ephemeris_linking
      DEALLOCATE(obss_sep_arr, stat=err)
      IF (err /= 0) THEN
         CALL errorMessage("ephemeris_linking", &
-             "Could not deallocate memory (1025).", 1)
+             "Could not deallocate memory (5).", 1)
         CALL NULLIFY(logfile)
         STOP
      END IF
      WRITE(lu,"(1X,A,I0,A)") "Altogether ", k, " correct 2-linkages to be detected."
-     allocate(correct_linkages_tmp(k,2))
+     ALLOCATE(correct_linkages_tmp(k,2))
      correct_linkages_tmp = correct_linkages(1:k,:)
-     deallocate(correct_linkages)
-     allocate(correct_linkages(k,2))
+     DEALLOCATE(correct_linkages)
+     ALLOCATE(correct_linkages(k,2))
      correct_linkages = correct_linkages_tmp
-     deallocate(correct_linkages_tmp)
+     DEALLOCATE(correct_linkages_tmp)
   END IF
 
 
@@ -697,7 +692,7 @@ PROGRAM ephemeris_linking
         END DO
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1005)", 1)
+                "TRACE BACK (80)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -707,10 +702,10 @@ PROGRAM ephemeris_linking
            IF (.NOT.elm(i)) THEN
               CYCLE
            END IF
-           indx = indx * INT(box_nrs(i),ihp)
+           indx = indx*box_nrs(i)
         END DO
         WRITE(lu,*)
-        WRITE(lu,"(1X,A,1X,F32.0)") "Number of addresses in the binned phase space is", indx
+        WRITE(lu,"(1X,A,1X,I32)") "Number of addresses in the binned phase space is", indx
         WRITE(lu,*)
 
         ! READ FILE CONTAINING ORBIT FILENAMES:
@@ -725,28 +720,28 @@ PROGRAM ephemeris_linking
         CALL NEW(orbidfile, TRIM(fname))
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1010)", 1)
+                "TRACE BACK (85)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         CALL setStatusOld(orbidfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1015)", 1)
+                "TRACE BACK (90)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         CALL OPEN(orbidfile)  
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1020)", 1)
+                "TRACE BACK (95)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         nset_max = getNrOfLines(orbidfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1025)", 1)
+                "TRACE BACK (100)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -756,7 +751,7 @@ PROGRAM ephemeris_linking
            IF (err > 0) THEN
               error = .TRUE.
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (1030)", 1)
+                   "TRACE BACK (105)", 1)
               CALL NULLIFY(logfile)
               STOP
            ELSE IF (err < 0) THEN
@@ -769,21 +764,21 @@ PROGRAM ephemeris_linking
            CALL NEW(orbfile,TRIM(orbid) // ".orb")
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (1035)", 1)
+                   "TRACE BACK (110)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            CALL setStatusOld(orbfile)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (1040)", 1)
+                   "TRACE BACK (115)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            CALL OPEN(orbfile)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (1045)", 1)
+                   "TRACE BACK (120)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
@@ -793,7 +788,7 @@ PROGRAM ephemeris_linking
            norb = getNrOfLines(orbfile) - 4 ! 4 header lines are not taken into count
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (1050)", 1)
+                   "TRACE BACK (125)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
@@ -830,7 +825,7 @@ PROGRAM ephemeris_linking
                    integration_step=integration_step)
               IF (error) THEN
                  CALL errorMessage("ephemeris_linking", &
-                      "TRACE BACK (1055)", 1)
+                      "TRACE BACK (130)", 1)
                  CALL NULLIFY(logfile)
                  STOP
               END IF
@@ -848,8 +843,8 @@ PROGRAM ephemeris_linking
            END IF
            nset = nset + 1
            norb = SIZE(orb_arr, dim=1)
-           
-           IF (.NOT.Allocated(id_arr_tmp)) THEN
+
+           IF (.NOT.ALLOCATED(id_arr_tmp)) THEN
               ALLOCATE(id_arr_tmp(nset_max), stat=err)
               IF (err /= 0) THEN
                  error = .TRUE.
@@ -869,7 +864,7 @@ PROGRAM ephemeris_linking
               IF (error) THEN
                  error = .FALSE.
                  CALL errorMessage('identification_mod / scoordComparison' , &
-                      'TRACE BACK (200)', 1)
+                      'TRACE BACK (135)', 1)
                  CYCLE
               END IF
               DO k=1,SIZE(scoord_arr,dim=1)
@@ -879,10 +874,10 @@ PROGRAM ephemeris_linking
               DEALLOCATE(scoord_arr, stat=err)
               IF (err /= 0) THEN
                  CALL errorMessage("ephemeris_linking", &
-                      "Could not deallocate memory (15).", 1)
+                      "Could not deallocate memory (10).", 1)
                  STOP
               END IF
-              indx = arrayToReal(coords, elm, width, box_nrs, &
+              indx = arrayToInteger(coords, elm, width, box_nrs, &
                    bounds, error)
               IF (error) THEN
                  CALL errorMessage("ephemeris_linking", &
@@ -904,14 +899,14 @@ PROGRAM ephemeris_linking
                 stat=err)
            IF (err /= 0) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "Could not deallocate memory (1005).", 1)
+                   "Could not deallocate memory (15).", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
         END DO
-        allocate(id_arr(nset))
+        ALLOCATE(id_arr(nset))
         id_arr = id_arr_tmp(1:nset)
-        deallocate(id_arr_tmp)
+        DEALLOCATE(id_arr_tmp)
 
         ret = system("ps ux | grep ephemeris_linking")
 
@@ -923,14 +918,14 @@ PROGRAM ephemeris_linking
         CALL NEW(addressfile, TRIM(addressfname))
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1080)", 1)
+                "TRACE BACK (140)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         CALL OPEN(addressfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1085)", 1)
+                "TRACE BACK (145)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -940,7 +935,7 @@ PROGRAM ephemeris_linking
            m = m + SIZE(address_tree_node1%data_nodes)
            DO k=1,SIZE(address_tree_node1%data_nodes)
               nset = SIZE(address_tree_node1%data_nodes(k)%data_array)
-              WRITE(getUnit(addressfile),"(F32.0,1X,I10)",advance="NO") &
+              WRITE(getUnit(addressfile),"(I32,1X,I10)",advance="NO") &
                    address_tree_node1%data_nodes(k)%key, nset
               DO i=1,nset
                  WRITE(getUnit(addressfile),"(1X,A16)",advance="NO") &
@@ -966,7 +961,7 @@ PROGRAM ephemeris_linking
               DEALLOCATE(address_tree_node1%data_nodes(k)%data_array, stat=err)
               IF (err /= 0) THEN
                  CALL errorMessage("ephemeris_linking", &
-                      "Could not deallocate memory (1010).", 1)
+                      "Could not deallocate memory (20).", 1)
                  CALL NULLIFY(logfile)
                  STOP
               END IF
@@ -977,14 +972,14 @@ PROGRAM ephemeris_linking
            DEALLOCATE(address_tree_node2%data_nodes, stat=err)
            IF (err /= 0) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "Could not deallocate memory (1015).", 1)
+                   "Could not deallocate memory (25).", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            DEALLOCATE(address_tree_node2, stat=err)
            IF (err /= 0) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "Could not deallocate memory (1020).", 1)
+                   "Could not deallocate memory (30).", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
@@ -1000,14 +995,14 @@ PROGRAM ephemeris_linking
         CALL NEW(triallinkfile, TRIM(triallinkfname))
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1080)", 1)
+                "TRACE BACK (150)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         CALL OPEN(triallinkfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (1085)", 1)
+                "TRACE BACK (155)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -1045,7 +1040,7 @@ PROGRAM ephemeris_linking
            DEALLOCATE(tree_node_ch32_2, stat=err)
            IF (err /= 0) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "Could not deallocate memory (1030).", 1)
+                   "Could not deallocate memory (35).", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
@@ -1069,21 +1064,21 @@ PROGRAM ephemeris_linking
         CALL NEW(triallinkfile, TRIM(triallinkfname))
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (2005)", 1)
+                "TRACE BACK (160)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         CALL setStatusOld(triallinkfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (2010)", 1)
+                "TRACE BACK (165)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
         CALL OPEN(triallinkfile)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (2015)", 1)
+                "TRACE BACK (170)", 1)
            CALL NULLIFY(logfile)
            STOP
         END IF
@@ -1106,7 +1101,7 @@ PROGRAM ephemeris_linking
         CALL toString(pid, pidstr, error)
         IF (error) THEN
            CALL errorMessage("ephemeris_linking", &
-                "TRACE BACK (2020)", 1)
+                "TRACE BACK (175)", 1)
            STOP
         END IF
 
@@ -1147,49 +1142,49 @@ PROGRAM ephemeris_linking
                 TRIM(pidstr) // "." // TRIM(obs_type))
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2025)", 1)
+                   "TRACE BACK (180)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            CALL setStatusOld(obsfile)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2030)", 1)
+                   "TRACE BACK (185)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            CALL OPEN(obsfile)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2035)", 1)
+                   "TRACE BACK (190)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            CALL NEW(obss, obsfile)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2040)", 1)
+                   "TRACE BACK (195)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            CALL NULLIFY(obsfile)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2045)", 1)
+                   "TRACE BACK (200)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            CALL setNumber(obss,1)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2050)", 1)
+                   "TRACE BACK (205)", 1)
               CALL NULLIFY(logfile)
               STOP
            END IF
            obs_first = getObservation(obss, 1)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2055)", 1)
+                   "TRACE BACK (210)", 1)
               STOP
            END IF
            ccoord_first = getObservatoryCCoord(obs_first)
@@ -1197,7 +1192,7 @@ PROGRAM ephemeris_linking
            obs_last = getObservation(obss, nobs)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2060)", 1)
+                   "TRACE BACK (215)", 1)
               STOP
            END IF
            ccoord_last = getObservatoryCCoord(obs_last)
@@ -1206,7 +1201,7 @@ PROGRAM ephemeris_linking
            dt = getObservationalTimespan(obss)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2065)", 1)
+                   "TRACE BACK (220)", 1)
               STOP
            END IF
            ! Maximum bounds according to different observatory coordinates +
@@ -1216,13 +1211,13 @@ PROGRAM ephemeris_linking
            t = getTime(obs_first)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2070)", 1)
+                   "TRACE BACK (225)", 1)
               STOP
            END IF
            mjd = getMJD(t, "TT")
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2075)", 1)
+                   "TRACE BACK (230)", 1)
               STOP
            END IF
            CALL NULLIFY(t)
@@ -1230,7 +1225,7 @@ PROGRAM ephemeris_linking
            CALL NEW(t_inv, mjd, "TT")
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (2080)", 1)
+                   "TRACE BACK (235)", 1)
               STOP
            END IF
            CALL NULLIFY(obs_first)
@@ -1247,7 +1242,7 @@ PROGRAM ephemeris_linking
                  CALL NEW(storb, obss)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (2085)", 1)
+                         "TRACE BACK (240)", 1)
                     STOP
                  END IF
                  CALL setParameters(storb, &
@@ -1284,7 +1279,7 @@ PROGRAM ephemeris_linking
                     orb_arr => getSampleOrbits(storb)
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (2090)", 1)
+                            "TRACE BACK (245)", 1)
                        STOP
                     END IF
                     chi2_ = HUGE(chi2_)
@@ -1292,7 +1287,7 @@ PROGRAM ephemeris_linking
                        chi2 = getChi2(storb, orb_arr(j))
                        IF (error) THEN
                           CALL errorMessage("ephemeris_linking", &
-                               "TRACE BACK (2095)", 1)
+                               "TRACE BACK (250)", 1)
                           STOP
                        END IF
                        IF (chi2 < chi2_) THEN
@@ -1304,7 +1299,7 @@ PROGRAM ephemeris_linking
                     DEALLOCATE(orb_arr, stat=err)
                     IF (err /= 0) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "Could not deallocate memory (57).", 1)
+                            "Could not deallocate memory (40).", 1)
                        STOP
                     END IF
                  END IF
@@ -1318,26 +1313,26 @@ PROGRAM ephemeris_linking
                  CALL NEW(orbfile, TRIM(id1) // ".orb")
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (390)", 1)
+                         "TRACE BACK (255)", 1)
                     STOP
                  END IF
                  CALL setStatusOld(orbfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (395)", 1)
+                         "TRACE BACK (260)", 1)
                     STOP
                  END IF
                  CALL OPEN(orbfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (400)", 1)
+                         "TRACE BACK (265)", 1)
                     STOP
                  END IF
                  WRITE(lu,*) "[" // TRIM(id1) // "] " // " Orbit file opened."
                  norb = getNrOfLines(orbfile) - 4 ! 4 header lines are not taken into count
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (405)", 1)
+                         "TRACE BACK (270)", 1)
                     STOP
                  END IF
                  ALLOCATE(orb_arr_1(norb), &
@@ -1365,7 +1360,7 @@ PROGRAM ephemeris_linking
                          integrator=integrator, integration_step=integration_step)
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (410)", 1)
+                            "TRACE BACK (275)", 1)
                        STOP
                     END IF
                  END DO
@@ -1379,26 +1374,26 @@ PROGRAM ephemeris_linking
                  CALL NEW(orbfile,TRIM(id2) // ".orb")
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (415)", 1)
+                         "TRACE BACK (280)", 1)
                     STOP
                  END IF
                  CALL setStatusOld(orbfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (420)", 1)
+                         "TRACE BACK (285)", 1)
                     STOP
                  END IF
                  CALL OPEN(orbfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (425)", 1)
+                         "TRACE BACK (290)", 1)
                     STOP
                  END IF
                  WRITE(lu,*) "[" // TRIM(id2) // "] " // " Orbit file opened."
                  norb = getNrOfLines(orbfile) - 4 ! 4 header lines are not taken into count
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (430)", 1)
+                         "TRACE BACK (295)", 1)
                     STOP
                  END IF
                  ALLOCATE(orb_arr_2(norb), stat=err)
@@ -1425,7 +1420,7 @@ PROGRAM ephemeris_linking
                          integrator=integrator, integration_step=integration_step)
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (435)", 1)
+                            "TRACE BACK (300)", 1)
                        STOP
                     END IF
                  END DO
@@ -1504,26 +1499,26 @@ PROGRAM ephemeris_linking
                     t = getTime(orb_arr_1(1))
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (440)", 1)
+                            "TRACE BACK (305)", 1)
                        STOP
                     END IF
                     CALL NEW(orb_arr((j-1)*2+1), elm_arr_1(j_min(j),:), "keplerian", "ecliptic", t)
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (445)", 1)
+                            "TRACE BACK (310)", 1)
                        STOP
                     END IF
                     CALL NULLIFY(t)
                     t = getTime(orb_arr_2(1))
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (450)", 1)
+                            "TRACE BACK (315)", 1)
                        STOP
                     END IF
                     CALL NEW(orb_arr((j-1)*2+2), elm_arr_2(k_min(j),:), "keplerian", "ecliptic", t)
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (455)", 1)
+                            "TRACE BACK (320)", 1)
                        STOP
                     END IF
                     CALL NULLIFY(t)
@@ -1531,7 +1526,7 @@ PROGRAM ephemeris_linking
                  t = getTime(orb_arr_2(1))
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (460)", 1)
+                         "TRACE BACK (325)", 1)
                     STOP
                  END IF
                  elements = elm_arr_1(j_min(1),:) + elm_arr_2(k_min(1),:)
@@ -1539,7 +1534,7 @@ PROGRAM ephemeris_linking
                  CALL NEW(orb_arr(7), elements, "keplerian", "ecliptic", t)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (465)", 1)
+                         "TRACE BACK (330)", 1)
                     STOP
                  END IF
                  CALL NULLIFY(t)
@@ -1555,7 +1550,7 @@ PROGRAM ephemeris_linking
                     CALL propagate(orb_arr(j), t_inv)
                     IF (error) THEN
                        CALL errorMessage("ephemeris_linking", &
-                            "TRACE BACK (470)", 1)
+                            "TRACE BACK (335)", 1)
                        STOP
                     END IF
                     orb_arr_(j) = copy(orb_arr(j))
@@ -1567,7 +1562,7 @@ PROGRAM ephemeris_linking
                  CALL NEW(storb, obss)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (475)", 1)
+                         "TRACE BACK (340)", 1)
                     STOP
                  END IF
                  CALL setParameters(storb, &
@@ -1580,7 +1575,7 @@ PROGRAM ephemeris_linking
                       smplx_tol=2*nobs*2.0_bp)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (480)", 1)
+                         "TRACE BACK (345)", 1)
                     STOP
                  END IF
                  !                 iter = 1000
@@ -1602,7 +1597,7 @@ PROGRAM ephemeris_linking
                           error = .FALSE.
                           DEALLOCATE(residuals, stat=err)
                           CALL errorMessage("ephemeris_linking", &
-                               "TRACE BACK (485)", 1)
+                               "TRACE BACK (350)", 1)
                           CYCLE
                        END IF
                        IF (ALL(ABS(residuals(:,2:3)) < 4.0_bp*stdev_arr(:,2:3))) THEN
@@ -1632,7 +1627,7 @@ PROGRAM ephemeris_linking
                  CALL NEW(storb, obss)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (490)", 1)
+                         "TRACE BACK (355)", 1)
                     STOP
                  END IF
                  ls_element_mask = .TRUE.
@@ -1682,7 +1677,16 @@ PROGRAM ephemeris_linking
 
               IF (linkage) THEN
                  nlink = nlink + 1
-                 IF (.NOT.allocated(linkages)) THEN
+                 CALL toString(nlink, lstr, error)
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (360)", 1)
+                    STOP
+                 END IF
+                 DO WHILE (LEN_TRIM(lstr) < 7)
+                    lstr = "0" // TRIM(lstr)
+                 END DO
+                 IF (.NOT.ALLOCATED(linkages)) THEN
                     ALLOCATE(linkages(nlink,2), stat=err)
                     IF (err /= 0) THEN
                        error = .TRUE.
@@ -1691,31 +1695,31 @@ PROGRAM ephemeris_linking
                        STOP
                     END IF
                  ELSE IF (nlink > SIZE(linkages,dim=1)) THEN
-                    allocate(linkages_tmp(size(linkages,dim=1),2))
+                    ALLOCATE(linkages_tmp(SIZE(linkages,dim=1),2))
                     linkages_tmp = linkages
-                    deallocate(linkages)
-                    allocate(linkages(2*nlink,2))
+                    DEALLOCATE(linkages)
+                    ALLOCATE(linkages(2*nlink,2))
                     linkages = linkages_tmp
-                    deallocate(linkages_tmp)
+                    DEALLOCATE(linkages_tmp)
                  END IF
 
                  linkages(nlink,:) = (/ id1, id2 /)
                  CALL NEW(tmpfile,"lnk.out")
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (500)", 1)
+                         "TRACE BACK (365)", 1)
                     STOP
                  END IF
                  CALL setPositionAppend(tmpfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (505)", 1)
+                         "TRACE BACK (370)", 1)
                     STOP
                  END IF
                  CALL OPEN(tmpfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (510)", 1)
+                         "TRACE BACK (375)", 1)
                     STOP
                  END IF
                  WRITE(getUnit(tmpfile),"(3(A,1X))") TRIM(id1), "<-->", TRIM(id2)
@@ -1725,31 +1729,25 @@ PROGRAM ephemeris_linking
                  CALL NEW(obsfile,"lnk.mpc2")
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (515)", 1)
+                         "TRACE BACK (380)", 1)
                     STOP
                  END IF
                  CALL setPositionAppend(obsfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (520)", 1)
+                         "TRACE BACK (385)", 1)
                     STOP
                  END IF
                  CALL OPEN(obsfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (525)", 1)
-                    STOP
-                 END IF
-                 CALL toString(l, lstr, error)
-                 IF (error) THEN
-                    CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (527)", 1)
+                         "TRACE BACK (390)", 1)
                     STOP
                  END IF
                  CALL writeObservationFile(obss, getUnit(obsfile), "mpc2", number=lstr)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (530)", 1)
+                         "TRACE BACK (395)", 1)
                     STOP
                  END IF
                  CALL  NULLIFY(obsfile)
@@ -1758,38 +1756,29 @@ PROGRAM ephemeris_linking
                  CALL NEW(orbfile,"lnk.orb")
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (535)", 1)
+                         "TRACE BACK (400)", 1)
                     STOP
                  END IF
                  CALL setPositionAppend(orbfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (540)", 1)
+                         "TRACE BACK (405)", 1)
                     STOP
                  END IF
                  CALL OPEN(orbfile)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (545)", 1)
+                         "TRACE BACK (410)", 1)
                     STOP
                  END IF
-                 CALL toString(nlink, str, error)
-                 IF (error) THEN
-                    CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (550)", 1)           
-                    STOP
-                 END IF
-                 DO WHILE (LEN_TRIM(str) < 7)
-                    str = "0" // TRIM(str)
-                 END DO
                  CALL writeopenOrbOrbitFile(getUnit(orbfile), &
                       print_header=nlink==1, &
                       element_type_out="cartesian", &
-                      id=TRIM(str), &
+                      id=TRIM(lstr), &
                       orb=orb)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (555)", 1)
+                         "TRACE BACK (420)", 1)
                     STOP
                  END IF
                  CALL  NULLIFY(orbfile)
@@ -1797,7 +1786,7 @@ PROGRAM ephemeris_linking
                  designation_arr => getObjects(obss)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
-                         "TRACE BACK (560)", 1)
+                         "TRACE BACK (425)", 1)
                     STOP
                  END IF
                  str = " "
@@ -1833,12 +1822,12 @@ PROGRAM ephemeris_linking
         ret = system("rm -f ephemeris_linking_tmp" // &
              TRIM(pidstr) // "." // TRIM(obs_type))
         IF (nlink /= 0) THEN
-           allocate(linkages_tmp(nlink,2))
+           ALLOCATE(linkages_tmp(nlink,2))
            linkages_tmp = linkages(1:nlink,:)
-           deallocate(linkages)
-           allocate(linkages(nlink,2))
+           DEALLOCATE(linkages)
+           ALLOCATE(linkages(nlink,2))
            linkages = linkages_tmp
-           deallocate(linkages_tmp)
+           DEALLOCATE(linkages_tmp)
            WRITE(lu,*) "Found ", nlink, " linkages."
         ELSE
            WRITE(lu,*) "Found zero linkages."
@@ -1866,13 +1855,13 @@ PROGRAM ephemeris_linking
            CALL NEW(tmpfile,"det_cor_lnk.out")
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (565)", 1)
+                   "TRACE BACK (430)", 1)
               STOP
            END IF
            CALL OPEN(tmpfile)
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
-                   "TRACE BACK (570)", 1)
+                   "TRACE BACK (435)", 1)
               STOP
            END IF
            DO i=1,SIZE(correct_linkages,dim=1)
@@ -1905,13 +1894,13 @@ PROGRAM ephemeris_linking
               CALL NEW(tmpfile,"not_det_cor_lnk.out")
               IF (error) THEN
                  CALL errorMessage("ephemeris_linking", &
-                      "TRACE BACK (575)", 1)
+                      "TRACE BACK (440)", 1)
                  STOP
               END IF
               CALL OPEN(tmpfile)
               IF (error) THEN
                  CALL errorMessage("ephemeris_linking", &
-                      "TRACE BACK (580)", 1)
+                      "TRACE BACK (445)", 1)
                  STOP
               END IF
               DO i=1,SIZE(detected_correct_linkages,dim=1)
@@ -1938,7 +1927,7 @@ PROGRAM ephemeris_linking
 
   END DO
 
-  IF (AllOCATED(id_arr)) THEN
+  IF (ALLOCATED(id_arr)) THEN
      DEALLOCATE(id_arr, stat=err)
      IF (err /= 0) THEN
         CALL errorMessage("ephemeris_linking", &
@@ -1947,20 +1936,20 @@ PROGRAM ephemeris_linking
      END IF
   END IF
 
-  IF (AllocATED(linkages)) THEN
+  IF (ALLOCATED(linkages)) THEN
      DEALLOCATE(linkages, stat=err)
      IF (err /= 0) THEN
         CALL errorMessage("ephemeris_linking", &
-             "Could not deallocate memory (70).", 1)
+             "Could not deallocate memory (75).", 1)
         STOP
      END IF
   END IF
 
-  IF (AllOCATED(correct_linkages)) THEN
+  IF (ALLOCATED(correct_linkages)) THEN
      DEALLOCATE(correct_linkages, stat=err)
      IF (err /= 0) THEN
         CALL errorMessage("ephemeris_linking", &
-             "Could not deallocate memory (1035).", 1)
+             "Could not deallocate memory (80).", 1)
         CALL NULLIFY(logfile)
         STOP
      END IF
