@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2017,2018                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Lauri Siltala                                  !
 !                                                                    !
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2018-06-12
+!! @version 2023-04-05
 !!
 MODULE planetary_data
 
@@ -174,8 +174,8 @@ MODULE planetary_data
   INTERFACE JPL_ephemeris
      MODULE PROCEDURE JPL_ephemeris_r8
      MODULE PROCEDURE JPL_ephemeris_perturbers_r8
-     MODULE PROCEDURE JPL_ephemeris_r16
-     MODULE PROCEDURE JPL_ephemeris_perturbers_r16
+!!$     MODULE PROCEDURE JPL_ephemeris_r16
+!!$     MODULE PROCEDURE JPL_ephemeris_perturbers_r16
   END INTERFACE JPL_ephemeris
 
   INTERFACE BC_ephemeris

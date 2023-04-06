@@ -105,7 +105,7 @@
 !!
 !!
 !! @author  MG
-!! @version 2023-03-29
+!! @version 2023-04-05
 !!
 MODULE linal
 
@@ -141,28 +141,28 @@ MODULE linal
 
   INTERFACE LU_factor
      MODULE PROCEDURE LU_factor_r8
-     MODULE PROCEDURE LU_factor_r16
+!!$     MODULE PROCEDURE LU_factor_r16
   END INTERFACE LU_factor
 
   INTERFACE LU_solve
      MODULE PROCEDURE LU_solve_r8
-     MODULE PROCEDURE LU_solve_r16
+!!$     MODULE PROCEDURE LU_solve_r16
   END INTERFACE LU_solve
 
   INTERFACE matrix_print
      MODULE PROCEDURE matrix_print_r8
-     MODULE PROCEDURE matrix_print_r16
+!!$     MODULE PROCEDURE matrix_print_r16
   END INTERFACE matrix_print
 
   INTERFACE matinv
      MODULE PROCEDURE matinv_r8
-     MODULE PROCEDURE matinv_r16
+!!$     MODULE PROCEDURE matinv_r16
   END INTERFACE matinv
 
   INTERFACE outer_product
      MODULE PROCEDURE outer_product_r4
      MODULE PROCEDURE outer_product_r8
-     MODULE PROCEDURE outer_product_r16
+!!$     MODULE PROCEDURE outer_product_r16
   END INTERFACE outer_product
 
   INTERFACE triple_product

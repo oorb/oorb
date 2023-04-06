@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2011,2012                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! @see SphericalCoordinates_class 
 !!  
 !! @author  MG
-!! @version 2012-10-26
+!! @version 2023-04-05
 !!
 MODULE random
 
@@ -49,27 +49,27 @@ MODULE random
   INTERFACE ran_pmm
      MODULE PROCEDURE ran_pmm_r4
      MODULE PROCEDURE ran_pmm_r8
-     MODULE PROCEDURE ran_pmm_r16
+!!$     MODULE PROCEDURE ran_pmm_r16
   END INTERFACE ran_pmm
 
   INTERFACE randomNumber
      MODULE PROCEDURE randomNumber_single_r4
      MODULE PROCEDURE randomNumber_single_r8
-     MODULE PROCEDURE randomNumber_single_r16
+!!$     MODULE PROCEDURE randomNumber_single_r16
      MODULE PROCEDURE randomNumber_array_r4
      MODULE PROCEDURE randomNumber_2array_r4
      MODULE PROCEDURE randomNumber_array_r8
      MODULE PROCEDURE randomNumber_2array_r8
-     MODULE PROCEDURE randomNumber_array_r16
+!!$     MODULE PROCEDURE randomNumber_array_r16
   END INTERFACE randomNumber
 
   INTERFACE randomGaussian
      MODULE PROCEDURE randomGaussian_single_r4
      MODULE PROCEDURE randomGaussian_single_r8
-     MODULE PROCEDURE randomGaussian_single_r16
+!!$     MODULE PROCEDURE randomGaussian_single_r16
      MODULE PROCEDURE randomGaussian_array_r4
      MODULE PROCEDURE randomGaussian_array_r8
-     MODULE PROCEDURE randomGaussian_array_r16
+!!$     MODULE PROCEDURE randomGaussian_array_r16
   END INTERFACE randomGaussian
 
   INTERFACE randomMaxwellian

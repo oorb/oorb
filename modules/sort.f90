@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009,2010             !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains sorting and searching routines.
 !!
 !! @author  MG
-!! @version 2010-03-02
+!! @version 2023-04-05
 !!
 MODULE sort
 
@@ -38,7 +38,7 @@ MODULE sort
 
   INTERFACE insertionSort
      MODULE PROCEDURE insertionSort_i8
-     MODULE PROCEDURE insertionSort_r16
+!!$     MODULE PROCEDURE insertionSort_r16
      MODULE PROCEDURE insertionSort_ch
   END INTERFACE
 
@@ -49,7 +49,7 @@ MODULE sort
      MODULE PROCEDURE quickSort_i8_index
      MODULE PROCEDURE quickSort_r8
      MODULE PROCEDURE quickSort_r8_index
-     MODULE PROCEDURE quickSort_r16
+!!$     MODULE PROCEDURE quickSort_r16
      MODULE PROCEDURE quickSort_ch
      MODULE PROCEDURE quickSort_ch_index
   END INTERFACE
@@ -57,7 +57,7 @@ MODULE sort
   INTERFACE binarySearch
      MODULE PROCEDURE binarySearch_i8
      MODULE PROCEDURE binarySearch_r8
-     MODULE PROCEDURE binarySearch_r16
+!!$     MODULE PROCEDURE binarySearch_r16
      MODULE PROCEDURE binarySearch_ch
      MODULE PROCEDURE binarySearch_ch_index
   END INTERFACE
@@ -65,7 +65,7 @@ MODULE sort
   INTERFACE findLocation
      MODULE PROCEDURE findLocation_r8
      MODULE PROCEDURE findLocation_r8_indx
-     MODULE PROCEDURE findLocation_r16
+!!$     MODULE PROCEDURE findLocation_r16
   END INTERFACE
 
 

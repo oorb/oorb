@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002,2003,2004,2005,2006,2007,2008,2009                  !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains different mathematical functions.
 !!
 !! @author  MG
-!! @version 2008-08-12
+!! @version 2023-04-05
 !!
 MODULE functions
 
@@ -35,9 +35,9 @@ MODULE functions
 
   INTERFACE stumpff
      MODULE PROCEDURE stumpff_r8_series
-     MODULE PROCEDURE stumpff_r16_series
+!!$     MODULE PROCEDURE stumpff_r16_series
      MODULE PROCEDURE stumpff_r8_recursive
-     MODULE PROCEDURE stumpff_r16_recursive
+!!$     MODULE PROCEDURE stumpff_r16_recursive
   END INTERFACE
 
 
