@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2018,2019                                           !
+! Copyright 2002-2022,2023                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV 
-!! @version 2019-02-20
+!! @version 2023-04-06
 !!  
 MODULE Observation_cl
 
@@ -946,7 +946,7 @@ CONTAINS
     CHARACTER(len=1)                  :: discovery, sign_dec, sign_x, sign_y, sign_z
     REAL(bp), DIMENSION(6)            :: coord
     REAL(bp)                          :: day, ra, s, dec, as, correlation, mjd
-    INTEGER(ihp)                      :: day_integer
+    INTEGER(ibp)                      :: day_integer
     INTEGER                           :: err, year, month, h, m, &
          deg, am, n, i, indx, err_verb_
 
@@ -1150,7 +1150,7 @@ CONTAINS
              RETURN
           END IF
        END IF
-       day_integer = NINT(day*10_ihp**6,kind=ihp)
+       day_integer = NINT(day*10_ibp**6,kind=ibp)
        day = day_integer/10.0_bp**6
        CALL toString(day, day_str, error, frmt="(F12.9)")
        IF (day < 10.0_bp) day_str = "0" // TRIM(day_str)
@@ -1256,7 +1256,7 @@ CONTAINS
        ELSE
           designation = this%designation(n-8:n)
        END IF
-       day_integer = NINT(day*10_ihp**9_ihp,kind=ihp)
+       day_integer = NINT(day*10_ibp**9_ibp,kind=ibp)
        day = day_integer/10.0_bp**9.0_bp
        CALL toString(day, day_str, error, frmt="(F12.9)")
        IF (day < 10.0_bp) day_str = "0" // TRIM(day_str)
@@ -1423,7 +1423,7 @@ CONTAINS
 !!$             number_str(7:7) = this%designation(n-9:n-9)
           END IF
        END IF
-       day_integer = NINT(day*10_ihp**9_ihp,kind=ihp)
+       day_integer = NINT(day*10_ibp**9_ibp,kind=ibp)
        day = day_integer/10.0_bp**9.0_bp
        CALL toString(day, day_str, error, frmt="(F12.9)")
        IF (error) THEN
