@@ -1629,6 +1629,7 @@ PROGRAM oorb
         STOP        
      END IF
      CALL NEW(orb_in_file, TRIM(orb_in_fname))
+     CALL setActionRead(orb_in_file)
      CALL setStatusOld(orb_in_file)
      CALL OPEN(orb_in_file)
      IF (error) THEN
