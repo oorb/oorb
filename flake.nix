@@ -23,9 +23,8 @@
         devShell = pkgs.mkShell {
           buildInputs = [
             pkgs.curl
-            pkgs.fswatch
-            pkgs.gcc13
             pkgs.gfortran13
+            pkgs.gfortran13.cc
             pkgs.gnuplot
             pkgs.lapack
             pkgs.python3
