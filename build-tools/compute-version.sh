@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Create PEP-440 compliant version identifiers using information stored in
 # git.

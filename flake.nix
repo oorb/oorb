@@ -1,7 +1,7 @@
 {
   description = "eg haskell code";
 
-  inputs.nixpkgs.url     = "github:nixos/nixpkgs/nixpkgs-23.05";
+  inputs.nixpkgs.url     = "github:nixos/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
   inputs.flake-compat    = { url = "github:edolstra/flake-compat"; flake = false; };
 
@@ -10,29 +10,38 @@
       let
         pkg-name = "oorb";
         pkgs = nixpkgs.legacyPackages.${system};
-        haskell-pkgs = pkgs.haskell.packages.ghc961;
-
+          
         eg = pkgs.runCommand
           "eg"
           { preferLocalBuild = true; buildInputs = [ pkg-name ]; }
           '''';
 
         revision = "${self.lastModifiedDate}-${self.shortRev or "dirty"}";
-        jailbreak-unbreak = pkg: pkgs.haskell.lib.doJailbreak (pkg.overrideAttrs (_: { meta = { }; }));
       in {
         defaultPackage = self.packages.${system}.${pkg-name};
 
         devShell = pkgs.mkShell {
           buildInputs = [
+            pkgs.curl
+            pkgs.gfortran13
+            pkgs.gfortran13.cc
+            pkgs.gnuplot
+            pkgs.lapack
+            pkgs.python3
+            pkgs.texlive.combined.scheme-basic
             pkgs.pkg-config
             pkgs.sourceHighlight
             pkgs.stdenv.cc.cc.lib
             pkgs.zlib
+            (pkgs.python3.withPackages (ps: [
+              ps.numpy
+              ps.pyp
+              ps.pytest
+            ]))
           ];
 
-          inputsFrom = builtins.attrValues self.packages.${system};
-
           shellHook = ''
+            export SHELL=/run/current-system/sw/bin/bash
             export LANG=en_US.UTF-8
             export PS1="nix|-$PS1"
           '';

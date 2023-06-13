@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # If conda's gfortran compiler has been used, convert the relative linker
 # paths that it inserts into absolute paths.  This makes the as-built binary
