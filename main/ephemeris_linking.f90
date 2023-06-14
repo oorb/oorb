@@ -70,71 +70,45 @@ PROGRAM ephemeris_linking
        tree_node_ch32, &
        tree_node_ch32_1, &
        tree_node_ch32_2
-  TYPE (rb_tree_node_ch32_8r8), POINTER :: &
-       tree_node_ch32_8r8, &
-       tree_node_ch32_8r8_1, &
-       tree_node_ch32_8r8_2
   TYPE (File) :: &
-       optfile, &
        obsfile, &
-       obsfile_, &
        orbidfile, &
        orbfile, &
        addressfile, &
        triallinkfile, &
-       apriorifile, &
        logfile, &
-       outfile, &
-       resfile, &
        tmpfile
   TYPE (Time), DIMENSION(:), ALLOCATABLE :: &
        epoch_arr
   TYPE (Time) :: &
        epoch, &
-       t0, &
        t, &
        t_inv
   TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
        scoord_arr
-  TYPE (SphericalCoordinates) :: &
-       scoord
   TYPE (CartesianCoordinates), DIMENSION(:), ALLOCATABLE :: &
-       observer_arr, &
        topocenter_arr
   TYPE (CartesianCoordinates) :: &
-       observer, &
        ccoord_first, &
        ccoord_last
-  TYPE (Observatory) :: &
-       obsy
   TYPE (Observatories) :: &
        obsies
-  TYPE (Observation), DIMENSION(:), POINTER :: &
-       obs_arr
   TYPE (Observation) :: &
        obs_first, &
        obs_last
   TYPE (Observations), DIMENSION(:), POINTER :: &
-       obss_arr, &
        obss_sep_arr
   TYPE (Observations) :: &
-       obss, &
-       obss_
+       obss
   TYPE (Orbit), DIMENSION(:), POINTER :: &
        orb_arr, &
        orb_arr_, &
-       orb_arr_prm, &
-       orb_arr_cmp, &
-       orb_lt_corr_arr, &
        orb_arr_1, &
        orb_arr_2
   TYPE (Orbit) :: &
        orb
   TYPE (StochasticOrbit) :: &
        storb
-  CHARACTER(len=FNAME_LEN), DIMENSION(:), POINTER :: &
-       obsfnames, &
-       outfnames
   CHARACTER(len=DESIGNATION_LEN), DIMENSION(:,:), ALLOCATABLE :: &
        correct_linkages, &
        correct_linkages_tmp, &
@@ -148,37 +122,15 @@ PROGRAM ephemeris_linking
        id_arr
   CHARACTER(len=1024), DIMENSION(4) :: &
        header
-  CHARACTER(len=32), DIMENSION(6) :: &
-       element_str_arr, &
-       stdev_str_arr
-  CHARACTER(len=32), DIMENSION(5) :: &
-       corr_str_arr
   CHARACTER(len=FNAME_LEN) :: &
        fname, &
-       optfname, &
-       orbidfname, &
-       orbfname, &
-       apriorifname, &
        addressfname, &
        triallinkfname, &
        obsfname
-  CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: &
-       ids
   CHARACTER(len=DESIGNATION_LEN) :: &
-       id, id1, id2, des1, des2, id_prm
-  CHARACTER(len=ELEMENT_TYPE_LEN), DIMENSION(:), POINTER :: &
-       element_type_inv_arr_prm, &
-       element_type_inv_arr_cmp
-  CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:,:), POINTER :: &
-       obsy_code_arr
-  CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: &
-       obsy_code_arr_prm
+       id1, id2, des1, id_prm
   CHARACTER(len=ELEMENT_TYPE_LEN) :: &
-       element_type_comp_prm, &
-       element_type_in_prm, &
-       element_type_out_prm, &
-       element_type_inv, &
-       comparison_variable_type
+       element_type_in_prm
   CHARACTER(len=DYN_MODEL_LEN) :: &
        dyn_model
   CHARACTER(len=INTEGRATOR_LEN) :: &
@@ -191,87 +143,37 @@ PROGRAM ephemeris_linking
        pidstr, &
        obs_type, &
        lstr
-  REAL(bp), DIMENSION(:,:,:), POINTER :: &
-       cov_arr, &
-       cov_arr_prm, &
-       cov_arr_cmp
   REAL(bp), DIMENSION(:,:), POINTER :: &
-       pdf_arr2, &
-       pdf_arr2_cmp, &
        residuals, &
-       jac_arr_prm, &
-       jac_arr_cmp, &
-       jac_arr, &
-       vov_map, &
-       stdev_arr, &
-       apriori_arr
+       stdev_arr
   REAL(bp), DIMENSION(:,:), ALLOCATABLE :: &
-       sigma_arr, &
-       HG_arr_prm, &
-       coord_arr, &
-       element_arr, &
        elm_arr_1, &
        elm_arr_2, &
        bounds
-  REAL(bp), DIMENSION(6,6) :: &
-       cov, &
-       cov_lt_corr, &
-       corr
-  REAL(bp), DIMENSION(6,2) :: &
-       vov_scaling
-  REAL(bp), DIMENSION(:), POINTER :: &
-       pdf_arr, &
-       pdf_arr_1, &
-       pdf_arr_2, &
-       pdf_arr_prm, &
-       pdf_arr1_cmp, &
-       chi2_ndof_arr_prm, &
-       chi2_ndof_arr_cmp, &
-       reg_apr_arr, &
-       reg_apr_arr_prm, &
-       reg_apr_arr_cmp, &
-       eph_dt_since_last_obs, &
-       pdf_lt_corr_arr
   REAL(bp), DIMENSION(:), ALLOCATABLE :: &
-       dt_arr, &
-       dist_arr, &
        coords, &
        width
   REAL(bp), DIMENSION(6) :: &
        elements, &
        stdevs, &
-       coord, &
-       lower_limit, &
-       upper_limit, &
-       mean_arr
+       coord
   REAL(bp), DIMENSION(4) :: &
-       sor_rho_init, &
        rho
   REAL(bp), DIMENSION(3) :: &
-       pos, &
        d_min
   REAL(bp) :: &
        integration_step, &
-       ls_correction_factor, &
        mjd, &
        dt, &
-       day, &
-       accwin_multiplier, &
-       sor_genwin_multiplier, &
-       stdev, &
        d, &
-       cos_d, &
        c1, &
        c2, &
        c3, &
        c4, &
        c5, &
-       c6, &
        chi2, &
        chi2_, &
        computed_upper_bound
-  INTEGER, DIMENSION(:), POINTER :: &
-       nind_arr
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
        box_nrs
   INTEGER, DIMENSION(3) :: &
@@ -279,34 +181,17 @@ PROGRAM ephemeris_linking
        k_min
   INTEGER :: &
        getpid, system, &
-       task, &
        err, &
        i, &
        j, &
        k, &
-       l, &
        m, &
-       n, &
        norb, &
-       ntrial, &
-       norb_sw, &
-       ntrial_sw, &
-       ninit, &
-       nobsy, &
        nobs, &
-       year, &
-       month, &
-       sor_niter, &
-       nepoch, &
-       nsimult, &
-       var, &
        lu, &
        j_max, &
        k_max, &
-       norb_old, &
        iter, &
-       iindx, &
-       nbin, &
        ifilter, &
        filter_start, &
        filter_stop, &
@@ -316,33 +201,19 @@ PROGRAM ephemeris_linking
        loop_stop, &
        pid, &
        i2phase
-  LOGICAL, DIMENSION(:,:), POINTER :: &
-       obs_mask
   LOGICAL, DIMENSION(:), POINTER :: &
-       eph_lt_correction_arr, &
        detected_correct_linkages
   LOGICAL, DIMENSION(:), ALLOCATABLE :: &
        elm
   LOGICAL, DIMENSION(10) :: &
        perturbers
   LOGICAL, DIMENSION(6) :: &
-       ls_element_mask, &
-       vov_mapping_mask
+       ls_element_mask
   LOGICAL :: &
-       simulation, &
-       obsfnames_from_file, &
-       plot_results, &
-       plot_open, &
-       multiple_ids, &
-       outlier_rejection_prm, &
-       linkage, &
-       common_epoch, &
-       apriori, &
-       found
+       linkage
 
-  REAL(bp) :: dt1, dt2
   INTEGER(ihp) :: indx
-  INTEGER :: nset, nset_max, iset, iset_, norb_, iorb
+  INTEGER :: nset, nset_max, iorb
   INTEGER :: ret
 
 !!$  ! Set path to configuration file:
