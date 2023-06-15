@@ -1,5 +1,5 @@
 {
-  description = "eg haskell code";
+  description = "oorb: an open source orbit computation package";
 
   inputs.nixpkgs.url     = "github:nixos/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
@@ -12,7 +12,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
           
         eg = pkgs.runCommand
-          "eg"
+          "oorb"
           { preferLocalBuild = true; buildInputs = [ pkg-name ]; }
           '''';
 
