@@ -1,9 +1,10 @@
 name: Build and upload release to PyPI
 
 on:
-  - pull_request
-  - push
-
+  workflow_run:
+    workflows: ["Build Python Wheels"]
+    types:
+      - completed
 jobs:
   build_sdist:
     # Make a plain source distribution with nothing precompiled.
@@ -28,7 +29,7 @@ jobs:
       # if: github.event_name == 'release' && github.event.action == 'published'
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/pyoorb
+      url: https://test.pypi.org/p/pyoorb-test
     permissions:
       id-token: write
     steps:
