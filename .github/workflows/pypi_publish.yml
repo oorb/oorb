@@ -1,11 +1,105 @@
 name: Build and upload release to PyPI
 
 on:
-  workflow_run:
-    workflows: ["Build Python Wheels"]
-    types:
-      - completed
+  - push
+
 jobs:
+  build_x86_wheels:
+    name: Build ${{ matrix.pyversion }}/${{ matrix.os }}/x86
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        pyversion: [cp311]
+        os: [macos-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.11.4
+        env:
+          CIBW_BUILD: "${{ matrix.pyversion }}*"
+          CIBW_ARCHS: "x86_64"
+        with:
+           output-dir: wheelhouse
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: x86_wheels
+          path: ./wheelhouse/*.whl
+
+
+  build_ephem:
+    name: Build ephemeris data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install gfortran liblapack-dev
+      - name: Compile oorb
+        run: |
+          ./configure gfortran opt
+          make -j2
+      - name: Build ephemerides
+        run: |
+          cd data/JPL_ephemeris
+          make -j2
+          make test
+          mv de430.dat ../
+      - name: Supply data to later tests
+        uses: actions/upload-artifact@v3
+        with:
+          name: oorb_data
+          path: ./data
+
+  test_x86_wheels:
+    name: Test ${{ matrix.pyversion }}/${{ matrix.os }}/x86
+    needs: [build_x86_wheels, build_ephem]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pyversion: ["3.8", "3.9", "3.10", "3.11"]
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.pyversion }}
+      - name: Get wheels
+        uses: actions/download-artifact@v3
+        with:
+          name: x86_wheels
+          path: /tmp/wheels
+      - name: Install pyoorb from wheel
+        run: |
+          # First, install with --no-index to make sure we don't hit up PyPI and only
+          # use the local wheel. Use --no-deps, because we don't have a local copy of
+          # any dependencies.
+          pip install --no-index --no-deps --find-links /tmp/wheels pyoorb
+          # Now that we are sure the local wheel works, install dependencies by repeating
+          # the command, but this time allowing the index and deps.
+          pip install --find-links /tmp/wheels pyoorb
+      - name: Get oorb data
+        uses: actions/download-artifact@v3
+        with:
+          name: oorb_data
+          path: /tmp/oorb_data
+      - name: Try importing pyoorb
+        run: |
+          export OORB_DATA=/tmp/oorb_data
+          python -c "import pyoorb; print('success.')"
+      - name: Checkout oorb for python/test.py
+        uses: actions/checkout@v3
+        with:
+          path: ./_oorb
+      - name: Execute tests
+        run: |
+          export OORB_DATA=/tmp/oorb_data
+          python ./_oorb/python/test.py
+
   build_sdist:
     # Make a plain source distribution with nothing precompiled.
     runs-on: ubuntu-latest
