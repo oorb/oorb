@@ -123,7 +123,7 @@ jobs:
       # if: github.event_name == 'release' && github.event.action == 'published'
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/pyoorb-test
+      url: https://www.pypi.org/p/pyoorb-test
     permissions:
       id-token: write
     steps:
@@ -147,4 +147,4 @@ jobs:
         # mv aarch64_wheels/* dist
     - uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        repository-url: https://test.pypi.org/legacy/
+        repository-url: https://www.pypi.org
