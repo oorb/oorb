@@ -1,7 +1,10 @@
 name: Build and upload release to PyPI
+
 on:
   - pull_request
   - push
+
+jobs:
   build_sdist:
     # Make a plain source distribution with nothing precompiled.
     runs-on: ubuntu-latest
