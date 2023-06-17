@@ -30,33 +30,6 @@ jobs:
           name: x86_wheels
           path: ./wheelhouse/*.whl
 
-  build_aarch64_wheels:
-    name: Build ${{ matrix.pyversion }}/linux/aarch64
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        pyversion: [cp38, cp39, cp310, cp311]
-
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: arm64
-
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v2.11.4
-        env:
-          CIBW_BUILD: "${{ matrix.pyversion }}*"
-          CIBW_ARCHS: aarch64
-        with:
-           output-dir: wheelhouse
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: aarch64_wheels
-          path: ./wheelhouse/*.whl
 
   build_ephem:
     name: Build ephemeris data
@@ -129,46 +102,4 @@ jobs:
           export OORB_DATA=/tmp/oorb_data
           python ./_oorb/python/test.py
 
-  test_linux_aarch64_wheels:
-    # Runs in emulation, so this can be very slow!
-    name: Test ${{ matrix.pyversion }}/linux/aarch64
-    needs: [build_aarch64_wheels, build_ephem]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        pyversion: ["3.8", "3.9", "3.10", "3.11"]
 
-    steps:
-      - name: Get wheels
-        uses: actions/download-artifact@v3
-        with:
-          name: aarch64_wheels
-          path: /tmp/artifacts/wheels
-      - name: Get oorb data
-        uses: actions/download-artifact@v3
-        with:
-          name: oorb_data
-          path: /tmp/artifacts/oorb_data
-      - name: Checkout oorb for python/test.py
-        uses: actions/checkout@v3
-        with:
-          path: ./_oorb
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: arm64
-      - name: Run tests in container
-        run: |
-          export DOCKER_IMAGE="arm64v8/python:${{ matrix.pyversion }}"
-          docker pull --platform linux/arm64 $DOCKER_IMAGE
-          docker run \
-            --platform linux/arm64 \
-            --volume /tmp/artifacts:/tmp/artifacts \
-            --volume $PWD/_oorb:/tmp/oorb_latest \
-            --env OORB_DATA=/tmp/artifacts/oorb_data \
-            $DOCKER_IMAGE \
-            /bin/bash -c "
-            pip install --no-index --no-deps --find-links /tmp/artifacts/wheels pyoorb && \
-            pip install --find-links /tmp/artifacts/wheels pyoorb && \
-            python /tmp/oorb_latest/python/test.py"

@@ -24,7 +24,7 @@ jobs:
     needs: 
       - build_sdist
       - test_x86_wheels
-      - test_linux_aarch64_wheels
+        #      - test_linux_aarch64_wheels
     runs-on: ubuntu-latest
       # if: github.event_name == 'release' && github.event.action == 'published'
     environment:
@@ -41,16 +41,16 @@ jobs:
       with:
         name: x86_wheels
         path: ./x86_wheels/
-    - uses: actions/download-artifact@v3
-      with:
-        name: aarch64_wheels
-        path: ./aarch64_wheels/
+          # - uses: actions/download-artifact@v3
+          # with:
+          #name: aarch64_wheels
+          # path: ./aarch64_wheels/
     - name: Combine artifacts
       run: |
         mkdir dist
         mv sdist/* dist
         mv x86_wheels/* dist
-        mv aarch64_wheels/* dist
+        # mv aarch64_wheels/* dist
     - uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
