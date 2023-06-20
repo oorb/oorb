@@ -66,7 +66,7 @@ jobs:
     strategy:
       matrix:
         pyversion: ["3.11"]
-        os: [macos-latest]
+        os: [ubuntu-latest]
 
     steps:
       - name: Setup Python
