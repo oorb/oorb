@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         pyversion: [cp311]
-        os: [macos-latest]
+        os: [ubuntu-latest]
         #os: [macos-latest, ubuntu-latest]
 
     steps:
