@@ -1,7 +1,9 @@
 name: Build and upload release to PyPI
 
 on:
-  - push
+  push:
+    tags:
+      - "v*"
 
 jobs:
   build_x86_wheels:
