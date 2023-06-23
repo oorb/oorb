@@ -35,10 +35,20 @@ CONTAINS
     IF (.NOT.first) THEN
        RETURN
     END IF
-    
-    OPEN(fid, file = STATS_FNAME, status = "old")
 
-    READ(fid, *) ! skip 2 lines of headers
+    if (PRESENT(filename) .AND. LEN_TRIM(filename) <= FNAME_LEN) THEN
+       fname = TRIM(filename)
+    ELSE
+       CALL getenv("OORB_DATA", OORB_DATA_DIR)
+       IF (LEN_TRIM(OORB_DATA_DIR) == 0) THEN
+          OORB_DATA_DIR = "."
+       END IF
+       fname = TRIM(OORB_DATA_DIR) // "/" // TRIM(STATS_FNAME)
+    END IF
+    
+    OPEN(fid, file = fname, status = "old")
+
+    READ(fid, *) ! skip the first 2 lines (headers)
     READ(fid, *)    
     DO WHILE (err == 0)
        lines = lines + 1
