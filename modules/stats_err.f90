@@ -54,7 +54,14 @@ CONTAINS
     READ(fid, *)
 
     DO i = 1, lines
-       READ(fid, *) stats_errs(i)%obs
+       READ(fid, *) &
+            stats_errs(i)%obs, &
+            stats_errs(i)%start, &
+            stats_errs(i)%end, &
+            stats_errs(i)%low_mag, &
+            stats_errs(i)%upper_mag, &
+            stats_errs(i)%ra_rms, &
+            stats_errs(i)%dec_rms
     END DO
     
   END SUBROUTINE stats_err_init
