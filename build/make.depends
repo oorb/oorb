@@ -34,6 +34,10 @@ planetary_data.o:  ../modules/planetary_data.f90  parameters.mod linal.mod sort.
 	$(OBJBUILDCMD)
 planetary_data.mod: ../modules/planetary_data.f90  parameters.mod linal.mod sort.mod planetary_data.o
 	$(MODBUILDCMD)
+stats_err.o: ../modules/stats_err.f90
+	$(OBJBUILDCMD)
+stats_err.mod: ../modules/stats_err.f90 stats_err.o
+	$(MODBUILDCMD)
 cl_options.o:  ../modules/cl_options.f90 parameters.mod
 	$(OBJBUILDCMD)
 cl_options.mod: ../modules/cl_options.f90 parameters.mod cl_options.o

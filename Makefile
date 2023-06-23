@@ -65,9 +65,14 @@ all:
 ephem:
 	@ $(MAKE) -C data/JPL_ephemeris
 
+
+.PHONY: buildc
+buildc:
+	echo todo
+
 # Forward everything we don't recognize to the makefile in build/
 %:
-	$(MAKE) -C build $@
+	$(MAKE) -C build $@ all
 
 .PHONY: clean
 clean:
