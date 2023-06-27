@@ -116,3 +116,5 @@ pyoorb.o:  ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphe
 	$(OBJBUILDCMD)
 pyoorb.mod: ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod pyoorb.o
 	$(MODBUILDCMD)
+stats.o:  ../main/stats.f90 stats_err.mod
+	$(OBJBUILDCMD)	

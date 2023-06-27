@@ -30,7 +30,10 @@ CONTAINS
     CHARACTER(len = FNAME_LEN)               :: fname, OORB_DATA_DIR    
 
     INTEGER :: i, fid = 11, err = 0, lines = 0
-    CHARACTER(len=256) :: tmp
+    CHARACTER(len=256) :: ctmp
+    INTEGER :: itmp
+    REAL :: rtmp    
+
 
     IF (.NOT.first) THEN
        RETURN
@@ -52,7 +55,7 @@ CONTAINS
     READ(fid, *)    
     DO WHILE (err == 0)
        lines = lines + 1
-       READ(fid, *, iostat = err) tmp
+       READ(fid, *, iostat = err) ctmp
     END DO
     lines = lines - 1
     write(*, '(A,I0)') "total number of lines: ", lines
@@ -62,12 +65,50 @@ CONTAINS
     REWIND(fid)
     READ(fid, *)
     READ(fid, *)
-
     DO i = 1, lines
        READ(fid, *) &
             stats_errs(i)%obs, &
             stats_errs(i)%start, &
             stats_errs(i)%end, &
+            stats_errs(i)%low_mag, &
+            stats_errs(i)%upper_mag, &
+            ctmp, &
+            ctmp, &
+            stats_errs(i)%ra_rms, &
+            stats_errs(i)%dec_rms, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            itmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp, &
+            rtmp
+       IF (stats_errs(i)%obs == "Y28") EXIT ! some fields missing after obs="Y28"
+    END DO
+
+    DO i = 1, size(stats_errs)
+       print *, &
+            stats_errs(i)%obs, &
+            stats_errs(i)%start, &
+            stats_errs(i)%end, &                        
             stats_errs(i)%low_mag, &
             stats_errs(i)%upper_mag, &
             stats_errs(i)%ra_rms, &
