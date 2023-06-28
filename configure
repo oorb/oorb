@@ -73,6 +73,10 @@ do
 			shift;
 		;;
 
+		--with-compiler-options=*)
+			ADDOPTS="$ADDOPTS ${key#*=}"
+	 		shift;
+		;;
 		*)
 		POSITIONAL+=("$1")
 		shift;
