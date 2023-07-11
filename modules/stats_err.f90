@@ -51,6 +51,8 @@ CONTAINS
              stats_errors(j) = stats_errs(i)
           END IF
        END DO
+    ELSE
+       ALLOCATE(stats_errors(0), STAT = err) ! *todo: test for error later
     END IF
 
   END FUNCTION stats_errors

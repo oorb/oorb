@@ -15,11 +15,13 @@ PROGRAM stats
   PRINT *, "err: ", err
   PRINT *, "size: ", SIZE(stats_errs)
 
-  ses => stats_errors(10)
-  
-  PRINT *, "size-of-se: ", SIZE(ses)
+  ses => stats_errors(1)
+  PRINT *, "size-of-ses: ", SIZE(ses)
   DO i = 1, SIZE(ses)
      print *, "stats_error", ses(i)
   END DO
+  PRINT *, "size-of-ses: ", SIZE(ses)
+  DEALLOCATE(ses)
+  NULLIFY(ses)
   
 END PROGRAM stats
