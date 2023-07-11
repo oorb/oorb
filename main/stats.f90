@@ -9,11 +9,11 @@ PROGRAM stats
 
   TYPE (StatsErr), DIMENSION(:), POINTER :: ses
   INTEGER :: i
-  LOGICAL :: err = .TRUE.
+  LOGICAL :: err = .FALSE.
   CALL stats_errors_init(err)
 
   PRINT *, "err: ", err
-  PRINT *, "size: ", SIZE(stats_errs)
+  PRINT *, "size: ", SIZE(stats_errors_size)
 
   ses => stats_errors(1)
   PRINT *, "size-of-ses: ", SIZE(ses)
