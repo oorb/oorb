@@ -1,9 +1,6 @@
 name: Build and upload release to PyPI
 
 on:
-  push:
-    branches:
-      - master
   release:
     types:
       - published
