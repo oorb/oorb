@@ -3,7 +3,10 @@ MODULE stats_err
   USE parameters
   IMPLICIT NONE
 
-  PUBLIC :: stats_err_init
+  PUBLIC :: stats_errors  
+  PUBLIC :: stats_errors_init
+  PUBLIC :: stats_errs
+  PUBLIC :: stats_errs_size
   PUBLIC :: StatsErr
 
   PRIVATE
@@ -18,11 +21,42 @@ MODULE stats_err
   END TYPE StatsErr
 
   CHARACTER(len=FNAME_LEN), PARAMETER :: STATS_FNAME = 'STATS-ERR.dat'
-  TYPE (StatsErr), dimension (:), allocatable :: stats_errs
+  TYPE (StatsErr), DIMENSION (:), ALLOCATABLE :: stats_errs
+  INTEGER :: stats_errs_size
   
 CONTAINS
+
+  FUNCTION stats_errors(mag)
+
+    IMPLICIT NONE
+
+    INTEGER, INTENT(in) :: mag
+    TYPE (StatsErr), DIMENSION(:), POINTER :: stats_errors
+    INTEGER :: i, j, jmax, err
+
+    ! todo: make the redundant looping more efficient later--correctness first!
+    j = 0
+    DO i = 1, stats_errs_size
+       IF (stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
+          j = j + 1
+       END IF
+    END DO
+
+    if (j > 0) THEN
+       ALLOCATE(stats_errors(1:j), STAT = err) ! *todo: test for error later
+       j = 0
+       DO i = 1, stats_errs_size
+          IF (stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
+             j = j + 1
+             stats_errors(j) = stats_errs(i)
+          END IF
+       END DO
+    END IF
+
+  END FUNCTION stats_errors
+
   
-  SUBROUTINE stats_err_init(error, filename)
+  SUBROUTINE stats_errors_init(error, filename)
 
     IMPLICIT NONE
     LOGICAL, INTENT(inout)                   :: error
@@ -104,7 +138,9 @@ CONTAINS
        IF (stats_errs(i)%obs == "Y28") EXIT ! some fields missing after obs="Y28"
     END DO
 
-    DO i = 1, size(stats_errs)
+    stats_errs_size = SIZE(stats_errs) - 4 ! last 4 lines are missing data columns
+
+    DO i = 1, stats_errs_size
        print *, &
             stats_errs(i)%obs, &
             stats_errs(i)%start, &
@@ -115,7 +151,7 @@ CONTAINS
             stats_errs(i)%dec_rms
     END DO
     
-  END SUBROUTINE stats_err_init
+  END SUBROUTINE stats_errors_init
   
 END MODULE stats_err
 
