@@ -55,6 +55,10 @@ jobs:
         env:
           CIBW_BUILD: "${{ matrix.pyversion }}*"
           CIBW_ARCHS: aarch64
+          # Numpy doesn't provide musl aarch64 wheels, and building
+          # Numpy from scratch in that scenario takes a _very_ long
+          # time (6+ hours, it times out). So, skip those.
+          CIBW_SKIP: "*-musllinux*"
         with:
            output-dir: wheelhouse
 
