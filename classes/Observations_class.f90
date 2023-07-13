@@ -70,6 +70,7 @@ MODULE Observations_cl
   USE utilities
   USE sort
   USE linal
+  USE stats_err
   !$ use omp_lib
 
   IMPLICIT NONE
@@ -224,6 +225,8 @@ MODULE Observations_cl
      MODULE PROCEDURE setNumber_Obss_int
   END INTERFACE setNumber
 
+  TYPE (StatsErr), DIMENSION(:), POINTER :: stats_err
+  
 CONTAINS
 
 
@@ -3492,9 +3495,9 @@ CONTAINS
                   "Standard deviation for MPC format must be explicitly given.", 1)             
              RETURN
           END IF
-          covariance = 0.0_bp
-          covariance(2,2) = stdev_(2)**2.0_bp
-          covariance(3,3) = stdev_(3)**2.0_bp
+          ! covariance = 0.0_bp
+          ! covariance(2,2) = stdev_(2)**2.0_bp
+          ! covariance(3,3) = stdev_(3)**2.0_bp
 
           ! Compute the heliocentric position of the observer at epoch t:
           obsy_code = " "
@@ -3510,6 +3513,17 @@ CONTAINS
              RETURN
           END IF
 
+          stats_err => stats_errors(obsy_code, IDINT(mag))
+          covariance = 0.0_bp
+          if (SIZE(stats_err) > 0) THEN
+             ! use the first one
+             covariance(2,2) = (stats_err(1)%ra_rms)**2.0_bp
+             covariance(3,3) = (stats_err(1)%dec_rms)**2.0_bp
+          ELSE
+             covariance(2,2) = stdev_(2)**2.0_bp
+             covariance(3,3) = stdev_(3)**2.0_bp
+          END IF
+          
           ! Change old type descriptions to new ones
           SELECT CASE (line1(15:15))
           CASE ("c", " ")

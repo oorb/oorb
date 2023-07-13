@@ -26,10 +26,11 @@ MODULE stats_err
   
 CONTAINS
 
-  FUNCTION stats_errors(mag)
+  FUNCTION stats_errors(obs, mag)
 
     IMPLICIT NONE
 
+    CHARACTER(len = 3), INTENT(in) :: obs
     INTEGER, INTENT(in) :: mag
     TYPE (StatsErr), DIMENSION(:), POINTER :: stats_errors
     INTEGER :: i, j, jmax, err
@@ -37,7 +38,7 @@ CONTAINS
     ! todo: make the redundant looping more efficient later--correctness first!
     j = 0
     DO i = 1, stats_errs_size
-       IF (stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
+       IF (stats_errs(i)%obs == obs .AND. stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
           j = j + 1
        END IF
     END DO
@@ -46,7 +47,7 @@ CONTAINS
        ALLOCATE(stats_errors(1:j), STAT = err) ! *todo: test for error later
        j = 0
        DO i = 1, stats_errs_size
-          IF (stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
+          IF (stats_errs(i)%obs == obs .AND. stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
              j = j + 1
              stats_errors(j) = stats_errs(i)
           END IF

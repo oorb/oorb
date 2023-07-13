@@ -13,9 +13,9 @@ PROGRAM stats
   CALL stats_errors_init(err)
 
   PRINT *, "err: ", err
-  PRINT *, "size: ", SIZE(stats_errors_size)
+  PRINT *, "size: ", stats_errs_size
 
-  ses => stats_errors(1)
+  ses => stats_errors("Y00", 1)
   PRINT *, "size-of-ses: ", SIZE(ses)
   DO i = 1, SIZE(ses)
      print *, "stats_error", ses(i)
