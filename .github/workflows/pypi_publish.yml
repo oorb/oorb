@@ -1,9 +1,9 @@
-name: Build Python Wheels
+name: Build and upload release to PyPI
 
-# TODO: Shrink this down to pushes to master, perhaps. During development, this
-# needs to run more often to work out bugs.
 on:
-  - push
+  release:
+    types:
+      - published
 
 jobs:
   build_x86_wheels:
@@ -16,6 +16,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.11.4
@@ -50,6 +52,10 @@ jobs:
         env:
           CIBW_BUILD: "${{ matrix.pyversion }}*"
           CIBW_ARCHS: aarch64
+          # Numpy doesn't provide musl aarch64 wheels, and building
+          # Numpy from scratch in that scenario takes a _very_ long
+          # time (6+ hours, it times out). So, skip those.
+          CIBW_SKIP: "*-musllinux*"
         with:
            output-dir: wheelhouse
 
@@ -172,3 +178,46 @@ jobs:
             pip install --no-index --no-deps --find-links /tmp/artifacts/wheels pyoorb && \
             pip install --find-links /tmp/artifacts/wheels pyoorb && \
             python /tmp/oorb_latest/python/test.py"
+
+  build_sdist:
+    # Make a plain source distribution with nothing precompiled.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build SDist
+      run: pipx run build --sdist
+    - uses: actions/upload-artifact@v3
+      with:
+        name: sdist
+        path: dist/*.tar.gz
+
+  upload_all:
+    name: Upload release to PyPI
+    needs:
+      - build_sdist
+      - test_x86_wheels
+      - test_linux_aarch64_wheels
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      id-token: write
+    steps:
+    - uses: actions/download-artifact@v3
+      with:
+        name: sdist
+        path: ./sdist/
+    - uses: actions/download-artifact@v3
+      with:
+        name: x86_wheels
+        path: ./x86_wheels/
+    - uses: actions/download-artifact@v3
+      with:
+        name: aarch64_wheels
+        path: ./aarch64_wheels/
+    - name: Combine artifacts
+      run: |
+        mkdir dist
+        mv sdist/* dist
+        mv x86_wheels/* dist
+        mv aarch64_wheels/* dist
+    - uses: pypa/gh-action-pypi-publish@release/v1
