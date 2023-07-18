@@ -24,7 +24,7 @@
           buildInputs = [
             pkgs.curl
             pkgs.gfortran13
-            pkgs.gfortran13.cc
+            pkgs.gfortran13.cc.lib
             pkgs.gnuplot
             pkgs.lapack
             pkgs.python3

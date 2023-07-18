@@ -6,6 +6,7 @@ python/build/
 main/oorb
 main/ephemeris_linking
 main/orbit_linking
+main/stats
 Makefile.include
 prefix.h
 prefix.include

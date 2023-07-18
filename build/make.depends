@@ -90,7 +90,7 @@ Orbit_class.o:  ../classes/Orbit_class.f90 base_cl.mod  time_cl.mod sphericalcoo
 	$(OBJBUILDCMD)
 orbit_cl.mod: ../classes/Orbit_class.f90 base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  utilities.mod planetary_data.mod integrators.mod linal.mod sort.mod  functions.mod Orbit_class.o
 	$(MODBUILDCMD)
-Observations_class.o:   ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod  sort.mod linal.mod
+Observations_class.o:   ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod sort.mod linal.mod stats_err.mod
 	$(OBJBUILDCMD)
 observations_cl.mod: ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod  sort.mod linal.mod Observations_class.o
 	$(MODBUILDCMD)
