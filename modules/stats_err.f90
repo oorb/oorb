@@ -42,11 +42,11 @@ CONTAINS
     TYPE (StatsErr), DIMENSION(:), POINTER :: stats_errors
     INTEGER  :: i, j, jmax, err
     TYPE (Time) :: tim_    
-    REAL(bp) :: mjd
+    REAL(bp) :: jdt
 
     if (PRESENT(tim)) THEN
        tim_ = tim
-       mjd = getMJD(tim_, "UTC")
+       jdt = getJD(tim_, "UTC")
     END IF
     
     ! todo: make the redundant looping more efficient later--correctness first!
@@ -54,7 +54,7 @@ CONTAINS
     DO i = 1, stats_errs_size
        IF (stats_errs(i)%obs == obs .AND. stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
           IF (PRESENT(tim)) THEN
-             IF (real(stats_errs(i)%start) <= mjd .AND. mjd < real(stats_errs(i)%end)) then
+             IF (real(stats_errs(i)%start) <= jdt .AND. jdt < real(stats_errs(i)%end)) then
                 j = j + 1
              END IF
           ELSE
@@ -69,7 +69,7 @@ CONTAINS
        DO i = 1, stats_errs_size
           IF (stats_errs(i)%obs == obs .AND. stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
              IF (PRESENT(tim)) THEN
-                IF (real(stats_errs(i)%start) <= mjd .AND. mjd < real(stats_errs(i)%end)) then
+                IF (real(stats_errs(i)%start) <= jdt .AND. jdt < real(stats_errs(i)%end)) then
                    j = j + 1
                    stats_errors(j) = stats_errs(i)                   
                 END IF
