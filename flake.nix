@@ -28,7 +28,7 @@
             pkgs.gnuplot
             pkgs.lapack
             pkgs.python3
-            pkgs.texlive.combined.scheme-basic
+            pkgs.texlive.combined.scheme-full
             pkgs.pkg-config
             pkgs.sourceHighlight
             pkgs.stdenv.cc.cc.lib

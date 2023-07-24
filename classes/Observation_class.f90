@@ -38,9 +38,10 @@ MODULE Observation_cl
   USE Observatory_cl
   USE SphericalCoordinates_cl
   USE CartesianCoordinates_cl
-
+  
+  USE stats_err
   USE utilities
-
+  
   IMPLICIT NONE
   PRIVATE :: NEW_Obs
   PRIVATE :: NULLIFY_Obs
@@ -926,17 +927,19 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  FUNCTION getObservationRecords(this, frmt, number) RESULT(records)
+  FUNCTION getObservationRecords(this, frmt, number, stats_err_file) RESULT(records)
 
     IMPLICIT NONE
     TYPE (Observation), INTENT(in)                       :: this
     CHARACTER(len=*), INTENT(in)                         :: frmt
     CHARACTER(len=*), INTENT(in), OPTIONAL               :: number
+    LOGICAL, INTENT(in), OPTIONAL                        :: stats_err_file
     CHARACTER(len=OBS_RECORD_LEN), DIMENSION(:), POINTER :: records
 
     TYPE (Time)                       :: t
     TYPE (CartesianCoordinates)       :: ccoord
     CHARACTER(len=DESIGNATION_LEN)    :: designation, secret_name, number_
+    LOGICAL                           :: stats_err_file_
     CHARACTER(len=12)                 :: day_str
     CHARACTER(len=9)                  :: ra_unc, dec_unc
     CHARACTER(len=6)                  :: s_str, mag_str
@@ -949,7 +952,8 @@ CONTAINS
     INTEGER(ibp)                      :: day_integer
     INTEGER                           :: err, year, month, h, m, &
          deg, am, n, i, indx, err_verb_
-
+    TYPE (StatsErr), DIMENSION(:), POINTER :: ses
+    
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
        CALL errorMessage("Observation / getObservationRecords", &
@@ -957,28 +961,48 @@ CONTAINS
        RETURN
     END IF
 
+    if (PRESENT(stats_err_file)) THEN
+       stats_err_file_ = stats_err_file
+    ELSE
+       stats_err_file_ = .FALSE.
+    END IF
+    
     t = getTime(this)
     IF (error) THEN
        CALL errorMessage("Observation / getObservationRecords", &
             "TRACE BACK (1)", 1)
        RETURN       
     END IF
-    ra = getRA(this)
+    obsy_code = getCode(this%obsy)
+    IF (error) THEN
+       CALL errorMessage("Observation / getObservationRecords", &
+            "TRACE BACK (4)", 1)
+       RETURN       
+    END IF
+
+    CALL stats_errors_init(error)
+    ses => stats_errors(obsy_code, IDINT(this%mag))
+    WRITE(stderr, *) "OBS=", obsy_code, "mag=", this%mag, "SIZE(ses)", SIZE(ses)
+    
+    if (SIZE(ses) > 0) THEN
+       ra = ses(1)%ra_rms
+    ELSE
+       ra = getRA(this)
+    END IF
     IF (error) THEN
        CALL errorMessage("Observation / getObservationRecords", &
             "TRACE BACK (2)", 1)
        RETURN       
     END IF
-    dec = getDec(this)
+
+    if (SIZE(ses) > 0) THEN
+       dec = ses(1)%dec_rms
+    ELSE
+       dec = getRA(this)
+    END IF
     IF (error) THEN
        CALL errorMessage("Observation / getObservationRecords", &
             "TRACE BACK (3)", 1)
-       RETURN       
-    END IF
-    obsy_code = getCode(this%obsy)
-    IF (error) THEN
-       CALL errorMessage("Observation / getObservationRecords", &
-            "TRACE BACK (4)", 1)
        RETURN       
     END IF
 

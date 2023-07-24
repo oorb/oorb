@@ -379,6 +379,7 @@ PROGRAM oorb
        regularized, &
        separately, separately_, & !! Output orbit(s)/ephemerides/etc separately for each object
        smplx_force, &
+       stats_err_file, &
        dchi2_rejection, &
        write_residuals, &
        asteroid_perturbers, &
@@ -398,6 +399,7 @@ PROGRAM oorb
   frame = "ecliptic"
   gnuplot_scripts_dir = "."
   obs_stdev_arr_prm = -1.0_bp
+  stats_err_file = .FALSE.  
   observation_format_out = "des"
   obsy_code = "500"
   dyn_model = " "
@@ -494,7 +496,8 @@ PROGRAM oorb
        asteroid_perturbers=asteroid_perturbers, &
        massest_mcmc_adaptation=massest_mcmc_adaptation, &
        massest_mcmc_norb=massest_mcmc_norb, &
-       massest_mcmc_lock=massest_mcmc_lock)
+       massest_mcmc_lock=massest_mcmc_lock, &
+       stats_err_file=stats_err_file)
   IF (error) THEN
      CALL errorMessage("oorb", &
           "TRACE BACK (15)", 1)
@@ -562,9 +565,9 @@ PROGRAM oorb
         END IF
         IF (i == 1) THEN
            IF (ANY(obs_stdev_arr_prm < 0.0_bp)) THEN
-              CALL NEW(obss_in, obs_file)
+              CALL NEW(obss_in, obs_file, stats_err_file = stats_err_file)
            ELSE
-              CALL NEW(obss_in, obs_file, stdev=obs_stdev_arr_prm)
+              CALL NEW(obss_in, obs_file, stdev=obs_stdev_arr_prm, stats_err_file = stats_err_file)
            END IF
 
            IF (error) THEN
@@ -575,9 +578,9 @@ PROGRAM oorb
            CALL NULLIFY(obs_file)
         ELSE
            IF (ANY(obs_stdev_arr_prm < 0.0_bp)) THEN
-              CALL NEW(obss_in_temp, obs_file)
+              CALL NEW(obss_in_temp, obs_file, stats_err_file = stats_err_file)
            ELSE
-              CALL NEW(obss_in_temp, obs_file, stdev=obs_stdev_arr_prm)
+              CALL NEW(obss_in_temp, obs_file, stdev=obs_stdev_arr_prm, stats_err_file = stats_err_file)
            END IF
            obss_in = obss_in + obss_in_temp
            CALL NULLIFY(obss_in_temp)
@@ -1411,7 +1414,8 @@ PROGRAM oorb
         END IF
         lu = getUnit(obs_file)
      END IF
-     CALL writeObservationFile(obss_in, lu, "des")
+     Write(stderr, *) "stats_err_file=", stats_err_file
+     CALL writeObservationFile(obss_in, lu, "des", stats_err_file=stats_err_file)
      IF (LEN_TRIM(obs_fname) /= 0) THEN
         CALL NULLIFY(obs_file)
      END IF
@@ -1746,7 +1750,6 @@ PROGRAM oorb
   CASE ("obs2ecl")
 
      ! Convert observed RA,Dec to topocentric ecliptic coordinates.
-
      DO i=1,getNrOfObservations(obss_in)
         obs = getObservation(obss_in,i)
         ! Get number or designation
@@ -1854,7 +1857,8 @@ PROGRAM oorb
           ls_element_mask=ls_element_mask, &
           ls_niter_major_max=ls_niter_major_max, &
           ls_niter_major_min=ls_niter_major_min, &
-          ls_niter_minor=ls_niter_minor)
+          ls_niter_minor=ls_niter_minor, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / ranging", &
              "TRACE BACK (5)", 1)
@@ -2559,7 +2563,8 @@ PROGRAM oorb
           accwin_multiplier=accwin_multiplier, &
           smplx_niter=smplx_niter, &
           smplx_tol=smplx_tol, &
-          smplx_force=smplx_force)
+          smplx_force=smplx_force, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / simplex", &
              "TRACE BACK (5)", 1)
@@ -3031,7 +3036,8 @@ PROGRAM oorb
           os_norb=os_norb, &
           os_ntrial=os_ntrial, &
           os_sampling_type=os_sampling_type, &
-          chi2_min=chi2_min_init)
+          chi2_min=chi2_min_init, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / observation_sampling", &
              "TRACE BACK (5)", 1)
@@ -3645,7 +3651,8 @@ PROGRAM oorb
           vov_nmap=vov_nmap, &
           vov_mapping_mask=vov_mapping_mask, &
           vov_scaling=vov_scaling_prm, &
-          accwin_multiplier=accwin_multiplier)
+          accwin_multiplier=accwin_multiplier, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / vov", &
              "TRACE BACK (5)", 1)
@@ -4327,7 +4334,8 @@ PROGRAM oorb
           os_ntrial=os_ntrial, &
           os_sampling_type=os_sampling_type, &
           smplx_niter=smplx_niter, &
-          smplx_similarity_tol=smplx_similarity_tol)
+          smplx_similarity_tol=smplx_similarity_tol, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / vomcmc", &
              "TRACE BACK (2)", 1)
@@ -4903,7 +4911,8 @@ PROGRAM oorb
           sor_niter=sor_niter, &
           sor_rho_init=sor_rho_init, &
           generat_multiplier=generat_multiplier, &
-          accwin_multiplier=accwin_multiplier)
+          accwin_multiplier=accwin_multiplier, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / lsl", &
              "TRACE BACK (5)", 1)
@@ -5638,7 +5647,8 @@ PROGRAM oorb
           cos_gaussian=cos_gaussian, &
           cos_nsigma=cos_nsigma, &
           cos_norb=cos_norb, &
-          cos_ntrial=cos_ntrial)
+          cos_ntrial=cos_ntrial, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / covariance_sampling", &
              "TRACE BACK (5)", 1)
@@ -6125,7 +6135,8 @@ PROGRAM oorb
   CASE ("residual-stamps")
 
      CALL readConfigurationFile(conf_file, &
-          accwin_multiplier=accwin_multiplier)
+          accwin_multiplier=accwin_multiplier, &
+          stats_err_file=stats_err_file)
      IF (error) THEN
         CALL errorMessage("oorb / residual-stamps", &
              "TRACE BACK (5)", 1)
@@ -9634,7 +9645,8 @@ PROGRAM oorb
           accwin_multiplier=accwin_multiplier, &
           smplx_niter=smplx_niter, &
           smplx_tol=smplx_tol, &
-          smplx_force=smplx_force)
+          smplx_force=smplx_force, &
+          stats_err_file=stats_err_file)
      obss_sep => getSeparatedSets(obss_in)
      obs = getObservation(obss_sep(2), 1)
      dt = getObservationalTimespan(obss_sep(2))
@@ -9743,7 +9755,8 @@ PROGRAM oorb
           accwin_multiplier=accwin_multiplier, &
           smplx_niter=smplx_niter, &
           smplx_tol=smplx_tol, &
-          smplx_force=smplx_force)
+          smplx_force=smplx_force, &
+          stats_err_file=stats_err_file)
      CALL NULLIFY (t)
      IF (.NOT. exist(epoch)) THEN
         CALL NULLIFY (t)

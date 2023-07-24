@@ -1,8 +1,10 @@
 PROGRAM stats
 
-  USE cl_options
+
   USE Base_cl
   USE Time_cl
+  USE cl_options
+  USE utilities
   USE stats_err
   
   IMPLICIT NONE
@@ -10,6 +12,11 @@ PROGRAM stats
   TYPE (StatsErr), DIMENSION(:), POINTER :: ses
   INTEGER :: i
   LOGICAL :: err = .FALSE.
+
+  TYPE (Time) :: tim
+  REAL(bp) :: tmp
+  tmp = getMJD(tim, "UTC")
+  
   CALL stats_errors_init(err)
 
   PRINT *, "err: ", err

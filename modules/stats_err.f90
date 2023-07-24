@@ -1,6 +1,11 @@
 MODULE stats_err
 
+  USE Base_cl
+  USE Time_cl
+  USE utilities
+  USE data_structures
   USE parameters
+  USE utilities
   IMPLICIT NONE
 
   PUBLIC :: stats_errors  
@@ -10,7 +15,7 @@ MODULE stats_err
   PUBLIC :: StatsErr
 
   PRIVATE
-  LOGICAL :: first = .TRUE.
+  LOGICAL :: first = .FALSE.
   
   TYPE StatsErr
      SEQUENCE
@@ -26,20 +31,35 @@ MODULE stats_err
   
 CONTAINS
 
-  FUNCTION stats_errors(obs, mag)
+  FUNCTION stats_errors(obs, mag, tim)
 
     IMPLICIT NONE
 
-    CHARACTER(len = 3), INTENT(in) :: obs
-    INTEGER, INTENT(in) :: mag
-    TYPE (StatsErr), DIMENSION(:), POINTER :: stats_errors
-    INTEGER :: i, j, jmax, err
+    CHARACTER(len = 3), INTENT(in)    :: obs
+    INTEGER, INTENT(in)               :: mag
+    TYPE (Time), INTENT(in), OPTIONAL :: tim
 
+    TYPE (StatsErr), DIMENSION(:), POINTER :: stats_errors
+    INTEGER  :: i, j, jmax, err
+    TYPE (Time) :: tim_    
+    REAL(bp) :: mjd
+
+    if (PRESENT(tim)) THEN
+       tim_ = tim
+       mjd = getMJD(tim_, "UTC")
+    END IF
+    
     ! todo: make the redundant looping more efficient later--correctness first!
     j = 0
     DO i = 1, stats_errs_size
        IF (stats_errs(i)%obs == obs .AND. stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
-          j = j + 1
+          IF (PRESENT(tim)) THEN
+             IF (real(stats_errs(i)%start) <= mjd .AND. mjd < real(stats_errs(i)%end)) then
+                j = j + 1
+             END IF
+          ELSE
+             j = j + 1
+          END IF
        END IF
     END DO
 
@@ -48,8 +68,15 @@ CONTAINS
        j = 0
        DO i = 1, stats_errs_size
           IF (stats_errs(i)%obs == obs .AND. stats_errs(i)%low_mag <= mag .AND. mag < stats_errs(i)%upper_mag) THEN
-             j = j + 1
-             stats_errors(j) = stats_errs(i)
+             IF (PRESENT(tim)) THEN
+                IF (real(stats_errs(i)%start) <= mjd .AND. mjd < real(stats_errs(i)%end)) then
+                   j = j + 1
+                   stats_errors(j) = stats_errs(i)                   
+                END IF
+             ELSE
+                j = j + 1
+                stats_errors(j) = stats_errs(i)
+             END IF
           END IF
        END DO
     ELSE
@@ -70,9 +97,9 @@ CONTAINS
     CHARACTER(len=256) :: ctmp
     INTEGER :: itmp
     REAL :: rtmp    
+    
 
-
-    IF (.NOT.first) THEN
+    IF (first) THEN
        RETURN
     END IF
 
@@ -143,6 +170,8 @@ CONTAINS
 
     stats_errs_size = SIZE(stats_errs) - 4 ! last 4 lines are missing data columns
 
+    PRINT *, "stats_errs_size=", stats_errs_size
+    
     DO i = 1, stats_errs_size
        print *, &
             stats_errs(i)%obs, &
@@ -153,7 +182,7 @@ CONTAINS
             stats_errs(i)%ra_rms, &
             stats_errs(i)%dec_rms
     END DO
-    
+    first = .TRUE.
   END SUBROUTINE stats_errors_init
   
 END MODULE stats_err

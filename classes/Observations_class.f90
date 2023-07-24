@@ -302,13 +302,14 @@ CONTAINS
   !! call new(obss, myfile)
   !! </pre>
   !!
-  SUBROUTINE NEW_Obss_file(this, f1, stdev, orb_sim)
+  SUBROUTINE NEW_Obss_file(this, f1, stdev, orb_sim, stats_err_file)
 
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout)           :: this
     TYPE (File), INTENT(in)                      :: f1
     REAL(bp), DIMENSION(6), OPTIONAL, INTENT(in) :: stdev
     TYPE (Orbit), OPTIONAL, INTENT(inout)        :: orb_sim
+    LOGICAL, OPTIONAL, INTENT(in)                :: stats_err_file
 
     IF (this%is_initialized) THEN
        error = .TRUE.
@@ -319,15 +320,15 @@ CONTAINS
 
     IF (PRESENT(stdev)) THEN
        IF (PRESENT(orb_sim)) THEN
-          CALL readObservationFile(this, f1, stdev, orb_sim=orb_sim)
+          CALL readObservationFile(this, f1, stdev, orb_sim=orb_sim, stats_err_file = stats_err_file)
        ELSE
-          CALL readObservationFile(this, f1, stdev)
+          CALL readObservationFile(this, f1, stdev, stats_err_file = stats_err_file)
        END IF
     ELSE
        IF (PRESENT(orb_sim)) THEN
-          CALL readObservationFile(this, f1, orb_sim=orb_sim)
+          CALL readObservationFile(this, f1, orb_sim=orb_sim, stats_err_file = stats_err_file)
        ELSE
-          CALL readObservationFile(this, f1)
+          CALL readObservationFile(this, f1, stats_err_file = stats_err_file)
        END IF
     END IF
     IF (error) THEN
@@ -3114,14 +3115,15 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE readObservationFile(this, obsf, stdev, orb_sim)
+  SUBROUTINE readObservationFile(this, obsf, stdev, orb_sim, stats_err_file)
 
     IMPLICIT NONE
     TYPE (Observations), INTENT(inout)           :: this
     TYPE (File), INTENT(in)                      :: obsf
     REAL(bp), DIMENSION(6), INTENT(in), OPTIONAL :: stdev
     TYPE (Orbit), INTENT(inout), OPTIONAL        :: orb_sim
-
+    LOGICAL, INTENT(in), OPTIONAL                :: stats_err_file
+    
     TYPE (File) :: orbfile
     TYPE (Orbit) :: orb
     TYPE (Observatories) :: obsies
@@ -3170,9 +3172,8 @@ CONTAINS
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat, completed, newtransit, transit_ok, &
          fulltransitdone, init
-
-    converttonewformat = .FALSE.
-
+    LOGICAL :: stats_err_file_
+    
     IF (this%is_initialized) THEN
        error = .TRUE.
        CALL errorMessage("Observations / readObservationFile", &
@@ -3180,6 +3181,12 @@ CONTAINS
        RETURN
     END IF
 
+    if (PRESENT(stats_err_file)) THEN
+       stats_err_file_ = stats_err_file
+    ELSE
+       stats_err_file_ = .FALSE.
+    END IF
+    
     ! Decide which routine should read the input 
     ! file by checking the suffix:
     fname = getFileName(obsf)
@@ -3513,15 +3520,20 @@ CONTAINS
              RETURN
           END IF
 
-          stats_err => stats_errors(obsy_code, IDINT(mag))
           covariance = 0.0_bp
-          if (SIZE(stats_err) > 0) THEN
-             ! use the first one
-             covariance(2,2) = (stats_err(1)%ra_rms)**2.0_bp
-             covariance(3,3) = (stats_err(1)%dec_rms)**2.0_bp
+          if (stats_err_file_) THEN
+             stats_err => stats_errors(obsy_code, IDINT(mag))
+             if (SIZE(stats_err) > 0) THEN
+                ! use the first one
+                covariance(2,2) = (stats_err(1)%ra_rms)**2.0_bp
+                covariance(3,3) = (stats_err(1)%dec_rms)**2.0_bp
+             ELSE
+                covariance(2,2) = stdev_(2)**2.0_bp
+                covariance(3,3) = stdev_(3)**2.0_bp
+             END IF
           ELSE
              covariance(2,2) = stdev_(2)**2.0_bp
-             covariance(3,3) = stdev_(3)**2.0_bp
+             covariance(3,3) = stdev_(3)**2.0_bp             
           END IF
           
           ! Change old type descriptions to new ones
@@ -6473,19 +6485,29 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE writeObservationFile(this, lu, frmt, number)
+  SUBROUTINE writeObservationFile(this, lu, frmt, number, stats_err_file)
 
     IMPLICIT NONE
     TYPE (Observations), INTENT(in) :: this
     CHARACTER(len=*)                :: frmt
     INTEGER, INTENT(in)             :: lu         
     CHARACTER(len=*), INTENT(in), OPTIONAL :: number
+    LOGICAL, INTENT(in), OPTIONAL   :: stats_err_file
 
     CHARACTER(len=OBS_RECORD_LEN), DIMENSION(:), POINTER :: &
          records => NULL()
     CHARACTER(len=2)                :: note
     INTEGER                         :: i, j, err
+    LOGICAL                         :: stats_err_file_
+    
+    IF (PRESENT(stats_err_file)) THEN
+       stats_err_file_ = stats_err_file
+    ELSE
+       stats_err_file_ = .FALSE.
+    END IF
 
+    WRITE(stderr, *) "writeObservationFile: stats_err_file=", stats_err_file_
+    
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
        CALL errorMessage("Observations / writeObservationFile", &
@@ -6504,9 +6526,9 @@ CONTAINS
 
        ! Get formatted observation records:
        IF (PRESENT(number)) THEN
-          records => getObservationRecords(this%obs_arr(this%ind(i)), TRIM(frmt), number=number)
+          records => getObservationRecords(this%obs_arr(this%ind(i)), TRIM(frmt), number=number, stats_err_file=stats_err_file_)
        ELSE
-          records => getObservationRecords(this%obs_arr(this%ind(i)), TRIM(frmt))
+          records => getObservationRecords(this%obs_arr(this%ind(i)), TRIM(frmt), stats_err_file=stats_err_file_)
        END IF
        IF (error) THEN
           CALL errorMessage("Observations / writeObservationFile", &
