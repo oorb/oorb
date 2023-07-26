@@ -67,10 +67,7 @@ PROGRAM orbit_linking
        tree_e2bmc, &
        tree_c2blsl, &
        tree_e2blsl, &
-       tree_cnblsl, &
-       tree_enblsl, &
-       tree_2blsl, &
-       tree_nblsl
+       tree_2blsl
   TYPE (rb_tree_node_i16_i4arr), POINTER :: address_tree_node1, &
        address_tree_node2
   TYPE (rb_tree_node_ch32), POINTER :: tree_node_ch32, &
@@ -107,7 +104,6 @@ PROGRAM orbit_linking
        obss_1, &
        obss_2, &
        obss_all, &
-       obss_all_, &
        obss_selected, &
        obss_all_first, &
        obss_nb
@@ -205,7 +201,6 @@ PROGRAM orbit_linking
        k, &
        l, &
        m, &
-       n, &
        ii, &
        jj, &
        kk, &
@@ -238,7 +233,6 @@ PROGRAM orbit_linking
        elm
   LOGICAL :: &
        common_epoch, &
-       at_least_one_correct, &
        insert_header
   INTEGER :: ret
 

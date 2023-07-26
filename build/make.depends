@@ -34,6 +34,10 @@ planetary_data.o:  ../modules/planetary_data.f90  parameters.mod linal.mod sort.
 	$(OBJBUILDCMD)
 planetary_data.mod: ../modules/planetary_data.f90  parameters.mod linal.mod sort.mod planetary_data.o
 	$(MODBUILDCMD)
+stats_err.o: ../modules/stats_err.f90
+	$(OBJBUILDCMD)
+stats_err.mod: ../modules/stats_err.f90 stats_err.o
+	$(MODBUILDCMD)
 cl_options.o:  ../modules/cl_options.f90 parameters.mod
 	$(OBJBUILDCMD)
 cl_options.mod: ../modules/cl_options.f90 parameters.mod cl_options.o
@@ -74,7 +78,7 @@ CartesianCoordinates_class.o:   ../classes/CartesianCoordinates_class.f90 base_c
 	$(OBJBUILDCMD)
 cartesiancoordinates_cl.mod: ../classes/CartesianCoordinates_class.f90 base_cl.mod time_cl.mod  sphericalcoordinates_cl.mod CartesianCoordinates_class.o
 	$(MODBUILDCMD)
-Observation_class.o:  ../classes/Observation_class.f90  base_cl.mod time_cl.mod observatory_cl.mod sphericalcoordinates_cl.mod  cartesiancoordinates_cl.mod utilities.mod
+Observation_class.o:  ../classes/Observation_class.f90  base_cl.mod time_cl.mod observatory_cl.mod sphericalcoordinates_cl.mod  cartesiancoordinates_cl.mod utilities.mod stats_err.mod
 	$(OBJBUILDCMD)
 observation_cl.mod: ../classes/Observation_class.f90  base_cl.mod time_cl.mod observatory_cl.mod sphericalcoordinates_cl.mod  cartesiancoordinates_cl.mod utilities.mod Observation_class.o
 	$(MODBUILDCMD)
@@ -86,7 +90,7 @@ Orbit_class.o:  ../classes/Orbit_class.f90 base_cl.mod  time_cl.mod sphericalcoo
 	$(OBJBUILDCMD)
 orbit_cl.mod: ../classes/Orbit_class.f90 base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  utilities.mod planetary_data.mod integrators.mod linal.mod sort.mod  functions.mod Orbit_class.o
 	$(MODBUILDCMD)
-Observations_class.o:   ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod  sort.mod linal.mod
+Observations_class.o:   ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod sort.mod linal.mod stats_err.mod
 	$(OBJBUILDCMD)
 observations_cl.mod: ../classes/Observations_class.f90 base_cl.mod file_cl.mod time_cl.mod  sphericalcoordinates_cl.mod cartesiancoordinates_cl.mod  observation_cl.mod observatories_cl.mod orbit_cl.mod utilities.mod  sort.mod linal.mod Observations_class.o
 	$(MODBUILDCMD)
@@ -112,3 +116,5 @@ pyoorb.o:  ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphe
 	$(OBJBUILDCMD)
 pyoorb.mod: ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod pyoorb.o
 	$(MODBUILDCMD)
+stats.o:  ../main/stats.f90 stats_err.mod
+	$(OBJBUILDCMD)

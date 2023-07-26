@@ -592,7 +592,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (list_i4), POINTER :: list
     INTEGER(iprec4) :: key
-    TYPE (list_node_i4), POINTER :: new_node, tmp_node
+    TYPE (list_node_i4), POINTER :: new_node
 
     ALLOCATE(new_node)
     new_node%next => list%nil%next
@@ -610,7 +610,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE (list_node_i4), POINTER :: head
     INTEGER(iprec4) :: key
-    TYPE (list_node_i4), POINTER :: new_node, tmp_node
+    TYPE (list_node_i4), POINTER :: new_node
 
     ALLOCATE(new_node)
     new_node%next => head
@@ -1441,10 +1441,9 @@ CONTAINS
 
 
 
-  FUNCTION succ_list_node_ch1024_i4(list, x) RESULT(y)
+  FUNCTION succ_list_node_ch1024_i4(x) RESULT(y)
 
     IMPLICIT NONE
-    TYPE (lnkd_list_ch1024_i4), POINTER :: list
     TYPE (lnkd_list_node_ch1024_i4), POINTER :: x
     TYPE (lnkd_list_node_ch1024_i4), POINTER :: y
 
@@ -4250,7 +4249,6 @@ CONTAINS
     TYPE (rb_tree_i8_ch16arr), POINTER :: tree
     TYPE (rb_tree_node_i8_ch16arr), POINTER :: z, y
     TYPE (rb_tree_node_i8_ch16arr), POINTER :: x
-    INTEGER :: err
 
     IF (ASSOCIATED(z%lchild,tree%nil) .OR. ASSOCIATED(z%rchild,tree%nil)) THEN
        y => z
@@ -5353,7 +5351,7 @@ CONTAINS
     list_node => list%head
     DO WHILE (.NOT.ASSOCIATED(list_node,list%nil))
        WRITE(*,*) "key: ", list_node%key, " str: ", TRIM(ADJUSTL(list_node%str))
-       list_node => successor(list, list_node)
+       list_node => successor(list_node)
     END DO
 
   END SUBROUTINE print_list
@@ -5367,7 +5365,6 @@ CONTAINS
     IMPLICIT NONE
     TYPE (rb_tree_i8_i4), POINTER :: tree
     TYPE (lnkd_list_ch1024_i4), POINTER :: list
-    TYPE (lnkd_list_node_ch1024_i4), POINTER :: list_node
 
     CALL init(list)
     CALL buildlist(tree, list, tree%root, 1_iprec4)

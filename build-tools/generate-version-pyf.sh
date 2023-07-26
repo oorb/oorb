@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # (Re)Generate contents of version.pyf with the version given on the command
 # line. Output to stdout. Called from build/Makefile.

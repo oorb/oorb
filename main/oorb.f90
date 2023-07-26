@@ -45,7 +45,8 @@ PROGRAM oorb
   USE planetary_data  
   USE statistics
   USE io
-
+  USE stats_err
+  
   IMPLICIT NONE
   INCLUDE "version.h"
 
@@ -494,7 +495,8 @@ PROGRAM oorb
        asteroid_perturbers=asteroid_perturbers, &
        massest_mcmc_adaptation=massest_mcmc_adaptation, &
        massest_mcmc_norb=massest_mcmc_norb, &
-       massest_mcmc_lock=massest_mcmc_lock)
+       massest_mcmc_lock=massest_mcmc_lock, &
+       stats_err_file=stats_err_file)
   IF (error) THEN
      CALL errorMessage("oorb", &
           "TRACE BACK (15)", 1)
