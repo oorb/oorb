@@ -70,6 +70,7 @@ MODULE Observations_cl
   USE utilities
   USE sort
   USE linal
+  USE stats_err
   !$ use omp_lib
 
   IMPLICIT NONE
@@ -224,6 +225,8 @@ MODULE Observations_cl
      MODULE PROCEDURE setNumber_Obss_int
   END INTERFACE setNumber
 
+  TYPE (StatsErr), DIMENSION(:), POINTER :: stats_err
+  
 CONTAINS
 
 
@@ -3118,12 +3121,12 @@ CONTAINS
     TYPE (File), INTENT(in)                      :: obsf
     REAL(bp), DIMENSION(6), INTENT(in), OPTIONAL :: stdev
     TYPE (Orbit), INTENT(inout), OPTIONAL        :: orb_sim
-
+    
     TYPE (File) :: orbfile
     TYPE (Orbit) :: orb
     TYPE (Observatories) :: obsies
     TYPE (Observatory) :: obsy
-    TYPE (Time) :: t, t0
+    TYPE (Time) :: t
     TYPE (SphericalCoordinates) :: obs_scoord, ephemeris
     TYPE (CartesianCoordinates) :: obsy_ccoord, geocenter_ccoord, &
          satellite_ccoord
@@ -3167,9 +3170,7 @@ CONTAINS
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat, completed, newtransit, transit_ok, &
          fulltransitdone, init
-
-    converttonewformat = .FALSE.
-
+    
     IF (this%is_initialized) THEN
        error = .TRUE.
        CALL errorMessage("Observations / readObservationFile", &
@@ -3492,9 +3493,9 @@ CONTAINS
                   "Standard deviation for MPC format must be explicitly given.", 1)             
              RETURN
           END IF
-          covariance = 0.0_bp
-          covariance(2,2) = stdev_(2)**2.0_bp
-          covariance(3,3) = stdev_(3)**2.0_bp
+          ! covariance = 0.0_bp
+          ! covariance(2,2) = stdev_(2)**2.0_bp
+          ! covariance(3,3) = stdev_(3)**2.0_bp
 
           ! Compute the heliocentric position of the observer at epoch t:
           obsy_code = " "
@@ -3510,6 +3511,22 @@ CONTAINS
              RETURN
           END IF
 
+          covariance = 0.0_bp
+          if (stats_err_file) THEN
+             stats_err => stats_errors(obsy_code, IDINT(mag), t)
+             if (SIZE(stats_err) > 0) THEN
+                ! use the first one
+                covariance(2,2) = (stats_err(1)%ra_rms)**2.0_bp
+                covariance(3,3) = (stats_err(1)%dec_rms)**2.0_bp
+             ELSE
+                covariance(2,2) = stdev_(2)**2.0_bp
+                covariance(3,3) = stdev_(3)**2.0_bp
+             END IF
+          ELSE
+             covariance(2,2) = stdev_(2)**2.0_bp
+             covariance(3,3) = stdev_(3)**2.0_bp             
+          END IF
+          
           ! Change old type descriptions to new ones
           SELECT CASE (line1(15:15))
           CASE ("c", " ")
@@ -6471,7 +6488,9 @@ CONTAINS
          records => NULL()
     CHARACTER(len=2)                :: note
     INTEGER                         :: i, j, err
-
+    
+    ! WRITE(stderr, *) "writeObservationFile: stats_err_file=", stats_err_file
+    
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
        CALL errorMessage("Observations / writeObservationFile", &

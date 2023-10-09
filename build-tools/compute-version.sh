@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Create PEP-440 compliant version identifiers using information stored in
 # git.
@@ -34,7 +34,7 @@
 # Author: mjuric@astro.washington.edu (http://github.com/mjuric)
 #
 
-DEFAULT_VERSION=v1.0.2
+DEFAULT_VERSION=1.3.0
 
 compute_version() {
 	# See if we have any tags defined

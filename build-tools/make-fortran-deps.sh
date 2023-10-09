@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 #  Inspired by the solution by FX Coudert
 #       https://gcc.gnu.org/ml/fortran/2007-11/msg00013.html

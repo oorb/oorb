@@ -540,6 +540,7 @@ CONTAINS
        t0, &
        multiple_ids, &
        obs_stdev_arr, &
+       stats_err_file, &
        element_type_comp, &
        element_type_out, &
        observation_format_out, orbit_format_out, &
@@ -604,6 +605,8 @@ CONTAINS
          eph_dt_since_last_obs
     REAL(bp), DIMENSION(6), INTENT(inout), OPTIONAL :: &
          obs_stdev_arr
+    LOGICAL, INTENT(inout), OPTIONAL :: &
+         stats_err_file
     REAL(bp), DIMENSION(4), INTENT(inout), OPTIONAL :: &
          sor_rho_init, &
          sor_rho_init2, &
@@ -818,8 +821,15 @@ CONTAINS
           IF (PRESENT(multiple_ids)) THEN
              multiple_ids = .TRUE.
           END IF
-
-
+       CASE ("stats.err_file")
+          IF (PRESENT(stats_err_file)) THEN
+             READ(par_val, *, iostat=err) stats_err_file
+             if (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / readConfigurationFile", &
+                     "Could no read parameter value (XX).", 1)
+             END IF
+          END IF
           ! GENERAL INVERSION PARAMETERS
        CASE ("element_type_comp")
           IF (PRESENT(element_type_comp)) THEN
