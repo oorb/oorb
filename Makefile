@@ -60,8 +60,14 @@ ifeq ("$(PREFIX)", "")
 endif
 
 .PHONY: all
-all:
+
+all: build
 	@ $(MAKE) -C build $@
+
+build:
+	mkdir -p build
+	cp build-tools/make.depends build/make.depends
+	cp build-tools/Makefile build/Makefile
 
 ephem:
 	@ $(MAKE) -C data/JPL_ephemeris
@@ -71,7 +77,7 @@ ephem:
 	$(MAKE) -C build $@
 
 .PHONY: clean
-clean:
+clean: build
 	$(MAKE) -C build clean
 	$(MAKE) -C doc clean
 
@@ -122,7 +128,7 @@ endif
 # Google for 'lcov' if you want to create local visualizations.
 #
 .PHONY: coverage coverage-prereq
-coverage: coverage-prereq test
+coverage: coverage-prereq test build
 	(cd build && gcov -b -o . *.o ../classes/*.f90 ../modules/*.f90 ../main/*.f90 ../prefix.h ../python/*.f90)
 
 coverage-prereq:

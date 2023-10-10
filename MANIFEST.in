@@ -1,0 +1,12 @@
+graft build-tools
+graft modules
+graft python
+graft classes
+graft main
+
+include Makefile
+include VERSION
+include COPYING
+include configure
+include setup.py
+include pyproject.toml
