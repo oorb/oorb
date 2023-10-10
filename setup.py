@@ -23,6 +23,8 @@ class PyoorbBuild(build_ext):
         fortran_compiler = os.environ.get("FC", "gfortran")
         f2py_bin = shutil.which("f2py")
         py_bin = shutil.which("python")
+        if py_bin is None:
+            py_bin = shutil.which("python3")
         self.spawn(["./configure", fortran_compiler, "opt", "--with-pyoorb", "--with-f2py", f2py_bin, "--with-python", py_bin])
 
     def build_extension(self, ext):
