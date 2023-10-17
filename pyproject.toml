@@ -2,7 +2,7 @@ name = "pyoorb"
 license = "GPL-3.0-only"
 
 [build-system]
-requires = ["setuptools", "wheel", "numpy"]
+requires = ["setuptools", "wheel", "numpy>=1.26"]
 
 [tool.cibuildwheel]
 before-build = """
