@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2023,2024                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -39,7 +39,7 @@
 !!     Astronomy, Faculty of Science, University of Helsinki.
 !!
 !!   @author  MG 
-!!   @version 2023-04-05
+!!   @version 2024-03-07
 !!
 PROGRAM orbit_linking
 
