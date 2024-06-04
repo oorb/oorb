@@ -4714,9 +4714,9 @@ CONTAINS
 
 
 
-    CASE ("gdr2", "gdr3")
+    CASE ("gdr2", "gdr3", "gfpr")
 
-       ! Full SSO data dump from Gaia Data Release 2 or 3
+       ! Full SSO data dump from Gaia Data Release 2,3, or the Focused Project Release.
 
        covariance = 0.0_bp
        position = 0.0_bp
@@ -4758,6 +4758,15 @@ CONTAINS
                   position_angle_scan, astrometric_outcome_ccd, astrometric_outcome_transit, &
                   epoch_emission, fov, level_of_confidence, ra_orbit_residual,dec_orbit_residual,& 
                   al_orbit_residual,ac_orbit_residual, obs_rejected_by_fit
+          ELSE IF (suffix == "gfpr") THEN
+              READ(line, *, iostat=err) solution_id, source_id, &
+                  denomination, transit_id, observation_id, number, epoch, &
+                  epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance_sys(2,3), &
+                  covariance(2,2), covariance(3,3), covariance(2,3), &
+                  coordinates(1:6), gaia_geocentric(1:6), &
+                  position_angle_scan, astrometric_outcome_ccd, astrometric_outcome_transit, &
+                  fov, obs_rejected_by_fit
           END IF
           IF (err /= 0) THEN
              error = .TRUE.
