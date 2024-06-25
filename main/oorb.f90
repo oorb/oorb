@@ -6862,8 +6862,13 @@ PROGRAM oorb
               END DO
               obsy_code_arr => getObservatoryCodes(obss_in)
            ELSE
-              t = getTime(storb_arr_in(i))
-              mjd_tt = getMJD(t, "TT")
+              IF (get_cl_option("--start-mjd-utc",.FALSE.)) THEN
+                 CALL NEW(t, mjd_utc0, "UTC")
+                 mjd_tt = getMJD(t, "TT")
+              ELSE
+                 t = getTime(storb_arr_in(i))
+                 mjd_tt = getMJD(t, "TT")
+              END IF
               CALL NULLIFY(t)
               ALLOCATE(observers(nstep), obsy_code_arr(nstep))
               DO j=1,nstep
