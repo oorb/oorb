@@ -104,7 +104,7 @@ jobs:
         with:
           python-version: ${{ matrix.pyversion }}
       - name: Get wheels
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: x86_wheels
           path: /tmp/wheels
@@ -118,7 +118,7 @@ jobs:
           # the command, but this time allowing the index and deps.
           pip install --find-links /tmp/wheels pyoorb
       - name: Get oorb data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: oorb_data
           path: /tmp/oorb_data
@@ -146,12 +146,12 @@ jobs:
 
     steps:
       - name: Get wheels
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: aarch64_wheels
           path: /tmp/artifacts/wheels
       - name: Get oorb data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: oorb_data
           path: /tmp/artifacts/oorb_data
@@ -202,15 +202,15 @@ jobs:
     permissions:
       id-token: write
     steps:
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4.1.7
       with:
         name: sdist
         path: ./sdist/
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4.1.7
       with:
         name: x86_wheels
         path: ./x86_wheels/
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4.1.7
       with:
         name: aarch64_wheels
         path: ./aarch64_wheels/
