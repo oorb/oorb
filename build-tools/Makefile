@@ -117,7 +117,7 @@ pyoorb: ../lib/$(PYOORB_SO)
 		  exit -1; \
 		}
 	@ [[ ! -z "$(LDFLAGS)" ]] && echo "$$LDFLAGS" | grep -E -v -q -- "(-bundle|-shared)" && { \
-	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS -bundle" || LDFLAGS="$$LDFLAGS -shared"; \
+	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS" || LDFLAGS="$$LDFLAGS"; \
 	}; \
 	F77= $(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --build-dir ./_pyoorb_build -c --noarch \
 	        $(F2PY_FCOMPILER) --f90exec=$(FC) --f90flags="$(FC_INC)../build $(FCOPTIONS)" $(ADDLIBS) && \
