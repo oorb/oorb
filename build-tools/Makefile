@@ -59,9 +59,7 @@ $(addprefix ../bin/, $(PROGRAMS)): ../bin/%: ../main/%
 	cp -a $< $@
 
 $(addprefix ../main/, $(PROGRAMS)): ../main/%: %.o ../lib/liboorb.a
-	$(FC) $(FCOPTIONS) $^ $(ADDLIBS) -o $@.tmp
-	fix-rpath.sh $@.tmp
-	mv $@.tmp $@
+	$(FC) $(FCOPTIONS) $^ $(ADDLIBS) -o $@
 
 #
 # Build version include file. This is included by oorb.f90 to
