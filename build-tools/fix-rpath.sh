@@ -21,19 +21,19 @@ set -e
 #
 # See if there is the tell-tale signs of conda's compiler
 #
-if ${OTOOL} -L "$1" | grep -q '@rpath/libgfortran'; then
+if otool -L "$1" | grep -q '@rpath/libgfortran'; then
 	#
 	# compute the location of lib directory
 	#
-	F=$(which ${FC})
+	F=$(which gfortran)
 	D=$(dirname "$F")
 	D="$D/../lib"
 	
-	for L in $(${OTOOL} -L "$1" | grep '@rpath' | awk '{print $1}'); do
+	for L in $(otool -L "$1" | grep '@rpath' | awk '{print $1}'); do
 		## verify the library is there
 		ABSPATH="$D/${L#@rpath/}"
 		if test -f "$ABSPATH"; then
-			${INSTALL_NAME_TOOL} -change "$L" "$ABSPATH" "$1"
+			install_name_tool -change "$L" "$ABSPATH" "$1"
 		fi
 	done
 fi
