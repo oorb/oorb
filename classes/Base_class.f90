@@ -624,7 +624,7 @@ CONTAINS
   SUBROUTINE setAccessToDataFiles()
 
     IMPLICIT NONE
-    OORB_DATA_DIR = resolveDirectory("share/oorb", "OORB_DATA")
+    OORB_DATA_DIR = resolveDirectory("share/openorb", "OORB_DATA")
 
   END SUBROUTINE setAccessToDataFiles
 
