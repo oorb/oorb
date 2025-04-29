@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2023-04-05
+!! @version 2025-04-29
 !!
 MODULE Base_cl
 
@@ -96,11 +96,12 @@ MODULE Base_cl
   REAL(bp), PARAMETER :: kB = 1.38e-23_bp                   !! Boltzmans constant kB [J K^-1]
   REAL(bp), PARAMETER :: hPl = 6.63e-34_bp                  !! Planck's constant h [J s]
   REAL(bp), PARAMETER :: sol      = 299792.458_bp/km_au*sec_day !! Speed of light (AU/d).
-  !REAL(bp), PARAMETER :: eps = 23.439280833_bp*rad_deg     !! Obliquity of ecliptic (J2000.0) 
-  !!                                                           Gaia 2006 (84381.41100 arcsec).
-  REAL(bp), PARAMETER :: eps = 23.43929111111111_bp*rad_deg !! Obliquity of ecliptic (J2000.0;
-  !!                                                           84381.448 arcsec), IAU 1976
-  !!                                                           (used by HORIZONS, MPC, OrbFit)
+  !REAL(bp), PARAMETER :: eps = 23.43928083333333_bp*rad_deg !! Obliquity of ecliptic 
+  !!                                                            (Gaia; 84381.41100 arcsec)
+  REAL(bp), PARAMETER :: eps = 23.43929111111111_bp*rad_deg !! Obliquity of ecliptic
+  !!                                                           (MPC, JPL, ASTORB; 84381.44008 arcsec)
+  !REAL(bp), PARAMETER :: eps = 23.43927944444444_bp*rad_deg !! Obliquity of ecliptic
+  !!                                                           (J2000; 84381.40600 arcsec)
   REAL(bp), PARAMETER :: r_earth  = 6378.140_bp/km_au       !! Earth equatorial radius (not mean!).
   REAL(bp), PARAMETER :: smamax   = 500.0_bp                !! Maximum for semimajor axis (AU).
   REAL(bp), PARAMETER :: rmoon    = 2.57e-3_bp              !! Earth-Moon mean distance (AU).

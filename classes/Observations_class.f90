@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2018,2019                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -53,8 +53,8 @@
 !!  
 !! @see StochasticOrbit_class 
 !!  
-!! @author  MG, JV 
-!! @version 2019-02-20
+!! @author  MG, JV, GF, LS, ET 
+!! @version 2025-04-29
 !!  
 MODULE Observations_cl
 
@@ -98,7 +98,7 @@ MODULE Observations_cl
   PRIVATE :: setNumber_Obss_char
   PRIVATE :: setNumber_Obss_int
   PRIVATE :: sortObservations
-  PRIVATE :: GaiaRelativityCorrection
+  PRIVATE :: GaiaDR2LDCRemoval
 
   TYPE Observations
      PRIVATE
@@ -1070,7 +1070,7 @@ CONTAINS
   SUBROUTINE clean_Obss(this)
 
     TYPE (Observations), INTENT(inout) :: this
-    INTEGER :: i, j
+    INTEGER :: i, j, err
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -1096,8 +1096,11 @@ CONTAINS
     this%obs_arr => reallocate(this%obs_arr)
 
     ! Update number and names of different objects:
+    IF (ASSOCIATED(this%criteria)) THEN
+       DEALLOCATE(this%criteria, stat=err)
+    END IF
     this%nobjects = 0
-    CALL sortObservations(this,primary_sort="designation")
+    CALL sortObservations(this, primary_sort="designation")
     IF (error) THEN
        CALL errorMessage("Observations / clean", &
             "TRACE BACK (10)", 1)
@@ -3146,9 +3149,9 @@ CONTAINS
     REAL(bp), DIMENSION(10,15) :: transitTmp
     REAL(bp), DIMENSION(6,6) :: covariance, covariance_sys, covariance_final
     REAL(bp), DIMENSION(6) :: coordinates, coordinates_final, stdev_, mean, &
-         gaia_geocentric
+         gaia_geocentric, sun_obsy_coordinates
     REAL(bp), DIMENSION(3) :: position, position_final, velocity, pos1, pos2, &
-                              midGaia, midGaiaV
+         midGaia, midGaiaV
     REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd, dt, &
          ecl_lon, ecl_lat, angscan, pos_unc_along, pos_unc_across, &
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
@@ -3156,13 +3159,15 @@ CONTAINS
          strk_len_unc, strk_direction, strk_direction_unc, &
          position_angle_scan, al_orbit_residual, ac_orbit_residual, &
          ra_orbit_residual, dec_orbit_residual, epoch_emission, &
-         epoch, epoch_err, epoch_utc,  epoch1, last_epoch, covcoeff
+         epoch, epoch_err, epoch_utc,  epoch1, last_epoch, covcoeff, &
+         ra_start, dec_start, ra_end, dec_end, flux, mjd_utc, &
+         mjd_utc_start, mjd_utc_end, streak_length, group_angle
     INTEGER(ihp) :: observation_id, solution_id, source_id, transit_id
-    INTEGER :: i, j, err, year, month, hour, min, deg, arcmin, &
+    INTEGER :: i, j, k, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
          border1, border2, err_verb_, level_of_confidence, &
-         number_mp, fov, astrometric_outcome_transit, &
-         transitCounter, transitCounterAfter, &
+         number_mp, fov, astrometric_outcome_transit, obsid, &
+         transitCounter, transitCounterAfter, j_prev, nobs, &
          numberOfTransits, finalNumberOfTransits, linecounter, sot, s
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat, completed, newtransit, transit_ok, &
@@ -3195,9 +3200,9 @@ CONTAINS
     END IF
 
     IF (suffix .EQ. "gaianp") THEN
-         nlines = matchCharNrLines(obsf, "# Transit", 9)
+       nlines = matchCharNrLines(obsf, "# Transit", 9)
     ELSE
-         nlines = getNrOfLines(obsf)
+       nlines = getNrOfLines(obsf)
     END IF
     IF (error) THEN
        CALL errorMessage("Observations / readObservationFile", &
@@ -3241,6 +3246,8 @@ CONTAINS
     END IF
 
     SELECT CASE (TRIM(suffix))
+
+
 
     CASE ("des")
 
@@ -3325,6 +3332,8 @@ CONTAINS
           CALL NULLIFY(obsy)
           CALL NULLIFY(obsy_ccoord)
        END DO
+
+
 
     CASE ("mpc") ! Minor Planet Center old format
 
@@ -3618,6 +3627,8 @@ CONTAINS
           CALL NULLIFY(satellite_ccoord)
 
        END DO
+
+
 
     CASE ("mpc2") ! Minor Planet Center new format (20060601->)
 
@@ -3941,6 +3952,8 @@ CONTAINS
        END DO obsloop
 
        i = iobs
+
+
 
     CASE ("mpc3","sor","vov","kep") ! Minor Planet Center new format (20060601->)
 
@@ -4313,6 +4326,7 @@ CONTAINS
        i = iobs
 
 
+
     CASE ("gaia3")
 
        covariance = 0.0_bp
@@ -4423,10 +4437,11 @@ CONTAINS
 
 
 
-   ! Gaia SSO-ST input with normal-point treatment
-   CASE ("gaianp")
-   ! Gaia data release format parsed by parsegaiainput.sh 
- 
+    CASE ("gaianp")
+
+       ! Gaia SSO-ST input with normal-point treatment
+       ! Gaia data release format parsed by parsegaiainput.sh 
+
        covariance = 0.0_bp
        position = 0.0_bp
        velocity = 0.0_bp
@@ -4444,12 +4459,12 @@ CONTAINS
           WRITE(stdout,"(A132)") "Reading gaianp file..."
        END IF
        DO
-          
+
           READ(getUnit(obsf), "(A)", iostat=err) line
           linecounter=linecounter+1
           IF (info_verb >= 2) THEN
-          WRITE(stdout,*) "LC: ", linecounter, "NT: ", numberOfTransits, &
-                     "TC: ", transitCounter, "TCA: ", transitCounterAfter
+             WRITE(stdout,*) "LC: ", linecounter, "NT: ", numberOfTransits, &
+                  "TC: ", transitCounter, "TCA: ", transitCounterAfter
           END IF
           ! What can the line include?
           ! 1. something erroneous            --> exit
@@ -4471,7 +4486,7 @@ CONTAINS
              numberOfTransits=numberOfTransits+1
              CYCLE 
           ELSE IF ((line(1:9) == "# Transit" .AND. numberOfTransits .GT. 0) .OR. (line(1:5) == "# End")) THEN
-             
+
              ! collapseTransit
              ALLOCATE(inratrs(transitCounterAfter))
              ALLOCATE(indectrs(transitCounterAfter)) 
@@ -4488,7 +4503,7 @@ CONTAINS
              ALLOCATE(collPos(3))
              ALLOCATE(collVel(3))
              sot = transitCounterAfter
-             
+
              ! Order of reading transitTmp
              ! 1. RIGHT_ASCENSION
              ! 2. RIGHT_ASCENSION_ERROR_SYSTEMATIC
@@ -4505,15 +4520,15 @@ CONTAINS
              ! 13. OBSERVER_X_VEL
              ! 14. OBSERVER_Y_VEL
              ! 15. OBSERVER_Z_VEL
-             
-             
+
+
              ! Systematic is the same for all observations in one transit
              covSystematicTrs(1,1)=ABS(transitTmp(1,5)) !2
              covSystematicTrs(2,2)=ABS(transitTmp(1,2)) !5
              covSystematicTrs(2,1)=ABS(transitTmp(1,7))
              covSystematicTrs(1,2)=ABS(transitTmp(1,7))
 
-             
+
              DO s=1,transitCounterAfter
                 epoch1=transitTmp(s,9)!+mjd_tcb, no, done later in the code
                 ! Do not do the whole time manipulation here, for now treat as just a number
@@ -4525,32 +4540,32 @@ CONTAINS
                 covRandomTrs(2,2,s)=transitTmp(s,3) ! 6
                 covRandomTrs(1,2,s)=transitTmp(s,8)
                 covRandomTrs(2,1,s)=transitTmp(s,8)
-                
-                                
+
+
                 gaiaPosXTrs(s)=transitTmp(s,10) ! - barycenter! or later?
                 gaiaPosYTrs(s)=transitTmp(s,11) ! - barycenter! or later?
                 gaiaPosZTrs(s)=transitTmp(s,12) ! - barycenter! or later?
                 gaiaVelXTrs(s)=transitTmp(s,13) ! - barycenter! or later?
                 gaiaVelYTrs(s)=transitTmp(s,14) ! - barycenter! or later?
                 gaiaVelZTrs(s)=transitTmp(s,15) ! - barycenter! or later?
-                
-                
-                
+
+
+
              END DO
-             
-        
-             CALL collapseTransit(inratrs, indectrs, intimetrs, covRandomTrs, trsResult, error)
+
+
+             CALL collapseTransit(inratrs, indectrs, intimetrs, covRandomTrs, trsResult)
              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (999)", 1)
-                 RETURN
-              END IF 
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (999)", 1)
+                RETURN
+             END IF
              CALL collapseGaiaPos(intimetrs, gaiaPosXTrs, gaiaPosYTrs, gaiaPosZTrs, &
                   gaiaVelXTrs, gaiaVelYTrs, gaiaVelZTrs, midGaia)
              CALL collapseGaiaVel(gaiaVelXTrs, gaiaVelYTrs, gaiaVelZTrs, midGaiaV)
 
              covcoeff=1.0_bp
-             
+
              position(2)=trsResult(1)
              position(3)=trsResult(2)
              !covariance(2,2)=covcoeff*transitCounterAfter*(trsResult(3) + covSystematicTrs(1,1))
@@ -4561,97 +4576,97 @@ CONTAINS
              covariance(2,3)=(trsResult(6)) + covSystematicTrs(2,1)
              covariance(3,2)=covariance(2,3)
              covariance(3,3)=(trsResult(4)) + covSystematicTrs(2,2)
-             
+
              dt= trsResult(7)
-             
+
              coordinates(1:3)=midGaia
              coordinates(4:6)=midGaiaV
-             
-             
+
+
              ! add observation
-             
-                           i = i + 1
-              IF (i == 1) THEN
-                 discovery = .TRUE.
-              ELSE
-                 discovery = .FALSE.
-              END IF
-              
-              CALL NEW(t, mjd_tcb + dt, "TCB")
-              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (115)", 1)
-                 RETURN
-              END IF
-              obsy = getObservatory(obsies, "247")
-              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (120)", 1)
-                 RETURN
-              END IF
-              ! Transform barycentric spacecraft coordinates to
-              ! heliocentric spacecraft coordinates
-              mjd_tt = getMJD(t, "TT")
-              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (121)", 1)
-                 RETURN
-              END IF
-              planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
-              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (122)", 1)
-                 RETURN
-              END IF
-              CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
-              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (125)", 1)
-                 RETURN
-              END IF
-              DEALLOCATE(planeph, stat=err)
-              CALL NEW(obs_scoord, position, velocity, "equatorial", t)
-              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (130)", 1)
-                 RETURN
-              END IF
-              satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
-              CALL rotateToEquatorial(satellite_ccoord)
-              CALL rotateToEquatorial(obsy_ccoord)
-              coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
-              CALL NULLIFY(satellite_ccoord)
-              CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
-              CALL NULLIFY(this%obs_arr(numberOfTransits))
-              ! At this point, we should have everything we need to perform the collapsing of the transit
-              
-              
-              CALL NEW(this%obs_arr(numberOfTransits), number=number, designation=" ", &
-                   discovery=discovery, note1=" ", note2="S", &
-                   obs_scoord=obs_scoord, covariance=covariance, &
-                   obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
-                   obsy=obsy, obsy_ccoord=obsy_ccoord, &
-                   satellite_ccoord=satellite_ccoord, &
-                   coord_unit=2)
-              IF (error) THEN
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "TRACE BACK (135)", 1)
-                 RETURN
-              END IF
-             
-              CALL NULLIFY(obs_scoord)
-              CALL NULLIFY(t)
-              CALL NULLIFY(obsy)
-              CALL NULLIFY(obsy_ccoord)
-              CALL NULLIFY(satellite_ccoord)
-              covariance=0.0_bp
-             
-              IF (info_verb >= 2) THEN  
-                  WRITE(*,*) "Testing gaianp..."
-                  WRITE(*,*) "Number of Transits: ", numberOfTransits
-              END IF
+
+             i = i + 1
+             IF (i == 1) THEN
+                discovery = .TRUE.
+             ELSE
+                discovery = .FALSE.
+             END IF
+
+             CALL NEW(t, mjd_tcb + dt, "TCB")
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (115)", 1)
+                RETURN
+             END IF
+             obsy = getObservatory(obsies, "247")
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (120)", 1)
+                RETURN
+             END IF
+             ! Transform barycentric spacecraft coordinates to
+             ! heliocentric spacecraft coordinates
+             mjd_tt = getMJD(t, "TT")
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (121)", 1)
+                RETURN
+             END IF
+             planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (122)", 1)
+                RETURN
+             END IF
+             CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (125)", 1)
+                RETURN
+             END IF
+             DEALLOCATE(planeph, stat=err)
+             CALL NEW(obs_scoord, position, velocity, "equatorial", t)
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (130)", 1)
+                RETURN
+             END IF
+             satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
+             CALL rotateToEquatorial(satellite_ccoord)
+             CALL rotateToEquatorial(obsy_ccoord)
+             coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
+             CALL NULLIFY(satellite_ccoord)
+             CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+             CALL NULLIFY(this%obs_arr(numberOfTransits))
+             ! At this point, we should have everything we need to perform the collapsing of the transit
+
+
+             CALL NEW(this%obs_arr(numberOfTransits), number=number, designation=" ", &
+                  discovery=discovery, note1=" ", note2="S", &
+                  obs_scoord=obs_scoord, covariance=covariance, &
+                  obs_mask=obs_mask, mag=99.9_bp, filter=" ", &
+                  obsy=obsy, obsy_ccoord=obsy_ccoord, &
+                  satellite_ccoord=satellite_ccoord, &
+                  coord_unit=2)
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (135)", 1)
+                RETURN
+             END IF
+
+             CALL NULLIFY(obs_scoord)
+             CALL NULLIFY(t)
+             CALL NULLIFY(obsy)
+             CALL NULLIFY(obsy_ccoord)
+             CALL NULLIFY(satellite_ccoord)
+             covariance=0.0_bp
+
+             IF (info_verb >= 2) THEN  
+                WRITE(*,*) "Testing gaianp..."
+                WRITE(*,*) "Number of Transits: ", numberOfTransits
+             END IF
              !WRITE(*,*) this%obs_arr(numberOfTransits)%covariance
-             
+
              ! clear temporary  array
              numberOfTransits=numberOfTransits+1
              transitCounterAfter=0
@@ -4674,32 +4689,32 @@ CONTAINS
              DEALLOCATE(collVel)
              CYCLE 
           ELSE IF (line(1:1) == "#") THEN
-          ! Simple comment
+             ! Simple comment
              CYCLE
-          !ELSE IF ((transitCounter .EQ. 1) .AND. (lineCounter .NE. 0) .AND. (numberOfTransits .GE. 0)) THEN
-          !   !! Collapse transit
+             !ELSE IF ((transitCounter .EQ. 1) .AND. (lineCounter .NE. 0) .AND. (numberOfTransits .GE. 0)) THEN
+             !   !! Collapse transit
           ELSE IF ((lineCounter .GT. 1) .AND. (numberOfTransits .GT. 0)) THEN
-          ! Regular line, read to temporary array    
-              !lineCounter=lineCounter+1
-              transitCounter=transitCounter+1
-              READ(line, *, iostat=err) number, transitTmp(transitCounter,1), transitTmp(transitCounter,2), &
-                                        transitTmp(transitCounter,3), transitTmp(transitCounter,4), &
-                                        transitTmp(transitCounter,5), transitTmp(transitCounter,6), &
-                                        transitTmp(transitCounter,7), transitTmp(transitCounter,8), &
-                                        transitTmp(transitCounter,9), transitTmp(transitCounter,10), &
-                                        transitTmp(transitCounter,11), transitTmp(transitCounter,12), &
-                                        transitTmp(transitCounter,13), transitTmp(transitCounter,14), &
-                                        transitTmp(transitCounter,15)
-              IF (err /= 0) THEN
-                 error = .TRUE.
-                 CALL errorMessage("Observations / readObservationFile", &
-                      "Error while reading observations from file (2).", 1)
-                 RETURN
-              END IF
-              
-              transitCounterAfter=transitCounterAfter+1
-              !WRITE(*,*) "TransitTmp: ", transitTmp(transitCounter,:)
-              
+             ! Regular line, read to temporary array    
+             !lineCounter=lineCounter+1
+             transitCounter=transitCounter+1
+             READ(line, *, iostat=err) number, transitTmp(transitCounter,1), transitTmp(transitCounter,2), &
+                  transitTmp(transitCounter,3), transitTmp(transitCounter,4), &
+                  transitTmp(transitCounter,5), transitTmp(transitCounter,6), &
+                  transitTmp(transitCounter,7), transitTmp(transitCounter,8), &
+                  transitTmp(transitCounter,9), transitTmp(transitCounter,10), &
+                  transitTmp(transitCounter,11), transitTmp(transitCounter,12), &
+                  transitTmp(transitCounter,13), transitTmp(transitCounter,14), &
+                  transitTmp(transitCounter,15)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Observations / readObservationFile", &
+                     "Error while reading observations from file (2).", 1)
+                RETURN
+             END IF
+
+             transitCounterAfter=transitCounterAfter+1
+             !WRITE(*,*) "TransitTmp: ", transitTmp(transitCounter,:)
+
           END IF
 
           CALL NULLIFY(obs_scoord)
@@ -4712,12 +4727,9 @@ CONTAINS
 
 
 
-
-
     CASE ("gdr2", "gdr3", "gfpr")
 
-       ! Full SSO data dump from Gaia Data Release 2,3, or the Focused Project Release.
-
+       ! Full SSO data dump from Gaia Data Release 2, 3, or the Focused Project Release.
        covariance = 0.0_bp
        position = 0.0_bp
        velocity = 0.0_bp
@@ -4749,17 +4761,29 @@ CONTAINS
                   g_mag, g_flux, g_flux_err, coordinates(1:6), &
                   position_angle_scan, level_of_confidence
           ELSE IF (suffix == "gdr3") THEN
-              READ(line, *, iostat=err) solution_id, source_id, &
+             READ(line, *, iostat=err) solution_id, source_id, &
                   denomination, transit_id, observation_id, number, epoch, &
                   epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
                   covariance_sys(3,3), covariance_sys(2,3), &
                   covariance(2,2), covariance(3,3), covariance(2,3), &
                   g_mag, g_flux, g_flux_err, coordinates(1:6), gaia_geocentric(1:6), &
-                  position_angle_scan, astrometric_outcome_ccd, astrometric_outcome_transit, &
-                  epoch_emission, fov, level_of_confidence, ra_orbit_residual,dec_orbit_residual,& 
-                  al_orbit_residual,ac_orbit_residual, obs_rejected_by_fit
+                  position_angle_scan, astrometric_outcome_transit
+             !astrometric_outcome_ccd, astrometric_outcome_transit
+             !
+             !write(*,*) solution_id, source_id, &
+             !     denomination, transit_id, observation_id, number, epoch, &
+             !     epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
+             !     covariance_sys(3,3), covariance_sys(2,3), &
+             !     covariance(2,2), covariance(3,3), covariance(2,3), &
+             !     g_mag, g_flux, g_flux_err, coordinates(1:6), gaia_geocentric(1:6), &
+             !     position_angle_scan, astrometric_outcome_transit
+             !
+             ! astrometric_outcome_ccd, astrometric_outcome_transit
+             !, &
+             !epoch_emission, fov, level_of_confidence, ra_orbit_residual,dec_orbit_residual,& 
+             !al_orbit_residual,ac_orbit_residual, obs_rejected_by_fit
           ELSE IF (suffix == "gfpr") THEN
-              READ(line, *, iostat=err) solution_id, source_id, &
+             READ(line, *, iostat=err) solution_id, source_id, &
                   denomination, transit_id, observation_id, number, epoch, &
                   epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
                   covariance_sys(3,3), covariance_sys(2,3), &
@@ -4804,6 +4828,7 @@ CONTAINS
           ! radians^2
           covariance_sys(2:3,2:3) = covariance_sys(2:3,2:3) * &
                (rad_asec/1000.0_bp)**2
+
           ! Add one to observation counter
           i = i + 1
           IF (i == 1) THEN
@@ -4812,13 +4837,13 @@ CONTAINS
              discovery = .FALSE.
           END IF
 
-          CALL NEW(t, mjd_tcb + epoch_utc, "UTC")
+          CALL NEW(t, mjd_tcb + epoch, "TCB")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (115)", 1)
              RETURN
           END IF
-          obsy = getObservatory(obsies, "247")
+          obsy = getObservatory(obsies, "258")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (120)", 1)
@@ -4832,39 +4857,52 @@ CONTAINS
                   "TRACE BACK (121)", 1)
              RETURN
           END IF
+          ! Solar-system barycenter -> Sun vector (equ)
           planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (122)", 1)
              RETURN
           END IF
-          ! Correct relativistic light deflection. This is only done for DR2
-          IF (TRIM(suffix) == "gdr2") THEN
-             CALL GaiaRelativityCorrection(position, coordinates, mjd_tt)
-          END IF
-          CALL NEW(obsy_ccoord, coordinates + planeph(1,:), "equatorial", t)
+          ! Sun -> Gaia vector (equ)
+          sun_obsy_coordinates = coordinates + planeph(1,:)
+          DEALLOCATE(planeph, stat=err)
+          CALL NEW(obsy_ccoord, sun_obsy_coordinates, "equatorial", t)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (125)", 1)
              RETURN
           END IF
-          DEALLOCATE(planeph, stat=err)
+
+          ! Remove erroneous relativistic light deflection for DR2.
+          IF (TRIM(suffix) == "gdr2") THEN
+             CALL GaiaDR2LDCRemoval(position, -sun_obsy_coordinates(1:3))
+          END IF
           CALL NEW(obs_scoord, position, velocity, "equatorial", t)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (130)", 1)
              RETURN
           END IF
-          satellite_ccoord = getObservatoryCCoord(obsies, "500", t)
-          CALL rotateToEquatorial(satellite_ccoord)
-          CALL rotateToEquatorial(obsy_ccoord)
-          coordinates = getCoordinates(obsy_ccoord) - getCoordinates(satellite_ccoord)
+
+          ! Earth -> Gaia vector (= geocentric satellite coordinates)
+          ! Sun -> Earth vector (equ)
+          planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (122)", 1)
+             RETURN
+          END IF
+          coordinates = sun_obsy_coordinates - planeph(1,:)
           CALL NULLIFY(satellite_ccoord)
           CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+          DEALLOCATE(planeph, stat=err)
+
+          ! Put it all together
           CALL NULLIFY(this%obs_arr(i))
           CALL NEW(this%obs_arr(i), number=number, designation=" ", &
                discovery=discovery, note1=" ", note2="S", &
-               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_scoord=obs_scoord, covariance=covariance+covariance_sys, &
                obs_mask=obs_mask, mag=REAL(g_mag,bp), filter="G", &
                obsy=obsy, obsy_ccoord=obsy_ccoord, &
                satellite_ccoord=satellite_ccoord, &
@@ -4883,7 +4921,10 @@ CONTAINS
 
        END DO
 
+
+
     CASE ("gdr2np")
+
        ! Gaia DR2 format with normal points
        completed = .FALSE.
        newtransit = .FALSE.
@@ -4962,7 +5003,11 @@ CONTAINS
           ! 5. An actual data line!           --> read into temporary array
           ! 6. An end separator               --> collapseTransit, clear temporary array, add to observations, exit sequence
           !
-          IF ((.NOT. fulltransitdone) .AND. (.NOT. completed)) THEN ! We -don't- want to read the file just after a transit gets collapsed - otherwise we lose a data point!
+          IF ((.NOT. fulltransitdone) .AND. (.NOT. completed)) THEN
+
+             ! We -don't- want to read the file just after a transit
+             ! gets collapsed - otherwise we lose a data point!
+
              READ(line, *, iostat=err) solution_id, source_id, &
                   observation_id, number, epoch, epoch_err, epoch_utc, &
                   position(2), position(3), covariance_sys(2,2), &
@@ -4981,12 +5026,20 @@ CONTAINS
           newtransit = .FALSE.
 
           ! Correct relativistic light deflection
+          error = .TRUE.
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Light-deflection correction done wrong - FIX !!!", 1)
+             RETURN
+          END IF
+
           CALL NEW(t, mjd_tcb + epoch_utc, "UTC")
           mjd_tt = getMJD(t, "TT")
-          CALL GaiaRelativityCorrection(position, coordinates, mjd_tt)
+          CALL GaiaDR2LDCRemoval(position, coordinates(1:3))
           CALL NULLIFY(T)
 
-          IF (ABS(last_epoch - epoch_utc) < 0.01 .AND. (.NOT. completed)) THEN ! This means no new transit. 
+          IF (ABS(last_epoch - epoch_utc) < 0.01 .AND. (.NOT. completed)) THEN
+             ! This means no new transit. 
              transitCounter = transitCounter + 1
              ! Adding the relevant data to the arrays..
              inratrs(transitCounter) = position(2)*rad_deg
@@ -4999,7 +5052,13 @@ CONTAINS
              gaiaVelYTrs(transitCounter) = coordinates(5)
              gaiaVelZTrs(transitCounter) = coordinates(6)
           END IF
-          IF ((.NOT. fulltransitdone) .AND. (.NOT. completed)) THEN ! If we haven't read a new line, this will get messed up without the if conditional.
+
+          IF ((.NOT. fulltransitdone) .AND. (.NOT. completed)) THEN
+             ! If we haven't read a new line, this will get messed up
+             ! without the if conditional.
+
+             ! Convert correlation into off-diagonal element of
+             ! covariance matrix
              covariance(2,3) = covariance(2,3) * &
                   covariance(2,2) * covariance(3,3)
              ! Copy covariance to the other off-diagonal element
@@ -5011,7 +5070,6 @@ CONTAINS
              ! radians^2
              covariance(2:3,2:3) = covariance(2:3,2:3) * &
                   (rad_asec/1000.0_bp)**2
-
 
              ! Systematic component of the uncertainty
              ! Convert correlation to covariance
@@ -5034,13 +5092,11 @@ CONTAINS
              covRandomTrs(2,2,transitCounter) = covariance(3,3) ! 6
              covRandomTrs(1,2,transitCounter) = covariance(2,3)
              covRandomTrs(2,1,transitCounter) = covariance(3,2)
-
           END IF
           IF (ABS(last_epoch - epoch_utc) > 0.01 .OR. (completed)) THEN ! This means a new transit. Is this check good enough?
              transit_ok = .TRUE.
           ELSE IF (transitCounter == 9) THEN
              transit_ok = .TRUE.
-             !  ELSE
           END IF
           last_epoch = epoch_utc
           IF (transit_ok) THEN
@@ -5056,11 +5112,9 @@ CONTAINS
              IF (transitCounter > 9) THEN
                 error = .TRUE.
                 CALL errorMessage("Observations / readObservationfile", &
-                  "Transit detection failed!", 1)
+                     "Transit detection failed!", 1)
                 RETURN
              END IF
-
-
 
              sot = transitCounterAfter
 
@@ -5081,18 +5135,14 @@ CONTAINS
              ! 14. OBSERVER_Y_VEL
              ! 15. OBSERVER_Z_VEL
 
-
              ! Systematic is the same for all observations in one transit
              covSystematicTrs(1,1)=ABS(covariance_sys(2,2)) !2
              covSystematicTrs(2,2)=ABS(covariance_sys(3,3)) !5
              covSystematicTrs(2,1)=ABS(covariance_sys(3,2))
              covSystematicTrs(1,2)=ABS(covariance_sys(2,3))
 
-
-
-
              CALL collapseTransit(inratrs(1:transitCounter), indectrs(1:transitCounter), intimetrs(1:transitCounter), &
-                  covRandomTrs(1:2,1:2,1:transitCounter), trsResult, error)
+                  covRandomTrs(1:2,1:2,1:transitCounter), trsResult)
              IF (error) THEN
                 CALL errorMessage("Observations / readObservationFile", &
                      "TRACE BACK (999)", 1)
@@ -5118,7 +5168,6 @@ CONTAINS
 
              coordinates_final(1:3)=midGaia
              coordinates_final(4:6)=midGaiaV
-
 
              i = i + 1
              IF (i == 1) THEN
@@ -5216,6 +5265,8 @@ CONTAINS
           CALL NULLIFY(satellite_ccoord)
 
        END DO
+
+
 
     CASE ("geo")
 
@@ -5321,8 +5372,9 @@ CONTAINS
 
        END DO
 
-    CASE ("strk")
 
+
+    CASE ("strk")
 
        DEALLOCATE(this%obs_arr, this%obs_note_arr, stat=err)
        ALLOCATE(this%obs_arr(2*nlines), this%obs_note_arr(2*nlines), stat=err)
@@ -5453,7 +5505,6 @@ CONTAINS
 
 
 
-
     CASE ("sentinel")
 
        covariance = 0.0_bp
@@ -5547,10 +5598,150 @@ CONTAINS
 
        END DO
 
+
+
     CASE ("elgb")
 
        CALL readELGBFile(this, obsf, stdev)
        i = getNumberOfObservations(this)
+
+
+
+    CASE ("estr0")
+
+       ! StreakDet output for Euclid phase-diversity calibration (PDC)
+       ! campaign in the ecliptic plane
+
+       covariance = 0.0_bp
+       position = 0.0_bp
+       velocity = 0.0_bp
+       obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+
+       ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
+       i = 0 
+       j_prev = 0
+       DO
+
+          ! read one line from observation file
+          READ(getUnit(obsf), "(A)", iostat=err) line
+          IF (err > 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (1).", 1)
+             RETURN
+          ELSE IF (err < 0) THEN ! end-of-file
+             EXIT
+          ELSE IF (line(1:1) == "#" .OR. TRIM(line(1:1)) == "" .OR. line(1:1) == "O") THEN
+             CYCLE
+          END IF
+
+          ! extract information from character string
+          IF (suffix == "estr0") THEN
+             READ(line, *, iostat=err) j, k, nobs, position(2), &
+                  position(3), ra_start, dec_start, ra_end, dec_end, &
+                  mjd_utc, mjd_utc_start, mjd_utc_end, flux, mag, &
+                  coordinates, obsid, streak_length, group_angle 
+          END IF
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Error while reading observations from file (2).", 1)
+             RETURN
+          END IF
+
+          ! initialize time corresponding to exposure mid-point
+          CALL NEW(t, mjd_utc, "UTC")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+
+          ! Convert RA & Dec from degrees to radians, and initialize
+          ! spherical coordinates
+          position(2:3) = position(2:3)*rad_deg
+          CALL NEW(obs_scoord, position, velocity, "equatorial", t)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (130)", 1)
+             RETURN
+          END IF
+
+          ! Random component of the uncertainty
+          IF (PRESENT(stdev)) THEN
+             stdev_ = stdev
+          ELSE
+             error = .TRUE.
+             CALL errorMessage("Observations / readObservationFile", &
+                  "Standard deviation for Euclid StreakDet format must be explicitly given.", 1)             
+             RETURN
+          END IF
+          covariance = 0.0_bp
+          covariance(2,2) = stdev_(2)**2.0_bp
+          covariance(3,3) = stdev_(3)**2.0_bp
+
+          ! Add one to observation counter, first observation gets
+          ! discovery flag (implies all observations have to belong to
+          ! the same object for flag to be meaningful)
+          IF (j /= j_prev) THEN
+             discovery = .TRUE.
+             ! construct unique id
+             CALL toString(j, number, error)
+             CALL toString(obsid, str, error)
+             IF (error) THEN
+                CALL errorMessage("Observations / readObservationFile", &
+                     "TRACE BACK (130)", 1)
+                RETURN                
+             END IF
+             designation =  TRIM(str) // TRIM(number)
+          ELSE
+             discovery = .FALSE.
+          END IF
+          j_prev = j
+
+          ! initialize rowing observer
+          obsy = getObservatory(obsies, "247")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (120)", 1)
+             RETURN
+          END IF
+
+          ! initialize geocentric satellite coordinates
+          CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
+
+          ! initialize heliocentric satellite coordinates
+          obsy_ccoord = getObservatoryCCoord(obsies, "500", t)
+          CALL rotateToEquatorial(obsy_ccoord)
+          coordinates = getCoordinates(obsy_ccoord) + coordinates
+          CALL NULLIFY(obsy_ccoord)
+          CALL NEW(obsy_ccoord, coordinates, "equatorial", t)
+
+          ! add observation to observation array
+          i = i + 1
+          CALL NULLIFY(this%obs_arr(i))
+          CALL NEW(this%obs_arr(i), number="", designation=TRIM(designation), &
+               discovery=discovery, note1=" ", note2="S", &
+               obs_scoord=obs_scoord, covariance=covariance, &
+               obs_mask=obs_mask, mag=REAL(mag,bp), filter="V", &
+               obsy=obsy, obsy_ccoord=obsy_ccoord, &
+               satellite_ccoord=satellite_ccoord, &
+               coord_unit=2)
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (135)", 1)
+             RETURN
+          END IF
+
+          CALL NULLIFY(obs_scoord)
+          CALL NULLIFY(t)
+          CALL NULLIFY(obsy)
+          CALL NULLIFY(obsy_ccoord)
+          CALL NULLIFY(satellite_ccoord)
+
+       END DO
+
+
 
     CASE default
 
@@ -6421,6 +6612,7 @@ CONTAINS
        DEALLOCATE(this%ind)
     END IF
     ALLOCATE(this%ind(SIZE(this%obs_arr,dim=1)))
+
     IF (ASSOCIATED(this%criteria)) THEN
        ALLOCATE(tmp(SIZE(this%criteria,dim=1)))
        tmp = this%criteria
@@ -6567,293 +6759,314 @@ CONTAINS
   END SUBROUTINE writeObservationFile
 
 
-  ! Collapsing Gaia transit into a single normal point
-  ! See Fedorets et al. (2018), A&A 620, A101
-  SUBROUTINE collapseTransit(inra, indec, intime, covRandom, retqi, error1)
-  IMPLICIT NONE
-  REAL(bp), DIMENSION(:), INTENT(IN) :: inra, indec, intime
-  REAL(bp), DIMENSION(:,:,:), INTENT(IN) :: covRandom
-  REAL(bp), DIMENSION(7), INTENT(INOUT) :: retqi
-  REAL(bp), DIMENSION(4,4) :: lambdaq1, lambdaqi
-  REAL(bp), DIMENSION(2,2) :: tmp22, tmpres22
-  REAL(bp), DIMENSION(4) :: qi
-  REAL(bp), DIMENSION(1,4) :: qil
-  REAL(bp), DIMENSION(:), ALLOCATABLE :: yi
-  REAL(bp), DIMENSION(:,:), ALLOCATABLE :: cov, thetai, lambdayi, lambdayiinv, thetaiT, intg1, intg3, intg4, YIL
-  REAL(bp) :: ft, a, b, c, d, det
-  INTEGER :: sot, N2, i, j, k, l, ncol1, ncol2, ig, s, t, u
-  !CHARACTER(LEN=*) :: errstr
-  LOGICAL, INTENT(INOUT) :: error1
-  
-  sot=SIZE(inra)
-  IF (sot .EQ. 0) THEN
-  error = .TRUE.
-         CALL errorMessage("Observations / collapseTransit", &
-              "Failure in collapsing transit, could not read data.", 1)
-         RETURN
-      END IF
-      
-  N2=sot*2
-  
-  ALLOCATE(cov(N2, N2))
-  
-  cov=0.0_bp
-  ! Change to real indices when the real covRandom matrix is initailized
-  DO i=1,sot
-     cov(2*i-1,2*i-1)=covRandom(1,1,i)  ! ralon
-     !WRITE(*,*) "racov: ", cov(2*i-1,2*i-1)
-     cov(2*i,2*i)=    covRandom(2,2,i)     ! declat
-     !WRITE(*,*) "deccov: ", cov(2*i,2*i)
-     cov(2*i,2*i-1)=  covRandom(2,1,i)    ! covcov
-     !WRITE(*,*) "covcov: ", cov(2*i,2*i-1)
-     cov(2*i-1,2*i)=  covRandom(1,2,i)    !covcov
-     !WRITE(*,*) "covcov: ", cov(2*i-1,2*i)   
-  END DO   
-  
-  ft=computeFinalT(intime)
-  !WRITE(*,*) "Final time: ", ft
-  
-  ALLOCATE(yi(N2))
-  ALLOCATE(thetai(N2,4))
-  ALLOCATE(lambdayi(N2,N2))
-  ALLOCATE(lambdayiinv(N2,N2))
-  
-  DO j=1,sot
-     yi(2*j-1)=inra(j)
-     yi(2*j)=indec(j)
-  END DO
-  !WRITE(*,*) "YI: ", YI
-  
-  DO k=1,sot
-     thetai(2*k-1,1) = 1.0_bp
-     thetai(2*k-1,2) = 0.0_bp
-     thetai(2*k-1,3) = intime(k)-ft
-     thetai(2*k-1,4) = 0.0_bp
-  
-     thetai(2*k,1) = 0.0_bp
-     thetai(2*k,2) = 1.0_bp
-     thetai(2*k,3) = 0.0_bp
-     thetai(2*k,4) = intime(k)-ft
-  END DO
-  
-  lambdayiinv=0.0_bp
-  
-  DO l=1,sot
-     a=cov(2*l-1, 2*l-1)
-     b=cov(2*l, 2*l-1)
-     c=cov(2*l-1, 2*l)
-     d=cov(2*l, 2*l)    
-     
-     tmp22=0.0_bp
-        
-     tmp22(1,1)=a
-     tmp22(2,1)=b
-     tmp22(1,2)=c
-     tmp22(2,2)=d
-  
-     tmpres22=0.0_bp
-  
-     tmpres22=matinv(tmp22, errstr)
-        IF (LEN_TRIM(errstr) /= 0) THEN
-         error = .TRUE.
-         CALL errorMessage("Observations / collapseTransit", &
-              "From matinv in linal: " // TRIM(errstr), 1)
-         RETURN
-      END IF
-      
-     lambdayiinv(2*l-1,2*l-1)=tmpres22(1,1)
-     lambdayiinv(2*l,2*l-1)=  tmpres22(2,1)
-     lambdayiinv(2*l-1,2*l)=  tmpres22(1,2)
-     lambdayiinv(2*l,2*l)=    tmpres22(2,2) 
-  
-  END DO
-  
-  ALLOCATE(thetaiT(4,2*sot))
-  ALLOCATE(intg1(4,2*sot))
-  ALLOCATE(intg3(4,2*sot))
-  ALLOCATE(intg4(4,2*sot))
-  
-  thetaiT=TRANSPOSE(thetai)
-  !WRITE(*,*) "thetait: ", thetait
-  intg1=0.0_bp
-  intg1=MATMUL(thetaiT,lambdayiinv)
-  
-  lambdaq1=0.0_bp
-  lambdaq1=MATMUL(intg1,thetai)
-  
-  errstr = ""
-  lambdaqi=0.0_bp
-  lambdaqi=matinv(lambdaq1, errstr, "Cholesky")
-      IF (LEN_TRIM(errstr) /= 0) THEN
-         error = .TRUE.
-         CALL errorMessage("Observations / collapseTransit", &
-              "From matinv in linal: " // TRIM(errstr), 1)
-         RETURN
-      END IF
-  
-  intg3=0.0_bp
-  intg3=MATMUL(lambdaqi, thetaiT)
-  
-  intg4=0.0_bp
-  intg4=MATMUL(intg3,lambdayiinv)
-  
-  qi=MATMUL(intg4,yi)
-  
-  retqi(1)=qi(1)
-  retqi(2)=qi(2)
-  
-  retqi(3)=lambdaqi(1,1)
-  retqi(4)=lambdaqi(2,2)
-  retqi(5)=lambdaqi(2,1)
-  retqi(6)=lambdaqi(2,1) ! force same values for covariances for stability reasons
-  
-  retqi(7)=ft
-  
-  DEALLOCATE(cov)
-  DEALLOCATE(yi)
-  DEALLOCATE(thetai)
-  DEALLOCATE(lambdayi)
-  DEALLOCATE(lambdayiinv)
-  DEALLOCATE(thetaiT)
-  DEALLOCATE(intg1)
-  DEALLOCATE(intg3)
-  DEALLOCATE(intg4)
-  
-  
-  
+
+
+
+  !! *Description*:
+  !!
+  !! Collapses a Gaia transit into a single normal point. See Fedorets
+  !! et al. (2018), A&A 620, A101
+  !!
+  !! Returns error.
+  !!
+  SUBROUTINE collapseTransit(inra, indec, intime, covRandom, retqi)
+
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(:), INTENT(IN) :: inra, indec, intime
+    REAL(bp), DIMENSION(:,:,:), INTENT(IN) :: covRandom
+    REAL(bp), DIMENSION(7), INTENT(INOUT) :: retqi
+    REAL(bp), DIMENSION(4,4) :: lambdaq1, lambdaqi
+    REAL(bp), DIMENSION(2,2) :: tmp22, tmpres22
+    REAL(bp), DIMENSION(4) :: qi
+    REAL(bp), DIMENSION(1,4) :: qil
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: yi
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: cov, thetai, lambdayi, lambdayiinv, thetaiT, intg1, intg3, intg4, YIL
+    REAL(bp) :: ft, a, b, c, d, det
+    INTEGER :: sot, N2, i, j, k, l, ncol1, ncol2, ig, s, t, u
+
+    sot=SIZE(inra)
+    IF (sot .EQ. 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / collapseTransit", &
+            "Failure in collapsing transit, could not read data.", 1)
+       RETURN
+    END IF
+
+    N2=sot*2
+
+    ALLOCATE(cov(N2, N2))
+
+    cov=0.0_bp
+    ! Change to real indices when the real covRandom matrix is initailized
+    DO i=1,sot
+       cov(2*i-1,2*i-1)=covRandom(1,1,i)  ! ralon
+       !WRITE(*,*) "racov: ", cov(2*i-1,2*i-1)
+       cov(2*i,2*i)=    covRandom(2,2,i)     ! declat
+       !WRITE(*,*) "deccov: ", cov(2*i,2*i)
+       cov(2*i,2*i-1)=  covRandom(2,1,i)    ! covcov
+       !WRITE(*,*) "covcov: ", cov(2*i,2*i-1)
+       cov(2*i-1,2*i)=  covRandom(1,2,i)    !covcov
+       !WRITE(*,*) "covcov: ", cov(2*i-1,2*i)   
+    END DO
+
+    ft=computeFinalT(intime)
+    !WRITE(*,*) "Final time: ", ft
+
+    ALLOCATE(yi(N2))
+    ALLOCATE(thetai(N2,4))
+    ALLOCATE(lambdayi(N2,N2))
+    ALLOCATE(lambdayiinv(N2,N2))
+
+    DO j=1,sot
+       yi(2*j-1)=inra(j)
+       yi(2*j)=indec(j)
+    END DO
+    !WRITE(*,*) "YI: ", YI
+
+    DO k=1,sot
+       thetai(2*k-1,1) = 1.0_bp
+       thetai(2*k-1,2) = 0.0_bp
+       thetai(2*k-1,3) = intime(k)-ft
+       thetai(2*k-1,4) = 0.0_bp
+
+       thetai(2*k,1) = 0.0_bp
+       thetai(2*k,2) = 1.0_bp
+       thetai(2*k,3) = 0.0_bp
+       thetai(2*k,4) = intime(k)-ft
+    END DO
+
+    lambdayiinv=0.0_bp
+
+    DO l=1,sot
+       a=cov(2*l-1, 2*l-1)
+       b=cov(2*l, 2*l-1)
+       c=cov(2*l-1, 2*l)
+       d=cov(2*l, 2*l)    
+
+       tmp22=0.0_bp
+
+       tmp22(1,1)=a
+       tmp22(2,1)=b
+       tmp22(1,2)=c
+       tmp22(2,2)=d
+
+       tmpres22=0.0_bp
+
+       tmpres22=matinv(tmp22, errstr)
+       IF (LEN_TRIM(errstr) /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / collapseTransit", &
+               "From matinv in linal: " // TRIM(errstr), 1)
+          RETURN
+       END IF
+
+       lambdayiinv(2*l-1,2*l-1)=tmpres22(1,1)
+       lambdayiinv(2*l,2*l-1)=  tmpres22(2,1)
+       lambdayiinv(2*l-1,2*l)=  tmpres22(1,2)
+       lambdayiinv(2*l,2*l)=    tmpres22(2,2) 
+
+    END DO
+
+    ALLOCATE(thetaiT(4,2*sot))
+    ALLOCATE(intg1(4,2*sot))
+    ALLOCATE(intg3(4,2*sot))
+    ALLOCATE(intg4(4,2*sot))
+
+    thetaiT=TRANSPOSE(thetai)
+    !WRITE(*,*) "thetait: ", thetait
+    intg1=0.0_bp
+    intg1=MATMUL(thetaiT,lambdayiinv)
+
+    lambdaq1=0.0_bp
+    lambdaq1=MATMUL(intg1,thetai)
+
+    errstr = ""
+    lambdaqi=0.0_bp
+    lambdaqi=matinv(lambdaq1, errstr, "Cholesky")
+    IF (LEN_TRIM(errstr) /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / collapseTransit", &
+            "From matinv in linal: " // TRIM(errstr), 1)
+       RETURN
+    END IF
+
+    intg3=0.0_bp
+    intg3=MATMUL(lambdaqi, thetaiT)
+
+    intg4=0.0_bp
+    intg4=MATMUL(intg3,lambdayiinv)
+
+    qi=MATMUL(intg4,yi)
+
+    retqi(1)=qi(1)
+    retqi(2)=qi(2)
+
+    retqi(3)=lambdaqi(1,1)
+    retqi(4)=lambdaqi(2,2)
+    retqi(5)=lambdaqi(2,1)
+    retqi(6)=lambdaqi(2,1) ! force same values for covariances for stability reasons
+
+    retqi(7)=ft
+
+    DEALLOCATE(cov)
+    DEALLOCATE(yi)
+    DEALLOCATE(thetai)
+    DEALLOCATE(lambdayi)
+    DEALLOCATE(lambdayiinv)
+    DEALLOCATE(thetaiT)
+    DEALLOCATE(intg1)
+    DEALLOCATE(intg3)
+    DEALLOCATE(intg4)
+
   END SUBROUTINE collapseTransit
-  
-  
-  
-  ! Description: Complementary function for Gaia transits
-  ! Calculates the midpoint time of a single GaiaTransit
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Complementary function for Gaia transits. Calculates the
+  !! midpoint time of a single Gaia transit.
+  !!
   REAL(bp) FUNCTION computeFinalT(intime)
-  IMPLICIT NONE
-  REAL(bp), DIMENSION(:), INTENT(IN):: intime
-  REAL(bp) :: sigmatime
-  INTEGER :: lt, ii
-  
-  lt=SIZE(intime)
-  sigmatime=0.0_bp
-  DO ii=1,lt
-     sigmatime=sigmatime+intime(ii)
-  END DO
-  computeFinalT=sigmatime/lt
-  
-  END FUNCTION
-  
-  
-  ! Description: Complementary function for Gaia transits
-  ! Calculates the midpoint time of a single GaiaTransit
+
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(:), INTENT(IN):: intime
+    REAL(bp) :: sigmatime
+    INTEGER :: lt, ii
+
+    lt=SIZE(intime)
+    sigmatime=0.0_bp
+    DO ii=1,lt
+       sigmatime=sigmatime+intime(ii)
+    END DO
+    computeFinalT=sigmatime/lt
+
+  END FUNCTION computeFinalT
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Complementary function for Gaia transits. Calculates the
+  !! midpoint position of a single Gaia transit.
+  !!
   SUBROUTINE collapseGaiaPos(intime,  gaiax, gaiay, gaiaz, gaiavx, gaiavy, gaiavz, midGaia)
-  IMPLICIT NONE
-  REAL(bp), DIMENSION(:), INTENT(IN) :: intime,  gaiax, gaiay, gaiaz, gaiavx, gaiavy, gaiavz
-  REAL(bp), DIMENSION(3), INTENT(OUT) :: midGaia
-  REAL(bp) :: ft, fx, fy, fz
-  
-  ft=computeFinalT(intime)
-  
-  fx=gaiax(1) + (ft-intime(1))*gaiavx(1)
-  fy=gaiay(1) + (ft-intime(1))*gaiavy(1)
-  fz=gaiaz(1) + (ft-intime(1))*gaiavz(1)
-  
-  midGaia(1)=fx
-  midGaia(2)=fy
-  midGaia(3)=fz
-  
+
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(:), INTENT(IN) :: intime,  gaiax, gaiay, gaiaz, gaiavx, gaiavy, gaiavz
+    REAL(bp), DIMENSION(3), INTENT(OUT) :: midGaia
+    REAL(bp) :: ft, fx, fy, fz
+
+    ft=computeFinalT(intime)
+
+    fx=gaiax(1) + (ft-intime(1))*gaiavx(1)
+    fy=gaiay(1) + (ft-intime(1))*gaiavy(1)
+    fz=gaiaz(1) + (ft-intime(1))*gaiavz(1)
+
+    midGaia(1)=fx
+    midGaia(2)=fy
+    midGaia(3)=fz
+
   END SUBROUTINE collapseGaiaPos
-  
-  
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Complementary function for Gaia transits. Calculates the
+  !! midpoint velocity of a single Gaia transit.
+  !!
   SUBROUTINE collapseGaiaVel(gaiavx, gaiavy, gaiavz, midGaiaV)
-  IMPLICIT NONE
-  REAL(bp), DIMENSION(:), INTENT(IN) :: gaiavx, gaiavy, gaiavz
-  REAL(bp), DIMENSION(3) :: midGaiaV
-  REAL(bp) :: vxsig, vysig, vzsig
-  INTEGER :: jj, mt
-  
-  mt=SIZE(gaiavx)
-  
-  vxsig=0.0_bp
-  vysig=0.0_bp
-  vzsig=0.0_bp
-  
-  DO jj=1,mt
-     vxsig=vxsig+gaiavx(jj);
-     vysig=vysig+gaiavy(jj);
-     vzsig=vzsig+gaiavz(jj);
-  END DO
-     
-  vxsig=vxsig/mt
-  vysig=vysig/mt
-  vzsig=vzsig/mt
-  
-  midGaiaV(1)=vxsig
-  midGaiaV(2)=vysig
-  midGaiaV(3)=vzsig
-  
-  
+    IMPLICIT NONE
+    REAL(bp), DIMENSION(:), INTENT(IN) :: gaiavx, gaiavy, gaiavz
+    REAL(bp), DIMENSION(3) :: midGaiaV
+    REAL(bp) :: vxsig, vysig, vzsig
+    INTEGER :: jj, mt
+
+    mt=SIZE(gaiavx)
+
+    vxsig=0.0_bp
+    vysig=0.0_bp
+    vzsig=0.0_bp
+
+    DO jj=1,mt
+       vxsig=vxsig+gaiavx(jj)
+       vysig=vysig+gaiavy(jj)
+       vzsig=vzsig+gaiavz(jj)
+    END DO
+
+    vxsig=vxsig/mt
+    vysig=vysig/mt
+    vzsig=vzsig/mt
+
+    midGaiaV(1)=vxsig
+    midGaiaV(2)=vysig
+    midGaiaV(3)=vzsig
+
   END SUBROUTINE collapseGaiaVel
 
- !! *Description*:
- !!
- !! Subtract the incorrectly applied relativistic correction from Gaia DR2.
- !! Based on code generously shared by F. Mignard. Only use this for DR2 data!
- !!
- SUBROUTINE GaiaRelativityCorrection(obj_coordinates,gaia_coordinates,epoch)
 
-   IMPLICIT NONE
 
-   REAL(bp), DIMENSION(3), INTENT(inout) :: obj_coordinates
-   REAL(bp), DIMENSION(6), INTENT(in)    :: gaia_coordinates
-   REAL(bp), INTENT(inout) :: epoch
 
-   REAL(bp), DIMENSION(3) :: cartesian_coordinates, obs_sun, u_os
-   REAL(bp), DIMENSION(:,:), POINTER :: planeph => NULL()
-   REAL(bp) :: d_sun, us, sin_theta, cos_theta, sin_phi
-   LOGICAL :: error
-   ! Parameters given from Mignard's code.
-   ! Best use the exact same values for these just in case as that is what DR2 used.
-   REAL(bp) :: xau, gms_c2
-   ! First, we convert the observations to Cartesian unit vectors.
-   error = .FALSE.
-   xau = 149598870.700_bp
-   gms_c2 = 1.32712440018e-11_bp/(299792.458_bp**2)
 
-   cartesian_coordinates    = 0.0_bp
-   cartesian_coordinates(1) = 1_bp * COS(obj_coordinates(2)*rad_deg) * COS(obj_coordinates(3)*rad_deg)
-   cartesian_coordinates(2) = 1_bp * SIN(obj_coordinates(2)*rad_deg) * COS(obj_coordinates(3)*rad_deg)
-   cartesian_coordinates(3) = 1_bp * SIN(obj_coordinates(3)*rad_deg)
+  !! *Description*:
+  !!
+  !! Subtract the incorrectly applied relativistic correction from Gaia DR2.
+  !! Based on code generously shared by F. Mignard. Only use this for DR2 data!
+  !!
+  SUBROUTINE GaiaDR2LDCRemoval(obj_sph_equ_pos, obsy_sun_car_equ_pos)
 
-   ! Unit vector: observer to the Sun
-   planeph => JPL_ephemeris(epoch, 11, 12, error)
-   obs_sun = planeph(1,1:3) - gaia_coordinates(1:3)
+    IMPLICIT NONE
 
-   d_sun = SQRT(DOT_PRODUCT(obs_sun, obs_sun))
-   u_os  = obs_sun / d_sun
-   us    = DOT_PRODUCT(cartesian_coordinates, u_os)
+    REAL(bp), DIMENSION(3), INTENT(inout) :: obj_sph_equ_pos
+    REAL(bp), DIMENSION(3), INTENT(in)    :: obsy_sun_car_equ_pos
 
-   ! Applies the actual correction. Mignard's code has a subtraction so
-   ! to reverse it we sum the term instead.
+    REAL(bp), DIMENSION(3) :: car_equ_pos, u_os
+    REAL(bp) :: d_sun, us, sin_theta, cos_theta, sin_phi
+    ! Parameters given from Mignard's code.
+    ! Best use the exact same values for these just in case as that is what DR2 used.
+    REAL(bp) :: xau, gms_c2
 
-   cartesian_coordinates = cartesian_coordinates + 2.0_bp*(gms_c2/(d_sun*xau)) * &
-                           (u_os - us*cartesian_coordinates)/(1.0_bp - us)
+    ! First, we convert the observations to Cartesian unit vectors.
+    xau = 149598870.700_bp
+    gms_c2 = 1.32712440018e11_bp/(299792.458_bp**2)
 
-   ! Finally, we need to transform the cartesian coordinates back to RA & Dec.
-   ! Code copied from some other oorb routine.
-   obj_coordinates(1) = 1.0_bp
-   sin_theta = cartesian_coordinates(2) / &
-   SQRT(DOT_PRODUCT(cartesian_coordinates(1:2),cartesian_coordinates(1:2)))
-   cos_theta = cartesian_coordinates(1) / &
-   SQRT(DOT_PRODUCT(cartesian_coordinates(1:2),cartesian_coordinates(1:2)))
-   IF (ABS(cos_theta) > 1.0_bp) cos_theta = SIGN(1.0_bp, cos_theta)
-   obj_coordinates(2) = ACOS(cos_theta)
-   IF (sin_theta < 0.0_bp) obj_coordinates(2) = two_pi - obj_coordinates(2)
-   sin_phi = cartesian_coordinates(3)/obj_coordinates(1)
-   IF (ABS(sin_phi) > 1.0_bp) sin_phi = SIGN(1.0_bp, sin_phi)
-   obj_coordinates(3) = ASIN(sin_phi)
-   obj_coordinates(2:3) = obj_coordinates(2:3) / rad_deg
+    car_equ_pos(1) = 1.0_bp * COS(obj_sph_equ_pos(2)) * COS(obj_sph_equ_pos(3))
+    car_equ_pos(2) = 1.0_bp * SIN(obj_sph_equ_pos(2)) * COS(obj_sph_equ_pos(3))
+    car_equ_pos(3) = 1.0_bp * SIN(obj_sph_equ_pos(3))
 
-   DEALLOCATE(planeph)
+    d_sun = SQRT(DOT_PRODUCT(obsy_sun_car_equ_pos, obsy_sun_car_equ_pos))
+    u_os  = obsy_sun_car_equ_pos / d_sun
+    us    = DOT_PRODUCT(car_equ_pos, u_os)
 
- END SUBROUTINE GaiaRelativityCorrection
+    ! Mignard's code subtracts to apply the correction so to reverse
+    ! it we here add the correction instead:
+    car_equ_pos = car_equ_pos + 2.0_bp*(gms_c2/(d_sun*xau)) * &
+         (u_os - us*car_equ_pos)/(1.0_bp - us)
+
+    ! Finally, we need to transform the cartesian coordinates back to RA & Dec:
+    obj_sph_equ_pos(1) = 1.0_bp
+    sin_theta = car_equ_pos(2) / &
+         SQRT(DOT_PRODUCT(car_equ_pos(1:2),car_equ_pos(1:2)))
+    cos_theta = car_equ_pos(1) / &
+         SQRT(DOT_PRODUCT(car_equ_pos(1:2),car_equ_pos(1:2)))
+    IF (ABS(cos_theta) > 1.0_bp) cos_theta = SIGN(1.0_bp, cos_theta)
+    obj_sph_equ_pos(2) = ACOS(cos_theta)
+    IF (sin_theta < 0.0_bp) obj_sph_equ_pos(2) = two_pi - obj_sph_equ_pos(2)
+    sin_phi = car_equ_pos(3)/obj_sph_equ_pos(1)
+    IF (ABS(sin_phi) > 1.0_bp) sin_phi = SIGN(1.0_bp, sin_phi)
+    obj_sph_equ_pos(3) = ASIN(sin_phi)
+
+  END SUBROUTINE GaiaDR2LDCRemoval
+
+
+
+
+
 END MODULE Observations_cl

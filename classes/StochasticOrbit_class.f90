@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -21,14 +21,14 @@
 !                                                                    !
 !====================================================================!
 !
-!! *Class*description*: 
+!! *Class*description*:
 !!  
 !! Type and routines for stochastic orbits (that is, orbital elements
 !! with their uncertainties). Contains the algorithms for the
 !! [statistical orbital] ranging method and the least-squares method.
 !!
-!! @author MG, JV, KM, DO 
-!! @version 2023-03-29
+!! @author MG, JV, KM, DO, ET 
+!! @version 2025-04-29
 !!  
 MODULE StochasticOrbit_cl
 
@@ -2799,9 +2799,13 @@ CONTAINS
 
   END FUNCTION getChi2_this_orb
 
+
+
+
+
   ! Integrates several objects simultaneously while taking asteroid-asteroid
   ! perturbations into account.
-  FUNCTION getChi2_this_orb_arr(this_arr, orb_arr,residuals, obs_masks) RESULT(chi2_arr)
+  FUNCTION getChi2_this_orb_arr(this_arr, orb_arr, residuals, obs_masks) RESULT(chi2_arr)
 
     IMPLICIT NONE
     TYPE (StochasticOrbit), INTENT(inout), DIMENSION(:) :: this_arr
@@ -13301,8 +13305,6 @@ CONTAINS
     CHARACTER(len=32) :: str
     REAL(bp), DIMENSION(:,:,:), POINTER :: &
          information_matrix_measur => NULL()
-    REAL(bp), DIMENSION(:,:), POINTER :: &
-         stdev_arr_measur => NULL()
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: jacobians
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: measur, & ! incl. cos(dec)
          residuals, &
@@ -13310,7 +13312,8 @@ CONTAINS
     REAL(bp), DIMENSION(6,6) :: cov_mat_param
     REAL(bp), DIMENSION(niter_size,6) :: elements_iter_arr
     REAL(bp), DIMENSION(6) :: params, finite_diff_
-    REAL(bp) :: rchi2, integration_step_, rchi2_previous, rchi2_old, lambda
+    REAL(bp) :: rchi2, integration_step_, rchi2_previous, rchi2_old, lambda, &
+         mahalanobis
     INTEGER :: i, j, k, err, ndata, nparam, nmultidata
     LOGICAL, DIMENSION(:,:), ALLOCATABLE :: mask_measur
     LOGICAL, DIMENSION(6) :: mask_param
@@ -13607,22 +13610,6 @@ CONTAINS
        DEALLOCATE(jacobians, stat=err)
        RETURN
     END IF
-    stdev_arr_measur => getStandardDeviations(this%obss)
-    IF (error) THEN
-       CALL errorMessage("StochasticOrbit / " // &
-            "levenbergMarquardt", &
-            "TRACE BACK (60)", 1)
-       DEALLOCATE(obsy_ccoords, stat=err)
-       DEALLOCATE(information_matrix_measur, stat=err) 
-       DEALLOCATE(obsy_codes, stat=err)
-       DEALLOCATE(stdev_arr_measur, stat=err)
-       DEALLOCATE(measur, stat=err)
-       DEALLOCATE(residuals, stat=err) 
-       DEALLOCATE(mask_measur, stat=err)
-       DEALLOCATE(alpha, stat=err)
-       DEALLOCATE(jacobians, stat=err)
-       RETURN
-    END IF
     mask_param = this%ls_elem_mask_prm
 
     rchi2_old = HUGE(rchi2_old)
@@ -13644,7 +13631,6 @@ CONTAINS
              DEALLOCATE(obsy_ccoords, stat=err)
              DEALLOCATE(information_matrix_measur, stat=err) 
              DEALLOCATE(obsy_codes, stat=err)
-             DEALLOCATE(stdev_arr_measur, stat=err)
              DEALLOCATE(measur, stat=err)
              DEALLOCATE(residuals, stat=err) 
              DEALLOCATE(mask_measur, stat=err)
@@ -13662,8 +13648,15 @@ CONTAINS
        IF (this%outlier_rejection_prm .AND. ABS(rchi2 - rchi2_old) > this%ls_rchi2_diff_tresh_prm) THEN
           mask_measur = this%obs_masks_prm
           DO k=1,ndata
-             IF (ANY(ABS(residuals(k,2:3)) > &
-                  this%outlier_multiplier_prm*stdev_arr_measur(k,2:3))) THEN
+             mahalanobis = mahalanobis_distance(information_matrix_measur(k,2:3,2:3), residuals(k,2:3), errstr)
+             IF (len_TRIM(errstr) > 0) THEN
+                error = .TRUE.
+                CALL errorMessage("StochasticOrbit / " // &
+                     "levenbergMarquardt", &
+                     "Computation of Mahalanobis distance failed: " // TRIM(errstr), 1)
+             END IF
+             WRITE(stdout,"(A,I0,A,1X,F7.3)") "Mahalanobis distance for observation #", k, ":",  mahalanobis
+             IF (mahalanobis > this%outlier_multiplier_prm) THEN
                 mask_measur(k,:) = .FALSE.
              END IF
           END DO
@@ -13687,7 +13680,6 @@ CONTAINS
        DEALLOCATE(obsy_ccoords, stat=err)
        DEALLOCATE(information_matrix_measur, stat=err) 
        DEALLOCATE(obsy_codes, stat=err)
-       DEALLOCATE(stdev_arr_measur, stat=err)
        DEALLOCATE(measur, stat=err)
        DEALLOCATE(residuals, stat=err) 
        DEALLOCATE(mask_measur, stat=err)
@@ -13720,7 +13712,6 @@ CONTAINS
     DEALLOCATE(obsy_ccoords, stat=err)
     DEALLOCATE(information_matrix_measur, stat=err) 
     DEALLOCATE(obsy_codes, stat=err)
-    DEALLOCATE(stdev_arr_measur, stat=err)
     DEALLOCATE(measur, stat=err)
     DEALLOCATE(residuals, stat=err) 
     DEALLOCATE(alpha, stat=err)
@@ -14476,7 +14467,7 @@ CONTAINS
        finite_diff, &
        t_inv, element_type, multiple_objects, outlier_rejection, &
        dchi2_rejection, dchi2_max, regularized_pdf, jacobians_pdf, &
-       accept_multiplier, outlier_multiplier, &
+       accept_multiplier, outlier_fraction_max, outlier_multiplier, &
        gaussian_pdf, chi2_min, chi2_min_init, &
        apriori_a_max, apriori_a_min, apriori_periapsis_max, apriori_periapsis_min, &
        apriori_apoapsis_max, apriori_apoapsis_min, apriori_rho_max, apriori_rho_min, &
@@ -14520,6 +14511,7 @@ CONTAINS
          chi2_min, &
          chi2_min_init, &
          dchi2_max, &
+         outlier_fraction_max, &
          apriori_a_max, &
          apriori_a_min, &
          apriori_periapsis_max, &
@@ -19682,6 +19674,7 @@ CONTAINS
 
 
 
+
   !! *Description*:
   !!
   !! Updates the StochasticOrbit between subsequent calls
@@ -19868,6 +19861,10 @@ CONTAINS
 
   END SUBROUTINE updateRanging
 
+
+
+
+
   ! Prints out residuals for all objects.
   SUBROUTINE writeResiduals_SO_arr_sparse(this, resids, output)
     IMPLICIT NONE
@@ -19909,6 +19906,10 @@ CONTAINS
     DEALLOCATE(nobs_arr)
 
   END SUBROUTINE writeResiduals_SO_arr_sparse
+
+
+
+
 
   SUBROUTINE writeResiduals_SO_orb(this, orb_arr, output)
     IMPLICIT NONE
@@ -19955,6 +19956,9 @@ CONTAINS
   END SUBROUTINE writeResiduals_SO_orb
 
 
+
+
+
   ! Prints out the mean MCMC residuals for all objects.
   SUBROUTINE writeMeanResids(this, orb_arr, output)
     IMPLICIT NONE
@@ -19997,6 +20001,10 @@ CONTAINS
 
   END SUBROUTINE writeMeanResids
 
+
+
+
+
   ! Retrieves the current mean MCMC residuals for a given object.
   SUBROUTINE getMeanResids(this,residuals)
     IMPLICIT NONE
@@ -20008,14 +20016,19 @@ CONTAINS
 
   END SUBROUTINE getMeanResids
 
+
+
+
+
   ! Used to update the mean residuals for MCMC objects after
   ! each accepted proposal.
   SUBROUTINE updateMeanResids(this_arr,residuals)
-    IMPLICIT NONE
 
+    IMPLICIT NONE
     TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this_arr
     TYPE(SparseArray), INTENT(inout) :: residuals
     INTEGER i,j
+
     nrun = nrun +1
     DO i=1, SIZE(this_arr)
        IF (.NOT. ASSOCIATED(this_arr(i)%mean_residuals)) THEN
@@ -20035,6 +20048,10 @@ CONTAINS
 
   END SUBROUTINE updateMeanResids
 
+
+
+
+
   ! Detects and masks outliers for storb objects
   ! based on it's mean residuals.
   SUBROUTINE outlierDetection_SO_arr(this)
@@ -20042,35 +20059,35 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this
-    REAL(bp), DIMENSION(:, :, :), POINTER :: cov_matrix_full
-    REAL(bp),DIMENSION(2,2) :: cov_matrix
-    REAL(bp), DIMENSION(2,1) :: this_res
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrices
     INTEGER :: i, j
     INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
     LOGICAL, DIMENSION(6) :: false_masks, true_masks
     REAL(bp) :: mahalanobis
-
     CHARACTER     :: err, errstr
+
     false_masks = .FALSE.
     true_masks =  (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
     ALLOCATE(nobs_arr(SIZE(this)))
     DO i=1,SIZE(this)
        nobs_arr(i) = getNrOfObservations(this(i)%obss)
-
-       cov_matrix_full => getCovarianceMatrices(this(i)%obss)
-       DO j=1, nobs_arr(i)
+       information_matrices => getBlockDiagInformationMatrix(this(i)%obss)
+       DO j=1,nobs_arr(i)
           CALL setObservationMask(this(i), j, true_masks)
-          cov_matrix(:,:) = cov_matrix_full(j,2:3,2:3)
-          this_res(:,1) = this(i)%mean_residuals(j,2:3)
-          mahalanobis = mahalanobis_distance(cov_matrix,this_res,errstr)
+          mahalanobis = mahalanobis_distance(information_matrices(j,2:3,2:3), this(i)%mean_residuals(j,2:3), errstr)
           IF (mahalanobis > this(1)%outlier_multiplier_prm) THEN
              CALL setObservationMask(this(i), j, false_masks)
           END IF
        END DO
+       DEALLOCATE(information_matrices)
     END DO
     DEALLOCATE(nobs_arr)
-    DEALLOCATE(cov_matrix_full)
+
   END SUBROUTINE outlierDetection_SO_arr
+
+
+
+
 
   ! Detects and masks outliers for storb objects
   ! based on input residuals.
@@ -20080,37 +20097,38 @@ CONTAINS
 
     TYPE(StochasticOrbit), DIMENSION(:), INTENT(inout) :: this
     TYPE(SparseArray) :: residuals
-    REAL(bp), DIMENSION(:, :, :), POINTER :: cov_matrix_full
-    REAL(bp),DIMENSION(2,2) :: cov_matrix
-    REAL(bp), DIMENSION(2,1) :: this_res
+    REAL(bp), DIMENSION(:,:,:), POINTER :: information_matrices
     INTEGER :: i, j
     INTEGER, DIMENSION(:), ALLOCATABLE :: nobs_arr
     LOGICAL, DIMENSION(6) :: false_masks, true_masks
     REAL(bp) :: mahalanobis
-
     CHARACTER     :: err, errstr
+
     false_masks = .FALSE.
     true_masks =  (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
     ALLOCATE(nobs_arr(SIZE(this)))
     DO i=1,SIZE(this)
        nobs_arr(i) = getNrOfObservations(this(i)%obss)
-
-       cov_matrix_full => getCovarianceMatrices(this(i)%obss)
+       information_matrices => getBlockDiagInformationMatrix(this(i)%obss)
        DO j=1, nobs_arr(i)
           CALL setObservationMask(this(i), j, true_masks)
-          cov_matrix(:,:) = cov_matrix_full(j,2:3,2:3)
-          this_res(:,1) = residuals%vectors(i)%elements(j,2:3)
-          mahalanobis = mahalanobis_distance(cov_matrix,this_res,errstr)
+          mahalanobis = mahalanobis_distance(information_matrices(j,2:3,2:3), residuals%vectors(i)%elements(j,2:3), errstr)
           IF (mahalanobis > this(1)%outlier_multiplier_prm) THEN
              CALL setObservationMask(this(i), j, false_masks)
           END IF
        END DO
+       DEALLOCATE(information_matrices)
     END DO
     DEALLOCATE(nobs_arr)
-    DEALLOCATE(cov_matrix_full)
-  END SUBROUTINE outlierDetection_SO_arr_res
-  !! *Description*:
 
+  END SUBROUTINE outlierDetection_SO_arr_res
+
+
+
+
+
+  !! *Description*:
+  !!
   !! Sets the mask of all Gaia observations in to false.
   !! Used in e.g. mass_estimation_mcmc.
   SUBROUTINE maskGaiaObservations_SO(this)

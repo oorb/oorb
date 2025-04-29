@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2018,2019                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Tools for statistics.
 !!
 !! @author  MG
-!! @version 2019-10-29
+!! @version 2025-03-31
 !!
 MODULE statistics
 
@@ -56,7 +56,7 @@ MODULE statistics
   END INTERFACE confidence_limits
 
   INTERFACE mahalanobis_distance
-    MODULE PROCEDURE mahalanobis_distance_r8
+     MODULE PROCEDURE mahalanobis_distance_r8
   END INTERFACE mahalanobis_distance
 
 CONTAINS
@@ -621,33 +621,36 @@ CONTAINS
 
   END SUBROUTINE population_covariance
 
-  ! Given the covariance matrix and residuals of a given observation,
-  ! computes the Mahalanobis distance.
 
-  REAL(rprec8) FUNCTION mahalanobis_distance_r8(cov_matrix,residuals, errstr)
+
+
+
+  !! *Description*:
+  !!
+  !! Returns the Mahalanobis distance given the information matrix
+  !! (ie, inverse covariance matrix) and residuals of a given
+  !! observation.
+  !!
+  REAL(rprec8) FUNCTION mahalanobis_distance_r8(information_matrix, residuals, errstr)
 
     IMPLICIT NONE
 
-    REAL(rprec8), DIMENSION(:,:), INTENT(in)  :: cov_matrix, residuals
+    REAL(rprec8), DIMENSION(:,:), INTENT(in)  :: information_matrix
+    REAL(rprec8), DIMENSION(:), INTENT(in)  :: residuals
     CHARACTER(len=*), INTENT(inout) :: errstr
 
-    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: inverse_cov_matrix
-    REAL(rprec8), DIMENSION(1,1)                :: mahalanobis
-    INTEGER n
+    REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: residuals_
+    REAL(rprec8), DIMENSION(1,1) :: mahalanobis
+    INTEGER :: n
 
-    n = size(cov_matrix,dim=1)
-    ALLOCATE(inverse_cov_matrix(n,n))
+    n = SIZE(information_matrix,dim=1)
+    ALLOCATE(residuals_(n,1))
+    residuals_(:,1) = residuals
 
-    inverse_cov_matrix = matinv(cov_matrix,errstr)
-    IF (LEN_TRIM(errstr) /= 0) THEN
-       errstr = " -> statistics : mahalanobis_distance : TRACE BACK." // &
-            TRIM(errstr)
-       RETURN
-    END IF
-
-    mahalanobis = SQRT(MATMUL(MATMUL(TRANSPOSE(residuals),inverse_cov_matrix),(residuals)))
+    mahalanobis = SQRT(MATMUL(MATMUL(TRANSPOSE(residuals_), information_matrix), residuals_))
     mahalanobis_distance_r8 = mahalanobis(1,1)
-    DEALLOCATE(inverse_cov_matrix)
+
+    DEALLOCATE(residuals_)
 
   END FUNCTION mahalanobis_distance_r8
 

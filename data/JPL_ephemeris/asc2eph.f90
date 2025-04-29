@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -42,7 +42,7 @@
 !! (The data files for DE200 and DE405 contain 20 years each; for DE406, 100 years)
 !!
 !! @author  MG
-!! @version 2015-11-04
+!! @version 2025-04-29
 !!
 PROGRAM asc2eph
 
@@ -72,17 +72,17 @@ PROGRAM asc2eph
   ! to bp (base precision), which are used by the JPL_ephemeris routine.
   INTEGER, PARAMETER :: bp = 8 
 
-  CHARACTER(len=6), DIMENSION(400) :: cnam
+  CHARACTER(len=6), DIMENSION(645) :: cnam
   CHARACTER(len=6), DIMENSION(14,3) :: ttl
   CHARACTER(len=12) :: header
   CHARACTER(len=3) :: eph_type
 
   REAL(kind=bp) :: au, emrat, t1, t2
-  REAL(kind=bp), DIMENSION(400) :: cval
+  REAL(kind=bp), DIMENSION(645) :: cval
   REAL(kind=bp), DIMENSION(3) :: ss
   REAL(kind=bp), DIMENSION(3000) :: db
   REAL(kind=bp) :: db2z = 0.0_bp
-  REAL(kind=dp), DIMENSION(400) :: cval_dp
+  REAL(kind=dp), DIMENSION(645) :: cval_dp
   REAL(kind=dp), DIMENSION(3) :: ss_dp
   REAL(kind=dp), DIMENSION(3000) :: db_dp
 
@@ -243,11 +243,11 @@ PROGRAM asc2eph
 
   ! Write header records onto output file.
   nrout = 1
-  WRITE(12, rec=1, iostat=out) ttl, cnam, ss, ncon, au, emrat, ipt, numde, lpt
+  WRITE(12, rec=1, iostat=out) ttl, cnam(1:n), ss, ncon, au, emrat, ipt, numde, lpt
   IF (out /= 0) CALL errprt(nrout, "th record not written because of error")
 
   nrout = 2
-  WRITE(12, rec=2, iostat=out) cval
+  WRITE(12, rec=2, iostat=out) cval(1:n)
   IF (out /= 0) CALL errprt(nrout, "th record not written because of error")
 
   ! We're through.  Wrap it up.

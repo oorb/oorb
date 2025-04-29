@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! and lists.
 !!
 !! @author  MG
-!! @version 2023-04-05
+!! @version 2025-03-31
 !!
 MODULE data_structures
 
@@ -37,6 +37,11 @@ MODULE data_structures
   INTEGER(iprec4), PARAMETER :: i16arr_size_max = 1270 !1270
   INTEGER(iprec4), PARAMETER :: r16arr_size_max = 1270 !1270
   INTEGER(iprec4), PARAMETER :: i8arr_size_max = 1270 !1270
+
+  TYPE rb_tree_ch256
+     TYPE (rb_tree_node_ch256), POINTER :: root => NULL()
+     TYPE (rb_tree_node_ch256), POINTER :: nil => NULL()     
+  END TYPE rb_tree_ch256
 
   TYPE rb_tree_ch32
      TYPE (rb_tree_node_ch32), POINTER :: root => NULL()
@@ -167,6 +172,14 @@ MODULE data_structures
      TYPE (list_node_i4), POINTER :: data_list => NULL()
   END TYPE rb_tree_node_i16_i4
 
+  TYPE rb_tree_node_ch256
+     TYPE (rb_tree_node_ch256), POINTER :: lchild => NULL()
+     TYPE (rb_tree_node_ch256), POINTER :: rchild => NULL()
+     TYPE (rb_tree_node_ch256), POINTER :: parent => NULL()
+     LOGICAL :: red
+     CHARACTER(len=256) :: key
+  END TYPE rb_tree_node_ch256
+
   TYPE rb_tree_node_ch32
      TYPE (rb_tree_node_ch32), POINTER :: lchild => NULL()
      TYPE (rb_tree_node_ch32), POINTER :: rchild => NULL()
@@ -274,6 +287,7 @@ MODULE data_structures
      MODULE PROCEDURE init_dbl_lnkd_list_i4
      MODULE PROCEDURE init_dbl_lnkd_list_i8
      MODULE PROCEDURE init_lnkd_list_ch1024_i4
+     MODULE PROCEDURE init_rb_tree_ch256
      MODULE PROCEDURE init_rb_tree_ch32
      MODULE PROCEDURE init_rb_tree_ch32_8r8
 !!$     MODULE PROCEDURE init_rb_tree_r16_i4
@@ -310,6 +324,7 @@ MODULE data_structures
   END INTERFACE delete_list
 
   INTERFACE delete_tree
+     MODULE PROCEDURE delete_tree_rb_ch256
      MODULE PROCEDURE delete_tree_rb_ch32
      MODULE PROCEDURE delete_tree_rb_ch32_8r8
 !!$     MODULE PROCEDURE delete_tree_rb_r16_i4
@@ -324,6 +339,7 @@ MODULE data_structures
   END INTERFACE delete_tree
 
   INTERFACE minimum
+     MODULE PROCEDURE minimum_rb_tree_node_ch256
      MODULE PROCEDURE minimum_rb_tree_node_ch32
      MODULE PROCEDURE minimum_rb_tree_node_ch32_8r8
 !!$     MODULE PROCEDURE minimum_rb_tree_node_r16_i4
@@ -344,6 +360,7 @@ MODULE data_structures
   END INTERFACE maximum
 
   INTERFACE successor
+     MODULE PROCEDURE succ_rb_tree_node_ch256
      MODULE PROCEDURE succ_rb_tree_node_ch32
      MODULE PROCEDURE succ_rb_tree_node_ch32_8r8
      MODULE PROCEDURE succ_list_node_ch1024_i4
@@ -373,6 +390,7 @@ MODULE data_structures
   END INTERFACE postorder_tree_walk
 
   INTERFACE leftrotate
+     MODULE PROCEDURE leftrotate_rb_tree_ch256
      MODULE PROCEDURE leftrotate_rb_tree_ch32
      MODULE PROCEDURE leftrotate_rb_tree_ch32_8r8
 !!$     MODULE PROCEDURE leftrotate_rb_tree_r16_i4
@@ -386,6 +404,7 @@ MODULE data_structures
   END INTERFACE leftrotate
 
   INTERFACE rightrotate
+     MODULE PROCEDURE rightrotate_rb_tree_ch256
      MODULE PROCEDURE rightrotate_rb_tree_ch32
      MODULE PROCEDURE rightrotate_rb_tree_ch32_8r8
 !!$     MODULE PROCEDURE rightrotate_rb_tree_r16_i4
@@ -399,6 +418,7 @@ MODULE data_structures
   END INTERFACE rightrotate
 
   INTERFACE insert_tree_node
+     MODULE PROCEDURE insert_tree_node_rb_ch256
      MODULE PROCEDURE insert_tree_node_rb_ch32
      MODULE PROCEDURE insert_tree_node_rb_ch32_8r8
 !!$     MODULE PROCEDURE insert_tree_node_rb_r16_i4
@@ -413,6 +433,7 @@ MODULE data_structures
   END INTERFACE insert_tree_node
 
   INTERFACE rb_insert_fixup
+     MODULE PROCEDURE rb_insert_fixup_ch256
      MODULE PROCEDURE rb_insert_fixup_ch32
      MODULE PROCEDURE rb_insert_fixup_ch32_8r8
 !!$     MODULE PROCEDURE rb_insert_fixup_r16_i4
@@ -426,6 +447,7 @@ MODULE data_structures
   END INTERFACE rb_insert_fixup
 
   INTERFACE delete_tree_node
+     MODULE PROCEDURE delete_tree_node_rb_ch256
      MODULE PROCEDURE delete_tree_node_rb_ch32
      MODULE PROCEDURE delete_tree_node_rb_ch32_8r8
 !!$     MODULE PROCEDURE delete_tree_node_rb_r16_i4
@@ -439,6 +461,7 @@ MODULE data_structures
   END INTERFACE delete_tree_node
 
   INTERFACE rb_delete_fixup
+     MODULE PROCEDURE rb_delete_fixup_ch256
      MODULE PROCEDURE rb_delete_fixup_ch32
      MODULE PROCEDURE rb_delete_fixup_ch32_8r8
 !!$     MODULE PROCEDURE rb_delete_fixup_r16_i4
@@ -455,6 +478,7 @@ MODULE data_structures
      MODULE PROCEDURE search_dbl_lnkd_list_i4
      MODULE PROCEDURE search_dbl_lnkd_list_i8
      MODULE PROCEDURE search_lnkd_list_ch1024_i4
+     MODULE PROCEDURE search_rb_tree_ch256
      MODULE PROCEDURE search_rb_tree_ch32
      MODULE PROCEDURE search_rb_tree_ch32_8r8
 !!$     MODULE PROCEDURE search_rb_tree_r16_i4
@@ -816,6 +840,25 @@ CONTAINS
 
 
 
+  SUBROUTINE init_rb_tree_ch256(tree)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+
+    ALLOCATE(tree)
+    ALLOCATE(tree%nil)
+    tree%nil%lchild => tree%nil
+    tree%nil%rchild => tree%nil
+    tree%nil%parent => tree%nil
+    tree%nil%red = .FALSE.
+    tree%root => tree%nil
+
+  END SUBROUTINE init_rb_tree_ch256
+
+
+
+
+
   SUBROUTINE init_rb_tree_ch32(tree)
 
     IMPLICIT NONE
@@ -1024,6 +1067,21 @@ CONTAINS
 
 
 
+  SUBROUTINE delete_tree_rb_ch256(tree)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    INTEGER :: err
+
+    DEALLOCATE(tree%nil, stat=err)
+    DEALLOCATE(tree, stat=err)
+
+  END SUBROUTINE delete_tree_rb_ch256
+
+
+
+
+
   SUBROUTINE delete_tree_rb_ch32(tree)
 
     IMPLICIT NONE
@@ -1184,6 +1242,24 @@ CONTAINS
     DEALLOCATE(tree, stat=err)
 
   END SUBROUTINE delete_tree_binary_i8
+
+
+
+
+
+  FUNCTION minimum_rb_tree_node_ch256(tree, x) RESULT(y)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    TYPE (rb_tree_node_ch256), POINTER :: x
+    TYPE (rb_tree_node_ch256), POINTER :: y
+
+    y => x
+    DO WHILE (.NOT.ASSOCIATED(tree%nil,y%lchild))
+       y => y%lchild
+    END DO
+
+  END FUNCTION minimum_rb_tree_node_ch256
 
 
 
@@ -1456,6 +1532,31 @@ CONTAINS
 
 
 
+  FUNCTION succ_rb_tree_node_ch256(tree, x) RESULT(y)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    TYPE (rb_tree_node_ch256), POINTER :: x
+    TYPE (rb_tree_node_ch256), POINTER :: y
+    TYPE (rb_tree_node_ch256), POINTER :: xx
+
+    xx => x
+    IF (.NOT.ASSOCIATED(tree%nil,xx%rchild)) THEN
+       y => minimum(tree, xx%rchild)
+       RETURN
+    END IF
+    y => xx%parent
+    DO WHILE (.NOT.ASSOCIATED(tree%nil,y) .AND. ASSOCIATED(xx,y%rchild))
+       xx => y
+       y => y%parent
+    END DO
+
+  END FUNCTION succ_rb_tree_node_ch256
+
+
+
+
+
   FUNCTION succ_rb_tree_node_ch32(tree, x) RESULT(y)
 
     IMPLICIT NONE
@@ -1685,6 +1786,45 @@ CONTAINS
     END DO
 
   END FUNCTION succ_rb_tree_node_i8
+
+
+
+
+
+  SUBROUTINE leftrotate_rb_tree_ch256(tree, x)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    TYPE (rb_tree_node_ch256), POINTER :: x
+    TYPE (rb_tree_node_ch256), POINTER :: y, w
+
+    ! Set y and w
+    y => x%rchild
+    w => x
+    ! Turn y's left subtree into x's right subtree
+    x%rchild => y%lchild
+    IF (.NOT.ASSOCIATED(tree%nil,y%lchild)) THEN
+       y%lchild%parent => x
+    END IF
+    ! Link x's parent to y
+    y%parent => x%parent
+    IF (ASSOCIATED(tree%nil,x%parent)) THEN
+       tree%root => y ! root[tree] <- y
+    ELSE
+       IF (ASSOCIATED(x,x%parent%lchild)) THEN
+          x%parent%lchild => y
+       ELSE
+          x%parent%rchild => y
+       END IF
+    END IF
+    y%lchild => w
+    w%parent => y
+
+    ! Deallocate memory 
+    y => NULL()
+    w => NULL()
+
+  END SUBROUTINE leftrotate_rb_tree_ch256
 
 
 
@@ -2080,6 +2220,45 @@ CONTAINS
 
 
 
+  SUBROUTINE rightrotate_rb_tree_ch256(tree, x)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    TYPE (rb_tree_node_ch256), POINTER :: x
+    TYPE (rb_tree_node_ch256), POINTER :: y, w
+
+    ! Set y and w
+    y => x%lchild
+    w => x
+    ! Turn y's right subtree into x's left subtree
+    x%lchild => y%rchild
+    IF (.NOT.ASSOCIATED(tree%nil, y%rchild)) THEN
+       y%rchild%parent => x
+    END IF
+    ! Link x's parent to y
+    y%parent => x%parent
+    IF (ASSOCIATED(tree%nil,x%parent)) THEN
+       tree%root => y ! root[tree] <- y
+    ELSE
+       IF (ASSOCIATED(x,x%parent%lchild)) THEN
+          x%parent%lchild => y
+       ELSE
+          x%parent%rchild => y
+       END IF
+    END IF
+    y%rchild => w
+    w%parent => y
+
+    ! Deallocate memory 
+    y => NULL()
+    w => NULL()
+
+  END SUBROUTINE rightrotate_rb_tree_ch256
+
+
+
+
+
   SUBROUTINE rightrotate_rb_tree_ch32(tree, x)
 
     IMPLICIT NONE
@@ -2114,6 +2293,7 @@ CONTAINS
     w => NULL()
 
   END SUBROUTINE rightrotate_rb_tree_ch32
+
 
 
 
@@ -2464,6 +2644,53 @@ CONTAINS
     w => NULL()
 
   END SUBROUTINE rightrotate_rb_tree_i8
+
+
+
+
+
+  SUBROUTINE insert_tree_node_rb_ch256(tree, key)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    CHARACTER(len=*), INTENT(in) :: key
+    TYPE (rb_tree_node_ch256), POINTER :: x, y, z
+
+    x => tree%root
+    y => tree%nil
+    DO WHILE (.NOT.ASSOCIATED(tree%nil,x))
+       y => x
+       IF (key == x%key) THEN
+          RETURN
+       ELSE IF (key < x%key) THEN
+          x => x%lchild
+       ELSE
+          x => x%rchild
+       END IF
+    END DO
+    ALLOCATE(z)
+    z%key = key
+    z%parent => y
+    IF (ASSOCIATED(tree%nil,y)) THEN
+       tree%root => z
+    ELSE
+       IF (z%key < y%key) THEN
+          y%lchild => z
+       ELSE
+          y%rchild => z
+       END IF
+    END IF
+    z%lchild => tree%nil 
+    z%rchild => tree%nil
+    z%red = .TRUE.
+    CALL rb_insert_fixup(tree, z)
+
+    ! Deallocate memory 
+    x => NULL()
+    y => NULL()
+    z => NULL()
+
+  END SUBROUTINE insert_tree_node_rb_ch256
 
 
 
@@ -3427,6 +3654,63 @@ CONTAINS
 
 
 
+  SUBROUTINE rb_insert_fixup_ch256(tree, z)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    TYPE (rb_tree_node_ch256), POINTER :: z
+    TYPE (rb_tree_node_ch256), POINTER :: y, w
+
+    DO WHILE (z%parent%red)
+       IF (ASSOCIATED(z%parent,z%parent%parent%lchild)) THEN
+          y => z%parent%parent%rchild
+          IF (y%red) THEN
+             z%parent%red = .FALSE.
+             y%red = .FALSE.
+             z%parent%parent%red = .TRUE.
+             z => z%parent%parent
+          ELSE
+             IF (ASSOCIATED(z,z%parent%rchild)) THEN
+                z => z%parent
+                CALL leftrotate(tree, z)
+             END IF
+             z%parent%red = .FALSE.
+             z%parent%parent%red = .TRUE.
+             w => z%parent%parent
+             CALL rightrotate(tree, w)
+          END IF
+       ELSE
+          y => z%parent%parent%lchild
+          IF (y%red) THEN
+             z%parent%red = .FALSE.
+             y%red = .FALSE.
+             z%parent%parent%red = .TRUE.
+             z => z%parent%parent
+          ELSE
+             IF (ASSOCIATED(z,z%parent%lchild)) THEN
+                z => z%parent
+                CALL rightrotate(tree, z)
+             END IF
+             z%parent%red = .FALSE.
+             z%parent%parent%red = .TRUE.
+             w => z%parent%parent
+             CALL leftrotate(tree, w)
+          END IF
+       END IF
+
+       ! Deallocate memory 
+       y => NULL()
+       w => NULL()
+
+    END DO
+    tree%root%red = .FALSE.
+
+  END SUBROUTINE rb_insert_fixup_ch256
+
+
+
+
+
   SUBROUTINE rb_insert_fixup_ch32(tree, z)
 
     IMPLICIT NONE
@@ -3997,6 +4281,49 @@ CONTAINS
 
 
 
+  FUNCTION delete_tree_node_rb_ch256(tree, z) RESULT(y)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    TYPE (rb_tree_node_ch256), POINTER :: z, y
+    TYPE (rb_tree_node_ch256), POINTER :: x
+
+    IF (ASSOCIATED(z%lchild,tree%nil) .OR. ASSOCIATED(z%rchild,tree%nil)) THEN
+       y => z
+    ELSE
+       y => successor(tree, z)
+    END IF
+    IF (.NOT.ASSOCIATED(tree%nil,y%lchild)) THEN
+       x => y%lchild
+    ELSE
+       x => y%rchild
+    END IF
+    x%parent => y%parent
+    IF (ASSOCIATED(tree%nil,y%parent)) THEN
+       tree%root => x
+    ELSE
+       IF (ASSOCIATED(y,y%parent%lchild)) THEN
+          y%parent%lchild => x
+       ELSE
+          y%parent%rchild => x
+       END IF
+    END IF
+    IF (.NOT.ASSOCIATED(y,z)) THEN
+       z%key = y%key
+    END IF
+    IF (.NOT.y%red) THEN
+       CALL rb_delete_fixup(tree, x)
+    END IF
+
+    ! Deallocate memory 
+    x => NULL()
+
+  END FUNCTION delete_tree_node_rb_ch256
+
+
+
+
+
   FUNCTION delete_tree_node_rb_ch32(tree, z) RESULT(y)
 
     IMPLICIT NONE
@@ -4551,6 +4878,74 @@ CONTAINS
 !!$    end IF
 !!$
 !!$  END FUNCTION delete_tree_node_rb_i8
+
+
+
+
+
+  SUBROUTINE rb_delete_fixup_ch256(tree, x)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    TYPE (rb_tree_node_ch256), POINTER :: x
+    TYPE (rb_tree_node_ch256), POINTER :: w
+
+    DO WHILE (.NOT.ASSOCIATED(x,tree%root) .AND. .NOT.x%red)
+       IF (ASSOCIATED(x,x%parent%lchild)) THEN
+          w => x%parent%rchild
+          IF (w%red) THEN
+             w%red = .FALSE.
+             x%parent%red = .TRUE.
+             CALL leftrotate(tree,x%parent)
+             w => x%parent%rchild
+          END IF
+          IF (.NOT.w%lchild%red .AND. .NOT.w%rchild%red) THEN
+             w%red = .TRUE.
+             x => x%parent
+          ELSE
+             IF (.NOT.w%rchild%red) THEN
+                w%lchild%red = .FALSE.
+                w%red = .TRUE.
+                CALL rightrotate(tree, w)
+                w => x%parent%rchild
+             END IF
+             w%red = x%parent%red
+             x%parent%red = .FALSE.
+             w%rchild%red = .FALSE.
+             CALL leftrotate(tree, x%parent)
+             x => tree%root
+          END IF
+       ELSE
+          w => x%parent%lchild
+          IF (w%red) THEN
+             w%red = .FALSE.
+             x%parent%red = .TRUE.
+             CALL rightrotate(tree,x%parent)
+             w => x%parent%lchild
+          END IF
+          IF (.NOT.w%rchild%red .AND. .NOT.w%lchild%red) THEN
+             w%red = .TRUE.
+             x => x%parent
+          ELSE
+             IF (.NOT.w%lchild%red) THEN
+                w%rchild%red = .FALSE.
+                w%red = .TRUE.
+                CALL leftrotate(tree, w)
+                w => x%parent%lchild
+             END IF
+             w%red = x%parent%red
+             x%parent%red = .FALSE.
+             w%lchild%red = .FALSE.
+             CALL rightrotate(tree, x%parent)
+             x => tree%root
+          END IF
+       END IF
+       ! Deallocate memory 
+       w => NULL()
+    END DO
+    x%red = .FALSE.
+
+  END SUBROUTINE rb_delete_fixup_ch256
 
 
 
@@ -5483,6 +5878,30 @@ CONTAINS
     END DO
 
   END FUNCTION search_lnkd_list_ch1024_i4
+
+
+
+
+
+  FUNCTION search_rb_tree_ch256(tree, key) RESULT(y)
+
+    IMPLICIT NONE
+    TYPE (rb_tree_ch256), POINTER :: tree
+    CHARACTER(len=*), INTENT(in) :: key
+    TYPE (rb_tree_node_ch256), POINTER :: y
+
+    y => tree%root
+    DO WHILE (.NOT.ASSOCIATED(tree%nil,y))
+       IF (key == y%key) THEN
+          EXIT
+       ELSE IF (key < y%key) THEN
+          y => y%lchild
+       ELSE ! key > y%key
+          y => y%rchild
+       END IF
+    END DO
+
+  END FUNCTION search_rb_tree_ch256
 
 
 

@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -39,7 +39,7 @@
 !!     Astronomy, Faculty of Science, University of Helsinki.
 !!
 !!   @author  MG 
-!!   @version 2023-04-03
+!!   @version 2025-04-01
 !!
 PROGRAM ephemeris_linking
 
@@ -61,11 +61,16 @@ PROGRAM ephemeris_linking
   IMPLICIT NONE
   TYPE (rb_tree_i16_i4arr), POINTER :: &
        address_tree
+  TYPE (rb_tree_ch256), POINTER :: &
+       linkage_tree
   TYPE (rb_tree_ch32), POINTER :: &
        trial_linkage_tree
   TYPE (rb_tree_node_i16_i4arr), POINTER :: &
        address_tree_node1, &
        address_tree_node2
+  TYPE (rb_tree_node_ch256), POINTER :: &
+       linkage_tree_node, &
+       linkage_tree_node_
   TYPE (rb_tree_node_ch32), POINTER :: &
        tree_node_ch32, &
        tree_node_ch32_1, &
@@ -141,7 +146,9 @@ PROGRAM ephemeris_linking
        linkages, &
        linkages_tmp
   CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: &
-       designation_arr
+       designation_arr, &
+       designations, &
+       designations_
   CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), ALLOCATABLE :: &
        id_arr_prm, &
        id_arr_tmp, &
@@ -162,6 +169,8 @@ PROGRAM ephemeris_linking
        addressfname, &
        triallinkfname, &
        obsfname
+  CHARACTER(len=256) :: &
+       designation
   CHARACTER(len=DESIGNATION_LEN), DIMENSION(:), POINTER :: &
        ids
   CHARACTER(len=DESIGNATION_LEN) :: &
@@ -269,11 +278,14 @@ PROGRAM ephemeris_linking
        c6, &
        chi2, &
        chi2_, &
-       computed_upper_bound
+       computed_upper_bound, &
+       probability_mass
   INTEGER, DIMENSION(:), POINTER :: &
        nind_arr
   INTEGER, DIMENSION(:), ALLOCATABLE :: &
        box_nrs
+  INTEGER, DIMENSION(:), ALLOCATABLE :: &
+       indx_arr
   INTEGER, DIMENSION(3) :: &
        j_min, &
        k_min
@@ -471,7 +483,7 @@ PROGRAM ephemeris_linking
   integration_step = 10.0_bp
   info_verb = 1
   err_verb = 1
-  CALL NEW(epoch, 2007, 1, 1.0_bp, "TT")
+  CALL NEW(epoch, 2023, 12, 27.0_bp, "TT")
   IF (error) THEN
      CALL errorMessage("ephemeris_linking", &
           "TRACE BACK (25)", 1)
@@ -486,9 +498,9 @@ PROGRAM ephemeris_linking
        width(3*SIZE(epoch_arr)), &
        box_nrs(3*SIZE(epoch_arr)))
   elm = .TRUE.
-  CALL NEW(epoch_arr(1), 2004, 1, 24.0_bp, "TT")
-  CALL NEW(epoch_arr(2), 2004, 1, 26.0_bp, "TT")
-  CALL NEW(epoch_arr(3), 2004, 1, 28.0_bp, "TT")
+  CALL NEW(epoch_arr(1), 2023, 12, 24.0_bp, "TT")
+  CALL NEW(epoch_arr(2), 2023, 12, 27.0_bp, "TT")
+  CALL NEW(epoch_arr(3), 2023, 12, 30.0_bp, "TT")
   IF (error) THEN
      CALL errorMessage("ephemeris_linking", &
           "TRACE BACK (30)", 1)
@@ -496,11 +508,12 @@ PROGRAM ephemeris_linking
   END IF
   CALL NEW(obsies)
   DO i=1,SIZE(topocenter_arr)
-     topocenter_arr(i) = getObservatoryCCoord(obsies, "500", epoch_arr(i))
-     elm((i-1)*3+1) = .FALSE.
+     !topocenter_arr(i) = getObservatoryCCoord(obsies, "500", epoch_arr(i))
+     topocenter_arr(i) = getObservatoryCCoord(obsies, "-32", epoch_arr(i))
+     !elm((i-1)*3+1) = .FALSE.
      bounds((i-1)*3+1:(i-1)*3+3,1) = (/   0.0_bp, 0.0_bp, -pi/2.0_bp /)
-     bounds((i-1)*3+1:(i-1)*3+3,2) = (/ 100.0_bp, two_pi,  pi/2.0_bp /)
-     width((i-1)*3+1:(i-1)*3+3)    = (/   0.1_bp, 3.0_bp*rad_amin, 3.0_bp*rad_amin /)
+     bounds((i-1)*3+1:(i-1)*3+3,2) = (/   10.0_bp, two_pi,  pi/2.0_bp /)
+     width((i-1)*3+1:(i-1)*3+3)    = (/   0.1_bp, 0.5_bp*rad_amin, 0.5_bp*rad_amin /)
   END DO
   CALL NULLIFY(obsies)
   box_nrs = CEILING((bounds(:,2) - bounds(:,1))/width)
@@ -515,7 +528,9 @@ PROGRAM ephemeris_linking
   DO i=1,SIZE(box_nrs)
      indx = indx*box_nrs(i)
   END DO
-  WRITE(lu,*) "Number of addresses in the binned phase space is ", indx
+  WRITE(lu,"(A,I48)") "Theoretical maximum for the number of addresses is       ", HUGE(indx)
+  WRITE(lu,"(A,I48)") "Maximum number of addresses in the binned phase space is ", indx
+
   c1 = 1.25_bp ! = 5/4
   c2 = 2.0_bp
   c3 = 2.0_bp
@@ -531,7 +546,7 @@ PROGRAM ephemeris_linking
   WRITE(lu,"(1X,A,6(F10.5,1X))") "Assumed observational RA and Dec uncertainties [asec]:", &
        stdevs(2:3)/rad_asec
   WRITE(lu,"(1X,2(A,1X,I0,1X))") "Using filters", filter_start, "through", filter_stop
-  WRITE(lu,"(1X,A,1X,I0)") "Number of trial orbits:", norb
+  !WRITE(lu,"(1X,A,1X,I0)") "Number of trial orbits:", norb
 
 
   ! For simulations, compute 2-linkages missing
@@ -760,7 +775,7 @@ PROGRAM ephemeris_linking
            IF (info_verb >= 1) THEN
               WRITE(lu,*) "[" // TRIM(orbid) // "] " // " ID of set read."
            END IF
-           ret = system("gunzip -c " // TRIM(orbid) // ".orb.gz > " // TRIM(orbid) // ".orb")
+           !ret = system("gunzip -c " // TRIM(orbid) // ".orb.gz > " // TRIM(orbid) // ".orb")
            CALL NEW(orbfile,TRIM(orbid) // ".orb")
            IF (error) THEN
               CALL errorMessage("ephemeris_linking", &
@@ -792,8 +807,8 @@ PROGRAM ephemeris_linking
               CALL NULLIFY(logfile)
               STOP
            END IF
-           ALLOCATE(id_arr_prm(norb), &
-                orb_arr(norb), &
+           ALLOCATE(id_arr_prm(norb), indx_arr(norb), &
+                orb_arr(norb), pdf_arr(norb), &
                 stat=err)
            IF (err /= 0) THEN
               CALL errorMessage("ephemeris_linking", &
@@ -810,7 +825,7 @@ PROGRAM ephemeris_linking
               CALL readOpenOrbOrbitFile(getUnit(orbfile), header, &
                    element_type_in=element_type_in_prm, &
                    id=id_arr_prm(i), &
-                   orb=orb_arr(i))
+                   orb=orb_arr(i), pdf=pdf_arr(i))
               IF (error) THEN
                  CALL errorMessage("ephemeris_linking", &
                       "Could not read orbit file.", 1)
@@ -831,9 +846,38 @@ PROGRAM ephemeris_linking
               END IF
            END DO
            CALL NULLIFY(orbfile)
-           ret = system("rm -f " // TRIM(orbid) // ".orb")
+           !ret = system("rm -f " // TRIM(orbid) // ".orb")
            IF (info_verb >= 1) THEN
               WRITE(lu,*) "[" // TRIM(orbid) // "] " // " Orbit file read."
+           END IF
+
+           ! Remove orbits from the tails that have tiny likelihoods:
+           IF (info_verb >= 1) THEN
+              WRITE(lu,*) "[" // TRIM(orbid) // "] " // " Remove tail of orbit distribution."
+           END IF
+           probability_mass = get_cl_option("--probability-mass=", 0.9973_bp)
+           IF (probability_mass == 0.0_bp) THEN
+              error = .TRUE.
+              CALL errorMessage("ephemeris_linking", &
+                   "Probability mass of zero provided.", 1)
+              CALL NULLIFY(logfile)
+              STOP
+           END IF
+           CALL credible_region(pdf_arr, probability_mass, indx_arr, errstr)
+           IF (len_TRIM(errstr) > 0) THEN
+              CALL errorMessage("ephemeris_linking", &
+                   "TRACE BACK: " // TRIM(errstr), 1)
+              CALL NULLIFY(logfile)
+              STOP
+           END IF
+           DO iorb=1,norb
+              IF (indx_arr(iorb) < 0) THEN
+                 CALL NULLIFY(orb_arr(iorb))
+              END IF
+           END DO
+           orb_arr => reallocate(orb_arr)
+           IF (info_verb >= 1) THEN
+              WRITE(lu,*) "[" // TRIM(orbid) // "] " // " Finished removing tail of orbit distribution."
            END IF
 
            ! Compute addresses of the orbits and put them into the
@@ -870,7 +914,12 @@ PROGRAM ephemeris_linking
               DO k=1,SIZE(scoord_arr,dim=1)
                  coords((k-1)*3+1:(k-1)*3+3) = getPosition(scoord_arr(k))
               END DO
-              WRITE(getUnit(tmpfile),*) coords(2:3)/rad_deg, coords(5:6)/rad_deg, coords(8:9)/rad_deg
+              !WRITE(getUnit(tmpfile),*) coords(2:3)/rad_deg, coords(5:6)/rad_deg, coords(8:9)/rad_deg
+
+              WRITE(getUnit(tmpfile),*) coords(1), coords(2:3)/rad_deg, &
+                   coords(4), coords(5:6)/rad_deg, coords(7), &
+                   coords(8:9)/rad_deg
+
               DEALLOCATE(scoord_arr, stat=err)
               IF (err /= 0) THEN
                  CALL errorMessage("ephemeris_linking", &
@@ -894,8 +943,8 @@ PROGRAM ephemeris_linking
                    " Computation of addresses ready."
            END IF
 
-           DEALLOCATE(id_arr_prm, &
-                orb_arr, &
+           DEALLOCATE(id_arr_prm, indx_arr, &
+                orb_arr, pdf_arr, &
                 stat=err)
            IF (err /= 0) THEN
               CALL errorMessage("ephemeris_linking", &
@@ -1130,12 +1179,20 @@ PROGRAM ephemeris_linking
 
            ret = system("rm -f ephemeris_linking_tmp" // &
                 TRIM(pidstr) // "." // TRIM(obs_type))
-           ret = system("grep " // TRIM(id1) // &
-                " " // TRIM(obsfname) // &
+!!$           ret = system("grep ' " // TRIM(id1) // &
+!!$                " ' " // TRIM(obsfname) // &
+!!$                " > ephemeris_linking_tmp" // TRIM(pidstr) // &
+!!$                "." // TRIM(obs_type) // &
+!!$                " ; grep ' " // TRIM(id2) // &
+!!$                " ' " // TRIM(obsfname) // &
+!!$                " >> ephemeris_linking_tmp" // TRIM(pidstr) // &
+!!$                "." // TRIM(obs_type))
+           ret = system("grep '^" // TRIM(id1) // &
+                "' " // TRIM(obsfname) // &
                 " > ephemeris_linking_tmp" // TRIM(pidstr) // &
                 "." // TRIM(obs_type) // &
-                " ; grep " // TRIM(id2) // &
-                " " // TRIM(obsfname) // &
+                " ; grep '^" // TRIM(id2) // &
+                "' " // TRIM(obsfname) // &
                 " >> ephemeris_linking_tmp" // TRIM(pidstr) // &
                 "." // TRIM(obs_type))
            CALL NEW(obsfile, "ephemeris_linking_tmp" // &
@@ -1231,7 +1288,7 @@ PROGRAM ephemeris_linking
            CALL NULLIFY(obs_first)
            CALL NULLIFY(obs_last)
 
-           DO i2phase=1,1!3
+           DO i2phase=3,3
 
               SELECT CASE (i2phase)
 
@@ -1259,7 +1316,7 @@ PROGRAM ephemeris_linking
                       sor_rho1_u=rho(2), &
                       sor_rho2_l=rho(3), &
                       sor_rho2_u=rho(4), &
-                      sor_norb=50, &
+                      sor_norb=100, &
                       sor_ntrial=10000, &
                       sor_niter=1, &
                       sor_norb_sw=100, &
@@ -1307,9 +1364,9 @@ PROGRAM ephemeris_linking
               CASE (2)
 
                  ! Similar orbits
-                 ret = system("gunzip -c " // TRIM(id1) &
-                      // ".orb.gz > " // TRIM(id1) // &
-                      ".orb")
+                 !ret = system("gunzip -c " // TRIM(id1) &
+                 !     // ".orb.gz > " // TRIM(id1) // &
+                 !     ".orb")
                  CALL NEW(orbfile, TRIM(id1) // ".orb")
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
@@ -1365,12 +1422,12 @@ PROGRAM ephemeris_linking
                     END IF
                  END DO
                  CALL NULLIFY(orbfile)
-                 ret = system("rm -f " // TRIM(id1) // ".orb")
+                 !ret = system("rm -f " // TRIM(id1) // ".orb")
                  WRITE(lu,*) "[" // TRIM(id1) // "] " // " Orbit file read."
 
-                 ret = system("gunzip -c " // TRIM(id2) &
-                      // ".orb.gz > " // TRIM(id2) // &
-                      ".orb")
+                 !ret = system("gunzip -c " // TRIM(id2) &
+                 !     // ".orb.gz > " // TRIM(id2) // &
+                 !     ".orb")
                  CALL NEW(orbfile,TRIM(id2) // ".orb")
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
@@ -1425,7 +1482,7 @@ PROGRAM ephemeris_linking
                     END IF
                  END DO
                  CALL NULLIFY(orbfile)
-                 ret = system("rm -f " // TRIM(id2) // ".orb")
+                 !ret = system("rm -f " // TRIM(id2) // ".orb")
                  WRITE(lu,*) "[" // TRIM(id2) // "] " // " Orbit file read."
 
                  ALLOCATE(elm_arr_1(SIZE(orb_arr_1,dim=1),7), &
@@ -1622,6 +1679,146 @@ PROGRAM ephemeris_linking
 
               CASE (3)
 
+                 ! Similar orbits
+                 !ret = system("gunzip -c " // TRIM(id1) &
+                 !     // ".orb.gz > " // TRIM(id1) // &
+                 !     ".orb")
+                 CALL NEW(orbfile, TRIM(id1) // ".orb")
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (255)", 1)
+                    STOP
+                 END IF
+                 CALL setStatusOld(orbfile)
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (260)", 1)
+                    STOP
+                 END IF
+                 CALL OPEN(orbfile)
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (265)", 1)
+                    STOP
+                 END IF
+                 WRITE(lu,*) "[" // TRIM(id1) // "] " // " Orbit file opened."
+                 norb = getNrOfLines(orbfile) - 4 ! 4 header lines are not taken into count
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (270)", 1)
+                    STOP
+                 END IF
+                 ALLOCATE(orb_arr_1(norb), &
+                      stat=err)
+                 IF (err /= 0) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "Could not allocate memory (20).", 1)
+                    STOP
+                 END IF
+                 header(1:4)(:) = " "
+                 WRITE(lu,*) "[" // TRIM(id1) // "] " // " Reading orbit file."
+                 DO j=1,norb
+                    CALL readOpenOrbOrbitFile(getUnit(orbfile), &
+                         header, &
+                         element_type_in=element_type_in_prm, &
+                         id=id_prm, &
+                         orb=orb_arr_1(j))
+                    IF (error) THEN
+                       CALL errorMessage("ephemeris_linking", &
+                            "Could not read orbit file.", 1)
+                       WRITE(stderr,*) j
+                       STOP
+                    END IF
+                    CALL setParameters(orb_arr_1(j), dyn_model=dyn_model, &
+                         integrator=integrator, integration_step=integration_step)
+                    IF (error) THEN
+                       CALL errorMessage("ephemeris_linking", &
+                            "TRACE BACK (275)", 1)
+                       STOP
+                    END IF
+                 END DO
+                 CALL NULLIFY(orbfile)
+                 !ret = system("rm -f " // TRIM(id1) // ".orb")
+                 WRITE(lu,*) "[" // TRIM(id1) // "] " // " Orbit file read."
+
+                 !ret = system("gunzip -c " // TRIM(id2) &
+                 !     // ".orb.gz > " // TRIM(id2) // &
+                 !     ".orb")
+                 CALL NEW(orbfile,TRIM(id2) // ".orb")
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (280)", 1)
+                    STOP
+                 END IF
+                 CALL setStatusOld(orbfile)
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (285)", 1)
+                    STOP
+                 END IF
+                 CALL OPEN(orbfile)
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (290)", 1)
+                    STOP
+                 END IF
+                 WRITE(lu,*) "[" // TRIM(id2) // "] " // " Orbit file opened."
+                 norb = getNrOfLines(orbfile) - 4 ! 4 header lines are not taken into count
+                 IF (error) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "TRACE BACK (295)", 1)
+                    STOP
+                 END IF
+                 ALLOCATE(orb_arr_2(norb), stat=err)
+                 IF (err /= 0) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "Could not allocate memory (20).", 1)
+                    STOP
+                 END IF
+                 header(1:4)(:) = " "
+                 WRITE(lu,*) "[" // TRIM(id2) // "] " // " Reading orbit file."
+                 DO j=1,norb
+                    CALL readOpenOrbOrbitFile(getUnit(orbfile), &
+                         header, &
+                         element_type_in=element_type_in_prm, &
+                         id=id_prm, &
+                         orb=orb_arr_2(j))
+                    IF (error) THEN
+                       CALL errorMessage("ephemeris_linking", &
+                            "Could not read orbit file.", 1)
+                       WRITE(stderr,*) j
+                       STOP
+                    END IF
+                    CALL setParameters(orb_arr_2(j), dyn_model=dyn_model, &
+                         integrator=integrator, integration_step=integration_step)
+                    IF (error) THEN
+                       CALL errorMessage("ephemeris_linking", &
+                            "TRACE BACK (300)", 1)
+                       STOP
+                    END IF
+                 END DO
+                 CALL NULLIFY(orbfile)
+                 !ret = system("rm -f " // TRIM(id2) // ".orb")
+
+                 j = SIZE(orb_arr_1)
+                 ALLOCATE(orb_arr(j+SIZE(orb_arr_2)))
+                 DO i=1,SIZE(orb_arr_1)
+                    orb_arr(i) = copy(orb_arr_1(i))
+                    CALL setParameters(orb_arr(i), &
+                         dyn_model=dyn_model, &
+                         integrator=integrator, &
+                         integration_step=integration_step)
+                 END DO
+                 DO i=1,SIZE(orb_arr_2)
+                    orb_arr(j+i) = copy(orb_arr_2(i))
+                    CALL setParameters(orb_arr(j+i), &
+                         dyn_model=dyn_model, &
+                         integrator=integrator, &
+                         integration_step=integration_step)
+                 END DO
+                 DEALLOCATE(orb_arr_1, orb_arr_2, stat=err)
+                 WRITE(lu,*) "[" // TRIM(id2) // "] " // " Orbit file read."
+
                  ! Least squares
                  CALL NULLIFY(storb)
                  CALL NEW(storb, obss)
@@ -1638,9 +1835,9 @@ PROGRAM ephemeris_linking
                       t_inv=t_inv, &
                       element_type="cartesian", &
                       accept_multiplier=4.0_bp, &
-                      ls_correction_factor=1.0_bp, &
+                      ls_correction_factor=0.2_bp, &
                       ls_element_mask=ls_element_mask)
-                 DO j=1,7
+                 DO j=1,SIZE(orb_arr)
                     CALL leastSquares(storb, orb_arr(j))
                     IF (error) THEN
                        error = .FALSE.
@@ -1726,7 +1923,7 @@ PROGRAM ephemeris_linking
                  CALL  NULLIFY(tmpfile)
 
                  ! Write linked observation sets:
-                 CALL NEW(obsfile,"lnk.mpc2")
+                 CALL NEW(obsfile,"lnk." // TRIM(obs_type))
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
                          "TRACE BACK (380)", 1)
@@ -1744,7 +1941,7 @@ PROGRAM ephemeris_linking
                          "TRACE BACK (390)", 1)
                     STOP
                  END IF
-                 CALL writeObservationFile(obss, getUnit(obsfile), "mpc2", number=lstr)
+                 CALL writeObservationFile(obss, getUnit(obsfile), TRIM(obs_type), number=lstr)
                  IF (error) THEN
                     CALL errorMessage("ephemeris_linking", &
                          "TRACE BACK (395)", 1)
@@ -1922,6 +2119,342 @@ PROGRAM ephemeris_linking
         END IF
 
         CALL NULLIFY(triallinkfile)
+
+
+     CASE (3)
+
+        !!
+        !! PHASE 3: FIND UNIQUE LINKAGES
+        !!
+
+        ! Read input astrometry
+        obsfname = get_cl_option("--obs-in=", "lnk." // TRIM(obs_type))
+        IF (LEN_TRIM(obsfname) == 0) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "Name of input observation file not provided.", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL NEW(obsfile, TRIM(obsfname))
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3005)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL setStatusOld(obsfile)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3010)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL OPEN(obsfile)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "Unable to open input observation file.", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL NEW(obss, obsfile)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3015)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL NULLIFY(obsfile)
+        obss_sep_arr => getSeparatedSets(obss)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3020)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        !CALL NULLIFY(obss)
+        CALL init(linkage_tree)
+
+        WRITE(stdout,*) "Start ingestion into linkage_tree."        
+
+        k = SIZE(obss_sep_arr)
+        l = 0
+        DO i=1,SIZE(obss_sep_arr)
+           designations => getDesignations(obss_sep_arr(i))
+           CALL insertionSort(designations)
+           !           IF (ASSOCIATED(designations_)) THEN
+           DEALLOCATE(designations_,stat=err)
+           !           END IF
+           m = 1
+           ALLOCATE(designations_(1))
+           designations_(1) = TRIM(designations(1))
+           designation = TRIM(designations(1))
+           DO j=2,SIZE(designations)
+              IF (TRIM(designations_(m)) /= TRIM(designations(j))) THEN
+                 m = m + 1
+                 designations_ => reallocate(designations_, m)
+                 designations_(m) = TRIM(designations(j))
+                 designation = TRIM(designation) // "_" // TRIM(designations(j))
+              END IF
+           END DO
+           IF (m > 4) THEN
+              WRITE(stdout,*) getNumber(obss_sep_arr(i))
+              WRITE(stdout,*) designations
+              STOP
+           END IF
+           DEALLOCATE(designations, stat=err)
+           DEALLOCATE(designations_, stat=err)
+
+!!$           do j=1,m-1
+!!$              n = 1
+!!$              designation_ = trim(designations_(j))
+!!$              do k=j+1,m
+!!$                 n = n + 1 
+!!$                 designation_ = trim(designation_) // "_" // trim(designations_(k))
+!!$                 if (n == m) then
+!!$                    CALL insert_tree_node(linkage_tree, trim(designation_))
+!!$                 end if
+!!$              end do
+!!$           end do
+
+           ! add linkage to tree if it doesn't already exist there
+           NULLIFY(linkage_tree_node)
+           linkage_tree_node => search(linkage_tree, TRIM(designation))
+           IF (ASSOCIATED(linkage_tree_node,linkage_tree%nil)) THEN
+              l = l + 1
+              CALL insert_tree_node(linkage_tree, TRIM(designation))
+              WRITE(stdout,"(A,1X,A,I0,1X,A,1X,I0,A)") TRIM(designation), "ingested (", l, "out of max", k, ")."
+           END IF
+           CALL NULLIFY(obss_sep_arr(i))
+
+        END DO
+        DEALLOCATE(obss_sep_arr, stat=err)
+
+        WRITE(stdout,*) "Ingestion into linkage_tree done."
+
+        ! for linkages consisting of 4 distinct designations,
+        ! remove all 3-tuples covered by the 4-tuple from the tree,
+        ! if any
+        i = 0
+        n = l
+        m = 4
+        WRITE(stdout,*) "Start removing non-unique 3-tuples."        
+        ALLOCATE(designations(4))
+        linkage_tree_node => minimum(linkage_tree, linkage_tree%root)
+        DO WHILE (.NOT.ASSOCIATED(linkage_tree_node, linkage_tree%nil))
+           !IF (len_TRIM(linkage_tree_node%key) > 20) THEN ! there are more than 3 designations  
+           !   WRITE(stdout,*) TRIM(linkage_tree_node%key)
+           !WRITE(*,*) TRIM(linkage_tree_node%key)
+           k=INDEX(linkage_tree_node%key(1:),"_")
+           designations(1) = linkage_tree_node%key(1:k-1)
+           !WRITE(*,*) linkage_tree_node%key(1:k-1), k
+           j=k
+           k=INDEX(linkage_tree_node%key(j+1:),"_")
+           designations(2) = linkage_tree_node%key(j+1:j+k-1)
+           !WRITE(*,*) linkage_tree_node%key(j+1:j+k-1), k
+           j=j+k
+           k=INDEX(linkage_tree_node%key(j+1:),"_")
+           IF (k == 0) THEN
+              !WRITE(*,*) TRIM(linkage_tree_node%key(j+1:))
+           ELSE
+              designations(3) = linkage_tree_node%key(j+1:j+k-1)
+              !WRITE(*,*) linkage_tree_node%key(j+1:j+k-1), k
+              j=j+k
+              designations(4) = TRIM(linkage_tree_node%key(j+1:))
+              !WRITE(*,*) TRIM(linkage_tree_node%key(j+1:))
+              k=INDEX(linkage_tree_node%key(j+1:),"_")
+              IF (k /= 0) THEN
+                 CALL errorMessage("ephemeris_linking", &
+                      "Key contains more than 4 designations:" // TRIM(linkage_tree_node%key), 1)
+                 CALL NULLIFY(logfile)
+                 STOP
+              END IF
+              DO j=1,m-2
+                 DO k=j+1,m-1
+                    DO l=k+1,m
+                       designation = TRIM(designations(j)) &
+                            // "_" // TRIM(designations(k)) &
+                            // "_" // TRIM(designations(l))
+                       NULLIFY(linkage_tree_node_)
+                       linkage_tree_node_ => search(linkage_tree, TRIM(designation))
+                       IF (.NOT.ASSOCIATED(linkage_tree_node_,linkage_tree%nil)) THEN
+                          i = i + 1
+                          linkage_tree_node_ => delete_tree_node(linkage_tree, linkage_tree_node_)
+                          WRITE(stdout,"(A,1X,A,I0,1X,A,1X,I0,1X,A)") TRIM(designation), "removed (", i, "out of ", n, "links)."
+                       END IF
+                    END DO
+                 END DO
+              END DO
+           END IF
+           linkage_tree_node => successor(linkage_tree, linkage_tree_node)
+        END DO
+        WRITE(stdout,"(A,1X,I0,1X,A)") "Removed", i, "non-unique 3-tuples."
+
+        ! Output unique linkages found
+        triallinkfname = get_cl_option("--unique-linkages-out=","uniquelinks.out")
+        CALL NEW(triallinkfile, TRIM(triallinkfname))
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (150)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL OPEN(triallinkfile)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (155)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        i = 0
+        NULLIFY(linkage_tree_node)
+        linkage_tree_node => minimum(linkage_tree, linkage_tree%root)
+        DO WHILE (.NOT.ASSOCIATED(linkage_tree_node, linkage_tree%nil))
+           i = i + 1
+           WRITE(getUnit(triallinkfile),"(A)") TRIM(linkage_tree_node%key)  
+           !WRITE(stdout,"(A)") TRIM(linkage_tree_node%key)  
+           linkage_tree_node => successor(linkage_tree, linkage_tree_node)
+        END DO
+        CALL NULLIFY(triallinkfile)
+        WRITE(lu,*) "Unique linkages found: ", i
+
+        ! Write output astrometry
+        WRITE(stdout,*) "Start writing observation file."
+        obsfname = get_cl_option("--obs-out=", "uniquelinks." // TRIM(obs_type))
+        IF (LEN_TRIM(obsfname) == 0) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "Name of output observation file not provided.", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL NEW(obsfile, TRIM(obsfname))
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3005)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL OPEN(obsfile)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "Unable to open output observation file.", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL setNumber(obss, "")
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3020)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        CALL clean(obss)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3020)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        obss_sep_arr => getSeparatedSets(obss)
+        IF (error) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "TRACE BACK (3020)", 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        ALLOCATE(designations(SIZE(obss_sep_arr)), indx_arr(SIZE(obss_sep_arr)))
+        DO i=1,SIZE(obss_sep_arr)
+           designations(i) = getDesignation(obss_sep_arr(i))
+           IF (error) THEN
+              CALL errorMessage("ephemeris_linking", &
+                   "TRACE BACK (3020)", 1)
+              CALL NULLIFY(logfile)
+              STOP
+           END IF
+        END DO
+        CALL quickSort(designations, indx_arr, errstr)
+        IF (len_TRIM(errstr) > 0) THEN
+           CALL errorMessage("ephemeris_linking", &
+                "Quicksort failed: " // TRIM(errstr), 1)
+           CALL NULLIFY(logfile)
+           STOP
+        END IF
+        i = 0
+        ALLOCATE(designations_(4))
+        linkage_tree_node => minimum(linkage_tree, linkage_tree%root)
+        DO WHILE (.NOT.ASSOCIATED(linkage_tree_node, linkage_tree%nil))
+           !IF (len_TRIM(linkage_tree_node%key) > 20) THEN ! there are more than 3 designations  
+           !   WRITE(stdout,*) TRIM(linkage_tree_node%key)
+           !WRITE(*,*) TRIM(linkage_tree_node%key)
+           designations_ = ""
+           k=INDEX(linkage_tree_node%key(1:),"_")
+           designations_(1) = linkage_tree_node%key(1:k-1)
+           !WRITE(*,*) linkage_tree_node%key(1:k-1), k
+           j=k
+           k=INDEX(linkage_tree_node%key(j+1:),"_")
+           designations_(2) = linkage_tree_node%key(j+1:j+k-1)
+           !WRITE(*,*) linkage_tree_node%key(j+1:j+k-1), k
+           j=j+k
+           k=INDEX(linkage_tree_node%key(j+1:),"_")
+           IF (k == 0) THEN
+              designations_(3) = TRIM(linkage_tree_node%key(j+1:))
+              !WRITE(*,*) TRIM(linkage_tree_node%key(j+1:))
+           ELSE
+              designations_(3) = linkage_tree_node%key(j+1:j+k-1)
+              !WRITE(*,*) linkage_tree_node%key(j+1:j+k-1), k
+              j=j+k
+              designations_(4) = TRIM(linkage_tree_node%key(j+1:))
+              !WRITE(*,*) TRIM(linkage_tree_node%key(j+1:))
+           END IF
+           k=INDEX(linkage_tree_node%key(j+1:),"_")
+           IF (k /= 0) THEN
+              CALL errorMessage("ephemeris_linking", &
+                   "Key contains more than 4 designations:" // TRIM(linkage_tree_node%key), 1)
+              CALL NULLIFY(logfile)
+              STOP
+           END IF
+           i = i + 1
+           CALL toString(i, str, error)
+           IF (error) THEN
+              CALL errorMessage("ephemeris_linking", &
+                   "Error in conversion from integer to character.", 1)
+              CALL NULLIFY(logfile)
+              STOP
+           END IF
+           DO j=1,SIZE(designations_)
+              IF (len_TRIM(designations_(j)) > 0) THEN
+                 k = binarySearch(TRIM(designations_(j)), designations, indx_arr, errstr)
+                 IF (len_TRIM(errstr) > 0) THEN
+                    CALL errorMessage("ephemeris_linking", &
+                         "Binary search failed: " // TRIM(errstr), 1)
+                    CALL NULLIFY(logfile)
+                    STOP
+                 END IF
+                 CALL writeObservationFile(obss_sep_arr(k), getUnit(obsfile), TRIM(obs_type), str)
+              END IF
+           END DO
+           linkage_tree_node => successor(linkage_tree, linkage_tree_node)
+        END DO
+        CALL NULLIFY(obsfile)
+        DEALLOCATE(indx_arr, stat=err)
+        DEALLOCATE(designations, stat=err)
+        DEALLOCATE(designations_, stat=err)
+        WRITE(stdout,"(A)") "Finished output of astrometry."
+
+        ! Deallocate linkage_tree
+        linkage_tree_node => minimum(linkage_tree, linkage_tree%root)
+        DO WHILE (.NOT.ASSOCIATED(linkage_tree_node, linkage_tree%nil))
+           linkage_tree_node_ => linkage_tree_node
+           linkage_tree_node => successor(linkage_tree, linkage_tree_node)
+           linkage_tree_node_ => delete_tree_node(linkage_tree, linkage_tree_node_)
+           DEALLOCATE(linkage_tree_node_, stat=err)
+           IF (err /= 0) THEN
+              CALL errorMessage("ephemeris_linking", &
+                   "Could not deallocate memory (35).", 1)
+              CALL NULLIFY(logfile)
+              STOP
+           END IF
+        END DO
+        CALL delete_tree(linkage_tree)
 
      END SELECT
 

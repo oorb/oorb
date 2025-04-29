@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Lauri Siltala                                  !
 !                                                                    !
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2023-04-05
+!! @version 2025-03-28
 !!
 MODULE planetary_data
 
@@ -144,9 +144,12 @@ MODULE planetary_data
        0.0_rprec8  /)                            !! (17) Vesta
 
   CHARACTER(len=6), DIMENSION(14,3)         :: ttl
-  CHARACTER(len=6), DIMENSION(400)          :: cnam
+  CHARACTER(len=6), DIMENSION(400)          :: cnam_400
+  CHARACTER(len=6), DIMENSION(645)          :: cnam_645
   REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: buf
-  REAL(rprec8), DIMENSION(400)              :: cval
+  REAL(rprec8), DIMENSION(21)               :: cval
+  REAL(rprec8), DIMENSION(400)              :: cval_400
+  REAL(rprec8), DIMENSION(645)              :: cval_645
   REAL(rprec8), DIMENSION(3)                :: ss
   REAL(rprec8)                              :: au, emrat
   INTEGER, DIMENSION(3,13)                  :: ipt
@@ -185,7 +188,10 @@ MODULE planetary_data
   INTERFACE BC_masses
      MODULE PROCEDURE BC_masses_r8
   END INTERFACE BC_masses
+
+
 CONTAINS
+
 
 
   !! *Description*:
@@ -338,15 +344,26 @@ CONTAINS
        RETURN
     END IF
 
-    READ(lu, rec=1, iostat=err) ttl, cnam, ss, ncon, &
-         au, emrat, ipt(1:3,1:12), numde, ipt(1:3,13)
+    SELECT CASE (dtype)
+    CASE ("405", "406", "430", "431", "10b")
+       READ(lu, rec=1, iostat=err) ttl, cnam_400, ss, ncon, &
+            au, emrat, ipt(1:3,1:12), numde, ipt(1:3,13)
+    CASE default
+       READ(lu, rec=1, iostat=err) ttl, cnam_645, ss, ncon, &
+            au, emrat, ipt(1:3,1:12), numde, ipt(1:3,13)
+    END SELECT
     IF (err /= 0) THEN
        error = .TRUE.
        WRITE(0,*) "JPL_ephemeris_init(): Could not read record #1."
        RETURN
     END IF
 
-    READ(lu, rec=2, iostat=err) cval
+    SELECT CASE (dtype)
+    CASE ("405", "406", "430", "431", "10b")
+       READ(lu, rec=2, iostat=err) cval_400
+    CASE default
+       READ(lu, rec=2, iostat=err) cval_645
+    END SELECT
     IF (err /= 0) THEN
        error = .TRUE.
        WRITE(0,*) "JPL_ephemeris_init(): Could not read record #2."
@@ -397,6 +414,12 @@ CONTAINS
     END DO
 
     ! Planets' and Moon's GMs
+    SELECT CASE (dtype)
+    CASE ("405", "406", "430", "431", "10b")
+       cval = cval_400(1:21)
+    CASE default
+       cval = cval_645(1:21)
+    END SELECT
     planetary_mu = 0.0_rprec8
     IF (dtype == "405" .OR. dtype == "406") THEN
 
@@ -561,7 +584,7 @@ CONTAINS
   !! Known errors:
   !!
   !!  ntarget  ncenter
-  !!    13       11        (note that 11 13 works?!?)
+  !!    13       any, except 12
   !!    -9       11
   !!    -9       12
   !!
@@ -856,7 +879,7 @@ CONTAINS
   !! Known errors:
   !!
   !!  ntarget  ncenter
-  !!    13       11
+  !!    13        *
   !!    -9       11
   !!    -9       12
   !!
@@ -1265,7 +1288,6 @@ CONTAINS
     pjd(2) = pjd(2) + pjd(4)
     pjd(3:4) = split(pjd(2))
     pjd(1) = pjd(1) + pjd(3)
-
     IF (pjd(1) + pjd(4) < ss(1) .OR. &
          pjd(1) + pjd(4) > ss(2)) THEN
        error = .TRUE.
@@ -1629,7 +1651,7 @@ CONTAINS
        IF (asteroid_masks(i)) THEN
           READ(lu,*) asteroid_masses(k)
           k = k + 1
-        ELSE ! This happens if an asteroid has been commented out. This read statement's purpose
+       ELSE ! This happens if an asteroid has been commented out. This read statement's purpose
           READ(lu,*)  ! is to advance to a new line without storing the mass anywhere.
        END IF
     END DO
