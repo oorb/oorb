@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Contains sorting and searching routines.
 !!
 !! @author  MG
-!! @version 2023-04-05
+!! @version 2025-03-31
 !!
 MODULE sort
 
@@ -40,7 +40,7 @@ MODULE sort
      MODULE PROCEDURE insertionSort_i8
 !!$     MODULE PROCEDURE insertionSort_r16
      MODULE PROCEDURE insertionSort_ch
-  END INTERFACE
+  END INTERFACE insertionSort
 
   INTERFACE quickSort
      MODULE PROCEDURE quickSort_i4
@@ -52,7 +52,7 @@ MODULE sort
 !!$     MODULE PROCEDURE quickSort_r16
      MODULE PROCEDURE quickSort_ch
      MODULE PROCEDURE quickSort_ch_index
-  END INTERFACE
+  END INTERFACE quickSort
 
   INTERFACE binarySearch
      MODULE PROCEDURE binarySearch_i8
@@ -60,13 +60,13 @@ MODULE sort
 !!$     MODULE PROCEDURE binarySearch_r16
      MODULE PROCEDURE binarySearch_ch
      MODULE PROCEDURE binarySearch_ch_index
-  END INTERFACE
+  END INTERFACE binarySearch
 
   INTERFACE findLocation
      MODULE PROCEDURE findLocation_r8
      MODULE PROCEDURE findLocation_r8_indx
 !!$     MODULE PROCEDURE findLocation_r16
-  END INTERFACE
+  END INTERFACE findLocation
 
 
 
@@ -1241,7 +1241,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Binary search routine. Returns the position where the value
+  !! Binary search routine. Returns the position where the key value
   !! should be found (starting from left) in the one-dimensional input
   !! array, if the array is sorted in ascending order.
   !!
@@ -1253,22 +1253,22 @@ CONTAINS
   !! the lower half. Otherwise it is narrowed to the upper half. The
   !! procedure is continued until the interval is empty.
   !!
-  INTEGER FUNCTION findLocation_r8(VALUE, array)
+  INTEGER FUNCTION findLocation_r8(key, array)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
-    REAL(rprec8), INTENT(in)               :: VALUE
+    REAL(rprec8), INTENT(in)               :: key
     REAL(rprec8), DIMENSION(:), INTENT(in) :: array
     INTEGER                              :: n, left, right, center
 
     n = SIZE(array)
     ! Return immediately, if the value is smaller or larger than the
     ! minimum or maximum values of the array:
-    IF (VALUE < array(1)) THEN
+    IF (key < array(1)) THEN
        findLocation_r8 = 1
        RETURN
-    ELSE IF (VALUE >= array(n)) THEN
+    ELSE IF (key >= array(n)) THEN
        findLocation_r8 = n+1
        RETURN
     END IF
@@ -1278,13 +1278,13 @@ CONTAINS
     center = CEILING((left+right)/2.0)
     DO WHILE (right-left > 1)
        center = CEILING((left+right)/2.0)
-       IF (VALUE < array(center)) THEN
+       IF (key < array(center)) THEN
           right = center
-       ELSE IF (VALUE >= array(center)) THEN
+       ELSE IF (key >= array(center)) THEN
           left = center
        END IF
     END DO
-    IF (VALUE < array(center)) THEN
+    IF (key < array(center)) THEN
        findLocation_r8 = center
     ELSE
        findLocation_r8 = center + 1
@@ -1298,7 +1298,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Binary search routine. Returns the position where the value
+  !! Binary search routine. Returns the position where the key value
   !! should be found (starting from left) in the one-dimensional input
   !! array, given an index array providing the ascending order of the
   !! array elements.
@@ -1311,13 +1311,13 @@ CONTAINS
   !! the lower half. Otherwise it is narrowed to the upper half. The
   !! procedure is continued until the interval is empty.
   !!
-  INTEGER FUNCTION findLocation_r8_indx(VALUE, array, indx_array)
+  INTEGER FUNCTION findLocation_r8_indx(key, array, indx_array)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
     INTEGER, PARAMETER                   :: prec = 8
-    REAL(rprec8), INTENT(in)               :: VALUE
+    REAL(rprec8), INTENT(in)               :: key
     REAL(rprec8), DIMENSION(:), INTENT(in) :: array
     INTEGER, DIMENSION(:), INTENT(in)    :: indx_array
     INTEGER                              :: n, left, right, center
@@ -1325,10 +1325,10 @@ CONTAINS
     n = SIZE(array)
     ! Return immediately, if the value is smaller or larger than the
     ! minimum or maximum values of the array:
-    IF (VALUE < array(indx_array(1))) THEN
+    IF (key < array(indx_array(1))) THEN
        findLocation_r8_indx = 1
        RETURN
-    ELSE IF (VALUE >= array(indx_array(n))) THEN
+    ELSE IF (key >= array(indx_array(n))) THEN
        findLocation_r8_indx = n+1
        RETURN
     END IF
@@ -1338,13 +1338,13 @@ CONTAINS
     center = CEILING((left+right)/2.0)
     DO WHILE (right-left > 1)
        center = CEILING((left+right)/2.0)
-       IF (VALUE < array(indx_array(center))) THEN
+       IF (key < array(indx_array(center))) THEN
           right = center
-       ELSE IF (VALUE >= array(indx_array(center))) THEN
+       ELSE IF (key >= array(indx_array(center))) THEN
           left = center
        END IF
     END DO
-    IF (VALUE < array(indx_array(center))) THEN
+    IF (key < array(indx_array(center))) THEN
        findLocation_r8_indx = center
     ELSE
        findLocation_r8_indx = center + 1
@@ -1358,7 +1358,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Binary search routine. Returns the position where the value
+  !! Binary search routine. Returns the position where the key value
   !! should be found (starting from left) in the one-dimensional input
   !! array, if the array is sorted in ascending order.
   !!
@@ -1370,22 +1370,22 @@ CONTAINS
   !! the lower half. Otherwise it is narrowed to the upper half. The
   !! procedure is continued until the interval is empty.
   !!
-  INTEGER FUNCTION findLocation_r16(VALUE, array)
+  INTEGER FUNCTION findLocation_r16(key, array)
 
     ! The input array needs to be sorted in ascending order.
 
     IMPLICIT NONE
-    REAL(rprec16), INTENT(in)               :: VALUE
+    REAL(rprec16), INTENT(in)               :: key
     REAL(rprec16), DIMENSION(:), INTENT(in) :: array
     INTEGER                              :: n, left, right, center
 
     n = SIZE(array)
     ! Return immediately, if the value is smaller or larger than the
     ! minimum or maximum values of the array:
-    IF (VALUE < array(1)) THEN
+    IF (key < array(1)) THEN
        findLocation_r16 = 1
        RETURN
-    ELSE IF (VALUE >= array(n)) THEN
+    ELSE IF (key >= array(n)) THEN
        findLocation_r16 = n+1
        RETURN
     END IF
@@ -1395,13 +1395,13 @@ CONTAINS
     center = CEILING((left+right)/2.0)
     DO WHILE (right-left > 1)
        center = CEILING((left+right)/2.0)
-       IF (VALUE < array(center)) THEN
+       IF (key < array(center)) THEN
           right = center
-       ELSE IF (VALUE >= array(center)) THEN
+       ELSE IF (key >= array(center)) THEN
           left = center
        END IF
     END DO
-    IF (VALUE < array(center)) THEN
+    IF (key < array(center)) THEN
        findLocation_r16 = center
     ELSE
        findLocation_r16 = center + 1

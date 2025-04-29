@@ -1,6 +1,6 @@
 #====================================================================#
 #                                                                    #
-# Copyright 2002-2014,2015                                           #
+# Copyright 2002-2024,2025                                           #
 # Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      #
 # Dagmara Oszkiewicz                                                 #
 #                                                                    #
@@ -24,26 +24,33 @@
 # This is a makefile for Jet Propulsion Laboratory's planetary ephemeris.
 #
 # Author:  MG
-# Version: 2015-11-04
+# Version: 2025-04-29
 
 include ../../make.config
 include ../../Makefile.include
 
-# TYPE OF EPHEMERIS [405|406|430|431|441]
-EPH_TYPE ?= 430
+# TYPE OF EPHEMERIS [405|406|430|431|440|441]
+EPH_TYPE ?= 440
+
 # FTP client
 #FTP_CLIENT = wget -nv -c -O
 FTP_CLIENT = curl -L -s -C - -f --output
+
 # Output name of the program:
 EPH_BIN = de$(EPH_TYPE).dat
+
 # Name of ascii-to-binary converter program source file:
 CONV_SRC = asc2eph.f90
+
 # Name of ascii-to-binary converter program:
 CONVERTER = asc2eph
+
 # Name of test program source file:
 TESTER_SRC = ephtester.f90
+
 # Name of test program:
 TESTER = ephtester
+
 # ASCII versions of de405 ephemeris files:
 EPH_ASCII_DE405 = header.405 ascp1600.405 ascp1620.405 ascp1640.405 ascp1660.405 ascp1680.405 \
                        ascp1700.405 ascp1720.405 ascp1740.405 ascp1760.405 ascp1780.405 \
@@ -52,6 +59,7 @@ EPH_ASCII_DE405 = header.405 ascp1600.405 ascp1620.405 ascp1640.405 ascp1660.405
                        ascp2000.405 ascp2020.405 ascp2040.405 ascp2060.405 ascp2080.405 \
                        ascp2100.405 ascp2120.405 ascp2140.405 ascp2160.405 ascp2180.405 \
                        ascp2200.405
+
 # ASCII versions of de406 ephemeris files:
 EPH_ASCII_DE406 = header.406 ascm3000.406 ascm2900.406 ascm2800.406 ascm2700.406 ascm2600.406 \
                              ascm2500.406 ascm2400.406 ascm2300.406 ascm2200.406 ascm2100.406 \
@@ -65,10 +73,12 @@ EPH_ASCII_DE406 = header.406 ascm3000.406 ascm2900.406 ascm2800.406 ascm2700.406
                              ascp1500.406 ascp1600.406 ascp1700.406 ascp1800.406 ascp1900.406 \
                              ascp2000.406 ascp2100.406 ascp2200.406 ascp2300.406 ascp2400.406 \
                              ascp2500.406 ascp2600.406 ascp2700.406 ascp2800.406 ascp2900.406
+
 # ASCII versions of de430 ephemeris files:
 EPH_ASCII_DE430 = header.430_229 ascp1550.430 ascp1650.430 ascp1750.430 ascp1850.430 \
                                  ascp1950.430 ascp2050.430 ascp2150.430 ascp2250.430 \
                                  ascp2350.430 ascp2450.430 ascp2550.430
+
 # ASCII versions of de431 ephemeris files:
 EPH_ASCII_DE431 = header.431_229 ascm13000.431 ascm12000.431 ascm11000.431 ascm10000.431 \
                                  ascm09000.431 ascm08000.431 ascm07000.431 ascm06000.431 \
@@ -78,6 +88,7 @@ EPH_ASCII_DE431 = header.431_229 ascm13000.431 ascm12000.431 ascm11000.431 ascm1
                                  ascp07000.431 ascp08000.431 ascp09000.431 ascp10000.431 \
                                  ascp11000.431 ascp12000.431 ascp13000.431 ascp14000.431 \
                                  ascp15000.431 ascp16000.431
+
 # ASCII version of de440 ephemeris files:
 EPH_ASCII_DE440 = header.440 ascp01550.440 ascp01650.440 ascp01750.440 ascp01850.440 \
                              ascp01950.440 ascp02050.440 ascp02150.440 ascp02250.440 \
@@ -91,8 +102,10 @@ EPH_ASCII_DE441 = header.441 ascm13000.441 ascm12000.441 ascm11000.441 ascm10000
                             ascp07000.441 ascp08000.441 ascp09000.441 ascp10000.441 \
                             ascp11000.441 ascp12000.441 ascp13000.441 ascp14000.441 \
                             ascp15000.441 ascp16000.441
+
 # Input file for ascii-to-binary converter:
 EPH_INPUT  = ascii.$(EPH_TYPE)
+
 # Project name:
 PROJNAME = JPL_Ephemeris
 

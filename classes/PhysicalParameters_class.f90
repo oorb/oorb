@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, LS
-!! @version 2023-03-29
+!! @version 2025-04-01
 !!
 MODULE PhysicalParameters_cl
 
@@ -1491,10 +1491,15 @@ CONTAINS
 
 
 
+
+  !! *Description*:
+  !!
   !! MCMC mass estimation algorithm. See Siltala & Granvik (2020,2017)
   !! https://doi.org/10.1051/0004-6361/201935608
   !! https://doi.org/10.1016/j.icarus.2017.06.028
-  !! Author: LS, MG
+  !!
+  !! @author LS, MG
+  !!
   SUBROUTINE massEstimation_MCMC(storb_arr, orb_arr, &
        proposal_density_masses, norb, iorb_init, itrial_init, nburn_arr, &
        estimated_masses, accepted_solutions, nominal_arr, &
@@ -1670,10 +1675,10 @@ CONTAINS
     CALL NEW(mcmc_out_file, TRIM(out_fname))
     CALL OPEN(mcmc_out_file)
 
-    CALL NEW(meanres_file, TRIM(out_fname)//trim('.mean.res'))
+    CALL NEW(meanres_file, TRIM(out_fname)//TRIM('.mean.res'))
     CALL OPEN(meanres_file)
 
-    CALL NEW(res_file, TRIM(out_fname)//trim('.res'))
+    CALL NEW(res_file, TRIM(out_fname)//TRIM('.res'))
     CALL OPEN(res_file)
 
     IF (err /= 0) THEN
@@ -1727,13 +1732,13 @@ CONTAINS
 
     ! Add masses into cov matrix
     IF (.NOT. ASSOCIATED(input_cov_matrix)) THEN
-      DO i=1, nperturber
-         cov_matrix(6*nstorb+i, 6*nstorb+i) = proposal_density_masses(i)*1e-19_bp
-      END DO
+       DO i=1, nperturber
+          cov_matrix(6*nstorb+i, 6*nstorb+i) = proposal_density_masses(i)*1e-19_bp
+       END DO
     END IF
 
     IF (ASSOCIATED(input_cov_matrix)) THEN
-      cov_matrix(:,:) = input_cov_matrix(:,:)
+       cov_matrix(:,:) = input_cov_matrix(:,:)
     END IF
 
     ok_cov_matrix = cov_matrix
@@ -1970,7 +1975,7 @@ CONTAINS
        IF (accept) THEN
           ! Print out the current proposal matrix every 500 accepted proposals.
           IF (MODULO(iorb,500) == 0) THEN 
-             CALL NEW(cov_file, TRIM(out_fname)//trim('.cov'))
+             CALL NEW(cov_file, TRIM(out_fname)//TRIM('.cov'))
              CALL OPEN(cov_file)
              WRITE(getUnit(cov_file), *) "# iorb at", iorb, "and itrial at:", itrial, &
                   " and a total of", noutlier, "outliers. Prop. matrix follows:"
@@ -1981,13 +1986,13 @@ CONTAINS
              ok_cov_matrix = cov_matrix
           END IF
 
-          IF ((.NOT. first) .and. (iorb > 1)) THEN ! This is how many repetitions there were. can't be printed until the next
-            ! proposal gets accepted because we don't know the amount until then..
+          IF ((.NOT. first) .AND. (iorb > 1)) THEN ! This is how many repetitions there were. can't be printed until the next
+             ! proposal gets accepted because we don't know the amount until then..
              WRITE(getUnit(mcmc_out_file), "(1(I5))", advance="yes") NINT(accepted_solutions(8*nstorb+3,iorb-1))
           END IF
 
           WRITE(getUnit(mcmc_out_file), "(1(I7,1X),1(I10,1X), 2(I5,1X), 1(F8.2,1X))", advance="NO") iorb, itrial, nperturber, &
-                nstorb-nperturber, mjd_tt
+               nstorb-nperturber, mjd_tt
           DO i=1,nstorb
              WRITE(getUnit(mcmc_out_file),"(A5,1X,1(3(F19.15,1X),3(F19.15,1X),3(E12.5,1X)))",advance="NO") &
                   getID(storb_arr(i)), &
@@ -1995,7 +2000,7 @@ CONTAINS
           END DO
 
           WRITE(getUnit(mcmc_out_file),"(3(F19.2,1X))", advance="NO") SUM(chi2_arr), &
-                SUM(chi2_arr)/(SUM(nobs_arr)-6*nstorb-nperturber), EXP(-0.5*SUM(chi2_arr)/SUM(nobs_arr))
+               SUM(chi2_arr)/(SUM(nobs_arr)-6*nstorb-nperturber), EXP(-0.5*SUM(chi2_arr)/SUM(nobs_arr))
        END IF
 
        IF (info_verb >= 3) THEN
@@ -2034,7 +2039,7 @@ CONTAINS
        ! Adaptation occurs within this IF block.
        IF ((iorb - iorb_init) > 1 .AND. iorb .NE. norb/2) THEN
           IF (accept) THEN
-            previous_cov_matrix = cov_matrix
+             previous_cov_matrix = cov_matrix
           END IF
           ! ----------------------- RAM ADAPTATION -------------------
 
@@ -2053,8 +2058,8 @@ CONTAINS
              WRITE(stderr, *) "lambda:", lambda_arr(1,1)
 
              IF (.NOT. lambda_arr(1,1) / lambda_arr(1,1) == 1) THEN ! Apparently this catches NaNs
-               WRITE(stderr, *) "WARNING: NaN lambda detected! Resetting.."
-               lambda_arr(1,:) = 0.237_bp
+                WRITE(stderr, *) "WARNING: NaN lambda detected! Resetting.."
+                lambda_arr(1,:) = 0.237_bp
              END IF
 
           END IF
@@ -2160,17 +2165,17 @@ CONTAINS
           elements_arr(i, :) = last_proposal(8*(i-1)+1:8*(i-1)+6) + deviates(1+(i-1)*6:6+(i-1)*6)
        END DO
        IF (iorb - iorb_init > 499) THEN 
-         mass_lock = .FALSE. 
+          mass_lock = .FALSE. 
        END IF
        IF (mass_lock .EQV. .FALSE.) THEN
-         DO i=1, nperturber
-            additional_perturbers(i,8) = last_proposal(8*(i-1)+7) + deviates(6*nstorb+i)
-            IF (additional_perturbers(i,8) < 0) THEN
-               WRITE(stderr, *) "WARNING: NEGATIVE MASS FOUND"
-            END IF
-         END DO
+          DO i=1, nperturber
+             additional_perturbers(i,8) = last_proposal(8*(i-1)+7) + deviates(6*nstorb+i)
+             IF (additional_perturbers(i,8) < 0) THEN
+                WRITE(stderr, *) "WARNING: NEGATIVE MASS FOUND"
+             END IF
+          END DO
 
-         DO WHILE (ANY(additional_perturbers(:,8) < 0)) !Repeat if neg mass found---------------------
+          DO WHILE (ANY(additional_perturbers(:,8) < 0)) !Repeat if neg mass found---------------------
              CALL randomGaussian(ran_arr)
              deviates = lambda_arr(1,:)*MATMUL(A_arr2(:,:),ran_arr)
              DO i=1, nstorb
@@ -2183,7 +2188,7 @@ CONTAINS
                 END IF
              END DO
 
-         END DO
+          END DO
        END IF
 
        DO i=1, nstorb
@@ -2281,12 +2286,19 @@ CONTAINS
 
   END SUBROUTINE massEstimation_MCMC
 
-  ! Asteroid mass estimation 'marching' algorithm.
-  ! Note that this is an approximation at best and should not be used by itself for
-  ! any serious work!
-  ! See Siltala & Granvik (2017)
-  ! https://doi.org/10.1016/j.icarus.2017.06.028
-  ! Author: LS
+
+
+
+
+  !! *Description*:
+  !!
+  !! Asteroid mass estimation 'marching' algorithm.  Note that this is
+  !! an approximation at best and should not be used by itself for any
+  !! serious work! See Siltala & Granvik (2017)
+  !! https://doi.org/10.1016/j.icarus.2017.06.028
+  !!
+  !! @author LS
+  !!
   SUBROUTINE massEstimation_march(storb_arr, orb_arr, HG_arr, dyn_model, integrator, integration_step, &
        perturbers, asteroid_perturbers, mass, out_fname, resolution)
     IMPLICIT NONE
@@ -2330,13 +2342,13 @@ CONTAINS
     CALL NEW(march_out_file, TRIM(out_fname))
     CALL OPEN(march_out_file)
 
-    CALL NEW(res_file, TRIM(out_fname)//trim('.res'))
+    CALL NEW(res_file, TRIM(out_fname)//TRIM('.res'))
     CALL OPEN(res_file)
 
-    ALLOCATE(nobs_arr(size(orb_arr)))
+    ALLOCATE(nobs_arr(SIZE(orb_arr)))
 
     IF (resolution == 0) THEN
-      resolution = 300 ! Default value if resolution is not given.
+       resolution = 300 ! Default value if resolution is not given.
     END IF
 
     perturber_elems(:) = getElements(orb_arr(1), "cartesian", "equatorial")
@@ -2350,20 +2362,19 @@ CONTAINS
     lower_mass_bound = 0.1_bp * rough_estimate
     upper_mass_bound = 10.0_bp * rough_estimate
 
-    ALLOCATE(marching_masses(resolution))
-    ALLOCATE(chi2_arr(resolution,size(orb_arr)))
-    ALLOCATE(chi2_sum_arr(resolution))
+    ALLOCATE(marching_masses(resolution+1))
+    ALLOCATE(chi2_arr(SIZE(marching_masses),SIZE(orb_arr)))
+    ALLOCATE(chi2_sum_arr(SIZE(marching_masses)))
 
     ! Generates an array of evenly spaced masses.
     step = 1.0_bp/resolution * upper_mass_bound
     marching_masses(1) = lower_mass_bound
 
-    DO i=1,resolution
-      mass = lower_mass_bound + (i-1) * step
-      marching_masses(i) = mass
+    DO i=1,SIZE(marching_masses)
+       marching_masses(i) = lower_mass_bound + (i-1) * step
     END DO
 
-    DO i=1, resolution
+    DO i=1,SIZE(marching_masses)
        CALL setParameters(orb_arr(1), mass=marching_masses(i))
        chi2_arr(i,:) = getChi2(storb_arr, orb_arr, resids)
        chi2_sum_arr(i) = SUM(chi2_arr(i,:))
@@ -2377,6 +2388,9 @@ CONTAINS
     CALL writeResiduals_SO(storb_arr,orb_arr,getUnit(res_file))
 
   END SUBROUTINE massEstimation_march
+
+
+
 
 
 END MODULE PhysicalParameters_cl

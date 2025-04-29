@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -25,8 +25,8 @@
 !!
 !! Main program for various tasks that include orbit computation.
 !!
-!! @author  MG
-!! @version 2023-03-29
+!! @author  MG, LS, ET
+!! @version 2025-04-04
 !!
 PROGRAM oorb
 
@@ -299,7 +299,7 @@ PROGRAM oorb
        n, &
        obj_alt, obj_alt_min, obj_phase, obj_vmag, obj_vmag_cometary, obj_vmag_max, &
        observer_r2, obsy_moon_r2, opplat, opplon, outlier_multiplier_prm, &
-       output_interval, &
+       outlier_fraction_max, output_interval, &
        pa, periapsis_distance, peak, pp_G, pp_G_unc, probability_mass, &
        ra, &
        sec, smplx_tol, smplx_similarity_tol, &
@@ -408,6 +408,7 @@ PROGRAM oorb
   separately = .FALSE.
   simint = 1
   outlier_multiplier_prm = 3.0_bp
+  outlier_fraction_max = 0.2_bp
   outlier_rejection_prm = .FALSE.
   plot_open = .FALSE.
   plot_results = .FALSE.
@@ -477,6 +478,7 @@ PROGRAM oorb
        observation_format_out=observation_format_out, &
        orbit_format_out=orbit_format_out, &
        outlier_rejection=outlier_rejection_prm, &
+       outlier_fraction_max=outlier_fraction_max, &
        outlier_multiplier=outlier_multiplier_prm, &
        dchi2_rejection=dchi2_rejection, &
        dchi2_max=dchi2_max, &
@@ -1434,7 +1436,12 @@ PROGRAM oorb
         END IF
         lu = getUnit(obs_file)
      END IF
-     CALL writeObservationFile(obss_in, lu, "mpc3")
+     id = get_cl_option("--common-number=","")
+     IF (len_TRIM(id) > 0) THEN
+        CALL writeObservationFile(obss_in, lu, "mpc3", number=TRIM(id))
+     ELSE
+        CALL writeObservationFile(obss_in, lu, "mpc3")
+     END IF
      IF (LEN_TRIM(obs_fname) /= 0) THEN
         CALL NULLIFY(obs_file)
      END IF
@@ -1997,6 +2004,7 @@ PROGRAM oorb
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
+             outlier_fraction_max=outlier_fraction_max, &
              outlier_multiplier=outlier_multiplier_prm, &
              t_inv=t, &
              element_type=element_type_comp_prm, &
@@ -2719,6 +2727,7 @@ PROGRAM oorb
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
+             outlier_fraction_max=outlier_fraction_max, &
              outlier_multiplier=outlier_multiplier_prm, &
              t_inv=t, &
              element_type=element_type_comp_prm, &
@@ -2821,7 +2830,7 @@ PROGRAM oorb
                  noutlier = noutlier + 1
               END IF
            END DO
-           IF (noutlier > SIZE(obs_masks,dim=1)/5) THEN
+           IF (noutlier > SIZE(obs_masks,dim=1)*outlier_fraction_max) THEN
               ! In case of too many outliers (>20% of obs), throw the
               ! observation set in a separate bin:
               CALL NEW(out_file, "observation_sets_with_many_outliers." // TRIM(observation_format_out))
@@ -3183,6 +3192,7 @@ PROGRAM oorb
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
+             outlier_fraction_max=outlier_fraction_max, &
              outlier_multiplier=outlier_multiplier_prm, &
              dchi2_rejection = dchi2_rejection, &
              dchi2_max = dchi2_max, &
@@ -3278,7 +3288,7 @@ PROGRAM oorb
                  noutlier = noutlier + 1
               END IF
            END DO
-           IF (noutlier > SIZE(obs_masks,dim=1)/5) THEN
+           IF (noutlier > SIZE(obs_masks,dim=1)*outlier_fraction_max) THEN
               ! In case of too many outliers (>20% of obs), throw the
               ! observation set in a separate bin:
               CALL NEW(out_file, "observation_sets_with_many_outliers." // TRIM(observation_format_out))
@@ -3807,6 +3817,7 @@ PROGRAM oorb
                 integrator=integrator, &
                 integration_step=integration_step, &
                 outlier_rejection=outlier_rejection_prm, &
+                outlier_fraction_max=outlier_fraction_max, &
                 outlier_multiplier=outlier_multiplier_prm, &
                 element_type=element_type_comp_prm, &
                 accept_multiplier=accwin_multiplier, &
@@ -4475,6 +4486,7 @@ PROGRAM oorb
              dchi2_rejection = dchi2_rejection, &
              dchi2_max = dchi2_max, &
              outlier_rejection=outlier_rejection_prm, &
+             outlier_fraction_max=outlier_fraction_max, &
              outlier_multiplier=outlier_multiplier_prm, &
              element_type=element_type_comp_prm, &
              accept_multiplier=accwin_multiplier, &
@@ -5058,6 +5070,7 @@ PROGRAM oorb
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
+             outlier_fraction_max=outlier_fraction_max, &
              outlier_multiplier=outlier_multiplier_prm, &
              t_inv=t, &
              element_type=element_type_comp_prm, &
@@ -5155,7 +5168,7 @@ PROGRAM oorb
                  noutlier = noutlier + 1
               END IF
            END DO
-           IF (noutlier > SIZE(obs_masks,dim=1)/5) THEN
+           IF (noutlier > SIZE(obs_masks,dim=1)*outlier_fraction_max) THEN
               CALL warningMessage("oorb / lsl", &
                    "More than 20% of the observations have been" // &
                    "discarded as outliers.", 1)
@@ -5628,13 +5641,13 @@ PROGRAM oorb
           integration_step_init=integration_step_init, &
           accwin_multiplier=accwin_multiplier, &
           regularized_pdf=regularized, &
-          !          apriori_a_max=apriori_a_max, &
-          !          apriori_a_min=apriori_a_min, &
-          !          apriori_periapsis_max=apriori_periapsis_max, &
-          !          apriori_periapsis_min=apriori_periapsis_min, &
-          !          apriori_apoapsis_max=apriori_apoapsis_max, &
-          !          apriori_apoapsis_min=apriori_apoapsis_min, &
-          !          apriori_rho_min=apriori_rho_min, &
+                                !          apriori_a_max=apriori_a_max, &
+                                !          apriori_a_min=apriori_a_min, &
+                                !          apriori_periapsis_max=apriori_periapsis_max, &
+                                !          apriori_periapsis_min=apriori_periapsis_min, &
+                                !          apriori_apoapsis_max=apriori_apoapsis_max, &
+                                !          apriori_apoapsis_min=apriori_apoapsis_min, &
+                                !          apriori_rho_min=apriori_rho_min, &
           cos_gaussian=cos_gaussian, &
           cos_nsigma=cos_nsigma, &
           cos_norb=cos_norb, &
@@ -5756,18 +5769,19 @@ PROGRAM oorb
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
+             outlier_fraction_max=outlier_fraction_max, &
              outlier_multiplier=outlier_multiplier_prm, &
              t_inv=t, &
              element_type=element_type_comp_prm, &
              accept_multiplier=accwin_multiplier, &
              regularized_pdf=regularized, &
-             !             apriori_a_max=apriori_a_max, &
-             !             apriori_a_min=apriori_a_min, &
-             !             apriori_periapsis_max=apriori_periapsis_max, &
-             !             apriori_periapsis_min=apriori_periapsis_min, &
-             !             apriori_apoapsis_max=apriori_apoapsis_max, &
-             !             apriori_apoapsis_min=apriori_apoapsis_min, &
-             !             apriori_rho_min=apriori_rho_min, &
+                                !             apriori_a_max=apriori_a_max, &
+                                !             apriori_a_min=apriori_a_min, &
+                                !             apriori_periapsis_max=apriori_periapsis_max, &
+                                !             apriori_periapsis_min=apriori_periapsis_min, &
+                                !             apriori_apoapsis_max=apriori_apoapsis_max, &
+                                !             apriori_apoapsis_min=apriori_apoapsis_min, &
+                                !             apriori_rho_min=apriori_rho_min, &
              cos_gaussian=cos_gaussian, &
              cos_nsigma=cos_nsigma, &
              cos_norb=cos_norb, &
@@ -6121,7 +6135,6 @@ PROGRAM oorb
      END DO
 
 
-
   CASE ("residual-stamps")
 
      CALL readConfigurationFile(conf_file, &
@@ -6147,6 +6160,7 @@ PROGRAM oorb
           integrator=integrator, &
           integration_step=integration_step, &
           outlier_rejection=outlier_rejection_prm, &
+          outlier_fraction_max=outlier_fraction_max, &
           outlier_multiplier=outlier_multiplier_prm, &
           accept_multiplier=accwin_multiplier)
      CALL makeResidualStamps(storb_arr_in(1), obss_sep(1), TRIM(str) // &
@@ -6156,7 +6170,6 @@ PROGRAM oorb
              "TRACE BACK (20)", 1)
         STOP
      END IF
-
 
 
   CASE ("propagation")
@@ -6810,6 +6823,7 @@ PROGRAM oorb
         STOP
 
      END IF
+
 
   CASE ("ephemeris")
 
@@ -7484,7 +7498,6 @@ PROGRAM oorb
      END IF
 
 
-
   CASE ("phasecurve")
 
      ! Input time step [days]
@@ -7516,20 +7529,35 @@ PROGRAM oorb
      END IF
 
      id_arr => getObjects(obss_in)
-
      DO i=1,norb
 
         k = -1
         DO j=1,SIZE(id_arr)
-           IF (TRIM(id_arr_in(i)) == TRIM(id_arr(j))) THEN
-              k = j
-              EXIT
+           IF (ASSOCIATED(id_arr_in)) THEN
+              IF (TRIM(id_arr_in(i)) == TRIM(id_arr(j))) THEN
+                 k = j
+                 id = TRIM(id_arr(j))
+                 orb = copy(orb_arr_in(i))
+                 EXIT
+              END IF
+           ELSE IF (ASSOCIATED(id_arr_storb_in)) THEN
+              IF (TRIM(id_arr_storb_in(i)) == TRIM(id_arr(j))) THEN
+                 k = j
+                 id = TRIM(id_arr(j))
+                 orb = getNominalOrbit(storb_arr_in(i), ml_orbit=.TRUE.)
+                 EXIT
+              END IF
            END IF
         END DO
         IF (k < 0) THEN
            IF (err_verb >= 1) THEN
-              WRITE(stderr,*) "WARNING: Observations for object " // &
-                   TRIM(id_arr_in(i)) // " not found..."
+              IF (ASSOCIATED(id_arr_in)) THEN
+                 WRITE(stderr,*) "WARNING: Observations for object " // &
+                      TRIM(id_arr_in(i)) // " not found..."
+              ELSE IF (ASSOCIATED(id_arr_storb_in)) THEN
+                 WRITE(stderr,*) "WARNING: Observations for object " // &
+                      TRIM(id_arr_storb_in(i)) // " not found..."                 
+              END IF
            END IF
            CYCLE
         END IF
@@ -7563,7 +7591,7 @@ PROGRAM oorb
         END IF
 
         ! Set integration parameters
-        CALL setParameters(orb_arr_in(i), dyn_model=dyn_model, &
+        CALL setParameters(orb, dyn_model=dyn_model, &
              perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, integration_step=integration_step)
         IF (error) THEN
@@ -7573,7 +7601,7 @@ PROGRAM oorb
         END IF
 
         ! Compute topocentric ephemerides
-        CALL getEphemerides(orb_arr_in(i), observers, ephemerides, &
+        CALL getEphemerides(orb, observers, ephemerides, &
              this_lt_corr_arr=orb_lt_corr_arr)
         IF (error) THEN
            CALL errorMessage('oorb / phasecurve', &
@@ -7581,8 +7609,11 @@ PROGRAM oorb
            STOP
         END IF
 
+        ! Nullify the orbit since we don't need it anymore
+        CALL NULLIFY(orb)
+
         IF (separately) THEN
-           CALL NEW(tmp_file, TRIM(id_arr_in(i)) // ".pc")
+           CALL NEW(tmp_file, TRIM(id) // ".pc")
            IF (error) THEN
               CALL errorMessage('oorb / phasecurve', &
                    'TRACE BACK (25)',1)
@@ -7609,7 +7640,7 @@ PROGRAM oorb
         END DO
 
         ! Header for the output (file)
-        WRITE(lu,'("#",A,1X,I0)') TRIM(id_arr_in(i)), nobs-k
+        WRITE(lu,'("#",A,1X,I0)') TRIM(id), nobs-k
 
         DO j=1,nobs
 
@@ -7725,6 +7756,9 @@ PROGRAM oorb
                  obj_vmag = mag + 0.32_bp
               CASE ("L")
                  obj_vmag = mag + 0.2_bp
+              CASE ("G")
+                 ! not from GW but approximate from Fig 5.14 at https://gea.esac.esa.int/archive/documentation/GEDR3/Data_processing/chap_cu5pho/cu5pho_sec_photSystem/cu5pho_ssec_photRelations.html
+                 obj_vmag = mag + 0.15_bp
               CASE default
                  IF (error) THEN
                     CALL errorMessage('oorb / phasecurve', &
@@ -7769,7 +7803,6 @@ PROGRAM oorb
      END DO
 
 
-
   CASE ("synthetic_phasecurve")
 
      H = get_cl_option("--H=", 0.0_bp)
@@ -7782,7 +7815,6 @@ PROGRAM oorb
              phase_angle=i/5.0_bp*rad_deg)
 
      END DO
-
 
 
   CASE ("classification")
@@ -7872,6 +7904,7 @@ PROGRAM oorb
      END DO
      DEALLOCATE(storb_arr_in, id_arr_storb_in)
 
+
   CASE ("ephemeris_planets")
 
      IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
@@ -7925,6 +7958,7 @@ PROGRAM oorb
              planetary_masses(11), elements(1), elements(2))
      END DO
      DEALLOCATE(planeph)
+
 
   CASE ("tisserand_parameters")
 
@@ -8598,7 +8632,6 @@ PROGRAM oorb
      CALL NULLIFY(obsies)
 
 
-
   CASE ("fou")
 
      !! Produces a table with the quantities required for the
@@ -9044,6 +9077,7 @@ PROGRAM oorb
 
      END IF
 
+
   CASE ("obs_timespan")
 
      !! Returns the total observational timespan of the input
@@ -9051,12 +9085,14 @@ PROGRAM oorb
 
      WRITE(stdout,"(F20.6)") getObservationalTimespan(obss_in)
 
+
   CASE ("obs_angular_arc")
 
      !! Returns the total observational angular arc of the input
      !! observations (first to last).
 
      WRITE(stdout,"(F14.10)") getObservationalAngularArc(obss_in)/rad_deg
+
 
   CASE ("uncertainty")
 
@@ -9106,8 +9142,6 @@ PROGRAM oorb
      END DO
 
 
-
-
   CASE ("uncertainty.old")
 
      !! Fractional (dx/x) and absolute uncertainty (dx) on a,e,i;
@@ -9150,9 +9184,6 @@ PROGRAM oorb
            WRITE(stdout,*)
         END IF
      END DO
-
-
-
 
 
   CASE ("afrac")
@@ -9269,6 +9300,7 @@ PROGRAM oorb
         WRITE(stdout,"(A,1X,2(I0,1X),F15.12)") "Dec = ", i, j, sec
      END IF
 
+
   CASE ("encode_designation")
 
      IF (.NOT.(get_cl_option("--mpc", .FALSE.) .OR. &
@@ -9347,6 +9379,7 @@ PROGRAM oorb
         END DO
         CALL NULLIFY(tmp_file)
      END IF
+
 
   CASE ("synthetic_astrometry")
 
@@ -9469,6 +9502,7 @@ PROGRAM oorb
         WRITE(*,*) i, "KEP", elements, H, "56000.0 1 6 -1 OpenOrb"
      END DO
 
+
   CASE ("mass_estimation_mcmc")
 
      ! This is used to enable Mira's delayed rejection algorithm. May not currently work as expected
@@ -9500,10 +9534,15 @@ PROGRAM oorb
      END IF
 
      DO i = 1, SIZE(storb_arr_in)
-        CALL setParameters(storb_arr_in(i), dyn_model=dyn_model, &
-             perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
-             integrator=integrator, integration_step=integration_step, &
-             outlier_multiplier=outlier_multiplier_prm)
+        CALL setParameters(storb_arr_in(i), &
+             dyn_model=dyn_model, &
+             perturbers=perturbers, &
+             asteroid_perturbers=asteroid_perturbers, &
+             integrator=integrator, &
+             integration_step=integration_step, &
+             outlier_rejection=outlier_rejection_prm, &
+             outlier_multiplier=outlier_multiplier_prm, &
+             outlier_fraction_max=outlier_fraction_max)
         IF (error) THEN
            CALL errorMessage("oorb / propagation", &
                 "TRACE BACK (75)", 1)
@@ -9673,6 +9712,7 @@ PROGRAM oorb
              integrator=integrator, &
              integration_step=integration_step, &
              outlier_rejection=outlier_rejection_prm, &
+             outlier_fraction_max=outlier_fraction_max, &
              outlier_multiplier=outlier_multiplier_prm, &
              t_inv=t, &
              element_type=element_type_comp_prm, &
@@ -9710,16 +9750,16 @@ PROGRAM oorb
              integrator=integrator, integration_step=integration_step)
      END DO
 
-
      WRITE(stdout, *) "Starting mass estimation..."
      CALL massEstimation_march(storb_arr_in, orb_arr, HG_arr_in, dyn_model, integrator, &
-          integration_step, perturbers, asteroid_perturbers, mass, out_fname,resolution)
+          integration_step, perturbers, asteroid_perturbers, mass, out_fname, resolution)
      WRITE(stdout, *) "Mass estimation is done."
      WRITE(stdout, *) "Best mass is ", mass
      DO i = 1, SIZE(storb_arr_in)
         CALL NULLIFY(storb_arr_in(i))
      END DO
      DEALLOCATE(storb_arr_in)
+
 
      ! Computes residuals for each element from a MCMC mass estimation chain.
   CASE ("mass_residuals")
@@ -9799,6 +9839,7 @@ PROGRAM oorb
                 integrator=integrator, &
                 integration_step=integration_step, &
                 outlier_rejection=outlier_rejection_prm, &
+                outlier_fraction_max=outlier_fraction_max, &
                 outlier_multiplier=outlier_multiplier_prm, &
                 t_inv=t, &
                 element_type=element_type_comp_prm, &

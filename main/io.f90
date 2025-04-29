@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,8 +26,8 @@
 !! Contains routines for IO of options, orbits and residuals. To be
 !! called from main programs.
 !!
-!! @author  MG, JV, LS
-!! @version 2023-03-29
+!! @author  MG, JV, LS, ET
+!! @version 2025-04-01
 !!
 MODULE io
 
@@ -549,7 +549,7 @@ CONTAINS
        dyn_model_init, integrator_init, integration_step_init, simint, &
        accwin_multiplier, &
        dchi2_rejection, dchi2_max, regularized_pdf, chi2_min, &
-       outlier_rejection, outlier_multiplier, &
+       outlier_rejection, outlier_fraction_max, outlier_multiplier, &
        apriori_a_min, apriori_a_max, apriori_periapsis_min, &
        apriori_periapsis_max, apriori_apoapsis_min, &
        apriori_apoapsis_max, apriori_rho_min, apriori_rho_max, &
@@ -610,6 +610,7 @@ CONTAINS
          sor_genwin_offset
     REAL(bp), INTENT(inout), OPTIONAL :: &
          accwin_multiplier, &
+         outlier_fraction_max, &
          outlier_multiplier, &
          generat_multiplier, &
          ls_correction_factor, &
@@ -876,6 +877,10 @@ CONTAINS
                 CALL errorMessage("io / readConfigurationFile", &
                      "Could not read parameter value (40).", 1)
              END IF
+          END IF
+       CASE ("outlier_fraction.max")
+          IF (PRESENT(outlier_fraction_max)) THEN
+             CALL toReal(TRIM(par_val), outlier_fraction_max, error)
           END IF
        CASE ("outlier.multiplier")
           IF (PRESENT(outlier_multiplier)) THEN
@@ -1146,21 +1151,21 @@ CONTAINS
              END IF
           END IF
        CASE ("perturber.asteroids")
-         IF (PRESENT(asteroid_perturbers)) THEN
-            IF (.NOT.error) THEN
-               SELECT CASE (ADJUSTL(par_val))
-               CASE ("t", "T")
-                  asteroid_perturbers = .TRUE.
-               CASE ("f", "F")
-                  asteroid_perturbers = .FALSE.
-               CASE default
-                  error = .TRUE.
-                  CALL errorMessage("io / readConfigurationFile", &
-                       "Cannot understand logical value: " // &
-                       TRIM(ADJUSTL(par_val)) // ".", 1)
-               END SELECT
-            END IF
-         END IF
+          IF (PRESENT(asteroid_perturbers)) THEN
+             IF (.NOT.error) THEN
+                SELECT CASE (ADJUSTL(par_val))
+                CASE ("t", "T")
+                   asteroid_perturbers = .TRUE.
+                CASE ("f", "F")
+                   asteroid_perturbers = .FALSE.
+                CASE default
+                   error = .TRUE.
+                   CALL errorMessage("io / readConfigurationFile", &
+                        "Cannot understand logical value: " // &
+                        TRIM(ADJUSTL(par_val)) // ".", 1)
+                END SELECT
+             END IF
+          END IF
        CASE ("integrator")
           IF (PRESENT(integrator)) THEN
              integrator = TRIM(par_val)
@@ -2656,7 +2661,7 @@ CONTAINS
           RETURN
        END IF
     END IF
-    
+
     IF (PRESENT(cov)) THEN
        IF (INDEX(header(4),"-0009-") /= 0) THEN
           ! Standard deviations appear to be present, so build the
@@ -2677,7 +2682,7 @@ CONTAINS
           cov(5:6,4) = cov(4,5:6)
           cov(5,6) = stdev(5)*stdev(6)*correlation(15)
           cov(6,5) = cov(5,6)
-       else IF (INDEX(header(4),"-0078-") /= 0) THEN
+       ELSE IF (INDEX(header(4),"-0078-") /= 0) THEN
           ! Standard deviations appear to be present, so build the
           ! covariance using the available information (covariances).
           IF (element_type_in == "keplerian") THEN
@@ -3001,7 +3006,7 @@ CONTAINS
     REAL(bp), DIMENSION(6,6)   :: cov, corr
     REAL(bp), DIMENSION(6)     :: elements, sigmas
     REAL(bp) :: obsarc, rchi2
-    integer, dimension(6) :: indx
+    INTEGER, DIMENSION(6) :: indx
     INTEGER :: k, l, err, err_verb_
     LOGICAL, DIMENSION(:,:), POINTER :: &
          obs_masks => NULL()
@@ -3923,7 +3928,7 @@ CONTAINS
 !!$             END IF
 !!$          END DO
 !!$       END DO
-       
+
     END IF
     IF (PRESENT(pdf)) THEN
        jac = 1.0_bp
@@ -5681,7 +5686,7 @@ CONTAINS
 
 
 
-  
+
   SUBROUTINE readMCMCmassfile(lu, orb_arr, iorb, itrial)
 
     IMPLICIT NONE
@@ -5733,11 +5738,11 @@ CONTAINS
 
 
 
-  
+
   SUBROUTINE readMCMCcovfile(lu,matrix)
 
     ! This subroutine reads .cov files outputted by the MCMC mass estimation algorithm.
-    
+
     IMPLICIT NONE 
     INTEGER, INTENT(in) :: lu
     REAL(bp), DIMENSION(:,:), POINTER :: matrix

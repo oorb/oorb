@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2015,2016                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -30,7 +30,7 @@
 !! @see Orbit_class
 !! 
 !! @author  MG, JV
-!! @version 2016-04-05
+!! @version 2025-04-01
 !!
 MODULE Time_cl
 
@@ -491,14 +491,14 @@ CONTAINS
        CALL timescaleConversion(mjd, "UTC", this%tdt, "TDT")
        this%tai = -1.0_bp
        this%ut1 = -1.0_bp
-    CASE ("tdt", "TDT", "et", "ET", "tt", "TT")
+    CASE ("tdb", "TDB", "tdt", "TDT", "et", "ET", "tt", "TT")
        this%tdt  = mjd
        this%utc = -1.0_bp
        this%tai = -1.0_bp
        this%ut1 = -1.0_bp
     CASE ("tcb", "TCB")
-       ! This assumes TT == TDB (error should be <2 millisecs)
-       this%tdt = mjd - 1.550505e-8_bp * (mjd - 43144.0_bp)
+       ! This assumes TT == TDB (error should be <2 millisecs), IAU 2006 Resolution B3
+       this%tdt = mjd - 1.550519768e-8_bp * (mjd - 43144.003725_bp) - 6.55e-5_bp/86400.0_bp
        this%utc = -1.0_bp
        this%tai = -1.0_bp
        this%ut1 = -1.0_bp
@@ -853,7 +853,7 @@ CONTAINS
             "TRACE BACK", 1)
        RETURN
     END IF
-    
+
     yearmonthdayhourminsec = &
          year  * 10000000000.0_bp + &
          month * 100000000.0_bp   + &

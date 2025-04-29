@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2018,2019                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Grigori Fedorets                               !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2019-08-23
+!! @version 2025-04-22
 !!
 MODULE Orbit_cl
 
@@ -4398,9 +4398,12 @@ CONTAINS
     REAL(bp), DIMENSION(6,6) :: scoord_partials
     REAL(bp), DIMENSION(6) :: observer_coordinates, elements, &
          solar_motion_correction
-    REAL(bp) :: mjd_tt
+    REAL(kind=bp), DIMENSION(3) :: u_op, u_os, u_sp, pos       
+    REAL(bp) :: mjd_tt, d_sun, up, us, smp
     INTEGER :: i, nthis, err
     LOGICAL :: lt_corr_
+    REAL(bp), PARAMETER :: xau = 149598870.700_bp
+    REAL(bp), PARAMETER :: gms_c2 = 1.32712440018e11_bp/(299792.458_bp**2)
 
     nthis = SIZE(this_arr,dim=1)
     ALLOCATE(this_arr_(nthis), stat=err)
@@ -4778,11 +4781,37 @@ CONTAINS
        mjd_tt = getMJD(t_emit, "TT")
        sun_emit => JPL_ephemeris(mjd_tt, 11, 12, error)
        solar_motion_correction = sun_emit(1,:) - sun_observer(1,:)
-
-       ! Transform to equatorial topocentric coordinates:
        CALL toCartesian(this_1, frame="equatorial")
        this_1%elements(1:6) = this_1%elements(1:6) - &
             observer_coordinates(1:6) + solar_motion_correction
+
+       ! Next do relativistic light deflection by the Sun to a unit
+       ! position vector of a solar system source.
+       !
+       ! Code by F. Mignard OCA/Cassiopee (V1, March 2007) and
+       ! identical to Karttunen: Johdatus taivaanmekaniikkaan, p146
+       !
+       ! unit vector observer to planet:
+       u_op = this_1%elements(1:3)/SQRT(dot_PRODUCT(this_1%elements(1:3),this_1%elements(1:3))) 
+       !
+       ! distance observer to Sun:
+       d_sun = SQRT(dot_PRODUCT(observer_coordinates(1:3),observer_coordinates(1:3)))
+       !
+       ! unit vector observer to Sun:
+       u_os = -observer_coordinates(1:3)/d_sun
+       !
+       ! unit vector Sun to planet:
+       u_sp = this_2%elements(1:3)/SQRT(dot_PRODUCT(this_2%elements(1:3), this_2%elements(1:3)))
+       !
+       up  = dot_PRODUCT(u_op,u_sp)
+       smp = dot_PRODUCT(u_os,u_sp)
+       us  = dot_PRODUCT(u_op,u_os)
+       !
+       ! correction to Cartesian unit vector exactly as in Karttunen (2nd row):
+       this_1%elements(1:3) = SQRT(dot_PRODUCT(this_1%elements(1:3),this_1%elements(1:3))) * &
+            (u_op - 2.0_bp*(gms_c2/(d_sun*xau))*(up*u_os - us*u_sp)/(1.0_bp - smp))
+
+       ! Transform to equatorial topocentric coordinates:
        ephemeris(i) = getSCoord(this_1, frame="equatorial")
        IF (error) THEN
           CALL errorMessage("Orbit / getEphemeris (multiple)", &
@@ -5256,7 +5285,7 @@ CONTAINS
             (mjd_tt - this%elements(6))
        getKeplerianElements(6) = &
             MODULO(getKeplerianElements(6), two_pi)
-       
+
     CASE ("cometary_ta", "cometary_ma")
 
        this_ = copy(this)
@@ -5349,7 +5378,7 @@ CONTAINS
     TYPE (Orbit)                            :: this_
     TYPE (CartesianCoordinates)             :: observer_
     REAL(bp), DIMENSION(6)                  :: observer_coord
-    REAL(bp)                                :: lt, rr, rv, vv, mjd_tt, delta_lt
+    REAL(bp)                                :: lt, rr, rv, vv, mjd_tt, delta_lt, r_so, r_op, r_sp
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -5383,7 +5412,14 @@ CONTAINS
             "Object is moving faster than light.", 1)
        RETURN
     END IF
-    lt = (SQRT(rv**2.0_bp+rr*(sol**2.0_bp-vv))-rv) / (sol**2.0_bp-vv)
+    r_so = SQRT(dot_PRODUCT(observer_coord(1:3),observer_coord(1:3)))
+    r_op = SQRT(rr)
+    r_sp = SQRT(dot_PRODUCT(this_%elements(1:3),this_%elements(1:3)))
+    ! Linear solution (KM?) + Karttunen's (Johdatus
+    ! taivaanmekaniikkaan) correction due to relativistic light
+    ! deflection:
+    lt = (SQRT(rv**2.0_bp+rr*(sol**2.0_bp-vv))-rv) / (sol**2.0_bp-vv) + &
+         (2.0_bp*planetary_mu(11)/sol**3.0_bp)*LOG((r_so + r_op + r_sp)/(r_so - r_op + r_sp))
     CALL NULLIFY(this_)
     CALL NULLIFY(observer_)
     CALL NEW(getLightTimeCorrectedTime, mjd_tt-lt, "TT")
