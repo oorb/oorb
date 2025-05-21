@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,8 +28,8 @@
 !!  
 !! @see Observations_class 
 !!  
-!! @author  MG, JV 
-!! @version 2023-04-06
+!! @author  MG, JV, ET
+!! @version 2025-05-20
 !!  
 MODULE Observation_cl
 
@@ -79,6 +79,7 @@ MODULE Observation_cl
      REAL(bp)                       :: mag
      REAL(bp)                       :: mag_unc
      REAL(bp)                       :: s2n
+     REAL(bp)                       :: pa_scan  
      CHARACTER(len=DESIGNATION_LEN) :: secret_name
      TYPE (Observatory)             :: obsy
      TYPE (CartesianCoordinates)    :: obsy_ccoord
@@ -199,7 +200,7 @@ CONTAINS
 
   SUBROUTINE NEW_Obs(this, number, designation, discovery, note1, &
        note2, obs_scoord, covariance, obs_mask, mag, filter, obsy, &
-       obsy_ccoord, mag_unc, s2n, satellite_ccoord, coord_unit, &
+       obsy_ccoord, mag_unc, s2n, pa_scan, satellite_ccoord, coord_unit, &
        secret_name)
 
     IMPLICIT NONE
@@ -215,6 +216,7 @@ CONTAINS
     REAL(bp), INTENT(in)                              :: mag
     REAL(bp), INTENT(in), OPTIONAL                    :: mag_unc
     REAL(bp), INTENT(in), OPTIONAL                    :: s2n
+    REAL(bp), INTENT(in), OPTIONAL                    :: pa_scan
     TYPE (Observatory), INTENT(in)                    :: obsy
     TYPE (CartesianCoordinates), INTENT(in)           :: obsy_ccoord
     TYPE (CartesianCoordinates), INTENT(in), OPTIONAL :: satellite_ccoord
@@ -250,6 +252,9 @@ CONTAINS
     this%filter              = filter
     IF (PRESENT(s2n)) THEN
        this%s2n            = s2n
+    END IF
+    IF (PRESENT(pa_scan)) THEN
+       this%pa_scan        = pa_scan
     END IF
     this%obsy              = copy(obsy)
     this%obsy_ccoord       = copy(obsy_ccoord)
@@ -300,6 +305,7 @@ CONTAINS
     this%mag_unc           = -1.0_bp
     this%filter              = "  "
     this%s2n               = -1.0_bp
+    this%pa_scan           = 0.0_bp
     CALL NULLIFY(this%obsy)
     CALL NULLIFY(this%obsy_ccoord)
     CALL NULLIFY(this%satellite_ccoord)
@@ -340,6 +346,7 @@ CONTAINS
     copy_Obs%mag_unc           = this%mag_unc
     copy_Obs%filter              = this%filter
     copy_Obs%s2n               = this%s2n
+    copy_Obs%pa_scan           = this%pa_scan
     copy_Obs%obsy              = copy(this%obsy)
     IF (error) THEN
        CALL errorMessage("Observation / copy", &
@@ -860,6 +867,30 @@ CONTAINS
 
   END FUNCTION getMagnitude
 
+
+
+
+  !! *Description*:
+  !!
+  !! Returns position angle scan.
+  !!
+  !! Returns error.
+  !!
+  REAL(bp) FUNCTION getPAscan(this)
+
+    IMPLICIT NONE
+    TYPE (Observation), INTENT(in) :: this
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Observation / getPAscan", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    getPAscan = this%pa_scan
+
+  END FUNCTION getPAscan
 
 
 

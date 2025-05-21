@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2025-03-28
+!! @version 2025-05-20
 !!
 MODULE planetary_data
 
@@ -166,20 +166,20 @@ MODULE planetary_data
   LOGICAL, DIMENSION(300)                       :: asteroid_masks = .TRUE.
   CHARACTER(len=10), DIMENSION(300)             :: asteroid_indices
 
-  PUBLIC :: JPL_ephemeris_init
-  PUBLIC :: JPL_ephemeris
-  PUBLIC :: JPL_ephemeris_nullify
+  PUBLIC :: planetary_ephemeris_init
+  PUBLIC :: planetary_ephemeris
+  PUBLIC :: planetary_ephemeris_nullify
   PUBLIC :: BC_ephemeris
   PUBLIC :: BC_ephemeris_init
   PUBLIC :: BC_masses
   PUBLIC :: Hill_radius
 
-  INTERFACE JPL_ephemeris
-     MODULE PROCEDURE JPL_ephemeris_r8
-     MODULE PROCEDURE JPL_ephemeris_perturbers_r8
-!!$     MODULE PROCEDURE JPL_ephemeris_r16
-!!$     MODULE PROCEDURE JPL_ephemeris_perturbers_r16
-  END INTERFACE JPL_ephemeris
+  INTERFACE planetary_ephemeris
+     MODULE PROCEDURE planetary_ephemeris_r8
+     MODULE PROCEDURE planetary_ephemeris_pert_r8
+!!$     MODULE PROCEDURE planetary_ephemeris_r16
+!!$     MODULE PROCEDURE planetary_ephemeris_pert_r16
+  END INTERFACE planetary_ephemeris
 
   INTERFACE BC_ephemeris
      MODULE PROCEDURE BC_ephemeris_r8
@@ -237,12 +237,12 @@ CONTAINS
   !! *Description*:
   !!
   !! If used for the first time during execution, this routine reads
-  !! the JPL Planetary Ephemerides from a given file (e.g., de405.dat
-  !! at JPL) and stores the data in an array.
+  !! the planetary ephemerides from a given file (e.g., JPL's deXXX.dat
+  !! or IMCCE's inpopXXX.dat) and stores the data in an array.
   !!
   !! Returns error.
   !!
-  SUBROUTINE JPL_ephemeris_init(error, filename)
+  SUBROUTINE planetary_ephemeris_init(error, filename)
 
     IMPLICIT NONE
     LOGICAL, INTENT(inout)                 :: error
@@ -280,7 +280,7 @@ CONTAINS
        INQUIRE(unit=lu, opened=used, iostat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_init(): Error when inquiring for status of logical unit."
+          WRITE(0,*) "planetary_ephemeris_init(): Error when inquiring for status of logical unit."
           RETURN
        END IF
        IF (used) THEN
@@ -290,7 +290,7 @@ CONTAINS
           ! A free unit could not be found:
           IF (count > max_lu) THEN
              error = .TRUE.
-             WRITE(0,*) "JPL_ephemeris_init(): Could not find a free logical unit."
+             WRITE(0,*) "planetary_ephemeris_init(): Could not find a free logical unit."
              RETURN
           END IF
           lu = lu + 1
@@ -301,7 +301,7 @@ CONTAINS
        END IF
     END DO
 
-    ! Read deXXX.dat (or whatever you call the JPL Planetary Ephemeris file):
+    ! Read deXXX.dat (or whatever you call the planetary ephemeris file):
     !WRITE(0,"(A,1X,A)") "Using ephemeris file ", TRIM(fname)
     fnstart = INDEX(fname,"/",back=.TRUE.)
     IF (INDEX(fname,"405",back=.TRUE.) .GT. fnstart) THEN
@@ -334,13 +334,13 @@ CONTAINS
             recl=RECORD_LENGTH*RECORD_SIZE_INPOP10B, action='READ', iostat=err)
     ELSE
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not select correct record length for file '" &
+       WRITE(0,*) "planetary_ephemeris_init(): Could not select correct record length for file '" &
             // TRIM(fname) // "'."
        RETURN
     END IF
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not open file '" // TRIM(fname) // "'."
+       WRITE(0,*) "planetary_ephemeris_init(): Could not open file '" // TRIM(fname) // "'."
        RETURN
     END IF
 
@@ -354,7 +354,7 @@ CONTAINS
     END SELECT
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not read record #1."
+       WRITE(0,*) "planetary_ephemeris_init(): Could not read record #1."
        RETURN
     END IF
 
@@ -366,7 +366,7 @@ CONTAINS
     END SELECT
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not read record #2."
+       WRITE(0,*) "planetary_ephemeris_init(): Could not read record #2."
        RETURN
     END IF
 
@@ -386,13 +386,13 @@ CONTAINS
        ALLOCATE(tmp(NCOEFF_INPOP10B,NRECORD_MAX), stat=err)
     ELSE
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could select correct amount of memory for file '" &
+       WRITE(0,*) "planetary_ephemeris_init(): Could select correct amount of memory for file '" &
             // TRIM(fname) // "'."
        RETURN
     END IF
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory (5)."
+       WRITE(0,*) "planetary_ephemeris_init(): Could not allocate memory (5)."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
@@ -406,7 +406,7 @@ CONTAINS
           i = i + 1
           IF (i+2 > NRECORD_MAX) THEN
              error = .TRUE.
-             WRITE(0,*) "JPL_ephemeris_init(): NRECORD_MAX too small."
+             WRITE(0,*) "planetary_ephemeris_init(): NRECORD_MAX too small."
              DEALLOCATE(tmp, stat=err)
              RETURN
           END IF
@@ -501,7 +501,7 @@ CONTAINS
     ALLOCATE(buf(SIZE(tmp,dim=1),i), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not allocate memory (10)."
+       WRITE(0,*) "planetary_ephemeris_init(): Could not allocate memory (10)."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
@@ -509,13 +509,13 @@ CONTAINS
     DEALLOCATE(tmp, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_init(): Could not deallocate memory."
+       WRITE(0,*) "planetary_ephemeris_init(): Could not deallocate memory."
        RETURN
     END IF
     CLOSE(lu)
     first = .FALSE.
 
-  END SUBROUTINE JPL_ephemeris_init
+  END SUBROUTINE planetary_ephemeris_init
 
 
 
@@ -528,14 +528,14 @@ CONTAINS
   !!
   !! Returns error.
   !!
-  SUBROUTINE JPL_ephemeris_nullify()
+  SUBROUTINE planetary_ephemeris_nullify()
 
     IMPLICIT NONE
     INTEGER :: err
 
     DEALLOCATE(buf, stat=err)
 
-  END SUBROUTINE JPL_ephemeris_nullify
+  END SUBROUTINE planetary_ephemeris_nullify
 
 
 
@@ -543,8 +543,9 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Reads the JPL Planetary Ephemeris and gives the position and
-  !! velocity of the point 'ntarget' with respect to 'ncenter'.
+  !! Reads the planetary ephemeris table, carries out interpolations,
+  !! and returns the position and velocity of the point 'ntarget' with
+  !! respect to 'ncenter'.
   !!
   !! ntarget = integer number of target point.
   !!
@@ -588,14 +589,14 @@ CONTAINS
   !!    -9       11
   !!    -9       12
   !!
-  FUNCTION JPL_ephemeris_r8(mjd_tt, ntarget, ncenter, error, km)
+  FUNCTION planetary_ephemeris_r8(mjd_tt, ntarget, ncenter, error, km)
 
     IMPLICIT NONE
     REAL(rprec8), INTENT(in)              :: mjd_tt
     INTEGER, INTENT(in)                   :: ntarget, ncenter
     LOGICAL, INTENT(inout)                :: error
     LOGICAL, OPTIONAL, INTENT(in)         :: km
-    REAL(rprec8), DIMENSION(:,:), POINTER :: JPL_ephemeris_r8
+    REAL(rprec8), DIMENSION(:,:), POINTER :: planetary_ephemeris_r8
 
     REAL(rprec8), DIMENSION(13,6) :: celements
     REAL(rprec8), DIMENSION(6)    :: celements_
@@ -607,21 +608,21 @@ CONTAINS
     celements = 0.0_rprec8
 
     IF (first) THEN
-       CALL JPL_ephemeris_init(error)
+       CALL planetary_ephemeris_init(error)
        IF (error) THEN
-          WRITE(0,*) "JPL_ephemeris_r8(): Error when calling JPL_ephemeris_init()."
+          WRITE(0,*) "planetary_ephemeris_r8(): Error when calling planetary_ephemeris_init()."
           RETURN
        END IF
     END IF
 
     IF (ntarget == ncenter) THEN
-       ALLOCATE(JPL_ephemeris_r8(1,6), stat=err)
+       ALLOCATE(planetary_ephemeris_r8(1,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (1)."
+          WRITE(0,*) "planetary_ephemeris_r8(): Could not allocate memory for output (1)."
           RETURN
        END IF
-       JPL_ephemeris_r8(1,1:6) = 0.0_rprec8
+       planetary_ephemeris_r8(1,1:6) = 0.0_rprec8
        RETURN
     END IF
 
@@ -646,7 +647,7 @@ CONTAINS
           list(12) = 2
           celements(1:12,1:6) = states(tt2, list, error)
           IF (error) THEN
-             WRITE(0,*) 'JPL_ephemeris_r8(): Target object and center object are the same.'
+             WRITE(0,*) 'planetary_ephemeris_r8(): Target object and center object are the same.'
              RETURN
           ELSE
              !state = celements(11,:)
@@ -654,7 +655,7 @@ CONTAINS
           END IF
        ELSE
           error = .TRUE.
-          WRITE(0,*) 'JPL_ephemeris_r8(): No librations available on the ephemeris file.'
+          WRITE(0,*) 'planetary_ephemeris_r8(): No librations available on the ephemeris file.'
           RETURN
        END IF
     END IF
@@ -691,7 +692,7 @@ CONTAINS
     !  make call to state
     celements(1:12,1:6) = states(tt2, list, error)
     IF (error) THEN
-       WRITE(0,*) 'JPL_ephemeris_r8(): Error when calling states() (1).'
+       WRITE(0,*) 'planetary_ephemeris_r8(): Error when calling states() (1).'
        RETURN
     END IF
 
@@ -718,13 +719,13 @@ CONTAINS
     IF (ntarget * ncenter == 30 .AND. ntarget + ncenter == 13) THEN
        celements(3,:) = 0.0_rprec8
        celements(ntarget,:) = celements(ntarget,:) - celements(ncenter,:)
-       ALLOCATE(JPL_ephemeris_r8(1,6), stat=err)
+       ALLOCATE(planetary_ephemeris_r8(1,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (2)."
+          WRITE(0,*) "planetary_ephemeris_r8(): Could not allocate memory for output (2)."
           RETURN
        END IF
-       JPL_ephemeris_r8(1,1:6) = celements(ntarget,1:6)
+       planetary_ephemeris_r8(1,1:6) = celements(ntarget,1:6)
        barycenter = tmp_barycenter
        RETURN
     END IF
@@ -749,41 +750,41 @@ CONTAINS
        celements(i,1:6) = celements(i,1:6) - celements_
     END DO
     IF (ntarget == -9) THEN ! use Earth-Moon barycenter
-       ALLOCATE(JPL_ephemeris_r8(9,6), stat=err)
+       ALLOCATE(planetary_ephemeris_r8(9,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (3)."
+          WRITE(0,*) "planetary_ephemeris_r8(): Could not allocate memory for output (3)."
           RETURN
        END IF
        DO i=1,9
-          JPL_ephemeris_r8(i,1:6) = celements(i,1:6)
+          planetary_ephemeris_r8(i,1:6) = celements(i,1:6)
        END DO
-       !JPL_ephemeris_r8(3,1:6) = celements(13,1:6)
+       !planetary_ephemeris_r8(3,1:6) = celements(13,1:6)
     ELSE IF (ntarget == -10) THEN ! separate Earth and Moon
-       ALLOCATE(JPL_ephemeris_r8(10,6), stat=err)
+       ALLOCATE(planetary_ephemeris_r8(10,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (4)."
+          WRITE(0,*) "planetary_ephemeris_r8(): Could not allocate memory for output (4)."
           RETURN
        END IF
        DO i=1,10
-          JPL_ephemeris_r8(i,1:6) = celements(i,1:6)
+          planetary_ephemeris_r8(i,1:6) = celements(i,1:6)
        END DO
     ELSE IF (ntarget >= 1 .AND. ntarget <= 13) THEN
-       ALLOCATE(JPL_ephemeris_r8(1,6), stat=err)
+       ALLOCATE(planetary_ephemeris_r8(1,6), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,*) "JPL_ephemeris_r8(): Could not allocate memory for output (5)."
+          WRITE(0,*) "planetary_ephemeris_r8(): Could not allocate memory for output (5)."
           RETURN
        END IF
-       JPL_ephemeris_r8(1,1:6) = celements(ntarget,1:6)
+       planetary_ephemeris_r8(1,1:6) = celements(ntarget,1:6)
     ELSE
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_r8(): Could not decide what kind of output caller requested."
+       WRITE(0,*) "planetary_ephemeris_r8(): Could not decide what kind of output caller requested."
        RETURN
     END IF
 
-  END FUNCTION JPL_ephemeris_r8
+  END FUNCTION planetary_ephemeris_r8
 
 
 
@@ -791,47 +792,47 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Same as JPL_ephemeris_r8, but with digits allowing greater
+  !! Same as planetary_ephemeris_r8, but with digits allowing greater
   !! numerical accuracy, i.e., the accuracy of values is the same
-  !! as for JPL_ephemeris_r8.
+  !! as for planetary_ephemeris_r8.
   !!
-  FUNCTION JPL_ephemeris_r16(mjd_tt, ntarget, ncenter, error, km)
+  FUNCTION planetary_ephemeris_r16(mjd_tt, ntarget, ncenter, error, km)
 
     IMPLICIT NONE
     REAL(rprec16), INTENT(in)              :: mjd_tt
     INTEGER, INTENT(in)                    :: ntarget, ncenter
     LOGICAL, INTENT(inout)                 :: error
     LOGICAL, OPTIONAL, INTENT(in)          :: km
-    REAL(rprec16), DIMENSION(:,:), POINTER :: JPL_ephemeris_r16
+    REAL(rprec16), DIMENSION(:,:), POINTER :: planetary_ephemeris_r16
 
     REAL(rprec8), DIMENSION(:,:), POINTER  :: tmp => NULL()
     INTEGER :: err
 
     IF (PRESENT(km)) THEN
-       tmp => JPL_ephemeris(REAL(mjd_tt,rprec8), ntarget, ncenter, error, km)
+       tmp => planetary_ephemeris(REAL(mjd_tt,rprec8), ntarget, ncenter, error, km)
     ELSE
-       tmp => JPL_ephemeris(REAL(mjd_tt,rprec8), ntarget, ncenter, error)
+       tmp => planetary_ephemeris(REAL(mjd_tt,rprec8), ntarget, ncenter, error)
     END IF
     IF (error) THEN
-       WRITE(0,*) "JPL_ephemeris_r16(): Error when calling JPL_ephemeris_r8()."
+       WRITE(0,*) "planetary_ephemeris_r16(): Error when calling planetary_ephemeris_r8()."
        RETURN
     END IF
-    ALLOCATE(JPL_ephemeris_r16(SIZE(tmp,dim=1),SIZE(tmp,dim=2)), stat=err)
+    ALLOCATE(planetary_ephemeris_r16(SIZE(tmp,dim=1),SIZE(tmp,dim=2)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_r16(): Could not allocate memory."
+       WRITE(0,*) "planetary_ephemeris_r16(): Could not allocate memory."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
-    JPL_ephemeris_r16 = REAL(tmp,rprec16)
+    planetary_ephemeris_r16 = REAL(tmp,rprec16)
     DEALLOCATE(tmp, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_r16(): Could not deallocate memory."
+       WRITE(0,*) "planetary_ephemeris_r16(): Could not deallocate memory."
        RETURN
     END IF
 
-  END FUNCTION JPL_ephemeris_r16
+  END FUNCTION planetary_ephemeris_r16
 
 
 
@@ -839,8 +840,9 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Reads the JPL Planetary Ephemeris and gives the position and
-  !! velocity of the point 'ntarget' with respect to 'ncenter'.
+  !! Reads the planetary ephemeris table, carries out interpolations,
+  !! and returns the position and velocity of the point 'ntarget' with
+  !! respect to 'ncenter'.
   !!
   !! ntarget = integer number of target point.
   !!
@@ -863,9 +865,10 @@ CONTAINS
   !! If nutations are wanted, set ntarget = 14, and for librations,
   !! set ntarget = 15. Set ncenter = 0.
   !!
-  !! Output is a CartesianCoordinates object (crtcrd) containing position and velocity
-  !! of point 'ntarget' relative to 'ncenter'. the units are AU and AU/day.
-  !! For librations the units are radians and radians per day.
+  !! Output is a CartesianCoordinates object (crtcrd) containing
+  !! position and velocity of point 'ntarget' relative to
+  !! 'ncenter'. The units are au and au/day.  For librations the units
+  !! are radians and radians per day.
   !!
   !! Returns error.
   !!
@@ -883,7 +886,7 @@ CONTAINS
   !!    -9       11
   !!    -9       12
   !!
-  FUNCTION JPL_ephemeris_perturbers_r8(mjd_tt, ntargets, ncenter, error, km)
+  FUNCTION planetary_ephemeris_pert_r8(mjd_tt, ntargets, ncenter, error, km)
 
     IMPLICIT NONE
     REAL(rprec8), INTENT(in)              :: mjd_tt
@@ -891,7 +894,7 @@ CONTAINS
     INTEGER, INTENT(in)                   :: ncenter
     LOGICAL, INTENT(inout)                :: error
     LOGICAL, OPTIONAL, INTENT(in)         :: km
-    REAL(rprec8), DIMENSION(:,:), POINTER :: JPL_ephemeris_perturbers_r8
+    REAL(rprec8), DIMENSION(:,:), POINTER :: planetary_ephemeris_pert_r8
 
     REAL(rprec8), DIMENSION(13,6) :: celements
     REAL(rprec8), DIMENSION(6)    :: celements_
@@ -901,9 +904,9 @@ CONTAINS
     LOGICAL                       :: tmp_barycenter
 
     IF (first) THEN
-       CALL JPL_ephemeris_init(error)
+       CALL planetary_ephemeris_init(error)
        IF (error) THEN
-          WRITE(0,*) "JPL_ephemeris_perturbers_r8(): Could not initialize ephemerides."
+          WRITE(0,*) "planetary_ephemeris_pert_r8(): Could not initialize ephemerides."
           RETURN
        END IF
     END IF
@@ -933,7 +936,7 @@ CONTAINS
     !  make call to state
     celements(1:12,1:6) = states(tt2, list, error)
     IF (error) THEN
-       WRITE(0,*) "JPL_ephemeris_perturbers_r8(): Error when calling states() (1)."
+       WRITE(0,*) "planetary_ephemeris_pert_r8(): Error when calling states() (1)."
        RETURN
     END IF
 
@@ -962,21 +965,21 @@ CONTAINS
     DO i=1,12
        celements(i,1:6) = celements(i,1:6) - celements_
     END DO
-    ALLOCATE(JPL_ephemeris_perturbers_r8(COUNT(ntargets),6), stat=err)
+    ALLOCATE(planetary_ephemeris_pert_r8(COUNT(ntargets),6), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_perturbers_r8(): Could not allocate memory."
+       WRITE(0,*) "planetary_ephemeris_pert_r8(): Could not allocate memory."
        RETURN
     END IF
     j = 0
     DO i=1,10
        IF (ntargets(i)) THEN
           j = j + 1
-          JPL_ephemeris_perturbers_r8(j,1:6) = celements(i,1:6)
+          planetary_ephemeris_pert_r8(j,1:6) = celements(i,1:6)
        END IF
     END DO
 
-  END FUNCTION JPL_ephemeris_perturbers_r8
+  END FUNCTION planetary_ephemeris_pert_r8
 
 
 
@@ -984,11 +987,11 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Same as JPL_ephemeris_r8, but with digits allowing greater
+  !! Same as planetary_ephemeris_r8, but with digits allowing greater
   !! numerical accuracy, i.e., the accuracy of values is the same
-  !! as for JPL_ephemeris_r8.
+  !! as for planetary_ephemeris_r8.
   !!
-  FUNCTION JPL_ephemeris_perturbers_r16(mjd_tt, ntargets, ncenter, error, km)
+  FUNCTION planetary_ephemeris_pert_r16(mjd_tt, ntargets, ncenter, error, km)
 
     IMPLICIT NONE
     REAL(rprec16), INTENT(in)              :: mjd_tt
@@ -996,36 +999,36 @@ CONTAINS
     INTEGER, INTENT(in)                    :: ncenter
     LOGICAL, INTENT(inout)                 :: error
     LOGICAL, OPTIONAL, INTENT(in)          :: km
-    REAL(rprec16), DIMENSION(:,:), POINTER :: JPL_ephemeris_perturbers_r16
+    REAL(rprec16), DIMENSION(:,:), POINTER :: planetary_ephemeris_pert_r16
 
     REAL(rprec8), DIMENSION(:,:), POINTER  :: tmp => NULL()
     INTEGER :: err
 
     IF (PRESENT(km)) THEN
-       tmp => JPL_ephemeris(REAL(mjd_tt,rprec8), ntargets, ncenter, error, km)
+       tmp => planetary_ephemeris(REAL(mjd_tt,rprec8), ntargets, ncenter, error, km)
     ELSE
-       tmp => JPL_ephemeris(REAL(mjd_tt,rprec8), ntargets, ncenter, error)
+       tmp => planetary_ephemeris(REAL(mjd_tt,rprec8), ntargets, ncenter, error)
     END IF
     IF (error) THEN
-       WRITE(0,*) "JPL_ephemeris_perturbers_r16(): Error when calling JPL_ephemeris_perturbers_r8()."
+       WRITE(0,*) "planetary_ephemeris_pert_r16(): Error when calling planetary_ephemeris_pert_r8()."
        RETURN
     END IF
-    ALLOCATE(JPL_ephemeris_perturbers_r16(SIZE(tmp,dim=1),SIZE(tmp,dim=2)), stat=err)
+    ALLOCATE(planetary_ephemeris_pert_r16(SIZE(tmp,dim=1),SIZE(tmp,dim=2)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_perturbers_r16(): Could not allocate memory."
+       WRITE(0,*) "planetary_ephemeris_pert_r16(): Could not allocate memory."
        DEALLOCATE(tmp, stat=err)
        RETURN
     END IF
-    JPL_ephemeris_perturbers_r16 = REAL(tmp,rprec16)
+    planetary_ephemeris_pert_r16 = REAL(tmp,rprec16)
     DEALLOCATE(tmp, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,*) "JPL_ephemeris_perturbers_r16(): Could not deallocate memory."
+       WRITE(0,*) "planetary_ephemeris_pert_r16(): Could not deallocate memory."
        RETURN
     END IF
 
-  END FUNCTION JPL_ephemeris_perturbers_r16
+  END FUNCTION planetary_ephemeris_pert_r16
 
 
 
@@ -1080,7 +1083,7 @@ CONTAINS
     INTEGER                :: record_nr
 
     IF (first) THEN
-       CALL JPL_ephemeris_init(error)
+       CALL planetary_ephemeris_init(error)
        IF (error) THEN
           WRITE(0,*) "nutations(): Could not initialize ephemerides."
           RETURN
