@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2018,2019                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! solver.
 !!
 !! @author  TL, MG, JV
-!! @version 2019-08-23
+!! @version 2025-05-20
 !!
 MODULE integrators
 
@@ -74,8 +74,8 @@ MODULE integrators
   ! the public routines, since from thereon it is currently
   ! passed on as an global module parameter.
   PUBLIC :: kepler_step
-  PUBLIC :: bulirsch_full_jpl
-  PUBLIC :: gauss_radau_15_full_jpl
+  PUBLIC :: bulirsch_full_planeph
+  PUBLIC :: gauss_radau_15_full_planeph
   PUBLIC :: set_relativity
 
   INTERFACE ratf_extrapolation
@@ -103,7 +103,7 @@ CONTAINS
   !!   [2] Stoer & Bulirsch 1980, Introduction to Num. Anal.
   !!
   !! Usage:
-  !!   CALL bulirsch_full_jpl(mjd_tdt0, mjd_tdt1, &
+  !!   CALL bulirsch_full_planeph(mjd_tdt0, mjd_tdt1, &
   !!                          celements, error, jacobian, step)
   !!
   !! mjd_tdt0         integration start (MJD TT)
@@ -117,7 +117,7 @@ CONTAINS
   !!                  time of impact with solar-system objects
   !! masses           masses for additional perturbing bodies
   !!
-  SUBROUTINE bulirsch_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
+  SUBROUTINE bulirsch_full_planeph(mjd_tdt0, mjd_tdt1, celements, &
        perturbers, asteroid_perturbers, error, jacobian, step, ncenter, encounters, &
        masses, info_verb, radial_acceleration)
 
@@ -153,7 +153,7 @@ CONTAINS
     ALLOCATE(ws(6,SIZE(celements,dim=2)), stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,"(A)") "bulirsch_full_jpl: Could not allocate memory (5)."
+       WRITE(0,"(A)") "bulirsch_full_planeph: Could not allocate memory (5)."
        RETURN
     END IF
     ws(:,1:SIZE(celements,dim=2)) = celements
@@ -163,7 +163,7 @@ CONTAINS
             SIZE(jacobian,dim=3)), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "bulirsch_full_jpl: Could not allocate memory (10)."
+          WRITE(0,"(A)") "bulirsch_full_planeph: Could not allocate memory (10)."
           DEALLOCATE(ws, pws, stat=err)
           RETURN
        END IF
@@ -180,17 +180,17 @@ CONTAINS
     IF (PRESENT(encounters)) THEN
        IF (SIZE(encounters,dim=1) < SIZE(ws,dim=2)) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "bulirsch_full_jpl: 'encounters' array too small (1)."
+          WRITE(0,"(A)") "bulirsch_full_planeph: 'encounters' array too small (1)."
           RETURN
        END IF
        IF (SIZE(encounters,dim=2) < 11) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "bulirsch_full_jpl: 'encounters' array too small (2)."
+          WRITE(0,"(A)") "bulirsch_full_planeph: 'encounters' array too small (2)."
           RETURN
        END IF
        IF (SIZE(encounters,dim=3) < 4) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "bulirsch_full_jpl: 'encounters' array too small (3)."
+          WRITE(0,"(A)") "bulirsch_full_planeph: 'encounters' array too small (3)."
           RETURN
        END IF
        encounters = HUGE(encounters)
@@ -237,7 +237,7 @@ CONTAINS
        pws = jacobian
        DO WHILE (k <= total)
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers,ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, istep, perturbers, asteroid_perturbers,ws, &
                   ws, error, pws, pws, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -252,12 +252,12 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers,ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, istep, perturbers, asteroid_perturbers,ws, &
                   ws, error, pws, pws, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
              DEALLOCATE(ws, pws, stat=err)
-             WRITE(0,"(A)") "bulirsch_full_jpl: TRACE BACK (5)"
+             WRITE(0,"(A)") "bulirsch_full_planeph: TRACE BACK (5)"
              RETURN
           END IF
           mjd_tdt = mjd_tdt0 + k * istep
@@ -272,20 +272,20 @@ CONTAINS
 
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers,ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, rstep, perturbers, asteroid_perturbers,ws, &
                   ws, error, pws, pws, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
                   ws, error, pws, pws, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        ELSE
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers, &
+             CALL step_midpoint_full_planeph(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers, &
                   ws, ws, error, pws, pws, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
+             CALL step_midpoint_full_planeph(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
                   ws, ws, error, pws, pws, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        END IF
@@ -307,13 +307,13 @@ CONTAINS
        DEALLOCATE(pws, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "bulirsch_full_jpl: Could not deallocate memory (5)."
+          WRITE(0,"(A)") "bulirsch_full_planeph: Could not deallocate memory (5)."
           RETURN
        END IF
     ELSE
        DO WHILE (k <= total)
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers, ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, istep, perturbers, asteroid_perturbers, ws, &
                   ws, error, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -328,12 +328,12 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, istep, perturbers, asteroid_perturbers, ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, istep, perturbers, asteroid_perturbers, ws, &
                   ws, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
              DEALLOCATE(ws, stat=err)
-             WRITE(0,"(A)") "bulirsch_full_jpl: TRACE BACK (10)"
+             WRITE(0,"(A)") "bulirsch_full_planeph: TRACE BACK (10)"
              RETURN
           END IF
           mjd_tdt = mjd_tdt0 + k * istep
@@ -347,20 +347,20 @@ CONTAINS
        END DO
        IF (ABS(rstep) > rstep_tol) THEN
           IF (PRESENT(encounters)) THEN
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
                   ws, error, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_bulirsch_full_jpl(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
+             CALL step_bulirsch_full_planeph(mjd_tdt, rstep, perturbers, asteroid_perturbers, ws, &
                   ws, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        ELSE
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
+             CALL step_midpoint_full_planeph(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
                   ws, ws, error, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
+             CALL step_midpoint_full_planeph(mjd_tdt, rstep, 10, perturbers, asteroid_perturbers,&
                   ws, ws, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
        END IF
@@ -388,19 +388,19 @@ CONTAINS
     DEALLOCATE(ws, stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,"(A)") "bulirsch_full_jpl: Could not deallocate memory (10)."
+       WRITE(0,"(A)") "bulirsch_full_planeph: Could not deallocate memory (10)."
        RETURN
     END IF
     IF (PRESENT(encounters)) THEN
        DEALLOCATE(encounters_, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "bulirsch_full_jpl: Could not deallocate memory (15)."
+          WRITE(0,"(A)") "bulirsch_full_planeph: Could not deallocate memory (15)."
           RETURN
        END IF
     END IF
 
-  END SUBROUTINE bulirsch_full_jpl
+  END SUBROUTINE bulirsch_full_planeph
 
 
 
@@ -416,7 +416,7 @@ CONTAINS
   !!  pws0     initial values of the partial derivatives
   !!  pws1     final values of the partial derivatives
   !!
-  SUBROUTINE step_bulirsch_full_jpl(mjd_tdt, H, perturbers, asteroid_perturbers,ws0, ws1, &
+  SUBROUTINE step_bulirsch_full_planeph(mjd_tdt, H, perturbers, asteroid_perturbers,ws0, ws1, &
        error, pws0, pws1, encounters, masses, radial_acceleration)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt, H
@@ -448,7 +448,7 @@ CONTAINS
          stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,"(A)") "step_bulirsch_full_jpl: Could not allocate memory (5)."
+       WRITE(0,"(A)") "step_bulirsch_full_planeph: Could not allocate memory (5)."
        DEALLOCATE(hseq, wa0, wa1, pwa0, pwa1, ddif, pddif, wst, &
             pwst, ws_converged, pws_converged, ws_index, pws_index, &
             stat=err)
@@ -473,7 +473,7 @@ CONTAINS
             stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "step_bulirsch_full_jpl: Could not allocate memory (10)."
+          WRITE(0,"(A)") "step_bulirsch_full_planeph: Could not allocate memory (10)."
           DEALLOCATE(hseq, wa0, wa1, pwa0, pwa1, ddif, pddif, wst, &
                pwst, ws_converged, pws_converged, ws_index, &
                pws_index, stat=err)
@@ -494,7 +494,7 @@ CONTAINS
        ! Integration with seq(i) substeps.
        IF (PRESENT(pws0) .AND. PRESENT(pws1)) THEN
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers, &
+             CALL step_midpoint_full_planeph(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers, &
                   ws0, wst, error, pws0, pwst, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -509,7 +509,7 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers, &
+             CALL step_midpoint_full_planeph(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers, &
                   ws0, wst, error, pws0, pwst, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           DO k=1, NS
@@ -520,7 +520,7 @@ CONTAINS
           END DO
        ELSE
           IF (PRESENT(encounters)) THEN
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers,&
+             CALL step_midpoint_full_planeph(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers,&
                   ws0, wst, error, encounters=encounters_, masses=masses, &
                   radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration step
@@ -535,7 +535,7 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL step_midpoint_full_jpl(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers,&
+             CALL step_midpoint_full_planeph(mjd_tdt, H, seq(i), perturbers, asteroid_perturbers,&
                   ws0, wst, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           DO k=1, NS
@@ -543,7 +543,7 @@ CONTAINS
           END DO
        END IF
        IF (error) THEN
-          WRITE(0,"(A)") "step_bulirsch_full_jpl: TRACE BACK (5)."
+          WRITE(0,"(A)") "step_bulirsch_full_planeph: TRACE BACK (5)."
           DEALLOCATE(hseq, wa0, wa1, pwa0, pwa1, ddif, pddif, wst, &
                pwst, ws_converged, pws_converged, ws_index, pws_index, &
                stat=err)
@@ -555,7 +555,7 @@ CONTAINS
           CALL polf_extrapolation(i, hseq, wa0, wa1, ddif, ws_converged, error)
           !          CALL ratf_extrapolation(i, hseq, wa0, wa1, ddif, ws_converged, error)
           IF (error) THEN
-             WRITE(0,"(A)") "step_bulirsch_full_jpl: TRACE BACK (10)."
+             WRITE(0,"(A)") "step_bulirsch_full_planeph: TRACE BACK (10)."
              DEALLOCATE(hseq, wa0, wa1, pwa0, pwa1, ddif, pddif, wst, &
                   pwst, ws_converged, pws_converged, ws_index, pws_index, &
                   stat=err)
@@ -573,7 +573,7 @@ CONTAINS
              CALL polf_extrapolation(i, hseq, pwa0, pwa1, pddif, pws_converged, error)
              !             CALL ratf_extrapolation(i, hseq, pwa0, pwa1, pddif, pws_converged, error)
              IF (error) THEN
-                WRITE(0,"(A)") "step_bulirsch_full_jpl: TRACE BACK (15)."
+                WRITE(0,"(A)") "step_bulirsch_full_planeph: TRACE BACK (15)."
                 DEALLOCATE(hseq, wa0, wa1, pwa0, pwa1, ddif, pddif, wst, &
                      pwst, ws_converged, pws_converged, ws_index, pws_index, &
                      stat=err)
@@ -632,7 +632,7 @@ CONTAINS
          stat=err)
     IF (err /= 0) THEN
        error = .TRUE.
-       WRITE(0,"(A)") "step_bulirsch_full_jpl: Could not deallocate memory (5)."
+       WRITE(0,"(A)") "step_bulirsch_full_planeph: Could not deallocate memory (5)."
        RETURN
     END IF
     IF (PRESENT(pws0) .AND. PRESENT(pws1)) THEN
@@ -640,7 +640,7 @@ CONTAINS
             stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "step_bulirsch_full_jpl: Could not deallocate memory (10)."
+          WRITE(0,"(A)") "step_bulirsch_full_planeph: Could not deallocate memory (10)."
           RETURN
        END IF
     END IF
@@ -648,12 +648,12 @@ CONTAINS
        DEALLOCATE(encounters_, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "step_bulirsch_full_jpl: Could not deallocate memory (15)."
+          WRITE(0,"(A)") "step_bulirsch_full_planeph: Could not deallocate memory (15)."
           RETURN
        END IF
     END IF
 
-  END SUBROUTINE step_bulirsch_full_jpl
+  END SUBROUTINE step_bulirsch_full_planeph
 
 
 
@@ -667,7 +667,7 @@ CONTAINS
   !!   [1] Press et al. 1989, Numerical Recipes.
   !!
   !! Usage:
-  !!   CALL step_midpoint_full_jpl(mjd_tdt, h, nsteps, ws0, ws1,
+  !!   CALL step_midpoint_full_planeph(mjd_tdt, h, nsteps, ws0, ws1,
   !!                               error, pws0, pws1)
   !!
   !! One integration step.
@@ -681,7 +681,7 @@ CONTAINS
   !!  pws0     initial values of the partial derivatives
   !!  pws1     final values of the partial derivatives
   !!
-  SUBROUTINE step_midpoint_full_jpl(mjd_tdt, h, nsteps, perturbers, asteroid_perturbers,&
+  SUBROUTINE step_midpoint_full_planeph(mjd_tdt, h, nsteps, perturbers, asteroid_perturbers,&
        ws0, ws1, error, pws0, pws1, encounters, masses, radial_acceleration)
 
     REAL(prec), INTENT(in)                                :: mjd_tdt, h
@@ -701,12 +701,13 @@ CONTAINS
 
     REAL(prec), DIMENSION(6,SIZE(ws0,dim=2),2)   :: q
     REAL(prec), DIMENSION(6,SIZE(ws0,dim=2))     :: qd
-    REAL(prec), DIMENSION(6,6,SIZE(ws0,dim=2),2) :: pq
-    REAL(prec), DIMENSION(6,6,SIZE(ws0,dim=2))   :: pqd
+    REAL(prec), DIMENSION(:,:,:,:), ALLOCATABLE :: pq
+    REAL(prec), DIMENSION(:,:,:), ALLOCATABLE   :: pqd
     REAL(prec), DIMENSION(:,:,:), ALLOCATABLE    :: encounters_
 
     REAL(prec), DIMENSION(6,6) :: pqt
 
+    ! Number of particles to be integrated
     NS = SIZE(ws0,dim=2)
 
     ! Substep size.
@@ -723,7 +724,7 @@ CONTAINS
             SIZE(encounters,dim=2), SIZE(encounters,dim=3)), stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "step_midpoint_full_jpl: Could not allocate memory (5)."
+          WRITE(0,"(A)") "step_midpoint_full_planeph: Could not allocate memory (5)."
           RETURN
        END IF
        encounters = 0.0_prec
@@ -732,16 +733,18 @@ CONTAINS
 
     ! If partial derivatives are needed.
     IF (PRESENT(pws0) .AND. PRESENT(pws1)) THEN
+       ALLOCATE(pq(6,6,SIZE(pws0,dim=3),2), stat=err)
+       ALLOCATE(pqd(6,6,SIZE(pws0,dim=3)), stat=err)
        pq(:,:,:,sw(1)) = pws0
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers, &
+          CALL interact_full_planeph(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers, &
                qd, error, pqd, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Initialize log
           encounters = encounters_
           encounters(:,:,4) = dt
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers, &
+          CALL interact_full_planeph(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers, &
                qd, error, pqd, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
@@ -754,7 +757,7 @@ CONTAINS
        END DO
        DO k=2, nsteps
           IF (PRESENT(encounters)) THEN
-             CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
+             CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
                   perturbers, asteroid_perturbers, qd, error, pqd, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration substep
@@ -768,7 +771,7 @@ CONTAINS
                 encounters(m,n,1:3) = encounters_(m,n,1:3)
              END FORALL
           ELSE
-             CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
+             CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
                   perturbers, asteroid_perturbers, qd, error, pqd, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
@@ -782,7 +785,7 @@ CONTAINS
           sw(1:2) = sw(2:1:-1)
        END DO
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
+          CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
                qd, error, pqd, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Log closest non-impacting encounter during the integration substep
@@ -796,7 +799,7 @@ CONTAINS
              encounters(m,n,1:3) = encounters_(m,n,1:3)
           END FORALL
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
+          CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
                qd, error, pqd, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
@@ -809,17 +812,21 @@ CONTAINS
        END DO
        ws1  = (q(:,:,sw(1)) + q(:,:,sw(2))) / 2.0_prec
        pws1 = (pq(:,:,:,sw(1)) + pq(:,:,:,sw(2))) / 2.0_prec
+       DEALLOCATE(pq, stat=err)
+       DEALLOCATE(pqd, stat=err)
+
     ELSE
+
        ! Plain integration.
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers,asteroid_perturbers, &
+          CALL interact_full_planeph(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers, &
                qd, error, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Initialize log
           encounters(:,:,1:3) = encounters_(:,:,1:3)
           encounters(:,:,4) = dt
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers,&
+          CALL interact_full_planeph(q(:,:,sw(1)), mjd_tdt, perturbers, asteroid_perturbers,&
                qd, error, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
@@ -828,7 +835,7 @@ CONTAINS
        q(:,:,sw(2)) = q(:,:,sw(1)) + dt * qd
        DO k=2, nsteps
           IF (PRESENT(encounters)) THEN
-             CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
+             CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
                   perturbers, asteroid_perturbers,qd, error, encounters=encounters_, &
                   masses=masses, radial_acceleration=radial_acceleration)
              ! Log closest non-impacting encounter during the integration substep
@@ -842,7 +849,7 @@ CONTAINS
                 encounters(m,n,1:3) = encounters_(m,n,1:3)
              END FORALL
           ELSE
-             CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
+             CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + (k - 1) * dt, &
                   perturbers, asteroid_perturbers, qd, error, masses=masses, radial_acceleration=radial_acceleration)
           END IF
           IF (error) THEN
@@ -852,7 +859,7 @@ CONTAINS
           sw(1:2)      = sw(2:1:-1)
        END DO
        IF (PRESENT(encounters)) THEN
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
+          CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers,&
                qd, error, encounters=encounters_, masses=masses, &
                radial_acceleration=radial_acceleration)
           ! Log closest non-impacting encounter during the integration substep
@@ -866,7 +873,7 @@ CONTAINS
              encounters(m,n,1:3) = encounters_(m,n,1:3)
           END FORALL
        ELSE
-          CALL interact_full_jpl(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers, &
+          CALL interact_full_planeph(q(:,:,sw(2)), mjd_tdt + h, perturbers, asteroid_perturbers, &
                qd, error, masses=masses, radial_acceleration=radial_acceleration)
        END IF
        IF (error) THEN
@@ -874,17 +881,19 @@ CONTAINS
        END IF
        q(:,:,sw(1)) = q(:,:,sw(1)) + dt * qd
        ws1 = (q(:,:,sw(1)) + q(:,:,sw(2))) / 2.0_prec
+
     END IF
+
     IF (PRESENT(encounters)) THEN
        DEALLOCATE(encounters_, stat=err)
        IF (err /= 0) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "step_midpoint_full_jpl: Could not deallocate memory (5)."
+          WRITE(0,"(A)") "step_midpoint_full_planeph: Could not deallocate memory (5)."
           RETURN
        END IF
     END IF
 
-  END SUBROUTINE step_midpoint_full_jpl
+  END SUBROUTINE step_midpoint_full_planeph
 
 
 
@@ -1436,7 +1445,7 @@ CONTAINS
   !!
   !! WARNING: jacobians do not yet work properly!
   !!
-  SUBROUTINE gauss_radau_15_full_jpl(mjd_tdt0, mjd_tdt1, celements, &
+  SUBROUTINE gauss_radau_15_full_planeph(mjd_tdt0, mjd_tdt1, celements, &
        ll, clss, perturbers, asteroid_perturbers, error, jacobian, step, ncenter, &
        encounters, masses)
 
@@ -1482,7 +1491,7 @@ CONTAINS
     norb = SIZE(celements,dim=2)
     IF (norb == 0) THEN
        error = .TRUE.
-       WRITE(0,"(A)") "gauss_radau_15_full_jpl: No input orbits available."
+       WRITE(0,"(A)") "gauss_radau_15_full_planeph: No input orbits available."
        RETURN
     END IF
 
@@ -1501,7 +1510,7 @@ CONTAINS
 
     IF (PRESENT(jacobian)) THEN
        error = .TRUE.
-       WRITE(0,"(A)") "gauss_radau_15_full_jpl: computation of jacobians not yet available."
+       WRITE(0,"(A)") "gauss_radau_15_full_planeph: computation of jacobians not yet available."
        RETURN
        ALLOCATE(w_massless1(6,norb*7), w_massless2(6,norb*7), &
             wd_massless1(6,norb*7), wd_massless2(6,norb*7), &
@@ -1536,17 +1545,17 @@ CONTAINS
     IF (PRESENT(encounters)) THEN
        IF (SIZE(encounters,dim=1) < norb) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "gauss_radau_15_full_jpl: 'encounters' array too small (1)."
+          WRITE(0,"(A)") "gauss_radau_15_full_planeph: 'encounters' array too small (1)."
           RETURN
        END IF
        IF (SIZE(encounters,dim=2) < 11) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "gauss_radau_15_full_jpl: 'encounters' array too small (2)."
+          WRITE(0,"(A)") "gauss_radau_15_full_planeph: 'encounters' array too small (2)."
           RETURN
        END IF
        IF (SIZE(encounters,dim=3) < 4) THEN
           error = .TRUE.
-          WRITE(0,"(A)") "gauss_radau_15_full_jpl: 'encounters' array too small (3)."
+          WRITE(0,"(A)") "gauss_radau_15_full_planeph: 'encounters' array too small (3)."
           RETURN
        END IF
        encounters = HUGE(encounters)
@@ -1624,7 +1633,7 @@ CONTAINS
        ns = 0 ; nf = 0 ; ni = 6 ; tm = 0.0_prec
        IF (PRESENT(jacobian)) THEN
           IF (PRESENT(encounters)) THEN
-             CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+             CALL interact_full_planeph(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
                   perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, &
                   encounters=encounters_, masses=masses)
              ! Log closest non-impacting encounter during the integration step
@@ -1639,9 +1648,9 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+             CALL interact_full_planeph(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
                   perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, masses=masses)
-!!$          CALL interact_full_jpl_center(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+!!$          CALL interact_full_planeph_center(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
 !!$               wd_massless1, error, pwd_massless)
           END IF
           DO i=1,norb
@@ -1660,7 +1669,7 @@ CONTAINS
           END DO
        ELSE
           IF (PRESENT(encounters)) THEN
-             CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
+             CALL interact_full_planeph(w_massless1, mjd_tdt0+tm, &
                   perturbers, asteroid_perturbers, wd_massless1, error, encounters=encounters_, &
                   masses=masses)
              ! Log closest non-impacting encounter during the integration step
@@ -1675,9 +1684,9 @@ CONTAINS
                 encounters(m,n,:) = encounters_(m,n,:)
              END FORALL
           ELSE
-             CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
+             CALL interact_full_planeph(w_massless1, mjd_tdt0+tm, &
                   perturbers, asteroid_perturbers,wd_massless1, error, masses=masses)
-!!$          CALL interact_full_jpl_center(w_massless1, mjd_tdt0+tm, &
+!!$          CALL interact_full_planeph_center(w_massless1, mjd_tdt0+tm, &
 !!$               wd_massless1, error)
           END IF
        END IF
@@ -1685,7 +1694,7 @@ CONTAINS
           DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
                wd_massless2, pwd_massless, b, g, e, bd, encounters_, &
                stat=err)
-          WRITE(0,"(A)") "gauss_radau_15_full_jpl: TRACE BACK (10)."
+          WRITE(0,"(A)") "gauss_radau_15_full_planeph: TRACE BACK (10)."
           RETURN
        END IF
        nf = nf + 1
@@ -1744,7 +1753,7 @@ CONTAINS
                 ! Find forces at each substep.
                 IF (PRESENT(jacobian)) THEN
                    IF (PRESENT(encounters)) THEN
-                      CALL interact_full_jpl(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
+                      CALL interact_full_planeph(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
                            perturbers, asteroid_perturbers, wd_massless2, error, pwd_massless, &
                            encounters=encounters_, masses=masses)
                       ! Log closest non-impacting encounter during the integration step
@@ -1759,10 +1768,10 @@ CONTAINS
                          encounters(m,n,:) = encounters_(m,n,:)
                       END FORALL
                    ELSE
-                      CALL interact_full_jpl(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
+                      CALL interact_full_planeph(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
                            perturbers, asteroid_perturbers, wd_massless2, error, pwd_massless, &
                            masses=masses)
-!!$                   CALL interact_full_jpl_center(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
+!!$                   CALL interact_full_planeph_center(w_massless2(:,1:norb), mjd_tdt0+tm+s*t, &
 !!$                        wd_massless2, error, pwd_massless)
                    END IF
                    DO i=1,norb
@@ -1781,7 +1790,7 @@ CONTAINS
                    END DO
                 ELSE
                    IF (PRESENT(encounters)) THEN
-                      CALL interact_full_jpl(w_massless2, &
+                      CALL interact_full_planeph(w_massless2, &
                            mjd_tdt0+tm+s*t, perturbers, asteroid_perturbers, &
                            wd_massless2, &
                            error, encounters=encounters_, masses=masses)
@@ -1797,17 +1806,17 @@ CONTAINS
                          encounters(m,n,:) = encounters_(m,n,:)
                       END FORALL
                    ELSE
-                      CALL interact_full_jpl(w_massless2, &
+                      CALL interact_full_planeph(w_massless2, &
                            mjd_tdt0+tm+s*t, perturbers, asteroid_perturbers,&
                            wd_massless2, &
                            error, masses=masses)
-!!$                   CALL interact_full_jpl_center(w_massless2, mjd_tdt0+tm+s*t, wd_massless2, error)
+!!$                   CALL interact_full_planeph_center(w_massless2, mjd_tdt0+tm+s*t, wd_massless2, error)
                    END IF
                 END IF
                 IF (error) THEN
                    DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
                         wd_massless2, pwd_massless, b, g, e, bd, encounters_, stat=err)
-                   WRITE(0,"(A)") "gauss_radau_15_full_jpl: TRACE BACK (20)."
+                   WRITE(0,"(A)") "gauss_radau_15_full_planeph: TRACE BACK (20)."
                    RETURN
                 END IF
                 nf = nf + 1
@@ -1895,7 +1904,7 @@ CONTAINS
                       DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
                            wd_massless2, pwd_massless, b, g, e, bd, &
                            encounters_, stat=err)
-                      WRITE(0,"(A)") "gauss_radau_15_full_jpl: ncount > 10."
+                      WRITE(0,"(A)") "gauss_radau_15_full_planeph: ncount > 10."
                       RETURN
                    END IF
                    ! restart with 0.8x sequence size if new size called for is smaller than
@@ -1931,7 +1940,7 @@ CONTAINS
                    error = .TRUE.
                    DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
                         wd_massless2, b, g, e, bd, encounters_, stat=err)
-                   WRITE(0,"(A)") "gauss_radau_15_full_jpl: Memory deallocation failed (10)."
+                   WRITE(0,"(A)") "gauss_radau_15_full_planeph: Memory deallocation failed (10)."
                    RETURN
                 END IF
              ELSE
@@ -1941,7 +1950,7 @@ CONTAINS
                 DEALLOCATE(encounters_, stat=err)
                 IF (err /= 0) THEN
                    error = .TRUE.
-                   WRITE(0,"(A)") "gauss_radau_15_full_jpl: Memory deallocation failed (20)."
+                   WRITE(0,"(A)") "gauss_radau_15_full_planeph: Memory deallocation failed (20)."
                    RETURN
                 END IF
              END IF
@@ -1949,7 +1958,7 @@ CONTAINS
                   wd_massless2, b, g, e, bd, stat=err)
              IF (err /= 0) THEN
                 error = .TRUE.
-                WRITE(0,"(A)") "gauss_radau_15_full_jpl: Memory deallocation failed (30)."
+                WRITE(0,"(A)") "gauss_radau_15_full_planeph: Memory deallocation failed (30)."
                 RETURN
              END IF
              RETURN
@@ -1958,7 +1967,7 @@ CONTAINS
           ! cover the integration span. last_seq=.true. Set on last sequence.
           IF (PRESENT(jacobian)) THEN
              IF (PRESENT(encounters)) THEN
-                CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+                CALL interact_full_planeph(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
                      perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, &
                      encounters=encounters_, masses=masses)
                 ! Log closest non-impacting encounter during the integration step
@@ -1973,13 +1982,13 @@ CONTAINS
                    encounters(m,n,:) = encounters_(m,n,:)
                 END FORALL
              ELSE
-                CALL interact_full_jpl(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
+                CALL interact_full_planeph(w_massless1(1:6,1:norb), mjd_tdt0+tm, &
                      perturbers, asteroid_perturbers, wd_massless1, error, pwd_massless, &
                      masses=masses)
              END IF
           ELSE
              IF (PRESENT(encounters)) THEN
-                CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
+                CALL interact_full_planeph(w_massless1, mjd_tdt0+tm, &
                      perturbers, asteroid_perturbers, wd_massless1, error, &
                      encounters=encounters_, masses=masses)
                 ! Log closest non-impacting encounter during the integration step
@@ -1994,7 +2003,7 @@ CONTAINS
                    encounters(m,n,:) = encounters_(m,n,:)
                 END FORALL
              ELSE
-                CALL interact_full_jpl(w_massless1, mjd_tdt0+tm, &
+                CALL interact_full_planeph(w_massless1, mjd_tdt0+tm, &
                      perturbers, asteroid_perturbers, wd_massless1, error, &
                      masses=masses)
              END IF
@@ -2003,7 +2012,7 @@ CONTAINS
              DEALLOCATE(w_massless1, w_massless2, wd_massless1, &
                   wd_massless2, pwd_massless, b, g, e, bd, &
                   encounters_, stat=err)
-             WRITE(0,"(A)") "gauss_radau_15_full_jpl: TRACE BACK (30)."
+             WRITE(0,"(A)") "gauss_radau_15_full_planeph: TRACE BACK (30)."
              RETURN
           END IF
           nf = nf + 1
@@ -2049,7 +2058,7 @@ CONTAINS
        EXIT
     END DO one
 
-  END SUBROUTINE gauss_radau_15_full_jpl
+  END SUBROUTINE gauss_radau_15_full_planeph
 
 
 
@@ -2059,15 +2068,16 @@ CONTAINS
   !!
   !! Evaluation of the full Newtonian force function for several
   !! massless bodies. Positions of the massive bodies are read from
-  !! JPL ephemerides. A relativistic term due to the Sun is included.
-  !! Optional argument triggers evaluation of the partial derivatives
-  !! of the force function wrt Cartesian coordinates.
+  !! JPL (deXXX) or IMCCE (inpopXXX) ephemerides. A relativistic term
+  !! due to the Sun is included.  Optional argument triggers
+  !! evaluation of the partial derivatives of the force function wrt
+  !! Cartesian coordinates.
   !!
   !! References:
   !!   [1] Karttunen, Taivaanmekaniikka
   !!
   !! Usage:
-  !!   CALL interact_full_jpl(ws, mjd_tdt, wds, error, pwds)
+  !!   CALL interact_full_planeph(ws, mjd_tdt, wds, error, pwds)
   !!
   !! Interaction.
   !!
@@ -2088,7 +2098,7 @@ CONTAINS
   !!               radially outwards from the origin (usually the Sun)
   !!               this is aimed for accounting for radiation pressure
   !!
-  SUBROUTINE interact_full_jpl(ws, mjd_tdt, perturbers, asteroid_perturbers, wds, error, &
+  SUBROUTINE interact_full_planeph(ws, mjd_tdt, perturbers, asteroid_perturbers, wds, error, &
        pwds, encounters, masses, radial_acceleration)
 
     REAL(prec), DIMENSION(:,:), INTENT(in)              :: ws
@@ -2172,7 +2182,7 @@ CONTAINS
 
     IF (NP > 0) THEN
        ! Get positions of massive bodies (-10 = 9 planets + Moon).
-       wc1 => JPL_ephemeris(mjd_tdt, -10, 11, error)
+       wc1 => planetary_ephemeris(mjd_tdt, -10, 11, error)
        IF (error) THEN
           DEALLOCATE(wc, stat=err)
           RETURN
@@ -2475,7 +2485,7 @@ CONTAINS
        RETURN
     END IF
 
-  END SUBROUTINE interact_full_jpl
+  END SUBROUTINE interact_full_planeph
 
 
 
@@ -2483,17 +2493,19 @@ CONTAINS
 
 
   !! Description:
-  !!   Evaluation of the full Newtonian force function for several
-  !!   massless bodies. Positions of the massive bodies are read
-  !!   from JPL ephemerides. A relativistic term due to the Sun is included.
-  !!   Optional argument triggers evaluation of the partial derivatives
-  !!   of the force function wrt Cartesian coordinates.
+  !!
+  !! Evaluation of the full Newtonian force function for several
+  !! massless bodies. Positions of the massive bodies are read from
+  !! JPL (deXXX) or IMCCE (inpopXXX) ephemerides. A relativistic term
+  !! due to the Sun is included.  Optional argument triggers
+  !! evaluation of the partial derivatives of the force function wrt
+  !! Cartesian coordinates.
   !!
   !! References:
   !!   [1] Karttunen, Taivaanmekaniikka
   !!
   !! Usage:
-  !!   CALL interact_full_jpl(ws, mjd_tdt, wds, error, pwds)
+  !!   CALL interact_full_planeph(ws, mjd_tdt, wds, error, pwds)
   !!
   !! Interaction.
   !!
@@ -2504,7 +2516,7 @@ CONTAINS
   !!  error    true, if reading from ephemerides fails
   !!  pwds     evaluated partial derivatives of the force function
   !!
-  SUBROUTINE interact_full_jpl_center(ws, mjd_tdt, wds, error, pwds)
+  SUBROUTINE interact_full_planeph_center(ws, mjd_tdt, wds, error, pwds)
 
     REAL(prec), DIMENSION(:,:), INTENT(in)              :: ws
     REAL(prec), INTENT(in)                              :: mjd_tdt
@@ -2544,7 +2556,7 @@ CONTAINS
     END IF
 
     ! Get heliocentric positions of massive bodies (-10 = 9 planets + Moon).
-    wc_sun => JPL_ephemeris(mjd_tdt, -10, 11, error)
+    wc_sun => planetary_ephemeris(mjd_tdt, -10, 11, error)
     IF (error) THEN
        DEALLOCATE(wc_sun, stat=err)
        RETURN
@@ -2697,7 +2709,9 @@ CONTAINS
        RETURN
     END IF
 
-  END SUBROUTINE interact_full_jpl_center
+  END SUBROUTINE interact_full_planeph_center
+
+
 
 
 
@@ -2713,12 +2727,13 @@ CONTAINS
 
 
 
+
 !!!!!!!!!
   !
   ! Subroutines and functions that implement the universal Kepler
   ! solver by Wisdom and Hernandez (2015, MNRAS 453,
   ! 3015-3023). Translation from original C code to Fortran 90 by MG.
-
+  !
   SUBROUTINE solve_universal_newton(r0, beta, b, eta, zeta, h, XX, SS2, CC2, error)
 
     IMPLICIT NONE
@@ -2770,6 +2785,7 @@ CONTAINS
     CC2 = c2
 
   END SUBROUTINE solve_universal_newton
+
 
 
 
@@ -2846,6 +2862,7 @@ CONTAINS
 
 
 
+
   SUBROUTINE solve_universal_bisection(r0, beta, b, eta, zeta, h, XX, SS2, CC2, error)
 
     IMPLICIT NONE
@@ -2913,6 +2930,7 @@ CONTAINS
 
 
 
+
   REAL(prec) FUNCTION usign(x)
 
     IMPLICIT NONE
@@ -2927,6 +2945,7 @@ CONTAINS
     END IF
 
   END FUNCTION usign
+
 
 
 
@@ -2967,6 +2986,7 @@ CONTAINS
     END IF
 
   END FUNCTION cubic1
+
 
 
 
@@ -3012,6 +3032,7 @@ CONTAINS
     CC2 = c2
 
   END SUBROUTINE solve_universal_parabolic
+
 
 
 
@@ -3070,6 +3091,7 @@ CONTAINS
     CC2 = c2
 
   END SUBROUTINE solve_universal_hyperb_newton
+
 
 
 
@@ -3157,6 +3179,7 @@ CONTAINS
     CC2 = c2
 
   END SUBROUTINE solve_universal_hyperb_laguerre
+
 
 
 
@@ -3259,6 +3282,7 @@ CONTAINS
 
 
 
+
   SUBROUTINE kepler_step(ncenter, dt, s0, s, error)
 
     IMPLICIT NONE
@@ -3285,6 +3309,7 @@ CONTAINS
     END IF
 
   END SUBROUTINE kepler_step
+
 
 
 
@@ -3347,6 +3372,7 @@ CONTAINS
 
 
 
+
   REAL(prec) FUNCTION new_guess(r0, eta, zeta, dt)
 
     IMPLICIT NONE
@@ -3371,6 +3397,7 @@ CONTAINS
     END IF
 
   END FUNCTION new_guess
+
 
 
 

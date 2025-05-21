@@ -30,7 +30,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, LS
-!! @version 2025-04-01
+!! @version 2025-05-20
 !!
 MODULE PhysicalParameters_cl
 
@@ -2292,100 +2292,154 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Asteroid mass estimation 'marching' algorithm.  Note that this is
-  !! an approximation at best and should not be used by itself for any
-  !! serious work! See Siltala & Granvik (2017)
+  !! Asteroid mass estimation 'marching' algorithm.
+  !!
+  !! For an earlier, simpler version without least-squares fitting,
+  !! see Siltala & Granvik (2017)
   !! https://doi.org/10.1016/j.icarus.2017.06.028
   !!
-  !! @author LS
+  !! @author LS, MG, ET
   !!
-  SUBROUTINE massEstimation_march(storb_arr, orb_arr, HG_arr, dyn_model, integrator, integration_step, &
-       perturbers, asteroid_perturbers, mass, out_fname, resolution)
+  SUBROUTINE massEstimation_march(storb_arr, orb_arr, HG_arr, perturbers, &
+       asteroid_perturbers, mass, out_file, residual_file, resolution)
+
     IMPLICIT NONE
     TYPE (StochasticOrbit), DIMENSION(:), INTENT(inout) :: storb_arr
     TYPE (Orbit), DIMENSION(:), INTENT(inout)           :: orb_arr
-    CHARACTER(len=FNAME_LEN), INTENT(in)                :: out_fname
+    logical, dimension(:), intent(in)                   :: perturbers
+    logical, intent(in)                                 :: asteroid_perturbers
+    type (File), INTENT(in)                             :: out_file
+    type (File), INTENT(in)                             :: residual_file
     INTEGER, INTENT(INOUT)                              :: resolution
     REAL(bp), INTENT(in), DIMENSION(:,:)                :: HG_arr
 
-    TYPE (Orbit), DIMENSION(:,:), POINTER               :: orb_arr2 => NULL()
+    TYPE (Orbit)                                        :: orb
     TYPE (Time)                                         :: t, t_prop
-    TYPE (File)                                         :: march_out_file, res_file
-    INTEGER, DIMENSION(:), ALLOCATABLE                  :: nobs_arr
     LOGICAL, DIMENSION(:,:), POINTER                    :: obs_masks
-    REAL(bp), DIMENSION(:,:), POINTER                   :: stdev_arr_measur, residuals
     REAL(bp), DIMENSION(:,:), ALLOCATABLE               :: chi2_arr
-    REAL(bp), DIMENSION(6)                              :: perturber_elems, rms6, elements
-    REAL(bp), DIMENSION(1,8)                            :: additional_perturber
+    REAL(bp), DIMENSION(6)                              :: rms6, elements
+    REAL(bp), DIMENSION(:,:), POINTER                   :: additional_perturbers
     REAL(bp), DIMENSION(2)                              :: chi2_arr2
     REAL(bp), DIMENSION(:), ALLOCATABLE                 :: marching_masses, chi2_sum_arr
     REAL(bp)                                            :: density, albedo, const, &
-         rough_estimate, lower_mass_bound, upper_mass_bound, chi_sum, integration_step, &
-         mass, avgstdev, rms1, rms2, best_chi, chi_perturber, step
-    LOGICAL, DIMENSION(10)                              :: perturbers
-    LOGICAL                                             :: print_data, asteroid_perturbers
-    LOGICAL, DIMENSION(6)                               :: obs_masks2, obs_masks_true
-    INTEGER                                             :: k, i, j, l, m, nobs, outliertot
-    INTEGER, DIMENSION(6)                               :: n0
-    CHARACTER(len=DYN_MODEL_LEN)                        :: dyn_model
-    CHARACTER(len=INTEGRATOR_LEN)                       :: integrator
-    REAL(bp), DIMENSION(:,:), ALLOCATABLE               :: residuals_, observed_coords, &
-         computed_coords, elements_arr, stdev, mean
-    TYPE (CartesianCoordinates), DIMENSION(:), POINTER  :: &
-         obsy_ccoords => NULL()
-    TYPE (SphericalCoordinates), DIMENSION(:), POINTER  :: &
-         observed_scoords => NULL(), &
-         computed_scoords => NULL()
+         rough_estimate, lower_mass_bound, upper_mass_bound, chi_sum, &
+         mass, avgstdev, rms1, rms2, best_chi, chi_perturber, step, mjd, chi2
+    INTEGER                                             :: i, j
     TYPE (Observations)                                 :: obss
     TYPE (SparseArray)                                  :: resids
-
-    CALL NEW(march_out_file, TRIM(out_fname))
-    CALL OPEN(march_out_file)
-
-    CALL NEW(res_file, TRIM(out_fname)//TRIM('.res'))
-    CALL OPEN(res_file)
-
-    ALLOCATE(nobs_arr(SIZE(orb_arr)))
 
     IF (resolution == 0) THEN
        resolution = 300 ! Default value if resolution is not given.
     END IF
 
-    perturber_elems(:) = getElements(orb_arr(1), "cartesian", "equatorial")
+    ALLOCATE(additional_perturbers(1,8))
+    t = getTime(orb_arr(1))
+    additional_perturbers(1,1:6) = getElements(orb_arr(1), "cartesian", "equatorial")
+    additional_perturbers(1,7) = getMJD(t, "TT")
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / massEstimation_march", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
 
     ! Rough mass estimate to sample in approximately right range:
-    density = 2.5_bp ! g/cm3
-    albedo = 0.15_bp
+    density = 1.0_bp ! g/cm3
+    albedo = 0.05_bp
     const = 391222381.5_bp * pi * density * (1.0e12_bp / kg_solar) / (albedo*SQRT(albedo))
     rough_estimate = const*10**(-0.6_bp*HG_arr(1,1))
-    WRITE(getUnit(march_out_file), *) "# Rough mass estimate for march:", rough_estimate
-    lower_mass_bound = 0.1_bp * rough_estimate
+    WRITE(getUnit(out_file), *) "# Rough mass estimate for march:", rough_estimate
+    lower_mass_bound = 0.01_bp * rough_estimate
     upper_mass_bound = 10.0_bp * rough_estimate
 
-    ALLOCATE(marching_masses(resolution+1))
+    ALLOCATE(marching_masses(resolution+2))
     ALLOCATE(chi2_arr(SIZE(marching_masses),SIZE(orb_arr)))
     ALLOCATE(chi2_sum_arr(SIZE(marching_masses)))
 
-    ! Generates an array of evenly spaced masses.
+    ! Generates an array of zero mass and a sequence of evenly spaced masses.
+    marching_masses(1) = 0.0_bp
     step = 1.0_bp/resolution * upper_mass_bound
-    marching_masses(1) = lower_mass_bound
-
-    DO i=1,SIZE(marching_masses)
-       marching_masses(i) = lower_mass_bound + (i-1) * step
+    marching_masses(2) = lower_mass_bound
+    DO i=3,SIZE(marching_masses)
+       marching_masses(i) = lower_mass_bound + (i-2) * step
     END DO
 
+    CALL levenbergMarquardt(storb_arr(1), orb_arr(1))
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / massEstimation_march", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+    obs_masks => getObservationMasks(storb_arr(1))
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / massEstimation_march", &
+            "TRACE BACK (15)", 1)
+       RETURN
+    END IF
+    orb = getNominalOrbit(storb_arr(1))
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / massEstimation_march", &
+            "TRACE BACK (20)", 1)
+       RETURN
+    END IF
+    chi2 = getChi2(storb_arr(1), orb, obs_masks)
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / massEstimation_march", &
+            "TRACE BACK (25)", 1)
+       RETURN
+    END IF
+    DEALLOCATE(obs_masks)
+    CALL NULLIFY(orb)
     DO i=1,SIZE(marching_masses)
-       CALL setParameters(orb_arr(1), mass=marching_masses(i))
-       chi2_arr(i,:) = getChi2(storb_arr, orb_arr, resids)
+       IF (info_verb >= 2) THEN
+          WRITE(stdout,"(A,I0,A,I0)") "Mass #", i, " of ", SIZE(marching_masses)
+       END IF
+       chi2_arr(i,1) = chi2
+       additional_perturbers(1,8) = marching_masses(i)
+       DO j=2,SIZE(storb_arr)
+          CALL setParameters(orb_arr(j), additional_perturbers=additional_perturbers)
+          IF (error) THEN
+             CALL errorMessage("PhysicalParameters / massEstimation_march", &
+                  "TRACE BACK (30)", 1)
+             RETURN
+          END IF
+          CALL levenbergMarquardt(storb_arr(j), orb_arr(j))
+          IF (error) THEN
+             CALL errorMessage("PhysicalParameters / massEstimation_march", &
+                  "TRACE BACK (35)", 1)
+             RETURN
+          END IF
+          obs_masks => getObservationMasks(storb_arr(j))
+          IF (error) THEN
+             CALL errorMessage("PhysicalParameters / massEstimation_march", &
+                  "TRACE BACK (40)", 1)
+             RETURN
+          END IF
+          orb = getNominalOrbit(storb_arr(j))
+          IF (error) THEN
+             CALL errorMessage("PhysicalParameters / massEstimation_march", &
+                  "TRACE BACK (45)", 1)
+             RETURN
+          END IF
+          chi2_arr(i,j) = getChi2(storb_arr(j), orb, obs_masks)
+          IF (error) THEN
+             CALL errorMessage("PhysicalParameters / massEstimation_march", &
+                  "TRACE BACK (50)", 1)
+             RETURN
+          END IF
+          DEALLOCATE(obs_masks)
+          CALL NULLIFY(orb)
+       END DO
        chi2_sum_arr(i) = SUM(chi2_arr(i,:))
-       WRITE(getUnit(march_out_file), *) marching_masses(i), chi2_arr(i,:), chi2_sum_arr(i), i
+       WRITE(getUnit(out_file), *) marching_masses(i), chi2_arr(i,:), chi2_sum_arr(i), i
     END DO
     mass = marching_masses(MINLOC(chi2_sum_arr,dim=1))
-    WRITE(getUnit(march_out_file), *) "# Best mass: ", mass
-    ALLOCATE(stdev(2,2))
-    ALLOCATE(mean(2,2))
-
-    CALL writeResiduals_SO(storb_arr,orb_arr,getUnit(res_file))
+    WRITE(getUnit(out_file), *) "# Best mass: ", mass
+    CALL writeResiduals_SO(storb_arr, orb_arr, getUnit(residual_file))
+    IF (error) THEN
+       CALL errorMessage("PhysicalParameters / massEstimation_march", &
+            "TRACE BACK (55)", 1)
+       RETURN
+    END IF
 
   END SUBROUTINE massEstimation_march
 

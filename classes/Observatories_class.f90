@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2014,2015                                           !
+! Copyright 2002-2024,2025                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Type and routines for observatories.
 !! 
 !! @author  MG, JV
-!! @version 2015-10-23
+!! @version 2025-05-20
 !!
 MODULE Observatories_cl
 
@@ -491,6 +491,7 @@ CONTAINS
     TYPE (Time)                       :: t_
     TYPE (CartesianCoordinates)       :: geocenter_ccoord, geocentric_obs_ccoord
     REAL(bp), DIMENSION(:,:), POINTER :: coordinates => NULL()
+    REAL(bp), DIMENSION(6)            :: unit_coordinates
     REAL(bp)                          :: mjd_tt
     INTEGER                           :: err, indx, i
 
@@ -521,7 +522,7 @@ CONTAINS
                "TRACE BACK (5)", 1)
           RETURN
        END IF
-       coordinates => JPL_ephemeris(mjd_tt, 3, 11, error)
+       coordinates => planetary_ephemeris(mjd_tt, 3, 11, error)
        IF (error) THEN
           CALL errorMessage("Observatories / getObservatoryCCoord", &
                "Could not get planetary ephemeris (5).", 1)
@@ -575,13 +576,21 @@ CONTAINS
                "Could not convert string to integer.", 1)
           RETURN
        END IF
-       IF (i < 1 .OR. i>11) THEN
+       IF (i < 1 .OR. (i > 11 .AND. i < 32) .OR. i > 32) THEN
           error = .TRUE.
           CALL errorMessage("Observatories / getObservatoryCCoord", &
                "Observatory code invalid: " // TRIM(code(indx+1:)), 1)
           RETURN
        END IF
-       coordinates => JPL_ephemeris(mjd_tt, i, 11, error)
+       IF (i < 11) THEN
+          coordinates => planetary_ephemeris(mjd_tt, i, 11, error)
+       ELSE IF (i == 32) THEN
+          coordinates => planetary_ephemeris(mjd_tt, 3, 11, error)          
+          unit_coordinates = coordinates(1,:)/SQRT(dot_PRODUCT(coordinates(1,:),coordinates(1,:)))
+          ! Sun-Earth L2 is 0.01 au from the Earth in the direction
+          ! opposite to the Sun:
+          coordinates(1,:) = coordinates(1,:) + 0.01_bp * unit_coordinates
+       END IF
        IF (error) THEN
           CALL errorMessage("Observatories / getObservatoryCCoord", &
                "Could not get planetary ephemeris (10).", 1)

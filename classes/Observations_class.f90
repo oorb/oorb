@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV, GF, LS, ET 
-!! @version 2025-04-29
+!! @version 2025-05-20
 !!  
 MODULE Observations_cl
 
@@ -3127,9 +3127,9 @@ CONTAINS
     TYPE (Observatories) :: obsies
     TYPE (Observatory) :: obsy
     TYPE (Time) :: t, t0
-    TYPE (SphericalCoordinates) :: obs_scoord, ephemeris
+    TYPE (SphericalCoordinates) :: obs_scoord, ephemeris, scoord
     TYPE (CartesianCoordinates) :: obsy_ccoord, geocenter_ccoord, &
-         satellite_ccoord
+         satellite_ccoord, ccoord
     CHARACTER(len=1024) :: line
     CHARACTER(len=FNAME_LEN) :: fname, suffix
     CHARACTER(len=DESIGNATION_LEN) :: number, designation
@@ -3161,7 +3161,9 @@ CONTAINS
          ra_orbit_residual, dec_orbit_residual, epoch_emission, &
          epoch, epoch_err, epoch_utc,  epoch1, last_epoch, covcoeff, &
          ra_start, dec_start, ra_end, dec_end, flux, mjd_utc, &
-         mjd_utc_start, mjd_utc_end, streak_length, group_angle
+         mjd_utc_start, mjd_utc_end, streak_length, group_angle, &
+         x_offset, y_offset, z_offset, x_err, y_err, z_err, ra_ini, &
+         dec_ini
     INTEGER(ihp) :: observation_id, solution_id, source_id, transit_id
     INTEGER :: i, j, k, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
@@ -4388,7 +4390,7 @@ CONTAINS
                   "TRACE BACK (121)", 1)
              RETURN
           END IF
-          planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 12, 11, error)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (122)", 1)
@@ -4612,7 +4614,7 @@ CONTAINS
                      "TRACE BACK (121)", 1)
                 RETURN
              END IF
-             planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+             planeph => planetary_ephemeris(mjd_tt, 12, 11, error)
              IF (error) THEN
                 CALL errorMessage("Observations / readObservationFile", &
                      "TRACE BACK (122)", 1)
@@ -4727,7 +4729,7 @@ CONTAINS
 
 
 
-    CASE ("gdr2", "gdr3", "gfpr")
+    CASE ("gdr2", "gdr3", "gfpr", "cgdr3")
 
        ! Full SSO data dump from Gaia Data Release 2, 3, or the Focused Project Release.
        covariance = 0.0_bp
@@ -4761,6 +4763,7 @@ CONTAINS
                   g_mag, g_flux, g_flux_err, coordinates(1:6), &
                   position_angle_scan, level_of_confidence
           ELSE IF (suffix == "gdr3") THEN
+             ! notice that astrometric_outcome_ccd has been removed from gdr3 in oorb!
              READ(line, *, iostat=err) solution_id, source_id, &
                   denomination, transit_id, observation_id, number, epoch, &
                   epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
@@ -4768,20 +4771,6 @@ CONTAINS
                   covariance(2,2), covariance(3,3), covariance(2,3), &
                   g_mag, g_flux, g_flux_err, coordinates(1:6), gaia_geocentric(1:6), &
                   position_angle_scan, astrometric_outcome_transit
-             !astrometric_outcome_ccd, astrometric_outcome_transit
-             !
-             !write(*,*) solution_id, source_id, &
-             !     denomination, transit_id, observation_id, number, epoch, &
-             !     epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
-             !     covariance_sys(3,3), covariance_sys(2,3), &
-             !     covariance(2,2), covariance(3,3), covariance(2,3), &
-             !     g_mag, g_flux, g_flux_err, coordinates(1:6), gaia_geocentric(1:6), &
-             !     position_angle_scan, astrometric_outcome_transit
-             !
-             ! astrometric_outcome_ccd, astrometric_outcome_transit
-             !, &
-             !epoch_emission, fov, level_of_confidence, ra_orbit_residual,dec_orbit_residual,& 
-             !al_orbit_residual,ac_orbit_residual, obs_rejected_by_fit
           ELSE IF (suffix == "gfpr") THEN
              READ(line, *, iostat=err) solution_id, source_id, &
                   denomination, transit_id, observation_id, number, epoch, &
@@ -4791,6 +4780,16 @@ CONTAINS
                   coordinates(1:6), gaia_geocentric(1:6), &
                   position_angle_scan, astrometric_outcome_ccd, astrometric_outcome_transit, &
                   fov, obs_rejected_by_fit
+          ELSE IF (suffix == "cgdr3") THEN
+             ! notice that astrometric_outcome_ccd has been removed from gdr3 in oorb!
+             READ(line, *, iostat=err) solution_id, source_id, &
+                  denomination, transit_id, observation_id, number, epoch, &
+                  epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance_sys(2,3), &
+                  covariance(2,2), covariance(3,3), covariance(2,3), &
+                  g_mag, g_flux, g_flux_err, coordinates(1:6), gaia_geocentric(1:6), &
+                  position_angle_scan, astrometric_outcome_transit, & 
+                  x_offset, x_err, y_offset, y_err, z_offset, z_err, position(1)
           END IF
           IF (err /= 0) THEN
              error = .TRUE.
@@ -4799,8 +4798,48 @@ CONTAINS
              RETURN
           END IF
 
+          CALL NEW(t, mjd_tcb + epoch, "TCB")
+          IF (error) THEN
+             CALL errorMessage("Observations / readObservationFile", &
+                  "TRACE BACK (115)", 1)
+             RETURN
+          END IF
+
+          ! Convert position_angle_scan from degrees to radians
+          position_angle_scan = position_angle_scan*rad_deg
+
           ! Convert RA & Dec from degrees to radians
           position(2:3) = position(2:3)*rad_deg
+
+          IF (suffix == "cgdr3") THEN
+             ra_ini = position(2)/rad_deg
+             dec_ini = position(3)/rad_deg
+             ! new spherical coordinate object from position vector
+             !CALL NULLIFY(scoord)
+             CALL NEW(scoord, position, velocity, 'equatorial', t)
+             ! new cartesian coordinate object from spherical coordinates
+             CALL NEW(ccoord,scoord)
+             CALL NULLIFY(scoord)
+             ! rotate to equatorial (just in case)
+             CALL rotateToEquatorial(ccoord)
+             ! new position vector from cartesian coordinates
+             position = getPosition(ccoord)
+             CALL NULLIFY(ccoord)
+             ! subtracting (?) offset from x,y,z coordinates
+             position(1) = position(1) - (x_offset/km_au)
+             position(2) = position(2) - (y_offset/km_au)
+             position(3) = position(3) - (z_offset/km_au)
+             ! converting back to RA & Dec
+             CALL NEW(ccoord, position, velocity, 'equatorial', t)
+             scoord = getSCoord(ccoord)
+             CALL NULLIFY(ccoord)
+             position = getPosition(scoord)
+             CALL NULLIFY(scoord)
+             !WRITE(stdout,*) ra_ini, dec_ini, position(2)/rad_deg, position(3)/rad_deg, &
+             !     (ra_ini - position(2)/rad_deg)*3600000, &
+             !     (dec_ini - position(3)/rad_deg)*3600000
+          END IF
+
           ! Random component of the uncertainty
           ! Convert correlation to covariance
           covariance(2,3) = covariance(2,3) * &
@@ -4837,12 +4876,6 @@ CONTAINS
              discovery = .FALSE.
           END IF
 
-          CALL NEW(t, mjd_tcb + epoch, "TCB")
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (115)", 1)
-             RETURN
-          END IF
           obsy = getObservatory(obsies, "258")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
@@ -4858,7 +4891,7 @@ CONTAINS
              RETURN
           END IF
           ! Solar-system barycenter -> Sun vector (equ)
-          planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 12, 11, error)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (122)", 1)
@@ -4887,7 +4920,7 @@ CONTAINS
 
           ! Earth -> Gaia vector (= geocentric satellite coordinates)
           ! Sun -> Earth vector (equ)
-          planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (122)", 1)
@@ -4903,7 +4936,8 @@ CONTAINS
           CALL NEW(this%obs_arr(i), number=number, designation=" ", &
                discovery=discovery, note1=" ", note2="S", &
                obs_scoord=obs_scoord, covariance=covariance+covariance_sys, &
-               obs_mask=obs_mask, mag=REAL(g_mag,bp), filter="G", &
+               obs_mask=obs_mask, mag=REAL(g_mag,bp), &
+               pa_scan=position_angle_scan, filter="G", &
                obsy=obsy, obsy_ccoord=obsy_ccoord, &
                satellite_ccoord=satellite_ccoord, &
                coord_unit=2)
@@ -5196,7 +5230,7 @@ CONTAINS
                      "TRACE BACK (121)", 1)
                 RETURN
              END IF
-             planeph => JPL_ephemeris(mjd_tt, 12, 11, error)
+             planeph => planetary_ephemeris(mjd_tt, 12, 11, error)
              IF (error) THEN
                 CALL errorMessage("Observations / readObservationFile", &
                      "TRACE BACK (122)", 1)
@@ -5325,7 +5359,7 @@ CONTAINS
                   "TRACE BACK (121)", 1)
              RETURN
           END IF
-          planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (122)", 1)

@@ -28,7 +28,7 @@
 !! [statistical orbital] ranging method and the least-squares method.
 !!
 !! @author MG, JV, KM, DO, ET 
-!! @version 2025-04-29
+!! @version 2025-05-20
 !!  
 MODULE StochasticOrbit_cl
 
@@ -2803,8 +2803,13 @@ CONTAINS
 
 
 
-  ! Integrates several objects simultaneously while taking asteroid-asteroid
-  ! perturbations into account.
+  !! *Description*:
+  !!
+  !! Integrates several objects simultaneously while taking asteroid-asteroid
+  !! perturbations into account.
+  !!
+  !! 
+  !!
   FUNCTION getChi2_this_orb_arr(this_arr, orb_arr, residuals, obs_masks) RESULT(chi2_arr)
 
     IMPLICIT NONE
@@ -2835,6 +2840,10 @@ CONTAINS
     simint = old_simint
 
   END FUNCTION getChi2_this_orb_arr
+
+
+
+
 
   !! *Description*:
   !!
@@ -4022,7 +4031,7 @@ CONTAINS
             "TRACE BACK (10)", 1)
        RETURN
     END IF
-    elem => JPL_ephemeris(mjd_tdt, 3, 11, error)
+    elem => planetary_ephemeris(mjd_tdt, 3, 11, error)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / getPHAProbability", &
             "TRACE BACK (15)", 1)
@@ -5474,11 +5483,9 @@ CONTAINS
     obsy_ccoords(1:nobs_arr(1)) = temp_ccoords(:)
     DEALLOCATE(temp_ccoords)
     NULLIFY(temp_ccoords)
-
     DO i=2,nstorb
        temp_ccoords => getObservatoryCCoords(this_arr(i)%obss)
-       obsy_ccoords(1+SUM(nobs_arr(1:i-1)):SUM(nobs_arr(1:i-1))&
-            + nobs_arr(i)) = temp_ccoords(:)
+       obsy_ccoords(SUM(nobs_arr(1:i-1))+1:SUM(nobs_arr(1:i-1))+nobs_arr(i)) = temp_ccoords(:)
        DEALLOCATE(temp_ccoords)
        NULLIFY(temp_ccoords)
     END DO
@@ -5512,7 +5519,9 @@ CONTAINS
     END DO
 
     DEALLOCATE(obsy_ccoords, computed_scoords,nobs_arr)
+
   END FUNCTION getResiduals_SO_orb_arr
+
 
 
 
@@ -13305,6 +13314,8 @@ CONTAINS
     CHARACTER(len=32) :: str
     REAL(bp), DIMENSION(:,:,:), POINTER :: &
          information_matrix_measur => NULL()
+    REAL(bp), DIMENSION(:,:), POINTER :: &
+         additional_perturbers => NULL()
     REAL(bp), DIMENSION(:,:,:), ALLOCATABLE :: jacobians
     REAL(bp), DIMENSION(:,:), ALLOCATABLE :: measur, & ! incl. cos(dec)
          residuals, &
@@ -13431,7 +13442,8 @@ CONTAINS
     CALL getParameters(orb, &
          integration_step=integration_step_, &
          integrator=integrator_, &
-         finite_diff=finite_diff_)
+         finite_diff=finite_diff_, &
+         additional_perturbers=additional_perturbers)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
             "levenbergMarquardt", &
@@ -13655,7 +13667,9 @@ CONTAINS
                      "levenbergMarquardt", &
                      "Computation of Mahalanobis distance failed: " // TRIM(errstr), 1)
              END IF
-             WRITE(stdout,"(A,I0,A,1X,F7.3)") "Mahalanobis distance for observation #", k, ":",  mahalanobis
+             IF (info_verb >= 3) THEN
+                WRITE(stdout,"(A,I0,A,1X,F7.3)") "Mahalanobis distance for observation #", k, ":",  mahalanobis
+             END IF
              IF (mahalanobis > this%outlier_multiplier_prm) THEN
                 mask_measur(k,:) = .FALSE.
              END IF
@@ -13732,7 +13746,8 @@ CONTAINS
          asteroid_perturbers=this%ast_perturbers_prm, &
          integration_step=integration_step_, &
          integrator=integrator_, &
-         finite_diff=finite_diff_)
+         finite_diff=finite_diff_, &
+         additional_perturbers=additional_perturbers)
     IF (error) THEN
        CALL errorMessage("StochasticOrbit / " // &
             "levenbergMarquardt", &
@@ -13948,7 +13963,8 @@ CONTAINS
            asteroid_perturbers=this%ast_perturbers_prm, &
            integration_step=integration_step_, &
            integrator=integrator_, &
-           finite_diff=finite_diff_)
+           finite_diff=finite_diff_, &
+           additional_perturbers=additional_perturbers)
       IF (error) THEN
          CALL errorMessage("StochasticOrbit / " // &
               "levenbergMarquardt / ephemeris_lsl", &

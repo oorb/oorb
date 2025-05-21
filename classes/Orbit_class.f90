@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2025-04-22
+!! @version 2025-05-20
 !!
 MODULE Orbit_cl
 
@@ -4617,7 +4617,7 @@ CONTAINS
     CALL rotateToEquatorial(observer_)
     observer_coordinates = getCoordinates(observer_)
     mjd_tt = getMJD(t_observer, "TT")
-    sun_observer => JPL_ephemeris(mjd_tt, 11, 12, error)
+    sun_observer => planetary_ephemeris(mjd_tt, 11, 12, error)
     IF (info_verb >= 4 .AND. lt_corr_) THEN
        WRITE(stdout,"(1X,2(1X,A))") &
             "Orbit / getEphemeris_multiple:", &
@@ -4779,7 +4779,7 @@ CONTAINS
        ! Correction for solar motion between emit time and
        ! observing time:
        mjd_tt = getMJD(t_emit, "TT")
-       sun_emit => JPL_ephemeris(mjd_tt, 11, 12, error)
+       sun_emit => planetary_ephemeris(mjd_tt, 11, 12, error)
        solar_motion_correction = sun_emit(1,:) - sun_observer(1,:)
        CALL toCartesian(this_1, frame="equatorial")
        this_1%elements(1:6) = this_1%elements(1:6) - &
@@ -6955,7 +6955,7 @@ CONTAINS
     elements = getElements(this,"keplerian")
     t = getTime(this)
     mjd_tt = getMJD(t, "TT")
-    planeph => JPL_ephemeris(mjd_tt, -10, 11, error)
+    planeph => planetary_ephemeris(mjd_tt, -10, 11, error)
 
     DO i=1,SIZE(planeph,dim=1)
        CALL NEW(orb, planeph(i,1:6), "cartesian", "equatorial", t) 
@@ -7006,7 +7006,7 @@ CONTAINS
     coordinates = getElements(this,"cartesian","ecliptic")
     t = getTime(this)
     mjd_tt = getMJD(t, "TT")
-    planeph => JPL_ephemeris(mjd_tt, -10, 11, error)
+    planeph => planetary_ephemeris(mjd_tt, -10, 11, error)
 
     DO i=1,SIZE(planeph,dim=1)
        CALL NEW(orb, planeph(i,1:6), "cartesian", "equatorial", t) 
@@ -8649,6 +8649,15 @@ CONTAINS
                "Could not allocate memory (5).", 1)
           RETURN
        END IF
+       DO i=1,nthis
+          jacobian(i,:,:) = identity_matrix(6)
+       END DO
+    END IF
+
+    t_ = copy(t)
+    IF (equal(this_arr(1)%t,t_)) THEN
+       CALL NULLIFY(t_)
+       RETURN
     END IF
 
     IF (PRESENT(encounters)) THEN
@@ -8661,33 +8670,14 @@ CONTAINS
        END IF
     END IF
 
-    t_ = copy(t)
-    IF (equal(this_arr(1)%t,t_)) THEN
-       IF (PRESENT(jacobian)) THEN
-          DO i=1,nthis
-             jacobian(i,:,:) = identity_matrix(6)
-          END DO
-       END IF
-       CALL NULLIFY(t_)
-       RETURN
-    END IF
-
     dyn_model = this_arr(1)%dyn_model_prm
-    IF (error) THEN
-       CALL errorMessage("Orbit / propagate (multiple)",&
-            "TRACE BACK (10)", 1)
-       IF (PRESENT(jacobian)) THEN
-          DEALLOCATE(jacobian, stat=err)
-       END IF
-       RETURN
-    END IF
     DO i=2,nthis
        IF (dyn_model /= this_arr(i)%dyn_model_prm) THEN
           error = .TRUE.
           CALL errorMessage("Orbit / propagate (multiple)", &
                "All orbits do not share the same propagation scheme.", 1)
-          IF (PRESENT(jacobian)) THEN
-             DEALLOCATE(jacobian, stat=err)
+          IF (PRESENT(encounters)) THEN
+             DEALLOCATE(encounters, stat=err)
           END IF
           RETURN
        END IF
@@ -8697,8 +8687,8 @@ CONTAINS
     IF (error) THEN
        CALL errorMessage("Orbit / propagate (multiple)",&
             "TRACE BACK (15)", 1)
-       IF (PRESENT(jacobian)) THEN
-          DEALLOCATE(jacobian, stat=err)
+       IF (PRESENT(encounters)) THEN
+          DEALLOCATE(encounters, stat=err)
        END IF
        RETURN
     END IF
@@ -8706,8 +8696,8 @@ CONTAINS
     IF (error) THEN
        CALL errorMessage("Orbit / propagate (multiple)",&
             "TRACE BACK (20)", 1)
-       IF (PRESENT(jacobian)) THEN
-          DEALLOCATE(jacobian, stat=err)
+       IF (PRESENT(encounters)) THEN
+          DEALLOCATE(encounters, stat=err)
        END IF
        RETURN
     END IF
@@ -8718,8 +8708,8 @@ CONTAINS
           error = .TRUE.
           CALL errorMessage("Orbit / propagate (multiple)", &
                "All orbits do not share the same central body.", 1)
-          IF (PRESENT(jacobian)) THEN
-             DEALLOCATE(jacobian, stat=err)
+          IF (PRESENT(encounters)) THEN
+             DEALLOCATE(encounters, stat=err)
           END IF
           RETURN
        END IF
@@ -8738,6 +8728,19 @@ CONTAINS
                "Preparing for 2-body propagation..."
        END IF
 
+       IF (PRESENT(jacobian)) THEN
+          ALLOCATE(jacobian(nthis,6,6), stat=err)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("Orbit / propagate (multiple)", &
+                  "Could not allocate memory (5).", 1)
+             IF (PRESENT(encounters)) THEN
+                DEALLOCATE(encounters, stat=err)
+             END IF
+             RETURN
+          END IF
+       END IF
+
        dt = mjd_tt - mjd_tt0
        IF (PRESENT(jacobian) .AND. ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
           ALLOCATE(elm_arr(2,6), stat=err)
@@ -8747,6 +8750,9 @@ CONTAINS
                   "Could not allocate memory (15).", 1)
              DEALLOCATE(jacobian, stat=err)
              DEALLOCATE(elm_arr, stat=err)
+             IF (PRESENT(encounters)) THEN
+                DEALLOCATE(encounters, stat=err)
+             END IF
              RETURN
           END IF
        END IF
@@ -8929,6 +8935,8 @@ CONTAINS
           END IF
        END DO
 
+       ! All additional perturbers have to be associated to the first
+       ! orbit in the orbit array!
        IF (ASSOCIATED(this_arr(1)%additional_perturbers)) THEN
           naddit = SIZE(this_arr(1)%additional_perturbers,dim=1)
        ELSE
@@ -9150,7 +9158,7 @@ CONTAINS
                    END DO
                 END IF
                 IF (PRESENT(radial_acceleration)) THEN
-                   CALL bulirsch_full_jpl(this_arr(1)%additional_perturbers(1,7), &
+                   CALL bulirsch_full_planeph(this_arr(1)%additional_perturbers(1,7), &
                         mjd_tt0, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
                         this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                         step=this_arr(1)%integration_step_prm, &
@@ -9158,7 +9166,7 @@ CONTAINS
                         masses=this_arr(1)%additional_perturbers(:,8), &
                         info_verb=info_verb, radial_acceleration=radial_acceleration)
                 ELSE
-                   CALL bulirsch_full_jpl(this_arr(1)%additional_perturbers(1,7), &
+                   CALL bulirsch_full_planeph(this_arr(1)%additional_perturbers(1,7), &
                         mjd_tt0, elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
                         this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                         step=this_arr(1)%integration_step_prm, &
@@ -9188,42 +9196,40 @@ CONTAINS
           ! Default memory allocation
           ALLOCATE(elm_arr_copy(6,simint+naddit), &
                masses_(simint+naddit), &
-               jacobian_(6,6,simint), &
+               jacobian_(6,6,simint+naddit), &
                stat=err)
           IF (PRESENT(encounters)) THEN
-             ALLOCATE(encounters_(simint,11,4), stat=err)             
-          END IF
-          IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
-             ALLOCATE(jacobian_(6,6,simint), stat=err)
+             ALLOCATE(encounters_(simint+naddit,11,4), stat=err)             
           END IF
 
           DO i=1,nbatch
              ! number of massless particles in this batch
-             nsim = MIN(simint,nthis-(i-1)*simint)
+             nsim = MIN(simint,nthis-(i-1)*simint) + naddit
              ! allocate memory for massless and massive particles if
              ! default size not valid for this batch (usually the last
              ! batch)
-             IF (nsim /= simint) THEN
+             IF (nsim /= simint + naddit) THEN
                 DEALLOCATE(elm_arr_copy, masses_, stat=err)
-                ALLOCATE(elm_arr_copy(6,nsim+naddit), masses_(nsim+naddit), stat=err)
+                ALLOCATE(elm_arr_copy(6,nsim), masses_(nsim), stat=err)
                 IF (PRESENT(encounters)) THEN
                    DEALLOCATE(encounters_, stat=err)
                    ALLOCATE(encounters_(nsim,11,4), stat=err)             
                 END IF
                 IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
                    DEALLOCATE(jacobian_, stat=err)
-                   ALLOCATE(jacobian_(6,6,simint), stat=err)
+                   ALLOCATE(jacobian_(6,6,nsim), stat=err)
                 END IF
              END IF
 
              ! starting orbital elements for massless particles
-             elm_arr_copy(:,1:nsim) = elm_arr(:,(i-1)*simint+1:(i-1)*simint+nsim)
-             masses_(1:nsim) = masses((i-1)*simint+1:(i-1)*simint+nsim)
+             elm_arr_copy(:,1:nsim-naddit) = elm_arr(:,(i-1)*simint+1:(i-1)*simint+nsim-naddit)
+             masses_(1:nsim-naddit) = masses((i-1)*simint+1:(i-1)*simint+nsim-naddit)
              IF (naddit > 0) THEN
                 ! starting orbital elements for massive particles
-                elm_arr_copy(:,nsim+1:nsim+naddit) = elm_arr(:,nthis+1:nthis+naddit)
-                masses_(nsim+1:nsim+naddit) = masses(nthis+1:nthis+naddit)
+                elm_arr_copy(:,nsim-naddit+1:nsim) = elm_arr(:,nthis+1:nthis+naddit)
+                masses_(nsim-naddit+1:nsim) = masses(nthis+1:nthis+naddit)
              END IF
+
              IF (PRESENT(jacobian) .AND. .NOT.ALL(this_arr(1)%finite_diff_prm > 0.0_bp)) THEN
                 ! Variational equations technique
                 ! Initialize jacobian matrices:
@@ -9232,7 +9238,7 @@ CONTAINS
                 END DO
                 IF (PRESENT(encounters)) THEN
                    IF (PRESENT(radial_acceleration)) THEN
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
@@ -9240,7 +9246,7 @@ CONTAINS
                            encounters=encounters_, &
                            masses=masses_, info_verb=info_verb)
                    ELSE
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
@@ -9248,13 +9254,13 @@ CONTAINS
                            encounters=encounters_, &
                            masses=masses_, info_verb=info_verb)
                    END IF
-                   encounters((i-1)*simint+1:(i-1)*simint+nsim,:,:) = encounters_(1:nsim,:,:)
+                   encounters((i-1)*simint+1:(i-1)*simint+nsim-naddit,:,:) = encounters_(1:nsim-naddit,:,:)
                    IF (naddit > 0) THEN
-                      encounters(nthis+1:nthis+naddit,:,:) = encounters_(nsim+1:nsim+naddit,:,:)
+                      encounters(nthis+1:nthis+naddit,:,:) = encounters_(nsim-naddit+1:nsim,:,:)
                    END IF
                 ELSE
                    IF (PRESENT(radial_acceleration)) THEN
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
@@ -9262,7 +9268,7 @@ CONTAINS
                            info_verb=info_verb, &
                            radial_acceleration=radial_acceleration)
                    ELSE
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            jacobian=jacobian_, &
@@ -9270,7 +9276,7 @@ CONTAINS
                            info_verb=info_verb)
                    END IF
                 END IF
-                DO j=1,nsim
+                DO j=1,nsim-naddit
                    jacobian((i-1)*simint+j,1:6,1:6) = jacobian_(1:6,1:6,j)
                 END DO
              ELSE IF (.NOT.PRESENT(jacobian) .OR. &
@@ -9279,7 +9285,7 @@ CONTAINS
                 ! finite differences technique
                 IF (PRESENT(encounters)) THEN
                    IF (PRESENT(radial_acceleration)) THEN
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, &
@@ -9287,27 +9293,27 @@ CONTAINS
                            masses=masses_, info_verb=info_verb, &
                            radial_acceleration=radial_acceleration)
                    ELSE
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, &
                            encounters=encounters_, &
                            masses=masses_, info_verb=info_verb)
                    END IF
-                   encounters((i-1)*simint+1:(i-1)*simint+nsim,:,:) = encounters_(1:nsim,:,:)
+                   encounters((i-1)*simint+1:(i-1)*simint+nsim-naddit,:,:) = encounters_(1:nsim-naddit,:,:)
                    IF (naddit > 0) THEN
-                      encounters(nthis+1:nthis+naddit,:,:) = encounters_(nsim+1:nsim+naddit,:,:)
+                      encounters(nthis+1:nthis+naddit,:,:) = encounters_(nsim-naddit+1:nsim,:,:)
                    END IF
                 ELSE
                    IF (PRESENT(radial_acceleration)) THEN
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, masses=masses_, &
                            info_verb=info_verb, &
                            radial_acceleration=radial_acceleration)
                    ELSE
-                      CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr_copy, &
+                      CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr_copy, &
                            this_arr(1)%perturbers_prm, this_arr(1)%ast_perturbers_prm, error, &
                            step=this_arr(1)%integration_step_prm, &
                            ncenter=center, masses=masses_, &
@@ -9315,9 +9321,9 @@ CONTAINS
                    END IF
                 END IF
              END IF
-             elm_arr(:,(i-1)*simint+1:(i-1)*simint+nsim) = elm_arr_copy(:,1:nsim)
+             elm_arr(:,(i-1)*simint+1:(i-1)*simint+nsim-naddit) = elm_arr_copy(:,1:nsim-naddit)
              IF (naddit > 0) THEN
-                elm_arr(:,nthis+1:nthis+naddit) = elm_arr_copy(:,nsim+1:nsim+naddit)
+                elm_arr(:,nthis+1:nthis+naddit) = elm_arr_copy(:,nsim-naddit+1:nsim)
              END IF
              IF (error) THEN
                 CALL errorMessage("Orbit / propagate (multiple)", &
@@ -9368,7 +9374,7 @@ CONTAINS
                            this_arr(1)%additional_perturbers(i,7:8)
                    END DO
                 END IF
-                CALL gauss_radau_15_full_jpl( &
+                CALL gauss_radau_15_full_planeph( &
                      this_arr(1)%additional_perturbers(1,7), &
                      mjd_tt0, &
                      elm_arr(:,SIZE(elm_arr,dim=2)-naddit+1:), &
@@ -9402,14 +9408,14 @@ CONTAINS
 !!$                jacobian_(:,:,i) = identity_matrix(6)
 !!$             END DO
 !!$             IF (PRESENT(encounters)) THEN
-!!$                CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
+!!$                CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr, &
 !!$                     this_arr(1)%perturbers_prm, &
 !!$                     error, step=this_arr(1)%integration_step_prm, &
 !!$                     jacobian=jacobian_, ncenter=center, &
 !!$                     encounters=encounters, masses=masses, &
 !!$                     info_verb=info_verb)
 !!$             ELSE
-!!$                CALL bulirsch_full_jpl(mjd_tt0, mjd_tt, elm_arr, &
+!!$                CALL bulirsch_full_planeph(mjd_tt0, mjd_tt, elm_arr, &
 !!$                     this_arr(1)%perturbers_prm, &
 !!$                     error, step=this_arr(1)%integration_step_prm, &
 !!$                     jacobian=jacobian_, ncenter=center, &
@@ -9423,13 +9429,13 @@ CONTAINS
              ! No Jacobian requested or Jacobian requested through
              ! finite differences technique:
              IF (PRESENT(encounters)) THEN
-                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
+                CALL gauss_radau_15_full_planeph(mjd_tt0, mjd_tt, &
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm,this_arr(1)%ast_perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      ncenter=center, encounters=encounters, &
                      masses=masses)
              ELSE
-                CALL gauss_radau_15_full_jpl(mjd_tt0, mjd_tt, &
+                CALL gauss_radau_15_full_planeph(mjd_tt0, mjd_tt, &
                      elm_arr, 12, 2, this_arr(1)%perturbers_prm,this_arr(1)%ast_perturbers_prm, &
                      error, step=this_arr(1)%integration_step_prm, &
                      ncenter=center, &
@@ -9990,7 +9996,7 @@ CONTAINS
     TYPE(Orbit), INTENT(inout)                   :: this
     CHARACTER(len=*), INTENT(in), OPTIONAL       :: dyn_model
     CHARACTER(len=*), INTENT(in), OPTIONAL       :: integrator
-    REAL(bp), DIMENSION(:,:), OPTIONAL           :: additional_perturbers ! (car equ + mjd_tt + mass)
+    REAL(bp), DIMENSION(:,:), POINTER, OPTIONAL  :: additional_perturbers ! (car equ + mjd_tt + mass)
     REAL(bp), DIMENSION(6), INTENT(in), OPTIONAL :: finite_diff
     REAL(bp), INTENT(in), OPTIONAL               :: integration_step
     REAL(bp), INTENT(in), OPTIONAL               :: mass
@@ -10062,24 +10068,28 @@ CONTAINS
        this%ast_perturbers_prm = asteroid_perturbers
     END IF
     IF (PRESENT(additional_perturbers)) THEN
-       IF (SIZE(additional_perturbers,dim=2) < 8) THEN
-          error = .TRUE.
-          CALL errorMessage("Orbit / setParameters", &
-               "Too few parameters provided for additional perturbers. " // &
-               "Minimum information includes orbital elements, epoch, and perturber mass.", 1)
-          RETURN
-       END IF
-       IF (.NOT.ASSOCIATED(this%additional_perturbers)) THEN
-          ALLOCATE(this%additional_perturbers(SIZE(additional_perturbers,dim=1), &
-               SIZE(additional_perturbers,dim=2)), stat=err)
-          IF (err /= 0) THEN
+       IF (ASSOCIATED(additional_perturbers)) THEN
+          IF (SIZE(additional_perturbers,dim=2) < 8) THEN
              error = .TRUE.
              CALL errorMessage("Orbit / setParameters", &
-                  "Could not allocate memory.", 1)
+                  "Too few parameters provided for additional perturbers. " // &
+                  "Minimum information includes orbital elements, epoch, and perturber mass.", 1)
              RETURN
           END IF
+          IF (.NOT.ASSOCIATED(this%additional_perturbers)) THEN
+             ALLOCATE(this%additional_perturbers(SIZE(additional_perturbers,dim=1), &
+                  SIZE(additional_perturbers,dim=2)), stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Orbit / setParameters", &
+                     "Could not allocate memory.", 1)
+                RETURN
+             END IF
+          END IF
+          this%additional_perturbers = additional_perturbers
+       ELSE
+          this%additional_perturbers => NULL()
        END IF
-       this%additional_perturbers = additional_perturbers
     END IF
 
   END SUBROUTINE setParameters_Orb
@@ -10452,7 +10462,7 @@ CONTAINS
     ! Compute heliocentric equivalent of the old elements
     IF (this%center /= 11) THEN
        ! old elements not heliocentric
-       planeph => JPL_ephemeris(mjd_tt, this%center, 11, error)
+       planeph => planetary_ephemeris(mjd_tt, this%center, 11, error)
        CALL NEW(ccoord, planeph(1,1:6), "equatorial", t)
        CALL rotateToEcliptic(ccoord)
        plan_elements = getCoordinates(ccoord)
@@ -10468,7 +10478,7 @@ CONTAINS
        plan_elements = 0.0_bp
     ELSE
        ! coordinates for the new center
-       planeph => JPL_ephemeris(mjd_tt, center, 11, error)
+       planeph => planetary_ephemeris(mjd_tt, center, 11, error)
        CALL NEW(ccoord, planeph(1,1:6), "equatorial", t)
        CALL rotateToEcliptic(ccoord)
        plan_elements = getCoordinates(ccoord)

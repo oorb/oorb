@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG, LS, ET
-!! @version 2025-04-04
+!! @version 2025-05-21
 !!
 PROGRAM oorb
 
@@ -106,6 +106,7 @@ PROGRAM oorb
        orb_in_file, &                                               !! Input orbit file.
        orb_out_file, &                                              !! Output orbit file.
        out_file, &                                                  !! Generic output file.
+       res_file, &                                                  !! Generic residual file.
        cov_in_file, &                                               !! Input MCMC mass estimation covariance matrix.
        mcmc_in_file, &                                              !! Input MCMC mass estimation file.
        tmp_file, &                                                  !! Generic temporary file.
@@ -142,6 +143,7 @@ PROGRAM oorb
        orb_in_fname, &                                              !! Path to input orbit file (incl. fname).
        orb_out_fname, &                                             !! Path to output orbit file (incl. fname).
        out_fname, &                                                 !! Path to generic output file (incl. fname).
+       res_fname, &                                                 !! Path to generic residual file (incl. fname).
        mcmc_in_fname, &                                             !! Path to MCMC mass estimation input file (incl. fname).
        cov_in_fname, &                                              !! Path to MCMC mass estimation covariance matrix file (inc. fname.)
        tmp_fname, &
@@ -514,7 +516,7 @@ PROGRAM oorb
   IF (LEN_TRIM(planetary_ephemeris_fname) == 0) THEN
      planetary_ephemeris_fname = TRIM(EPH_FNAME)
   END IF
-  CALL JPL_ephemeris_init(error, &
+  CALL planetary_ephemeris_init(error, &
        filename=TRIM(OORB_DATA_DIR) // "/" // TRIM(planetary_ephemeris_fname)) 
   IF (error) THEN
      CALL errorMessage("oorb", &
@@ -1714,7 +1716,7 @@ PROGRAM oorb
         t = getTime(orb_arr_in(i))
         mjd = getMJD(t, "TT")
         ! Get Sun's coordinates at the epoch as seen from the planet:
-        planeph => JPL_ephemeris(mjd, 11, center, error)
+        planeph => planetary_ephemeris(mjd, 11, center, error)
         CALL NEW(ccoord, planeph(1,1:6), "equatorial", t)
         DEALLOCATE(planeph)
         CALL rotateToEcliptic(ccoord)
@@ -4908,12 +4910,6 @@ PROGRAM oorb
           ls_niter_major_max=ls_niter_major_max, &
           ls_niter_major_min=ls_niter_major_min, &
           ls_niter_minor=ls_niter_minor, &
-          sor_norb=sor_norb, &
-          sor_ntrial=sor_ntrial, &
-          sor_norb_sw=sor_norb_sw, &
-          sor_ntrial_sw=sor_ntrial_sw, &
-          sor_niter=sor_niter, &
-          sor_rho_init=sor_rho_init, &
           generat_multiplier=generat_multiplier, &
           accwin_multiplier=accwin_multiplier)
      IF (error) THEN
@@ -7356,7 +7352,7 @@ PROGRAM oorb
 
                  ! Compute (approximate) altitude of the Sun
                  ! Position of the geocenter as seen from the Sun:
-                 planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+                 planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
                  IF (error) THEN
                     CALL errorMessage('oorb / ephemeris', &
                          'TRACE BACK (85)',1)
@@ -7374,7 +7370,7 @@ PROGRAM oorb
 
                  ! Compute phase of the Moon:
                  ! Position of the Moon as seen from the Sun:
-                 planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
+                 planeph => planetary_ephemeris(mjd_tt, 10, 11, error)
                  IF (error) THEN
                     CALL errorMessage('oorb / ephemeris', &
                          'TRACE BACK (95)',1)
@@ -7924,7 +7920,7 @@ PROGRAM oorb
      END IF
      CALL NEW(epoch, mjd_tt, "TT")
 
-     planeph => JPL_ephemeris(mjd_tt, -10, 11, error)
+     planeph => planetary_ephemeris(mjd_tt, -10, 11, error)
      coordinates = 0.0_bp
      elements = 0.0_bp
      i = 11
@@ -8049,7 +8045,7 @@ PROGRAM oorb
            epoch = getTime(orb_arr_in(i))
            mjd_tt = getMJD(epoch, "TT")
            ! Earth's osculating elements for the epoch of the asteroid orbit:
-           planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+           planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
            CALL NEW(ref_orb, planeph(1,:), "cartesian", "equatorial", epoch)
            ! MOID between Earth and asteroid orbits:
            moid = getMOID(orb_arr_in(i), ref_orb)
@@ -8469,7 +8465,7 @@ PROGRAM oorb
 
               ! Compute (approximate) altitude of the Sun
               ! Position of the geocenter as seen from the Sun:
-              planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+              planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
               IF (error) THEN
                  CALL errorMessage('oorb / obsplanner', &
                       'TRACE BACK (85)',1)
@@ -8497,7 +8493,7 @@ PROGRAM oorb
 
               ! Compute phase of the Moon:
               ! Position of the Moon as seen from the Sun:
-              planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
+              planeph => planetary_ephemeris(mjd_tt, 10, 11, error)
               IF (error) THEN
                  CALL errorMessage('oorb / obsplanner', &
                       'TRACE BACK (87)',1)
@@ -9657,54 +9653,77 @@ PROGRAM oorb
 
      ! "marching" mass estimation algorithm
 
-     out_fname  = TRIM(get_cl_option("--output=","march_output"))
+     out_fname  = TRIM(get_cl_option("--output=","mass_march_results.txt"))
+     res_fname  = TRIM(get_cl_option("--residuals=","mass_march_residuals.txt"))
      resolution = get_cl_option("--resolution=",0)
 
      ALLOCATE(orb_arr(SIZE(storb_arr_in)))
+     CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
           dyn_model_init=dyn_model_init, &
-          dyn_model=dyn_model, &
-          integration_step=integration_step, &
-          integrator=integrator, &
-          perturbers=perturbers, &
           integrator_init=integrator_init, &
           integration_step_init=integration_step_init, &
-          accwin_multiplier=accwin_multiplier, &
-          smplx_niter=smplx_niter, &
-          smplx_tol=smplx_tol, &
-          smplx_force=smplx_force)
+          ls_correction_factor=ls_correction_factor, &
+          ls_rchi2_acceptable=ls_rchi2_acceptable, &
+          ls_element_mask=ls_element_mask, &
+          ls_niter_major_max=ls_niter_major_max, &
+          ls_niter_major_min=ls_niter_major_min, &
+          ls_niter_minor=ls_niter_minor, &
+          generat_multiplier=generat_multiplier, &
+          accwin_multiplier=accwin_multiplier)
+     IF (error) THEN
+        CALL errorMessage("oorb / mass_estimation_march", &
+             "TRACE BACK (5)", 1)
+        STOP
+     END IF
+     IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
+        CALL NULLIFY(epoch)
+        ! New epoch given as MJD TT
+        mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
+        CALL NEW(epoch, mjd_tt, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END IF
+
      obss_sep => getSeparatedSets(obss_in)
      obs = getObservation(obss_sep(2), 1)
      dt = getObservationalTimespan(obss_sep(2))
-
      IF (error) THEN
-        CALL errorMessage("oorb / massestanalysis / mass_estimation", &
-             "TRACE BACK (10)", 1)
+        CALL errorMessage("oorb / mass_estimation_march", &
+             "TRACE BACK (15)", 1)
         STOP
      END IF
 
-     CALL NULLIFY (obss_in)
-     DO i = 1, SIZE(storb_arr_in)
-        DO j = 1, SIZE(obss_sep)
+     CALL NULLIFY(obss_in)
+     DO i=1,SIZE(storb_arr_in)
+        DO j=1,SIZE(obss_sep)
            IF (getID(storb_arr_in(i)) == getID(obss_sep(j))) THEN
               CALL includeObservations(storb_arr_in(i), obss_sep(j))
               EXIT
            END IF
         END DO
         IF (j > SIZE(obss_sep)) THEN
-           WRITE (stderr, *) "Could not find astrometry for "// &
-                TRIM(getID(storb_arr_in(i)))//"... Quitting."
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "Could not find astrometry for " // TRIM(getID(storb_arr_in(i))), 1)
            STOP
         END IF
      END DO
      CALL NULLIFY(obss_in)
-     DO i = 1, SIZE(obss_sep)
+     DO i=1,SIZE(obss_sep)
         CALL NULLIFY(obss_sep(i))
      END DO
      DEALLOCATE(obss_sep, stat=err)
-     DO i = 1, SIZE(storb_arr_in)
+     DO i=1,SIZE(storb_arr_in)
         t = getTime(getNominalOrbit(storb_arr_in(i)))
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (20)", 1)
+           STOP
+        END IF
         CALL setParameters(storb_arr_in(i), &
              dyn_model=dyn_model, &
              perturbers=perturbers, &
@@ -9717,12 +9736,15 @@ PROGRAM oorb
              t_inv=t, &
              element_type=element_type_comp_prm, &
              accept_multiplier=accwin_multiplier, &
-             smplx_niter=smplx_niter, &
-             smplx_tol=smplx_tol, &
-             smplx_force=smplx_force)
+             ls_correction_factor=ls_correction_factor, &
+             ls_rchi2_acceptable=ls_rchi2_acceptable, &
+             ls_element_mask=ls_element_mask, &
+             ls_niter_major_max=ls_niter_major_max, &
+             ls_niter_major_min=ls_niter_major_min, &
+             ls_niter_minor=ls_niter_minor)
         IF (error) THEN
            CALL errorMessage("oorb / mass_estimation_march", &
-                "TRACE BACK (75)", 1)
+                "TRACE BACK (25)", 1)
            STOP
         END IF
      END DO
@@ -9730,16 +9752,26 @@ PROGRAM oorb
      t = getTime(obs)
      mjd = getMJD(t, "TT")
      mjd = REAL(NINT(mjd + dt/2.0_bp), bp)
-     CALL NULLIFY (t)
+     CALL NULLIFY(t)
      CALL NEW(t, mjd, "TT")
+     IF (error) THEN
+        CALL errorMessage("oorb / mass_estimation_march", &
+             "TRACE BACK (30)", 1)
+        STOP
+     END IF
      ! We have to have all perturbers at the same epoch so lets do that.
      ! No need to do this if we use MCMC orbits because they're guaranteed to already be in the same epoch. 
-     DO i = 1, SIZE(storb_arr_in)
+     DO i=1, SIZE(storb_arr_in)
         CALL propagate(storb_arr_in(i), t)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (35)", 1)
+           STOP
+        END IF
      END DO
 
      ! Initial orbits! Use MCMC orbits if given, --orb-in otherwise.
-     DO i = 1, SIZE(storb_arr_in)
+     DO i=1,SIZE(storb_arr_in)
         IF (ASSOCIATED(mcmc_orb_arr)) THEN
            orb_arr(i) = mcmc_orb_arr(i,SIZE(mcmc_orb_arr,dim=2))
         ELSE
@@ -9748,20 +9780,39 @@ PROGRAM oorb
         CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
              perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
              integrator=integrator, integration_step=integration_step)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (40)", 1)
+           STOP
+        END IF
      END DO
 
-     WRITE(stdout, *) "Starting mass estimation..."
-     CALL massEstimation_march(storb_arr_in, orb_arr, HG_arr_in, dyn_model, integrator, &
-          integration_step, perturbers, asteroid_perturbers, mass, out_fname, resolution)
-     WRITE(stdout, *) "Mass estimation is done."
-     WRITE(stdout, *) "Best mass is ", mass
-     DO i = 1, SIZE(storb_arr_in)
-        CALL NULLIFY(storb_arr_in(i))
-     END DO
-     DEALLOCATE(storb_arr_in)
+     CALL NEW(out_file, TRIM(out_fname))
+     CALL OPEN(out_file)
+     IF (error) THEN
+        CALL errorMessage("oorb / mass_estimation_march", &
+             "TRACE BACK (45)", 1)
+        STOP
+     END IF
+     CALL NEW(res_file, TRIM(res_fname))
+     CALL OPEN(res_file)
+     IF (error) THEN
+        CALL errorMessage("oorb / mass_estimation_march", &
+             "TRACE BACK (50)", 1)
+        STOP        
+     END IF
+
+     IF (info_verb >= 1) THEN
+        WRITE(stdout, *) "Starting mass estimation with the marching method..."
+     END IF
+     CALL massEstimation_march(storb_arr_in, orb_arr, HG_arr_in, perturbers, &
+          asteroid_perturbers, mass, out_file, res_file, resolution)
+     IF (info_verb >= 1) THEN
+        WRITE(stdout, *) "Mass estimation completed."
+        WRITE(stdout, *) "The best-fit mass is ", mass
+     END IF
 
 
-     ! Computes residuals for each element from a MCMC mass estimation chain.
   CASE ("mass_residuals")
 
      out_fname = TRIM(get_cl_option("--output=","placeholder"))
@@ -9938,7 +9989,7 @@ PROGRAM oorb
   IF (ASSOCIATED(HG_arr_in)) THEN
      DEALLOCATE(HG_arr_in)
   END IF
-  CALL JPL_ephemeris_nullify()
+  CALL planetary_ephemeris_nullify()
   CALL nullifyTime()
   IF (ASSOCIATED(perturbers)) THEN
      DEALLOCATE(perturbers, stat=err)

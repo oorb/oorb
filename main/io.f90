@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV, LS, ET
-!! @version 2025-04-01
+!! @version 2025-05-20
 !!
 MODULE io
 
@@ -2989,6 +2989,7 @@ CONTAINS
 
     TYPE (Orbit) :: orb
     TYPE (Time) :: t
+    CHARACTER(len=OBSY_CODE_LEN), DIMENSION(:), POINTER :: obsy_codes
     CHARACTER(len=DESIGNATION_LEN) :: &
          id
     CHARACTER(len=ELEMENT_TYPE_LEN) :: &
@@ -3007,10 +3008,11 @@ CONTAINS
     REAL(bp), DIMENSION(6)     :: elements, sigmas
     REAL(bp) :: obsarc, rchi2
     INTEGER, DIMENSION(6) :: indx
-    INTEGER :: k, l, err, err_verb_
+    INTEGER :: i, k, l, err, err_verb_
     LOGICAL, DIMENSION(:,:), POINTER :: &
          obs_masks => NULL()
     LOGICAL, DIMENSION(6) :: ls_element_mask
+    LOGICAL :: gaia
 
     IF (.NOT. exist(storb)) THEN
        error = .TRUE.
@@ -3040,7 +3042,7 @@ CONTAINS
     END IF
 
     element_type_ = TRIM(element_type)
-    str = "#CAR  "
+    str = "#CAR       "
     err_verb_ = err_verb
     err_verb = 0
     elements = getElements(orb, TRIM(element_type_))
@@ -3054,7 +3056,7 @@ CONTAINS
        elements = getElements(orb, TRIM(element_type_), "ecliptic")
     ELSE IF (.NOT.error .AND. TRIM(element_type_) == "keplerian") THEN
        elements(3:6) = elements(3:6)/rad_deg
-       str = "#KEP  "
+       str = "#KEP       "
     END IF
     err_verb = err_verb_
     id = getID(obss)
@@ -3067,16 +3069,16 @@ CONTAINS
     WRITE(lu,"(A)") "#"
 
     IF (element_type_ == "keplerian") THEN
-       WRITE(lu,"(A6,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
+       WRITE(lu,"(A11,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
             "a [au]", "e", "i [deg]", "node [deg]", "ap [deg]", & 
             "M [deg]", "Epoch"
     ELSE
-       WRITE(lu,"(A6,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
+       WRITE(lu,"(A11,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
             "x [au]", "y [au]", "z [au]", "dx/dt [au/d]", & 
             "dy/dt [au/d]", "dz/dt [au/d]", "Epoch" 
     END IF
-    WRITE(lu,"(A6,2X,A7,1X,6(F16.12,1X),A,'TT')") &
-         str(1:6), id(1:7), elements, getCalendarDateString(t,"tt")
+    WRITE(lu,"(A11,2X,A7,1X,6(F16.12,1X),A,'TT')") &
+         str(1:11), id(1:7), elements, getCalendarDateString(t,"tt")
     IF (error) THEN
        CALL errorMessage("io / writeNominalSolution", &
             "TRACE BACK (115)", 1)
@@ -3086,7 +3088,7 @@ CONTAINS
     WRITE(lu,"(A)") "#"
 
     ! STANDARD DEVIATIONS:
-    WRITE(lu,"(A6,2X,A7,1X)",advance="no") "#STDEV", id(1:7)
+    WRITE(lu,"(A11,2X,A7,1X)",advance="no") "#STDEV     ", id(1:7)
     IF (TRIM(element_type_) == "keplerian") THEN
        cov = getCovarianceMatrix(storb, TRIM(element_type_))
     ELSE
@@ -3097,7 +3099,6 @@ CONTAINS
             "TRACE BACK (116)", 1)
        RETURN
     END IF
-
     DO l=1,6
        sigmas(l) = SQRT(cov(l,l))
        IF (TRIM(element_type_) == "keplerian" .AND. l >= 3) THEN
@@ -3116,18 +3117,18 @@ CONTAINS
                (sigmas(l)*sigmas(k))
        END DO
     END DO
-    WRITE(lu,"(A6,2X,A7,6(1X,F16.12))") &
-         "#CORR ", id(1:7), corr(1,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,F16.12))") &
-         "#CORR ", id(1:7), corr(2,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,F16.12))") &
-         "#CORR ", id(1:7), corr(3,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,F16.12))") &
-         "#CORR ", id(1:7), corr(4,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,F16.12))") &
-         "#CORR ", id(1:7), corr(5,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,F16.12))") &
-         "#CORR ", id(1:7), corr(6,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,F16.12))") &
+         "#CORR      ", id(1:7), corr(1,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,F16.12))") &
+         "#CORR      ", id(1:7), corr(2,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,F16.12))") &
+         "#CORR      ", id(1:7), corr(3,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,F16.12))") &
+         "#CORR      ", id(1:7), corr(4,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,F16.12))") &
+         "#CORR      ", id(1:7), corr(5,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,F16.12))") &
+         "#CORR      ", id(1:7), corr(6,1:6)
     WRITE(lu,"(A)") "#"
 
     ! COVARIANCE:
@@ -3135,29 +3136,40 @@ CONTAINS
        cov(3:6,:) = cov(3:6,:)/rad_deg
        cov(:,3:6) = cov(:,3:6)/rad_deg
     END IF
-    WRITE(lu,"(A6,2X,A7,6(1X,E16.8))") &
-         "#COV  ", id(1:7), cov(1,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,E16.8))") &
-         "#COV  ", id(1:7), cov(2,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,E16.8))") &
-         "#COV  ", id(1:7), cov(3,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,E16.8))") &
-         "#COV  ", id(1:7), cov(4,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,E16.8))") &
-         "#COV  ", id(1:7), cov(5,1:6)
-    WRITE(lu,"(A6,2X,A7,6(1X,E16.8))") &
-         "#COV  ", id(1:7), cov(6,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,E16.8))") &
+         "#COV       ", id(1:7), cov(1,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,E16.8))") &
+         "#COV       ", id(1:7), cov(2,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,E16.8))") &
+         "#COV       ", id(1:7), cov(3,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,E16.8))") &
+         "#COV       ", id(1:7), cov(4,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,E16.8))") &
+         "#COV       ", id(1:7), cov(5,1:6)
+    WRITE(lu,"(A11,2X,A7,6(1X,E16.8))") &
+         "#COV       ", id(1:7), cov(6,1:6)
     WRITE(lu,"(A)") "#"
 
-    ! WRITE RESIDUAL BLOCK:
+    ! WRITE OBSERVATIONAL TIMESPAN:
+    obsarc = getObservationalTimespan(obss)
+    WRITE(lu,"(A11,2X,A7,1X,F14.4)") "#OBSARC    ", id(1:7), obsarc
+    WRITE(lu,"(A)") "#"
+
+    ! WRITE NUMBER OF INCLUDED AND REJECTED OBSERVATIONS
     obs_masks => getObservationMasks(storb)
     IF (error) THEN
        CALL errorMessage("io / writeNominalSolution", &
             "TRACE BACK (120)", 1)
        RETURN
     END IF
-    WRITE(str,"(A6,2X,A7)") "#RES  ", id(1:7)
-    CALL writeResidualBlock(orb, obss, obs_masks, &
+    WRITE(lu,"(A11,2X,A7,1X,I0)") "#OBSINCL   ", id(1:7), COUNT(obs_masks)/2
+    WRITE(lu,"(A11,2X,A7,1X,I0)") "#OBSREJECT ", id(1:7), &
+         getNumberOfObservations(obss) - COUNT(obs_masks)/2
+    WRITE(lu,"(A)") "#"
+
+    ! WRITE RA&DEC RESIDUAL BLOCK:
+    WRITE(str,"(A11,2X,A7)") "#RESRADEC  ", id(1:7)
+    CALL writeResidualBlockRADEC(orb, obss, obs_masks, &
          TRIM(str), lu, residuals)
     IF (error) THEN
        CALL errorMessage("io / writeNominalSolution", &
@@ -3166,8 +3178,8 @@ CONTAINS
     END IF
     WRITE(lu,"(A)") "#"
 
-    ! WRITE RMS:
-    WRITE(lu,"(A6,2X,A7,3X,2(F11.6,1X))") "#RMS  ", id(1:7), &
+    ! WRITE RA&DEC RMS:
+    WRITE(lu,"(A11,2X,A7,3X,2(F11.6,1X))") "#RMSRADEC  ", id(1:7), &
          SQRT(SUM(residuals(:,2)**2.0_bp,obs_masks(:,2) &
          .AND. obs_masks(:,3))/COUNT(obs_masks(:,2) &
          .AND. obs_masks(:,3)))/rad_asec, &
@@ -3188,14 +3200,47 @@ CONTAINS
        errstr = ""
        RETURN
     END IF
-    WRITE(lu,"(A6,2X,A7,1X,F14.6)") "#RCHI2", id(1:7), rchi2
+    WRITE(lu,"(A11,2X,A7,1X,F14.6)") "#RCHI2RADEC", id(1:7), rchi2
     WRITE(lu,"(A)") "#"
     DEALLOCATE(inform_mat_obs_bd, stat=err)
+    DEALLOCATE(residuals, stat=err)
 
-    ! WRITE OBSERVATIONAL TIMESPAN:
-    obsarc = getObservationalTimespan(obss)
-    WRITE(lu,"(A7,1X,A7,1X,F14.4)") "#OBSARC", id(1:7), obsarc
-    WRITE(lu,*)
+    ! Check if Gaia observations included:
+    obsy_codes => getObservatoryCodes(obss)
+    gaia = .FALSE.
+    DO i=1,SIZE(obsy_codes)
+       IF (TRIM(obsy_codes(i)) == "258") THEN
+          gaia = .TRUE.
+          EXIT
+       END IF
+    END DO
+    DEALLOCATE(obsy_codes, stat=err)
+
+    ! If Gaia observations included, write AL & AC residuals and RMSs:
+    IF (gaia) THEN
+
+       ! WRITE AL&AC RESIDUAL BLOCK:
+       WRITE(str,"(A11,2X,A7)") "#RESALAC   ", id(1:7)
+       CALL writeResidualBlockALAC(orb, obss, obs_masks, &
+            TRIM(str), lu, residuals)
+       IF (error) THEN
+          CALL errorMessage("io / writeNominalSolution", &
+               "TRACE BACK (125)", 1)
+          RETURN
+       END IF
+       WRITE(lu,"(A)") "#"
+
+       ! WRITE AL&AC RMS:
+       WRITE(lu,"(A11,2X,A7,3X,2(F11.6,1X))") "#RMSALAC   ", id(1:7), &
+            SQRT(SUM(residuals(:,2)**2.0_bp,obs_masks(:,2) &
+            .AND. obs_masks(:,3))/COUNT(obs_masks(:,2) &
+            .AND. obs_masks(:,3)))/rad_asec*1000, &
+            SQRT(SUM(residuals(:,3)**2.0_bp,obs_masks(:,2) &
+            .AND. obs_masks(:,3))/COUNT(obs_masks(:,2) &
+            .AND. obs_masks(:,3)))/rad_asec*1000
+       WRITE(lu,"(A)") "#"
+
+    END IF
 
     DEALLOCATE(obs_masks, stat=err)
     DEALLOCATE(residuals, stat=err)
@@ -4187,7 +4232,7 @@ CONTAINS
 
 
 
-  SUBROUTINE writeResidualBlock(orb, obss, obs_mask, str, lu, residuals)
+  SUBROUTINE writeResidualBlockRADEC(orb, obss, obs_mask, str, lu, residuals)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(in) :: orb
@@ -4212,6 +4257,7 @@ CONTAINS
          computed_coords
     REAL(bp) :: day
     INTEGER :: i, j, nobs, year, month, err
+    LOGICAL :: gaia
 
     ! Compute residuals
     observed_scoords => getObservationSCoords(obss)
@@ -4268,6 +4314,7 @@ CONTAINS
             "TRACE BACK (30)", 1)
        RETURN
     END IF
+
     residual_arr = " "
     DO i=1,nobs
        t = getTime(obs_arr(i))
@@ -4370,8 +4417,210 @@ CONTAINS
     DEALLOCATE(residual_block, stat=err)
     DEALLOCATE(residuals_, stat=err)
 
-  END SUBROUTINE writeResidualBlock
+  END SUBROUTINE writeResidualBlockRADEC
 
+
+
+
+
+  SUBROUTINE writeResidualBlockALAC(orb, obss, obs_mask, str, lu, residuals)
+
+    IMPLICIT NONE
+    TYPE (Orbit), INTENT(in) :: orb
+    TYPE (Observations), INTENT(in) :: obss
+    CHARACTER(len=*) :: str
+    INTEGER, INTENT(in) :: lu
+    LOGICAL, DIMENSION(:,:), INTENT(in) :: obs_mask
+    REAL(bp), DIMENSION(:,:), POINTER, OPTIONAL :: residuals
+
+    TYPE (Time) :: t
+    TYPE (CartesianCoordinates), DIMENSION(:), POINTER :: &
+         obsy_ccoords => NULL()
+    TYPE (SphericalCoordinates), DIMENSION(:), POINTER :: &
+         observed_scoords => NULL(), &
+         computed_scoords => NULL()
+    TYPE (Observation), DIMENSION(:), POINTER :: &
+         obs_arr => NULL()
+    CHARACTER(len=64), DIMENSION(:,:), ALLOCATABLE :: residual_block
+    CHARACTER(len=64), DIMENSION(:), ALLOCATABLE :: residual_arr 
+    CHARACTER(len=2) :: month_str, day_str
+    REAL(bp), DIMENSION(:,:), ALLOCATABLE :: residuals_, observed_coords, &
+         computed_coords, residualsALAC_
+    REAL(bp) :: day
+    INTEGER :: i, j, nobs, year, month, err
+    LOGICAL :: gaia
+
+    ! Compute residuals
+    observed_scoords => getObservationSCoords(obss)
+    IF (error) THEN
+       CALL errorMessage("io / writeResidualBlock", &
+            "TRACE BACK (5)", 1)
+       RETURN
+    END IF
+    obsy_ccoords => getObservatoryCCoords(obss)
+    IF (error) THEN
+       CALL errorMessage("io / writeResidualBlock", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+    nobs = SIZE(observed_scoords,dim=1)
+    ALLOCATE(residuals_(nobs,6), residualsALAC_(nobs,6), observed_coords(nobs,6), &
+         computed_coords(nobs,6), residual_arr(CEILING(nobs/3.0)*3), &
+         residual_block(CEILING(nobs/3.0),3), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("io / writeResidualBlock", &
+            "Could not allocate memory (5).", 1)
+       RETURN
+    END IF
+    CALL getEphemerides(orb, obsy_ccoords, computed_scoords)
+    IF (error) THEN
+       CALL errorMessage("io / writeResidualBlock", &
+            "TRACE BACK (15)", 1)
+       RETURN
+    END IF
+    observed_coords = 0.0_bp
+    computed_coords = 0.0_bp
+    DO i=1,nobs
+       observed_coords(i,:) = getCoordinates(observed_scoords(i))
+       IF (error) THEN
+          CALL errorMessage("io / writeResidualBlock", &
+               "TRACE BACK (20)", 1)
+          RETURN
+       END IF
+       computed_coords(i,:) = getCoordinates(computed_scoords(i))
+       IF (error) THEN
+          CALL errorMessage("io / writeResidualBlock", &
+               "TRACE BACK (25)", 1)
+          RETURN
+       END IF
+    END DO
+    residuals_(1:nobs,1:6) = observed_coords(1:nobs,1:6) - &
+         computed_coords(1:nobs,1:6)        
+    residuals_(1:nobs,2) = residuals_(1:nobs,2) * &
+         COS(observed_coords(1:nobs,3))
+    obs_arr => getObservations(obss)
+    IF (error) THEN
+       CALL errorMessage("io / writeResidualBlock", &
+            "TRACE BACK (30)", 1)
+       RETURN
+    END IF
+
+    ! residuals in AL-AC coordinates for Gaia astrometry, if any
+    gaia = .FALSE.
+    residualsALAC_ = 0.0_bp
+    DO i=1,nobs
+       IF (getCode(obs_arr(i)) == "258") THEN
+          residualsALAC_(i,2) = residuals_(i,2)*SIN(getPAscan(obs_arr(i))) + residuals_(i,3)*COS(getPAscan(obs_arr(i)))
+          residualsALAC_(i,3) = -residuals_(i,2)*COS(getPAscan(obs_arr(i))) + residuals_(i,3)*SIN(getPAscan(obs_arr(i)))
+          gaia = .TRUE.
+       END IF
+    END DO
+    IF (gaia) THEN
+       residual_arr = " "
+       DO i=1,nobs
+          t = getTime(obs_arr(i))
+          IF (error) THEN
+             CALL errorMessage("io / writeResidualBlock", &
+                  "TRACE BACK (35)", 1)
+             RETURN
+          END IF
+          CALL getCalendarDate(t, "TT", year, month, day)
+          IF (year >= 1972) THEN
+             CALL getCalendarDate(t, "UTC", year, month, day)
+          ELSE
+             CALL getCalendarDate(t, "UT1", year, month, day)
+          END IF
+          IF (error) THEN
+             CALL errorMessage("io / writeResidualBlock", &
+                  "TRACE BACK (40)", 1)
+             RETURN
+          END IF
+          CALL NULLIFY(t)
+          CALL toString(month, month_str, error)
+          IF (error) THEN
+             CALL errorMessage("io / writeResidualBlock", &
+                  "TRACE BACK (45)", 1)
+             RETURN
+          END IF
+          IF (LEN_TRIM(month_str) == 1) THEN
+             month_str = "0" // TRIM(month_str)
+          END IF
+          CALL toString(FLOOR(day), day_str, error)
+          IF (error) THEN
+             CALL errorMessage("io / writeResidualBlock", &
+                  "TRACE BACK (50)", 1)
+             RETURN
+          END IF
+          IF (LEN_TRIM(day_str) == 1) THEN
+             day_str = "0" // TRIM(day_str)
+          END IF
+          IF (ALL(obs_mask(i,2:3))) THEN
+             WRITE(residual_arr(i), &
+                  "(I4,2(A2),2X,A4,2X,F8.4,1X,F11.4)", iostat=err) &
+                  year, month_str, day_str, &
+                  getCode(obs_arr(i)), &
+                  residualsALAC_(i,2:3)/rad_asec*1000
+          ELSE
+             WRITE(residual_arr(i), &
+                  "(I4,2(A2),2X,A4,1X,A1,F8.4,1X,F11.4,A1)",iostat=err) &
+                  year, month_str, day_str, &
+                  getCode(obs_arr(i)), "(", &
+                  residualsALAC_(i,2:3)/rad_asec*1000, ")"
+          END IF
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("io / writeResidualBlock", &
+                  "Write error (5).", 1)
+             RETURN
+          END IF
+       END DO
+       residual_block = " "
+       residual_block = RESHAPE(residual_arr, &
+            SHAPE(residual_block))
+       DO i=1,SIZE(residual_block,dim=1)
+          WRITE(lu,"(A,2X)",advance="no",iostat=err) TRIM(str)
+          IF (err /= 0) THEN
+             error = .TRUE.
+             CALL errorMessage("io / writeResidualBlock", &
+                  "Write error (10).", 1)
+             RETURN
+          END IF
+          DO j=1,SIZE(residual_block,dim=2)
+             WRITE(lu,"(A,2X)",advance="no",iostat=err) &
+                  residual_block(i,j)(1:37)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("io / writeResidualBlock", &
+                     "Write error (15).", 1)
+                RETURN
+             END IF
+          END DO
+          WRITE(lu,*,iostat=err)
+       END DO
+    END IF
+
+    IF (PRESENT(residuals)) THEN
+       ALLOCATE(residuals(nobs,6), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("io / writeResidualBlock", &
+               "Could not allocate memory (10).", 1)
+          RETURN
+       END IF
+       residuals = residualsALAC_
+    END IF
+    DEALLOCATE(observed_coords, stat=err)
+    DEALLOCATE(computed_coords, stat=err)
+    DEALLOCATE(observed_scoords, stat=err)
+    DEALLOCATE(obsy_ccoords, stat=err)
+    DEALLOCATE(computed_scoords, stat=err) 
+    DEALLOCATE(obs_arr, stat=err)
+    DEALLOCATE(residual_arr, stat=err)
+    DEALLOCATE(residual_block, stat=err)
+    DEALLOCATE(residuals_, stat=err)
+
+  END SUBROUTINE writeResidualBlockALAC
 
 
 
