@@ -51,7 +51,7 @@ PROGRAM ephtester
   DO WHILE (str(1:3) /= "EOT")
      READ(12,"(A)") str
   END DO
-  CALL JPL_ephemeris_init(error, "de" // TRIM(eph_type) // ".dat")
+  CALL planetary_ephemeris_init(error, "de" // TRIM(eph_type) // ".dat")
   IF (error) THEN
      WRITE(0,*) "***** INITIALIZATION ERROR OCCURRED *****"     
      STOP
@@ -74,7 +74,7 @@ PROGRAM ephtester
         CYCLE
      END IF
      mjd_tt = jd_tt - 2400000.5_rprec8
-     ephemeris => JPL_ephemeris(mjd_tt, ntarget, ncenter, error)
+     ephemeris => planetary_ephemeris(mjd_tt, ntarget, ncenter, error)
      IF (error .AND. ieph_type == 406 .AND. i == 36001) THEN
         error = .FALSE.
         WRITE(0,*) "***** PREVIOUS NOT AN ERROR IN SW BUT IN JPL TEST FILE *****"
@@ -97,7 +97,7 @@ PROGRAM ephtester
      END IF
   END DO
   CLOSE(12)
-  CALL JPL_ephemeris_nullify()
+  CALL planetary_ephemeris_nullify()
   WRITE(*,*) "*********** EVERYTHING OK ***************"
 
 END PROGRAM ephtester
