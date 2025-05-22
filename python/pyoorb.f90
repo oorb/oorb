@@ -89,14 +89,14 @@ CONTAINS
 
     ! Read de430.dat
     IF (PRESENT(ephemeris_fname) .AND. LEN_TRIM(ephemeris_fname) /= 0) THEN
-       CALL JPL_ephemeris_init(error, ephemeris_fname)
+       CALL planetary_ephemeris_init(error, ephemeris_fname)
        IF (error) THEN
           error_code = 3
           error = .FALSE.
           RETURN
        END IF
     ELSE
-       CALL JPL_ephemeris_init(error, &
+       CALL planetary_ephemeris_init(error, &
             filename=TRIM(OORB_DATA_DIR) // "/" // TRIM(EPH_FNAME)) 
        IF (error) THEN
           error_code = 4
@@ -128,7 +128,7 @@ CONTAINS
 
     CALL nullifyTime()
     CALL NULLIFY(obsies)
-    CALL JPL_ephemeris_nullify()
+    CALL planetary_ephemeris_nullify()
 
   END SUBROUTINE oorb_memfree
 
@@ -817,7 +817,7 @@ CONTAINS
           
           ! Compute (approximate) altitude of the Sun
           ! Position of the geocenter as seen from the Sun:
-          planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
           IF (error) THEN
              CALL errorMessage('oorb / ephemeris', &
                   'TRACE BACK (85)',1)
@@ -835,7 +835,7 @@ CONTAINS
           
           ! Compute phase of the Moon:
           ! Position of the Moon as seen from the Sun:
-          planeph => JPL_ephemeris(mjd_tt, 10, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 10, 11, error)
           IF (error) THEN
              CALL errorMessage('oorb / ephemeris', &
                   'TRACE BACK (95)',1)
@@ -1192,7 +1192,7 @@ CONTAINS
          
           ! Compute (approximate) altitude of the Sun
           ! Position of the geocenter as seen from the Sun:
-          planeph => JPL_ephemeris(mjd_tt, 3, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
           IF (error) THEN
              CALL errorMessage('oorb / ephemeris', &
                   'TRACE BACK (85)',1)
