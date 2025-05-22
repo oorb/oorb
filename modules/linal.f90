@@ -229,7 +229,7 @@ CONTAINS
        if (i<n) then
           ! Get rid of the upper diagonal matrix that contains the
           ! covariance matrix:
-          temp(i,i+1:6) = 0.0_rprec8
+          temp(i,i+1:n) = 0.0_rprec8
        end if
     END DO
     a = temp
