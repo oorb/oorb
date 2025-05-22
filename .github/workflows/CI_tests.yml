@@ -42,7 +42,7 @@ jobs:
         cd data/JPL_ephemeris
         make -j3
         make test
-        mv de430.dat ../
+        mv de440.dat ../
     - name: obtain BC430
       run: |
         pwd
@@ -110,7 +110,7 @@ jobs:
         cd data/JPL_ephemeris
         make -j3
         make test
-        mv de430.dat ../
+        mv de440.dat ../
     - name: obtain BC430
       run: |
         pwd
