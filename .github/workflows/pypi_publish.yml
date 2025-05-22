@@ -72,7 +72,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install gfortran liblapack-dev
+          sudo apt-get install gfortran liblapack-dev meson ninja-build
       - name: Compile oorb
         run: |
           ./configure gfortran opt
