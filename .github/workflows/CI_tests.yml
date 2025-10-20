@@ -34,8 +34,7 @@ jobs:
       run: |
         sudo apt-get install gfortran python3-numpy python3-pytest liblapack-dev meson ninja-build
         echo "FC=gfortran" >> $GITHUB_ENV
-        # ./configure gfortran opt --with-pyoorb --with-f2py=f2py3 --with-python=python3
-        ./configure gfortran opt
+        ./configure gfortran opt --with-pyoorb --with-f2py=f2py3 --with-python=python3
         make -j3
     - name: Build ephemerides
       run: |
