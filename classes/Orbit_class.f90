@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2025-05-20
+!! @version 2025-12-01
 !!
 MODULE Orbit_cl
 
@@ -8726,19 +8726,6 @@ CONTAINS
           WRITE(stdout,"(2X,A,1X,A)") &
                "Orbit / propagate_Orb_multiple:", &
                "Preparing for 2-body propagation..."
-       END IF
-
-       IF (PRESENT(jacobian)) THEN
-          ALLOCATE(jacobian(nthis,6,6), stat=err)
-          IF (err /= 0) THEN
-             error = .TRUE.
-             CALL errorMessage("Orbit / propagate (multiple)", &
-                  "Could not allocate memory (5).", 1)
-             IF (PRESENT(encounters)) THEN
-                DEALLOCATE(encounters, stat=err)
-             END IF
-             RETURN
-          END IF
        END IF
 
        dt = mjd_tt - mjd_tt0
