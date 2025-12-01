@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG, LS, ET
-!! @version 2025-05-21
+!! @version 2025-12-01
 !!
 PROGRAM oorb
 
@@ -618,6 +618,7 @@ PROGRAM oorb
            END IF
         END DO
      END DO
+     DEALLOCATE(fnames, stat=err)
      obss_sep => getSeparatedSets(obss_in)
      IF (error) THEN
         CALL errorMessage("oorb", &
@@ -1076,6 +1077,7 @@ PROGRAM oorb
         WRITE(stdout,"(A,I0)") "Random number generator initialized with ", &
              -1*(i+SUM(ICHAR(strlen1)))
      END IF
+     DEALLOCATE(strlen1, stat=err)
   END IF
 
   SELECT CASE (task)
