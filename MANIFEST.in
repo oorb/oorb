@@ -8,5 +8,5 @@ include Makefile
 include VERSION
 include COPYING
 include configure
-include setup.py
 include pyproject.toml
+include CMakeLists.txt

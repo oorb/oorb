@@ -1,31 +1,71 @@
+[project]
 name = "pyoorb"
+description = "An open-source orbit-computation package for Solar System objects."
+readme = "README.md"
+authors = [
+    { name = "Mikael Granvik" },
+    { name = "oorb developers", email = "oorb@googlegroups.com" },
+]
 license = "GPL-3.0-only"
+license-files = ["COPYING"]
+requires-python = ">=3.10"
+dynamic = ["version"]
+keywords = [
+    "astronomy",
+    "astrophysics",
+    "planetary",
+    "asteroid",
+    "comet",
+    "space",
+    "science",
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Fortran",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = ["numpy>=2.0"]
+
+[project.urls]
+Repository = "https://github.com/oorb/oorb"
+Issues = "https://github.com/oorb/oorb/issues"
 
 [build-system]
-requires = ["setuptools", "wheel", "numpy>=1.26"]
+requires = ["scikit-build-core", "numpy>=2.0", "ninja>1.10"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+cmake.version = "CMakeLists.txt"
+# sdist.cmake = true
+
+[tool.setuptools_scm]
+version_file = "python/_version.py"
 
 [tool.cibuildwheel]
-before-build = """
-pip install numpy &&
-./configure gfortran opt --with-pyoorb --with-f2py=f2py --with-python=python
-"""
+skip = "cp38*"
+# before-build = """
+# pip install numpy &&
+# ./configure gfortran opt --with-pyoorb --with-f2py=f2py --with-python=python
+# """
 
 [tool.cibuildwheel.linux]
 before-all = """
 yum update -y &&
-yum install gcc-gfortran lapack-devel -y
+yum install gcc-gfortran lapack-devel meson ninja-build -y
 """
 
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
-before-all = "apk update && apk add gfortran lapack lapack-dev libgfortran"
+before-all = "apk update && apk add gfortran lapack lapack-dev libgfortran meson ninja-build"
 
 [[tool.cibuildwheel.overrides]]
 select = "*-manylinux_2_24*"
-before-all = "apt update -y && apt install gfortran liblapack-dev -y"
+before-all = "apt update -y && apt install gfortran liblapack-dev  meson ninja-build -y"
 
 [tool.cibuildwheel.macos]
 before-all = """
-brew install gfortran lapack --force
+brew install gfortran lapack meson ninja --force
 brew reinstall gcc
 """
