@@ -29,6 +29,7 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
+
       # Runs a set of commands using the runners shell
       - name: Compile oorb with gfortran
         run: |
@@ -36,32 +37,37 @@ jobs:
           echo "FC=gfortran" >> $GITHUB_ENV
           ./configure gfortran opt --with-pyoorb --with-f2py=f2py3 --with-python=python3
           make -j3
+
       - name: Restore cached ephemeris data
         uses: actions/cache/restore@v4
         with:
-          path: data/
+          path: /tmp/cache/oorb_data
           key: oorb_data
+
+      - name: Set environment
+        run: |
+          echo "OORB_DATA=/tmp/cache/oorb_data" >> "$GITHUB_ENV"
+
       - name: test 2-body ranging & lsl
         run: |
-          export OORB_DATA=$PWD/data
           cd main
           ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging.orb
           ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging.orb --orb-out=K08K42V_lsl.orb
           ./oorb --fixran --task=classification --orb-in=K08K42V_ranging.orb > classification.txt
           diff -w classification.txt ../.github/CI_files/2body_classification.txt
           ../.github/CI_files/lsl_comparison.py K08K42V_lsl.orb ../.github/CI_files/2body_lsl.txt
+
       - name: test n-body ranging & lsl
         run: |
-          export OORB_DATA=$PWD/data
           cd main
           ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
           ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging_nbody.orb --orb-out=K08K42V_lsl_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
           ./oorb --fixran --task=classification --orb-in=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf > classification_nbody.txt
           diff -w classification_nbody.txt ../.github/CI_files/nbody_classification.txt
           ../.github/CI_files/lsl_comparison.py K08K42V_lsl_nbody.orb ../.github/CI_files/nbody_lsl.txt
+
       - name: run python unit tests
         run: |
-          export OORB_DATA=$PWD/data
           cd python
           python3 -c "import pyoorb; print('success.')"
           python3 test.py
@@ -94,33 +100,37 @@ jobs:
           # ./configure gfortran opt --with-pyoorb --with-python=python3
           ./configure gfortran opt
           make -j3
+
       - name: Restore cached ephemeris data
         uses: actions/cache/restore@v4
         with:
-          path: data/
+          path: /tmp/cache/oorb_data
           key: oorb_data
+
+      - name: Set environment
+        run: |
+          echo "OORB_DATA=/tmp/cache/oorb_data" >> "$GITHUB_ENV"
+
       - name: test 2-body ranging & lsl
         run: |
-          export OORB_DATA=$PWD/data
           cd main
           ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging.orb
           ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging.orb --orb-out=K08K42V_lsl.orb
           ./oorb --fixran --task=classification --orb-in=K08K42V_ranging.orb > classification.txt
           diff -w classification.txt ../.github/CI_files/2body_classification.txt
           ../.github/CI_files/lsl_comparison.py K08K42V_lsl.orb ../.github/CI_files/2body_lsl.txt
+
       - name: test n-body ranging & lsl
         run: |
-          export OORB_DATA=$PWD/data
           cd main
           ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
           ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging_nbody.orb --orb-out=K08K42V_lsl_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
           ./oorb --fixran --task=classification --orb-in=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf > classification_nbody.txt
           diff -w classification_nbody.txt ../.github/CI_files/nbody_classification.txt
           ../.github/CI_files/lsl_comparison.py K08K42V_lsl_nbody.orb ../.github/CI_files/nbody_lsl.txt
+
       - name: run python unit tests
         run: |
-          exit 0
-          export OORB_DATA=$PWD/data
           cd python
           python3 -c "import pyoorb; print('success.')"
           python3 test.py
