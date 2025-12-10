@@ -13,13 +13,13 @@ jobs:
     uses: ./.github/workflows/oorb_data.yml
 
   wheels:
-    name: Build ${{ matrix.pyversion }}/${{ matrix.os }}
+    name: "Build wheels: ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm] #, macos-15-intel, macos-latest]
-        pyversion: [cp314] # cibuildwheels python version selector
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -29,12 +29,18 @@ jobs:
       - name: Setup python for cibuildwheel
         uses: actions/setup-python@v5
 
+      - name: Set environment
+        run: |
+          echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> "$GITHUB_ENV"
+
+      - uses: fortran-lang/setup-fortran@v1
+        id: setup-fortran
+        with:
+          compiler: gcc
+          version: latest
+
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.0
-        env:
-          CIBW_BUILD: "${{ matrix.pyversion }}-*"
-          CIBW_ARCHS: "native"
-          CIBW_SKIP: "*-musllinux*"
         with:
           output-dir: wheelhouse
 
@@ -51,8 +57,8 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm] #, macos-15-intel, macos-latest]
-        pyversion: ["3.14"] # setup-python version selector
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest]
+        pyversion: ["3.10", "3.11", "3.12", "3.13", "3.14"] # setup-python version selector
 
     steps:
       - name: Setup Python

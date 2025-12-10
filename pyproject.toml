@@ -33,39 +33,34 @@ Repository = "https://github.com/oorb/oorb"
 Issues = "https://github.com/oorb/oorb/issues"
 
 [build-system]
-requires = ["scikit-build-core", "numpy>=2.0", "ninja>1.10"]
+requires = ["scikit-build-core", "numpy>=2.0"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
-cmake.version = "CMakeLists.txt"
-# sdist.cmake = true
+ninja.version = ">=1.10"
 
 [tool.setuptools_scm]
 version_file = "python/_version.py"
 
 [tool.cibuildwheel]
-skip = "cp38*"
-# before-build = """
-# pip install numpy &&
-# ./configure gfortran opt --with-pyoorb --with-f2py=f2py --with-python=python
-# """
+skip = ["*-musllinux*", "cp3??t-*"]
+archs = "native"
 
 [tool.cibuildwheel.linux]
 before-all = """
 yum update -y &&
-yum install gcc-gfortran lapack-devel meson ninja-build -y
+yum install lapack-devel meson ninja-build -y
 """
 
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
-before-all = "apk update && apk add gfortran lapack lapack-dev libgfortran meson ninja-build"
+before-all = "apk update && apk add lapack lapack-dev meson ninja-build"
 
 [[tool.cibuildwheel.overrides]]
 select = "*-manylinux_2_24*"
-before-all = "apt update -y && apt install gfortran liblapack-dev  meson ninja-build -y"
+before-all = "apt update -y && apt install liblapack-dev meson ninja-build -y"
 
 [tool.cibuildwheel.macos]
 before-all = """
-brew install gfortran lapack meson ninja --force
-brew reinstall gcc
+brew install lapack meson ninja --force
 """
