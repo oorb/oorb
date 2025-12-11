@@ -6,218 +6,148 @@ on:
       - published
 
 jobs:
-  build_x86_wheels:
-    name: Build ${{ matrix.pyversion }}/${{ matrix.os }}/x86
+  oorb_data:
+    uses: ./.github/workflows/oorb_data.yml
+
+  wheels:
+    name: "Build wheels: ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
+
     strategy:
       matrix:
-        pyversion: [cp38, cp39, cp310, cp311, cp312]
-        os: [macos-latest, ubuntu-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest]
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      - name: Setup python for cibuildwheel
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set environment
+        run: |
+          echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> "$GITHUB_ENV"
+
+      - uses: fortran-lang/setup-fortran@v1
+        id: setup-fortran
+        with:
+          compiler: gcc
+          version: latest
+
+      # see pyproject.toml for cibuildwheel configuration
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.11.4
-        env:
-          CIBW_BUILD: "${{ matrix.pyversion }}*"
-          CIBW_ARCHS: "x86_64"
+        uses: pypa/cibuildwheel@v3.3.0
         with:
-           output-dir: wheelhouse
+          output-dir: wheelhouse
 
-      - uses: actions/upload-artifact@v3
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: x86_wheels
-          path: ./wheelhouse/*.whl
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
 
-  build_aarch64_wheels:
-    name: Build ${{ matrix.pyversion }}/linux/aarch64
-    runs-on: ubuntu-latest
+  test_wheels:
+    name: "Test wheels: ${{ matrix.os }}/py${{ matrix.pyversion }}"
+    runs-on: ${{ matrix.os }}
+    needs: [wheels, oorb_data]
+
     strategy:
       matrix:
-        pyversion: [cp38, cp39, cp310, cp311, cp312]
-
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: arm64
-
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v2.11.4
-        env:
-          CIBW_BUILD: "${{ matrix.pyversion }}*"
-          CIBW_ARCHS: aarch64
-          # Numpy doesn't provide musl aarch64 wheels, and building
-          # Numpy from scratch in that scenario takes a _very_ long
-          # time (6+ hours, it times out). So, skip those.
-          CIBW_SKIP: "*-musllinux*"
-        with:
-           output-dir: wheelhouse
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: aarch64_wheels
-          path: ./wheelhouse/*.whl
-
-  build_ephem:
-    name: Build ephemeris data
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install gfortran liblapack-dev meson ninja-build
-      - name: Compile oorb
-        run: |
-          ./configure gfortran opt
-          make -j2
-      - name: Build ephemerides
-        run: |
-          cd data/JPL_ephemeris
-          make -j2
-          make test
-          mv de430.dat ../
-      - name: Supply data to later tests
-        uses: actions/upload-artifact@v3
-        with:
-          name: oorb_data
-          path: ./data
-
-  test_x86_wheels:
-    name: Test ${{ matrix.pyversion }}/${{ matrix.os }}/x86
-    needs: [build_x86_wheels, build_ephem]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        pyversion: ["3.8", "3.9", "3.10", "3.11"]
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest]
+        pyversion: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.pyversion }}
-      - name: Get wheels
-        uses: actions/download-artifact@v4.1.7
-        with:
-          name: x86_wheels
-          path: /tmp/wheels
-      - name: Install pyoorb from wheel
-        run: |
-          # First, install with --no-index to make sure we don't hit up PyPI and only
-          # use the local wheel. Use --no-deps, because we don't have a local copy of
-          # any dependencies.
-          pip install --no-index --no-deps --find-links /tmp/wheels pyoorb
-          # Now that we are sure the local wheel works, install dependencies by repeating
-          # the command, but this time allowing the index and deps.
-          pip install --find-links /tmp/wheels pyoorb
-      - name: Get oorb data
-        uses: actions/download-artifact@v4.1.7
-        with:
-          name: oorb_data
-          path: /tmp/oorb_data
-      - name: Try importing pyoorb
-        run: |
-          export OORB_DATA=/tmp/oorb_data
-          python -c "import pyoorb; print('success.')"
-      - name: Checkout oorb for python/test.py
-        uses: actions/checkout@v3
-        with:
-          path: ./_oorb
-      - name: Execute tests
-        run: |
-          export OORB_DATA=/tmp/oorb_data
-          python ./_oorb/python/test.py
 
-  test_linux_aarch64_wheels:
-    # Runs in emulation, so this can be very slow!
-    name: Test ${{ matrix.pyversion }}/linux/aarch64
-    needs: [build_aarch64_wheels, build_ephem]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        pyversion: ["3.8", "3.9", "3.10", "3.11"]
-
-    steps:
-      - name: Get wheels
-        uses: actions/download-artifact@v4.1.7
+      # checkout code specifically for python/pyoorb/test.py
+      - name: Checkout code
+        uses: actions/checkout@v6
         with:
-          name: aarch64_wheels
+          fetch-depth: 0
+
+      - name: Get wheels
+        uses: actions/download-artifact@v5
+        with:
+          name: wheels-${{ matrix.os }}
           path: /tmp/artifacts/wheels
-      - name: Get oorb data
-        uses: actions/download-artifact@v4.1.7
-        with:
-          name: oorb_data
-          path: /tmp/artifacts/oorb_data
-      - name: Checkout oorb for python/test.py
-        uses: actions/checkout@v3
-        with:
-          path: ./_oorb
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: arm64
-      - name: Run tests in container
-        run: |
-          export DOCKER_IMAGE="arm64v8/python:${{ matrix.pyversion }}"
-          docker pull --platform linux/arm64 $DOCKER_IMAGE
-          docker run \
-            --platform linux/arm64 \
-            --volume /tmp/artifacts:/tmp/artifacts \
-            --volume $PWD/_oorb:/tmp/oorb_latest \
-            --env OORB_DATA=/tmp/artifacts/oorb_data \
-            $DOCKER_IMAGE \
-            /bin/bash -c "
-            pip install --no-index --no-deps --find-links /tmp/artifacts/wheels pyoorb && \
-            pip install --find-links /tmp/artifacts/wheels pyoorb && \
-            python /tmp/oorb_latest/python/test.py"
 
+      - name: Restore cached ephemeris data
+        uses: actions/cache/restore@v4
+        with:
+          key: oorb_data
+          path: /tmp/cache/oorb_data
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+
+      - name: Set environment
+        run: |
+          echo "OORB_DATA=/tmp/cache/oorb_data" >> "$GITHUB_ENV"
+
+      - name: Install pyoorb from wheel
+        # First, install with --no-index to make sure we don't hit up PyPI and
+        # only use the local wheel. Use --no-deps, because we don't have a local
+        # copy of any dependencies. Once we are sure the local wheel works,
+        # install dependencies by repeating the command, but this time allowing
+        # the index and deps.
+        run: |
+          pip install --no-index --no-deps --find-links /tmp/artifacts/wheels pyoorb
+          pip install --find-links /tmp/artifacts/wheels pyoorb
+
+      - name: Run tests
+        run: |
+          python -c "import pyoorb; print('Import success.')"
+          python python/pyoorb/test.py
+
+  # Make a plain source distribution with nothing precompiled.
   build_sdist:
-    # Make a plain source distribution with nothing precompiled.
+    name: Build source distribution
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Build SDist
-      run: pipx run build --sdist
-    - uses: actions/upload-artifact@v3
-      with:
-        name: sdist
-        path: dist/*.tar.gz
+      - name: Checkout code
+        uses: actions/checkout@v6
 
+      - name: Build source distribution
+        run: |
+          pip install -U build
+          python3 -m build --sdist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-distribution
+          path: dist/*.tar.gz
+
+  # restore wheels and source distribution to dist/ and publish
   upload_all:
     name: Upload release to PyPI
+    runs-on: ubuntu-latest
+
     needs:
       - build_sdist
-      - test_x86_wheels
-      - test_linux_aarch64_wheels
-    runs-on: ubuntu-latest
+      - test_wheels
+
     if: github.event_name == 'release' && github.event.action == 'published'
+
     permissions:
       id-token: write
+
     steps:
-    - uses: actions/download-artifact@v4.1.7
-      with:
-        name: sdist
-        path: ./sdist/
-    - uses: actions/download-artifact@v4.1.7
-      with:
-        name: x86_wheels
-        path: ./x86_wheels/
-    - uses: actions/download-artifact@v4.1.7
-      with:
-        name: aarch64_wheels
-        path: ./aarch64_wheels/
-    - name: Combine artifacts
-      run: |
-        mkdir dist
-        mv sdist/* dist
-        mv x86_wheels/* dist
-        mv aarch64_wheels/* dist
-    - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Get artifacts
+        uses: actions/download-artifact@v5
+        with:
+          merge-multiple: true
+          path: dist/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # # for testing:
+        # with:
+        #   verbose: true
+        #   repository-url: https://test.pypi.org/legacy/

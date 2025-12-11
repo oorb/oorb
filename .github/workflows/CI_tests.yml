@@ -1,19 +1,21 @@
-# This is a basic workflow to help you get started with Actions
+# Continuous integration testing workflows
 
 name: CI
 
-# Controls when the action will run. Triggers the workflow on push or pull request 
+# Controls when the action will run. Triggers the workflow on push or pull request
 # events but only for the master branch
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
+  oorb_data:
+    uses: ./.github/workflows/oorb_data.yml
   linux_tests:
+    needs: [oorb_data]
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
     #    strategy:
@@ -22,60 +24,49 @@ jobs:
     #  - compiler: gfortran-9
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    - uses: actions/checkout@v3
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
 
-    # Runs a single command using the runners shell
-    #- name: Run a one-line script
-    #  run: echo Hello, world!
+      # Runs a set of commands using the runners shell
+      - name: Compile oorb with gfortran
+        run: |
+          sudo apt-get install gfortran python3-numpy python3-pytest liblapack-dev meson ninja-build
+          echo "FC=gfortran" >> $GITHUB_ENV
+          ./configure gfortran opt --with-pyoorb --with-f2py=f2py3 --with-python=python3
+          make -j3
 
-    # Runs a set of commands using the runners shell
-    - name: Compile oorb with gfortran
-      run: |
-        sudo apt-get install gfortran python3-numpy python3-pytest liblapack-dev meson ninja-build
-        echo "FC=gfortran" >> $GITHUB_ENV
-        # ./configure gfortran opt --with-pyoorb --with-f2py=f2py3 --with-python=python3
-        ./configure gfortran opt
-        make -j3
-    - name: Build ephemerides
-      run: |
-        cd data/JPL_ephemeris
-        make -j3
-        make test
-        mv de440.dat ../
-    - name: obtain BC430
-      run: |
-        pwd
-        cd data
-        ./getBC430
-        mv asteroid_indices.txt asteroid_indices.tmp
-        head -n 3 asteroid_indices.tmp > asteroid_indices.txt
-        tail -n 297 asteroid_indices.tmp | sed -e 's/^/#/' >> asteroid_indices.txt
-    - name: test 2-body ranging & lsl
-      run: |
-        export OORB_DATA=$PWD/data
-        cd main
-        ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging.orb
-        ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging.orb --orb-out=K08K42V_lsl.orb
-        ./oorb --fixran --task=classification --orb-in=K08K42V_ranging.orb > classification.txt
-        diff -w classification.txt ../.github/CI_files/2body_classification.txt
-        ../.github/CI_files/lsl_comparison.py K08K42V_lsl.orb ../.github/CI_files/2body_lsl.txt
-    - name: test n-body ranging & lsl
-      run: |
-        export OORB_DATA=$PWD/data
-        cd main
-        ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
-        ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging_nbody.orb --orb-out=K08K42V_lsl_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
-        ./oorb --fixran --task=classification --orb-in=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf > classification_nbody.txt
-        diff -w classification_nbody.txt ../.github/CI_files/nbody_classification.txt
-        ../.github/CI_files/lsl_comparison.py K08K42V_lsl_nbody.orb ../.github/CI_files/nbody_lsl.txt
-    - name: run python unit tests
-      run: |
-        exit 0
-        export OORB_DATA=$PWD/data
-        cd python
-        python3 -c "import pyoorb; print('success.')"
-        python3 test.py
+      - name: Restore cached ephemeris data
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/cache/oorb_data
+          key: oorb_data
+
+      - name: Set environment
+        run: |
+          echo "OORB_DATA=/tmp/cache/oorb_data" >> "$GITHUB_ENV"
+
+      - name: test 2-body ranging & lsl
+        run: |
+          cd main
+          ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging.orb
+          ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging.orb --orb-out=K08K42V_lsl.orb
+          ./oorb --fixran --task=classification --orb-in=K08K42V_ranging.orb > classification.txt
+          diff -w classification.txt ../.github/CI_files/2body_classification.txt
+          ../.github/CI_files/lsl_comparison.py K08K42V_lsl.orb ../.github/CI_files/2body_lsl.txt
+
+      - name: test n-body ranging & lsl
+        run: |
+          cd main
+          ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
+          ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging_nbody.orb --orb-out=K08K42V_lsl_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
+          ./oorb --fixran --task=classification --orb-in=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf > classification_nbody.txt
+          diff -w classification_nbody.txt ../.github/CI_files/nbody_classification.txt
+          ../.github/CI_files/lsl_comparison.py K08K42V_lsl_nbody.orb ../.github/CI_files/nbody_lsl.txt
+
+      - name: run python unit tests
+        run: |
+          python3 -c "import pyoorb; print('success.')"
+          python3 python/pyoorb/test.py
 
   mac_tests:
     # The type of runner that the job will run on
@@ -86,61 +77,55 @@ jobs:
     #  - compiler: gfortran-9
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    - uses: actions/checkout@v3
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
 
-    # Runs a single command using the runners shell
-    #- name: Run a one-line script
-    #  run: echo Hello, world!
+      # Runs a single command using the runners shell
+      #- name: Run a one-line script
+      #  run: echo Hello, world!
 
-    # Runs a set of commands using the runners shell
-    - name: Compile oorb with gfortran
-      run: |
-        pip3 install --break-system-packages -U pytest numpy
-        # Note: Homebrew now installs gfortran as part of the gcc
-        # package which is installed on the Github runners by default.
-        # For some reason, gfortran still doesn't work without reinstalling gcc.
-        brew reinstall gcc
-        brew install meson ninja
-        # ./configure gfortran opt --with-pyoorb --with-python=python3
-        ./configure gfortran opt
-        make -j3
-    - name: Build ephemerides
-      run: |
-        cd data/JPL_ephemeris
-        make -j3
-        make test
-        mv de440.dat ../
-    - name: obtain BC430
-      run: |
-        pwd
-        cd data
-        ./getBC430
-        mv asteroid_indices.txt asteroid_indices.tmp
-        head -n 3 asteroid_indices.tmp > asteroid_indices.txt
-        tail -n 297 asteroid_indices.tmp | sed -e 's/^/#/' >> asteroid_indices.txt
-    - name: test 2-body ranging & lsl
-      run: |
-        export OORB_DATA=$PWD/data
-        cd main
-        ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging.orb
-        ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging.orb --orb-out=K08K42V_lsl.orb
-        ./oorb --fixran --task=classification --orb-in=K08K42V_ranging.orb > classification.txt
-        diff -w classification.txt ../.github/CI_files/2body_classification.txt
-        ../.github/CI_files/lsl_comparison.py K08K42V_lsl.orb ../.github/CI_files/2body_lsl.txt
-    - name: test n-body ranging & lsl
-      run: |
-        export OORB_DATA=$PWD/data
-        cd main
-        ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
-        ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging_nbody.orb --orb-out=K08K42V_lsl_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
-        ./oorb --fixran --task=classification --orb-in=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf > classification_nbody.txt
-        diff -w classification_nbody.txt ../.github/CI_files/nbody_classification.txt
-        ../.github/CI_files/lsl_comparison.py K08K42V_lsl_nbody.orb ../.github/CI_files/nbody_lsl.txt
-    - name: run python unit tests
-      run: |
-        exit 0
-        export OORB_DATA=$PWD/data
-        cd python
-        python3 -c "import pyoorb; print('success.')"
-        python3 test.py
+      # Runs a set of commands using the runners shell
+      - name: Compile oorb with gfortran
+        run: |
+          pip3 install --break-system-packages -U pytest numpy
+          # Note: Homebrew now installs gfortran as part of the gcc
+          # package which is installed on the Github runners by default.
+          # For some reason, gfortran still doesn't work without reinstalling gcc.
+          brew reinstall gcc
+          brew install meson ninja
+          # ./configure gfortran opt --with-pyoorb --with-python=python3
+          ./configure gfortran opt
+          make -j3
+
+      - name: Restore cached ephemeris data
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/cache/oorb_data
+          key: oorb_data
+
+      - name: Set environment
+        run: |
+          echo "OORB_DATA=/tmp/cache/oorb_data" >> "$GITHUB_ENV"
+
+      - name: test 2-body ranging & lsl
+        run: |
+          cd main
+          ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging.orb
+          ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging.orb --orb-out=K08K42V_lsl.orb
+          ./oorb --fixran --task=classification --orb-in=K08K42V_ranging.orb > classification.txt
+          diff -w classification.txt ../.github/CI_files/2body_classification.txt
+          ../.github/CI_files/lsl_comparison.py K08K42V_lsl.orb ../.github/CI_files/2body_lsl.txt
+
+      - name: test n-body ranging & lsl
+        run: |
+          cd main
+          ./oorb --fixran --task=ranging --obs-in=../test/K08K42V_ranging.mpc --orb-out=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
+          ./oorb --fixran --task=lsl --obs-in=../test/K08K42V_lsl.mpc --orb-in=K08K42V_ranging_nbody.orb --orb-out=K08K42V_lsl_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf
+          ./oorb --fixran --task=classification --orb-in=K08K42V_ranging_nbody.orb --conf=../.github/CI_files/oorb_nbody.conf > classification_nbody.txt
+          diff -w classification_nbody.txt ../.github/CI_files/nbody_classification.txt
+          ../.github/CI_files/lsl_comparison.py K08K42V_lsl_nbody.orb ../.github/CI_files/nbody_lsl.txt
+
+      - name: run python unit tests
+        run: |
+          python3 -c "import pyoorb; print('success.')"
+          python3 python/pyoorb/test.py
