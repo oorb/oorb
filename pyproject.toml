@@ -33,14 +33,17 @@ Repository = "https://github.com/oorb/oorb"
 Issues = "https://github.com/oorb/oorb/issues"
 
 [build-system]
-requires = ["scikit-build-core", "numpy>=2.0"]
+requires = ["scikit-build-core", "numpy>=2.0", "setuptools_scm[simple]"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
 ninja.version = ">=1.10"
+cmake.source-dir = "python"
+metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"
+sdist.include = ["python/pyoorb/_version.py"]
 
 [tool.setuptools_scm]
-version_file = "python/_version.py"
+version_file = "python/pyoorb/_version.py"
 
 [tool.cibuildwheel]
 skip = ["*-musllinux*", "cp3??t-*"]

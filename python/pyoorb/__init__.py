@@ -6,3 +6,7 @@ try:
     __version__ = _version(__name__)
 except PackageNotFoundError:
     pass
+
+# import pyoorb namespace from FORTRAN library
+from . import pyoorb as _pyoorb
+from .pyoorb import pyoorb

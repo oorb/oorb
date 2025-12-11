@@ -68,9 +68,8 @@ jobs:
 
       - name: run python unit tests
         run: |
-          cd python
           python3 -c "import pyoorb; print('success.')"
-          python3 test.py
+          python3 python/pyoorb/test.py
 
   mac_tests:
     # The type of runner that the job will run on
@@ -131,6 +130,5 @@ jobs:
 
       - name: run python unit tests
         run: |
-          cd python
           python3 -c "import pyoorb; print('success.')"
-          python3 test.py
+          python3 python/pyoorb/test.py

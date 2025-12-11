@@ -4,9 +4,6 @@ on:
   release:
     types:
       - published
-  # delete after testing
-  pull_request:
-    branches: [master]
 
 jobs:
   oorb_data:
@@ -28,6 +25,8 @@ jobs:
 
       - name: Setup python for cibuildwheel
         uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
 
       - name: Set environment
         run: |
@@ -39,6 +38,7 @@ jobs:
           compiler: gcc
           version: latest
 
+      # see pyproject.toml for cibuildwheel configuration
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.3.0
         with:
@@ -50,15 +50,15 @@ jobs:
           name: wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
 
-  test-wheels:
-    name: Test ${{ matrix.pyversion }}/${{ matrix.os }}
+  test_wheels:
+    name: "Test wheels: ${{ matrix.os }}/py${{ matrix.pyversion }}"
     runs-on: ${{ matrix.os }}
     needs: [wheels, oorb_data]
 
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest]
-        pyversion: ["3.10", "3.11", "3.12", "3.13", "3.14"] # setup-python version selector
+        pyversion: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Setup Python
@@ -66,11 +66,11 @@ jobs:
         with:
           python-version: ${{ matrix.pyversion }}
 
-      # checkout code specifically for python/test.py
+      # checkout code specifically for python/pyoorb/test.py
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          path: ./_oorb
+          fetch-depth: 0
 
       - name: Get wheels
         uses: actions/download-artifact@v5
@@ -100,50 +100,54 @@ jobs:
           pip install --no-index --no-deps --find-links /tmp/artifacts/wheels pyoorb
           pip install --find-links /tmp/artifacts/wheels pyoorb
 
-      - name: Try importing pyoorb
-        run: python -c "import pyoorb; print('success.')"
+      - name: Run tests
+        run: |
+          python -c "import pyoorb; print('Import success.')"
+          python python/pyoorb/test.py
 
-      - name: Execute tests
-        run: python ./_oorb/python/test.py
+  # Make a plain source distribution with nothing precompiled.
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-  # build_sdist:
-  #   # Make a plain source distribution with nothing precompiled.
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - name: Build SDist
-  #       run: pipx run build --sdist
-  #     - uses: actions/upload-artifact@v4
-  #       with:
-  #         name: sdist
-  #         path: dist/*.tar.gz
+      - name: Build source distribution
+        run: |
+          pip install -U build
+          python3 -m build --sdist
 
-  # upload_all:
-  #   name: Upload release to PyPI
-  #   needs:
-  #     - build_sdist
-  #     - test_wheels
-  #   runs-on: ubuntu-latest
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-distribution
+          path: dist/*.tar.gz
 
-  #   environment:
-  #     name: testpypi
-  #     url: https://test.pypi.org/legacy/
+  # restore wheels and source distribution to dist/ and publish
+  upload_all:
+    name: Upload release to PyPI
+    runs-on: ubuntu-latest
 
-  #   if: github.event_name == 'release' && github.event.action == 'published'
+    needs:
+      - build_sdist
+      - test_wheels
 
-  #   permissions:
-  #     id-token: write
+    if: github.event_name == 'release' && github.event.action == 'published'
 
-  #   steps:
-  #     - uses: actions/download-artifact@v5
-  #       with:
-  #         merge-multiple: true
-  #         pattern: wheels-*
-  #         path: ./sdist/
+    permissions:
+      id-token: write
 
-  #     - uses: actions/download-artifact@v5
-  #       with:
-  #         name: sdist
-  #         path: ./sdist/
+    steps:
+      - name: Get artifacts
+        uses: actions/download-artifact@v5
+        with:
+          merge-multiple: true
+          path: dist/
 
-  #     - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # delete after testing:
+        with:
+          verbose: true
+          repository-url: https://test.pypi.org/legacy/
