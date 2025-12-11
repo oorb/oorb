@@ -9,4 +9,3 @@ include VERSION
 include COPYING
 include configure
 include pyproject.toml
-include CMakeLists.txt
