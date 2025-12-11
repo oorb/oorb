@@ -52,18 +52,18 @@ archs = "native"
 [tool.cibuildwheel.linux]
 before-all = """
 yum update -y &&
-yum install lapack-devel meson ninja-build -y
+yum install lapack-devel ninja-build -y
 """
 
 [[tool.cibuildwheel.overrides]]
 select = "*-musllinux*"
-before-all = "apk update && apk add lapack lapack-dev meson ninja-build"
+before-all = "apk update && apk add lapack lapack-dev ninja-build"
 
 [[tool.cibuildwheel.overrides]]
 select = "*-manylinux_2_24*"
-before-all = "apt update -y && apt install liblapack-dev meson ninja-build -y"
+before-all = "apt update -y && apt install liblapack-dev ninja-build -y"
 
 [tool.cibuildwheel.macos]
 before-all = """
-brew install lapack meson ninja --force
+brew install lapack ninja --force
 """
