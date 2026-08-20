@@ -28,6 +28,7 @@
 # @version 2009-12-01
 #
 # updated 2018-09-06 Michael Mommert, sbpy.org
+# updated to use de440 2012-12-11 Michael S.P. Kelley
 
 #!/usr/bin/env python
 
@@ -40,7 +41,7 @@ if __name__ == "__main__":
     print("calling oorb_init():")
     ephfile = ""
     if os.getenv('OORB_DATA'):
-      ephfile = os.path.join(os.getenv('OORB_DATA'), 'de430.dat')
+      ephfile = os.path.join(os.getenv('OORB_DATA'), 'de440.dat')
     pyoorb.pyoorb.oorb_init(ephfile)
     # orb is id, 6 elements, epoch_mjd, H, G, element type index
     # keplerian appears to be element type index 3
