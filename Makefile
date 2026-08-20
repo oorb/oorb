@@ -59,7 +59,7 @@ ifeq ("$(PREFIX)", "")
     $(error "Install prefix is not set; please rerun ./configure and try again.")
 endif
 
-.PHONY: all
+.PHONY: all build
 
 all: build
 	@ $(MAKE) -C build $@
@@ -100,7 +100,10 @@ install:
 	cp -a $(shell find data -maxdepth 1 -type f) $(PREFIX)/share/oorb
 
 ifeq ("$(PYOORB)","1")
-	install       python/$(shell cat python/pyoorb.name) $(shell echo $${PYTHON_SITE_PATH:-$$(cat python/pyoorb.sp_dir)})
+	PYOORB_DEST=$${PYTHON_SITE_PATH:-$$(cat python/pyoorb/pyoorb.sp_dir)}; \
+	install -d $$PYOORB_DEST/pyoorb && \
+	install -m644 python/pyoorb/__init__.py $$PYOORB_DEST/pyoorb && \
+	install       python/pyoorb/$$(cat python/pyoorb/pyoorb.name) $$PYOORB_DEST/pyoorb
 endif
 
 .PHONY: test

@@ -65,8 +65,8 @@ jobs:
 
       - name: run python unit tests
         run: |
-          python3 -c "import pyoorb; print('success.')"
-          python3 python/pyoorb/test.py
+          PYTHONPATH=python python3 -c "import pyoorb; print('success.')"
+          PYTHONPATH=python python3 python/pyoorb/test.py
 
   mac_tests:
     needs: [oorb_data]
@@ -94,8 +94,7 @@ jobs:
           # For some reason, gfortran still doesn't work without reinstalling gcc.
           brew reinstall gcc
           brew install meson ninja
-          # ./configure gfortran opt --with-pyoorb --with-python=python3
-          ./configure gfortran opt
+          ./configure gfortran opt --with-pyoorb --with-python=python3
           make -j3
 
       - name: Restore cached ephemeris data
@@ -128,5 +127,5 @@ jobs:
 
       - name: run python unit tests
         run: |
-          python3 -c "import pyoorb; print('success.')"
-          python3 python/pyoorb/test.py
+          PYTHONPATH=python python3 -c "import pyoorb; print('success.')"
+          PYTHONPATH=python python3 python/pyoorb/test.py

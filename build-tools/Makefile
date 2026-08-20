@@ -103,10 +103,10 @@ PYOORB_SO            = pyoorb$(shell PYTHON=$(PYTHON) $(ROOT_DIR)/build-tools/ge
 .PHONY: pyoorb
 pyoorb: ../lib/$(PYOORB_SO)
 
-../lib/$(PYOORB_SO): ../python/$(PYOORB_SO)
+../lib/$(PYOORB_SO): ../python/pyoorb/$(PYOORB_SO)
 	mkdir -p ../lib && cp -a $< $@
 
-../python/$(PYOORB_SO): ../lib/liboorb.a pyoorb.pyf pyoorb.o pyoorb.mod
+../python/pyoorb/$(PYOORB_SO): ../lib/liboorb.a pyoorb.pyf pyoorb.o pyoorb.mod
 	@ # Check for prerequisites and output a helpful message if they're not installed
 	@ hash $(F2PY) 2>/dev/null && hash $(PYTHON) 2>/dev/null || \
 		{ echo "****************************************************************************"; \
@@ -119,19 +119,19 @@ pyoorb: ../lib/$(PYOORB_SO)
 	@ [[ ! -z "$(LDFLAGS)" ]] && echo "$$LDFLAGS" | grep -E -v -q -- "(-bundle|-shared)" && { \
 	  [[ `uname` == "Darwin" ]] && LDFLAGS="$$LDFLAGS -bundle" || LDFLAGS="$$LDFLAGS -shared"; \
 	}; \
-	F77= $(F2PY) --quiet -m pyoorb pyoorb.o pyoorb.pyf ../lib/liboorb.a --include-paths $(shell pwd) \
+	F77= $(F2PY) --quiet -m pyoorb pyoorb.pyf ../python/pyoorb/pyoorb.f90 $(LIBSOURCES) --include-paths $(shell pwd) \
 			--build-dir ./_pyoorb_build -c --noarch $(F2PY_FCOMPILER) --f90exec=$(FC) \
 			--f90flags="$(FC_INC)../build $(FCOPTIONS)" $(ADDLIBS) && \
-	mv $(PYOORB_SO) ../python
+	mv $(PYOORB_SO) ../python/pyoorb
 	@ echo
 	@ # FIXME: this exists so `sudo make install` knows what to install. It's hacky this way
 	@ #        and should be made to be generated/updated like the VERSION file is.
-	echo $(PYOORB_SO) > ../python/pyoorb.name
-	$(PYTHON) -c "import site; print(site.getsitepackages()[0])" > ../python/pyoorb.sp_dir
+	echo $(PYOORB_SO) > ../python/pyoorb/pyoorb.name
+	$(PYTHON) -c "import site; print(site.getsitepackages()[0])" > ../python/pyoorb/pyoorb.sp_dir
 	@ echo "Built the $(PYOORB_SO) module."
 
-pyoorb.pyf: ../VERSION ../python/pyoorb.f90
-	$(F2PY) --quiet -m pyoorb ../python/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
+pyoorb.pyf: ../VERSION ../python/pyoorb/pyoorb.f90
+	$(F2PY) --quiet -m pyoorb ../python/pyoorb/pyoorb.f90 --overwrite-signature -h pyoorb.pyf.tmp
 	@ echo
 	@ # generate __version__ string code
 	generate-version-pyf.sh $$(cat ../VERSION) > version.pyf

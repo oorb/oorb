@@ -108,7 +108,7 @@ ephemeris_linking.o:  ../main/ephemeris_linking.f90 base_cl.mod  file_cl.mod tim
 	$(OBJBUILDCMD)
 orbit_linking.o:  ../main/orbit_linking.f90 base_cl.mod file_cl.mod  time_cl.mod orbit_cl.mod stochasticorbit_cl.mod io.mod cl_options.mod  utilities.mod data_structures.mod sort.mod
 	$(OBJBUILDCMD)
-pyoorb.o:  ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod
+pyoorb.o:  ../python/pyoorb/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod
 	$(OBJBUILDCMD)
-pyoorb.mod: ../python/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod pyoorb.o
+pyoorb.mod: ../python/pyoorb/pyoorb.f90 planetary_data.mod base_cl.mod  time_cl.mod sphericalcoordinates_cl.mod observatories_cl.mod  orbit_cl.mod stochasticorbit_cl.mod physicalparameters_cl.mod pyoorb.o
 	$(MODBUILDCMD)
