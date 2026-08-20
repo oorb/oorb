@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -28,7 +28,7 @@
 !! old and new <a
 !! href="http://cfa-www.harvard.edu/iau/info/OpticalObs.html">MPC</a>
 !! formats, the Data Exchange Standard (DES) format, the Lowell
-!! format, and the preliminary GAIA formats are supported for the time
+!! format, and the preliminary Gaia formats are supported for the time
 !! being. Besides the observations file, indirectly this class also
 !! needs a file containing codes and coordinates for observatories
 !! (usually OBSCODE.dat).
@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV, GF, LS, ET 
-!! @version 2025-05-20
+!! @version 2026-08-12
 !!  
 MODULE Observations_cl
 
@@ -1096,11 +1096,7 @@ CONTAINS
     this%obs_arr => reallocate(this%obs_arr)
 
     ! Update number and names of different objects:
-    IF (ASSOCIATED(this%criteria)) THEN
-       DEALLOCATE(this%criteria, stat=err)
-    END IF
-    this%nobjects = 0
-    CALL sortObservations(this, primary_sort="designation")
+    CALL sortObservations(this, primary_sort="designation", force_full=.TRUE.)
     IF (error) THEN
        CALL errorMessage("Observations / clean", &
             "TRACE BACK (10)", 1)
@@ -1840,6 +1836,77 @@ CONTAINS
 
   !! *Description*:
   !!
+  !! Returns mean magnitude for observations [mag].
+  !!
+  !! *Usage*:
+  !!
+  !! meanmag = getMeanMagnitude(myobservations)
+  !!
+  !! Returns error.
+  !!
+  REAL(bp) FUNCTION getMeanMagnitude(this)
+
+    IMPLICIT NONE
+    TYPE (Observations), INTENT(in) :: this
+
+    REAL(bp), DIMENSION(:), ALLOCATABLE :: mag_arr
+    INTEGER :: i, j, err
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / getMeanMagnitude", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (this%nobs < 1) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / getMeanMagnitude", &
+            "Observations missing.", 1)
+       RETURN
+    END IF
+
+    ALLOCATE(mag_arr(this%nobs), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / getMeanMagnitude", &
+            "Could not allocate memory.", 1)
+       RETURN
+    END IF
+
+    j = 0
+    DO i=1,this%nobs
+       mag_arr(i) = getMagnitude(this%obs_arr(this%ind(i))) 
+       IF (error) THEN
+          CALL errorMessage("Observations / getMeanMagnitude", &
+               "TRACE BACK", 1)
+          DEALLOCATE(mag_arr, stat=err)
+          RETURN
+       END IF
+       IF (mag_arr(i) > 90.0_bp) THEN
+          mag_arr(i) = 0.0_bp
+       ELSE
+          j = j + 1
+       END IF
+    END DO
+    getMeanMagnitude = SUM(mag_arr)/j
+
+    DEALLOCATE(mag_arr, stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / getMeanMagnitude", &
+            "Could not deallocate memory.", 1)
+       RETURN
+    END IF
+
+  END FUNCTION getMeanMagnitude
+
+
+
+
+
+  !! *Description*:
+  !!
   !! Returns magnitude uncertainties for observations [mag].
   !!
   !! *Usage*:
@@ -2312,6 +2379,67 @@ CONTAINS
     getObjects = this%objects
 
   END FUNCTION getObjects
+
+
+
+
+
+  !! *Description*:
+  !!
+  !! Removes observations indicated by indeces in the indx_arr array
+  !! from this object.
+  !!
+  !! Returns error.
+  !!
+  !! *Usage*:
+  !!
+  !! call removeObservations(myobservations, myindeces)
+  !!
+  SUBROUTINE removeObservations(this, indx_arr)
+
+    TYPE (Observations), INTENT(inout) :: this
+    INTEGER, DIMENSION(:), INTENT(in)  :: indx_arr
+    INTEGER                            :: i, err
+
+    IF (.NOT. this%is_initialized) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / removeObservations", &
+            "Object has not yet been initialized.", 1)
+       RETURN
+    END IF
+
+    IF (this%nobs < SIZE(indx_arr)) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / removeObservations", &
+            "Number of observations to be removed is larger than number of observations.", 1)
+       RETURN
+    END IF
+
+    DO i=1,SIZE(indx_arr)
+       IF (indx_arr(i) > this%nobs) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / removeObservations", &
+               "Index of observation to be removed is larger than number of observations.", 1)
+          RETURN
+       END IF
+       CALL NULLIFY(this%obs_arr(this%ind(i)))
+       IF (error) THEN
+          CALL errorMessage("Observations / removeObservations", &
+               "TRACE BACK (5)", 1)
+          RETURN
+       END IF
+    END DO
+    this%obs_arr => reallocate(this%obs_arr)
+
+    ! Update number and names of different objects:
+    CALL sortObservations(this, force_full=.TRUE.)
+    IF (error) THEN
+       CALL errorMessage("Observations / removeObservations", &
+            "TRACE BACK (10)", 1)
+       RETURN
+    END IF
+
+  END SUBROUTINE removeObservations
 
 
 
@@ -3147,11 +3275,13 @@ CONTAINS
          gaiaPosXTrs, gaiaPosYTrs, gaiaPosZTrs, gaiaVelXTrs, gaiaVelYTrs, &
          gaiaVelZTrs, trsResult, collPos, collVel
     REAL(bp), DIMENSION(10,15) :: transitTmp
-    REAL(bp), DIMENSION(6,6) :: covariance, covariance_sys, covariance_final
+    REAL(bp), DIMENSION(6,6) :: covariance, covariance_sys, covariance_final, &
+         covariance_sum
+    REAL(bp), DIMENSION(3,3) :: rotmat
     REAL(bp), DIMENSION(6) :: coordinates, coordinates_final, stdev_, mean, &
          gaia_geocentric, sun_obsy_coordinates
     REAL(bp), DIMENSION(3) :: position, position_final, velocity, pos1, pos2, &
-         midGaia, midGaiaV
+         midGaia, midGaiaV, offset, doffset
     REAL(bp) :: day, sec, arcsec, mag, ra, dec, jd, mjd, dt, &
          ecl_lon, ecl_lat, angscan, pos_unc_along, pos_unc_across, &
          vel_unc_along, vel_unc_across, rot_angle, correlation, &
@@ -3162,15 +3292,14 @@ CONTAINS
          epoch, epoch_err, epoch_utc,  epoch1, last_epoch, covcoeff, &
          ra_start, dec_start, ra_end, dec_end, flux, mjd_utc, &
          mjd_utc_start, mjd_utc_end, streak_length, group_angle, &
-         x_offset, y_offset, z_offset, x_err, y_err, z_err, ra_ini, &
-         dec_ini
+         ra_ini, dec_ini, det_ran, det_sys, al_err, ac_err
     INTEGER(ihp) :: observation_id, solution_id, source_id, transit_id
     INTEGER :: i, j, k, err, year, month, hour, min, deg, arcmin, &
          nlines, coord_unit, indx, iobs, irecord, norb, ccd, &
          border1, border2, err_verb_, level_of_confidence, &
          number_mp, fov, astrometric_outcome_transit, obsid, &
          transitCounter, transitCounterAfter, j_prev, nobs, &
-         numberOfTransits, finalNumberOfTransits, linecounter, sot, s
+         numberOfTransits, finalNumberOfTransits, linecounter, sot, s, nOfCcds454
     LOGICAL, DIMENSION(6) :: obs_mask
     LOGICAL :: discovery, converttonewformat, completed, newtransit, transit_ok, &
          fulltransitdone, init
@@ -4729,13 +4858,16 @@ CONTAINS
 
 
 
-    CASE ("gdr2", "gdr3", "gfpr", "cgdr3")
+    CASE ("gdr2", "gdr3", "gfpr", "cgdr3", "cgfpr", "gdr4pvp", "cgdr4pvp", "mgdr4pvp", "mcgdr4pvp")
 
        ! Full SSO data dump from Gaia Data Release 2, 3, or the Focused Project Release.
        covariance = 0.0_bp
+       covariance(1,1) = 1.0_bp
        position = 0.0_bp
        velocity = 0.0_bp
        obs_mask = (/ .FALSE., .TRUE., .TRUE., .FALSE., .FALSE., .FALSE. /)
+       al_err = -1.0_bp
+       ac_err = -1.0_bp
 
        ! Origin of observation dates: 1.0 Jan 2010 ( = JD 2455197.5 = MJD 55197.0)
        mjd_tcb = 55197.0_bp
@@ -4780,6 +4912,16 @@ CONTAINS
                   coordinates(1:6), gaia_geocentric(1:6), &
                   position_angle_scan, astrometric_outcome_ccd, astrometric_outcome_transit, &
                   fov, obs_rejected_by_fit
+          ELSE IF (suffix == "cgfpr") THEN
+             READ(line, *, iostat=err) solution_id, source_id, &
+                  denomination, transit_id, observation_id, number, epoch, &
+                  epoch_err, epoch_utc, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance_sys(2,3), &
+                  covariance(2,2), covariance(3,3), covariance(2,3), &
+                  coordinates(1:6), gaia_geocentric(1:6), &
+                  position_angle_scan, astrometric_outcome_ccd, astrometric_outcome_transit, &
+                  fov, obs_rejected_by_fit, &
+                  offset(1), doffset(1), offset(2), doffset(2), offset(3), doffset(3), position(1)
           ELSE IF (suffix == "cgdr3") THEN
              ! notice that astrometric_outcome_ccd has been removed from gdr3 in oorb!
              READ(line, *, iostat=err) solution_id, source_id, &
@@ -4789,12 +4931,43 @@ CONTAINS
                   covariance(2,2), covariance(3,3), covariance(2,3), &
                   g_mag, g_flux, g_flux_err, coordinates(1:6), gaia_geocentric(1:6), &
                   position_angle_scan, astrometric_outcome_transit, & 
-                  x_offset, x_err, y_offset, y_err, z_offset, z_err, position(1)
+                  offset(1), doffset(1), offset(2), doffset(2), offset(3), doffset(3), position(1)
+          ELSE IF (suffix == "gdr4pvp") THEN
+             READ(line, *, iostat=err) source_id, transit_id, number, &
+                  denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance(2,2), covariance(3,3), covariance_sys(2,3), &
+                  covariance(2,3), mag, g_mag, g_flux, g_flux_err, position_angle_scan, &
+                  coordinates(1:6), gaia_geocentric(1:6), astrometric_outcome_transit, &
+                  nOfCcds454
+          ELSE IF (suffix == "cgdr4pvp") THEN
+             READ(line, *, iostat=err) source_id, transit_id, number, &
+                  denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance(2,2), covariance(3,3), covariance_sys(2,3), &
+                  covariance(2,3), mag, g_mag, g_flux, g_flux_err, position_angle_scan, &
+                  coordinates(1:6), gaia_geocentric(1:6), astrometric_outcome_transit, &
+                  nOfCcds454, &
+                  offset(1), doffset(1), offset(2), doffset(2), offset(3), doffset(3), position(1)
+          ELSE IF (suffix == "mgdr4pvp") THEN
+             READ(line, *, iostat=err) source_id, transit_id, number, &
+                  denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance(2,2), covariance(3,3), covariance_sys(2,3), &
+                  covariance(2,3), mag, g_mag, g_flux, g_flux_err, position_angle_scan, &
+                  coordinates(1:6), gaia_geocentric(1:6), astrometric_outcome_transit, &
+                  nOfCcds454, al_err, ac_err
+          ELSE IF (suffix == "mcgdr4pvp") THEN
+             READ(line, *, iostat=err) source_id, transit_id, number, &
+                  denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance(2,2), covariance(3,3), covariance_sys(2,3), &
+                  covariance(2,3), mag, g_mag, g_flux, g_flux_err, position_angle_scan, &
+                  coordinates(1:6), gaia_geocentric(1:6), astrometric_outcome_transit, &
+                  nOfCcds454, &
+                  offset(1), doffset(1), offset(2), doffset(2), offset(3), doffset(3), position(1), &
+                  al_err, ac_err
           END IF
           IF (err /= 0) THEN
              error = .TRUE.
              CALL errorMessage("Observations / readObservationFile", &
-                  "Error while reading observations from file (2).", 1)
+                  "Error while reading following line of observations: " // TRIM(line), 1)
              RETURN
           END IF
 
@@ -4805,13 +4978,16 @@ CONTAINS
              RETURN
           END IF
 
-          ! Convert position_angle_scan from degrees to radians
-          position_angle_scan = position_angle_scan*rad_deg
+          IF (suffix /= "gdr4pvp" .AND. suffix /= "cgdr4pvp" .AND. &
+               suffix /= "mgdr4pvp" .AND. suffix /= "mcgdr4pvp") THEN
+             ! Convert position_angle_scan from degrees to radians
+             position_angle_scan = position_angle_scan*rad_deg
+             ! Convert RA & Dec from degrees to radians
+             position(2:3) = position(2:3)*rad_deg
+          END IF
 
-          ! Convert RA & Dec from degrees to radians
-          position(2:3) = position(2:3)*rad_deg
-
-          IF (suffix == "cgdr3") THEN
+          IF (suffix == "cgdr3" .OR. suffix == "cgfpr" .OR. &
+               suffix == "cgdr4pvp" .OR. suffix == "mcgdr4pvp") THEN
              ra_ini = position(2)/rad_deg
              dec_ini = position(3)/rad_deg
              ! new spherical coordinate object from position vector
@@ -4825,48 +5001,85 @@ CONTAINS
              ! new position vector from cartesian coordinates
              position = getPosition(ccoord)
              CALL NULLIFY(ccoord)
-             ! subtracting (?) offset from x,y,z coordinates
-             position(1) = position(1) - (x_offset/km_au)
-             position(2) = position(2) - (y_offset/km_au)
-             position(3) = position(3) - (z_offset/km_au)
-             ! converting back to RA & Dec
+             ! subtract offset from x,y,z coordinates
+             position = position - offset/km_au
+
+             ! convert back to RA & Dec
              CALL NEW(ccoord, position, velocity, 'equatorial', t)
              scoord = getSCoord(ccoord)
              CALL NULLIFY(ccoord)
              position = getPosition(scoord)
              CALL NULLIFY(scoord)
-             !WRITE(stdout,*) ra_ini, dec_ini, position(2)/rad_deg, position(3)/rad_deg, &
-             !     (ra_ini - position(2)/rad_deg)*3600000, &
-             !     (dec_ini - position(3)/rad_deg)*3600000
+
           END IF
 
-          ! Random component of the uncertainty
-          ! Convert correlation to covariance
-          covariance(2,3) = covariance(2,3) * &
-               covariance(2,2) * covariance(3,3)
-          ! Copy covariance to the other off-diagonal element
-          covariance(3,2) = covariance(2,3)
-          ! Convert standard deviations to variances
-          covariance(2,2) = covariance(2,2)**2
-          covariance(3,3) = covariance(3,3)**2
-          ! Convert units of covariance matrix from milliarcsec^2 to
-          ! radians^2
-          covariance(2:3,2:3) = covariance(2:3,2:3) * &
-               (rad_asec/1000.0_bp)**2
+          ! Populate covariance matrix
+          IF (PRESENT(stdev) .OR. (al_err > 0.0_bp .AND. ac_err > 0.0_bp)) THEN
 
-          ! Systematic component of the uncertainty
-          ! Convert correlation to covariance
-          covariance_sys(2,3) = covariance_sys(2,3) * &
-               covariance_sys(2,2) * covariance_sys(3,3)
-          ! Copy covariance to the other off-diagonal element
-          covariance_sys(3,2) = covariance_sys(2,3)
-          ! Convert standard deviations to variances
-          covariance_sys(2,2) = covariance_sys(2,2)**2
-          covariance_sys(3,3) = covariance_sys(3,3)**2
-          ! Convert units of covariance matrix from milliarcsec^2 to
-          ! radians^2
-          covariance_sys(2:3,2:3) = covariance_sys(2:3,2:3) * &
-               (rad_asec/1000.0_bp)**2
+             covariance = 0.0_bp
+             IF (PRESENT(stdev)) THEN
+                ! use RA&Dec stdevs provided in conf file as AL&AC uncertainties
+                DO j=2,3
+                   covariance(j,j) = stdev(j)**2.0_bp
+                END DO
+             ELSE
+                ! use AL&AC uncertainties provided in observation file
+                covariance(2,2) = (al_err*rad_asec/1000.0_bp)**2.0_bp
+                covariance(3,3) = (ac_err*rad_asec/1000.0_bp)**2.0_bp
+             END IF
+
+             ! rotate AL&AC to RA&Dec; rotation angle theta = -(pi/2-PA)
+             rotmat = rotationMatrix(position_angle_scan-pi/2.0_bp, 1)
+             covariance(1:3,1:3) = MATMUL(rotmat,MATMUL(covariance(1:3,1:3),TRANSPOSE(rotmat)))
+
+          ELSE
+
+             ! Random component of the uncertainty
+             !
+             ! covariance(2,2) = stdev of RA
+             ! covariance(2,2) = stdev of Dec
+             ! covariance(2,3) = correlation between RA & Dec
+
+             covariance(2,3) = covariance(2,3) * &
+                  covariance(2,2) * covariance(3,3)
+             ! Copy covariance to the other off-diagonal element
+             covariance(3,2) = covariance(2,3)
+             ! Convert standard deviations to variances
+             covariance(2,2) = covariance(2,2)**2
+             covariance(3,3) = covariance(3,3)**2
+             IF (suffix /= "gdr4pvp" .AND. suffix /= "cgdr4pvp") THEN          
+                ! Convert units of covariance matrix from milliarcsec^2 to
+                ! radians^2
+                covariance(2:3,2:3) = covariance(2:3,2:3) * &
+                     (rad_asec/1000.0_bp)**2
+             END IF
+
+             ! Systematic component of the uncertainty
+             !
+             ! covariance_sys(2,2) = stdev of RA
+             ! covariance_sys(2,2) = stdev of Dec
+             ! covariance_sys(2,3) = correlation between RA & Dec
+
+             covariance_sys(2,3) = covariance_sys(2,3) * &
+                  covariance_sys(2,2) * covariance_sys(3,3)
+             ! Copy covariance to the other off-diagonal element
+             covariance_sys(3,2) = covariance_sys(2,3)
+             ! Convert standard deviations to variances
+             covariance_sys(2,2) = covariance_sys(2,2)**2
+             covariance_sys(3,3) = covariance_sys(3,3)**2
+             IF (suffix /= "gdr4pvp" .AND. suffix /= "cgdr4pvp") THEN
+                ! Convert units of covariance matrix from milliarcsec^2 to
+                ! radians^2
+                covariance_sys(2:3,2:3) = covariance_sys(2:3,2:3) * &
+                     (rad_asec/1000.0_bp)**2
+             END IF
+
+             ! Add random covariance and systematic covariance
+             ! multiplied by the number of observations in each
+             ! transit:
+             covariance = covariance + nOfCcds454 * covariance_sys
+
+          END IF
 
           ! Add one to observation counter
           i = i + 1
@@ -4890,7 +5103,7 @@ CONTAINS
                   "TRACE BACK (121)", 1)
              RETURN
           END IF
-          ! Solar-system barycenter -> Sun vector (equ)
+          ! Sun -> solar-system barycenter vector (equ)
           planeph => planetary_ephemeris(mjd_tt, 12, 11, error)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
@@ -4898,7 +5111,7 @@ CONTAINS
              RETURN
           END IF
           ! Sun -> Gaia vector (equ)
-          sun_obsy_coordinates = coordinates + planeph(1,:)
+          sun_obsy_coordinates = planeph(1,:) + coordinates
           DEALLOCATE(planeph, stat=err)
           CALL NEW(obsy_ccoord, sun_obsy_coordinates, "equatorial", t)
           IF (error) THEN
@@ -4935,7 +5148,7 @@ CONTAINS
           CALL NULLIFY(this%obs_arr(i))
           CALL NEW(this%obs_arr(i), number=number, designation=" ", &
                discovery=discovery, note1=" ", note2="S", &
-               obs_scoord=obs_scoord, covariance=covariance+covariance_sys, &
+               obs_scoord=obs_scoord, covariance=covariance, &
                obs_mask=obs_mask, mag=REAL(g_mag,bp), &
                pa_scan=position_angle_scan, filter="G", &
                obsy=obsy, obsy_ccoord=obsy_ccoord, &
@@ -6563,7 +6776,7 @@ CONTAINS
     CHARACTER(len=16)                      :: primarysort
     REAL(bp), DIMENSION(:), ALLOCATABLE    :: tmp
     REAL(bp)                               :: mjd_tdt
-    INTEGER                                :: i, iobs, iobj
+    INTEGER                                :: i, iobs, iobj, err
 
     id = " "
     IF (this%nobjects == 0) THEN
@@ -6575,6 +6788,24 @@ CONTAINS
     ! Force full sort if requested:
     IF (PRESENT(force_full)) THEN
        IF (force_full) THEN
+          IF (ASSOCIATED(this%criteria)) THEN
+             DEALLOCATE(this%criteria, stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Observations / sortObservations", &
+                     "Deallocation of array failed (1).", 1)
+                RETURN
+             END IF
+          END IF
+          IF (ASSOCIATED(this%obs_note_arr)) THEN
+             DEALLOCATE(this%obs_note_arr, stat=err)
+             IF (err /= 0) THEN
+                error = .TRUE.
+                CALL errorMessage("Observations / sortObservations", &
+                     "Deallocation of array failed (2).", 1)
+                RETURN
+             END IF
+          END IF
           this%nobjects = 0
           this%nobs = 0
        END IF
@@ -6643,19 +6874,56 @@ CONTAINS
     END DO
 
     IF (ASSOCIATED(this%ind)) THEN
-       DEALLOCATE(this%ind)
+       DEALLOCATE(this%ind, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / sortObservations", &
+               "Deallocation of array failed (2).", 1)
+          RETURN
+       END IF
     END IF
-    ALLOCATE(this%ind(SIZE(this%obs_arr,dim=1)))
+    ALLOCATE(this%ind(SIZE(this%obs_arr,dim=1)), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / sortObservations", &
+            "Allocation of array failed (1).", 1)
+       RETURN
+    END IF
+
 
     IF (ASSOCIATED(this%criteria)) THEN
-       ALLOCATE(tmp(SIZE(this%criteria,dim=1)))
+       ALLOCATE(tmp(SIZE(this%criteria,dim=1)), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / sortObservations", &
+               "Allocation of array failed (2).", 1)
+          RETURN
+       END IF
        tmp = this%criteria
-       DEALLOCATE(this%criteria)
+       DEALLOCATE(this%criteria, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / sortObservations", &
+               "Deallocation of array failed (3).", 1)
+          RETURN
+       END IF
     END IF
-    ALLOCATE(this%criteria(SIZE(this%obs_arr,dim=1)))
+    ALLOCATE(this%criteria(SIZE(this%obs_arr,dim=1)), stat=err)
+    IF (err /= 0) THEN
+       error = .TRUE.
+       CALL errorMessage("Observations / sortObservations", &
+            "Allocation of array failed (3).", 1)
+       RETURN
+    END IF
     IF (ALLOCATED(tmp)) THEN
        this%criteria(1:SIZE(tmp)) = tmp
-       DEALLOCATE(tmp)
+       DEALLOCATE(tmp, stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / sortObservations", &
+               "Deallocation of array failed (4).", 1)
+          RETURN
+       END IF
     END IF
 
     ! Update ascending epoch index vector:
@@ -6681,6 +6949,21 @@ CONTAINS
 
     ! Update number of observations:
     this%nobs = SIZE(this%obs_arr,dim=1)
+
+    IF (.NOT.ASSOCIATED(this%obs_note_arr)) THEN
+       ! obs_note_arr is implemented in the wrong place, it contains
+       ! information that should be stored separately for each
+       ! observation in the Observation class, not in the Observations
+       ! class, hence the information in obs_notes_arr is lost here:
+       ALLOCATE(this%obs_note_arr(this%nobs), stat=err)
+       IF (err /= 0) THEN
+          error = .TRUE.
+          CALL errorMessage("Observations / sortObservations", &
+               "Allocation of array failed (4).", 1)
+          RETURN
+       END IF
+       this%obs_note_arr = ""
+    END IF
 
   END SUBROUTINE sortObservations
 

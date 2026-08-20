@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see Observations_class 
 !!  
 !! @author  MG, JV, ET
-!! @version 2025-05-20
+!! @version 2026-08-12
 !!  
 MODULE Observation_cl
 
@@ -301,7 +301,7 @@ CONTAINS
     CALL NULLIFY(this%obs_scoord)
     this%covariance = 0.0_bp
     this%obs_mask          = .FALSE.
-    this%mag               = 0.0_bp
+    this%mag               = 99.0_bp
     this%mag_unc           = -1.0_bp
     this%filter              = "  "
     this%s2n               = -1.0_bp

@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Main program for various tasks that include orbit computation.
 !!
 !! @author  MG, LS, ET
-!! @version 2025-12-01
+!! @version 2026-08-17
 !!
 PROGRAM oorb
 
@@ -636,20 +636,20 @@ PROGRAM oorb
   END IF
 
   ! Read MCMC file if given
-
   mcmc_in_fname = get_cl_option("--mcmc-in=", "")
   IF (LEN_TRIM(mcmc_in_fname) /= 0) THEN
      CALL NEW(mcmc_in_file, TRIM(mcmc_in_fname))
      CALL setActionRead(mcmc_in_file)
      CALL setStatusOld(mcmc_in_file)
-     CALL OPEN (mcmc_in_file)
-     CALL readMCMCmassfile(getUnit(mcmc_in_file), mcmc_orb_arr,iorb,itrial)
+     CALL OPEN(mcmc_in_file)
+     CALL readMCMCmassfile(getUnit(mcmc_in_file), mcmc_orb_arr, iorb, itrial)
+     CALL NULLIFY(mcmc_in_file)
   ELSE
      iorb = 0
      itrial = 0
   END IF
-  ! Read MCMC .cov file if given
 
+  ! Read MCMC .cov file if given
   cov_in_fname = get_cl_option("--cov-in=", "")
   IF (LEN_TRIM(cov_in_fname) /= 0) THEN
      CALL NEW(cov_in_file, TRIM(cov_in_fname))
@@ -657,6 +657,7 @@ PROGRAM oorb
      CALL setStatusOld(cov_in_file)
      CALL OPEN(cov_in_file)
      CALL readMCMCcovfile(getUnit(cov_in_file), mcmc_cov_matrix)
+     CALL NULLIFY(cov_in_file)
   END IF
 
   ! Read orbit file if given:
@@ -1494,9 +1495,13 @@ PROGRAM oorb
      END IF
      norb = getNrOfLines(orb_in_file)
      ! Format for astorb.dat:
-     frmt = '(A6,1X,A18,1X,A15,1X,F5.2,1X,F5.2,1X,A4,1X,A5,1X,A4,' // &
-          '1X,6I4,1X,2I5,1X,I4,2I2.2,3(1X,F10.6),F10.6,1X,F10.8,1X,' // &
-          'F12.8,1X,I4,2I2.2,1X,F7.2,1X,F8.2,1X,I4,2I2,' // &
+     !frmt = '(A6,1X,A18,1X,A15,1X,F5.2,1X,F5.2,1X,A4,1X,A5,1X,A4,' // &
+     !     '1X,6I4,1X,2I5,1X,I4,2I2.2,3(1X,F10.6),F10.6,1X,F10.8,1X,' // &
+     !     'F12.8,1X,I4,2I2.2,1X,F7.2,1X,F8.2,1X,I4,2I2,' // &
+     !     '3(1X,F7.2,1X,I4,2I2))'
+     frmt = '(A6,1X,A18,1X,A15,1X,A5,1X,F5.2,1X,A4,1X,A5,1X,A4,' // &
+          '1X,6I4,1X,2I5,1X,I4,2I2.2,1X,2(F10.6,1X),F10.6,F10.6,1X,' // &
+          'F10.8,F13.8,1X,I4,2I2.2,1X,F7.2,1X,F8.2,1X,I4,2I2,' // &
           '3(1X,F7.2,1X,I4,2I2))'
      i = 0
      iorb = 0
@@ -1552,27 +1557,56 @@ PROGRAM oorb
 !!$        END IF
 !!$        ! End requirement
 !!$        ! ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        IF (LEN_TRIM(str_arr(2)) /= 0) THEN
-           !! 9-char alphanumeric encoded designation
-           !CALL encodeMPC3Designation(str_arr(2))
-           !! 7-char alphanumeric encoded designation (current MPC format)
-           CALL encodeMPCDesignation(str_arr(2))
-           IF (error) THEN
-              CALL errorMessage("oorb / astorbtoorb", &
-                   "TRACE BACK (10)",1)
-              STOP
+        IF (get_cl_option("--encode",.FALSE.)) THEN
+           IF (LEN_TRIM(str_arr(2)) /= 0) THEN
+              !! 9-char alphanumeric encoded designation
+              !CALL encodeMPC3Designation(str_arr(2))
+              !! 7-char alphanumeric encoded designation (current MPC format)
+              CALL encodeMPCDesignation(str_arr(2))
+              IF (error) THEN
+                 CALL errorMessage("oorb / astorbtoorb", &
+                      "TRACE BACK (10)",1)
+                 STOP
+              END IF
            END IF
+           DO j=1,6
+              IF (IACHAR(str_arr(1)(j:j)) == 0) THEN
+                 str_arr(1)(j:j) = CHAR(32)
+              END IF
+           END DO
+           DO j=1,18
+              IF (IACHAR(str_arr(2)(j:j)) == 0) THEN
+                 str_arr(2)(j:j) = CHAR(32)
+              END IF
+           END DO
         END IF
-        DO j=1,6
-           IF (IACHAR(str_arr(1)(j:j)) == 0) THEN
-              str_arr(1)(j:j) = CHAR(32)
+        id(1:LEN(id)) = " "
+        IF (LEN_TRIM(str_arr(1)) /= 0) THEN
+           id = TRIM(ADJUSTL(str_arr(1)))
+           IF (get_cl_option("--encode",.FALSE.)) THEN
+              !! 7-char numeric number
+              !DO WHILE (LEN_TRIM(id) < 7)
+              !   id = '0' // TRIM(id)
+              !END DO
+              !! 5-char alphanumeric number (current MPC format)
+              IF (LEN_TRIM(id) == 6) THEN
+                 CALL toInt(id(1:2), i, error)
+                 id(2:5) = id(3:6)
+                 id(6:6) = " "
+                 id(1:1) = mpc_conv_table(i)
+              ELSE IF (LEN_TRIM(id) > 6) THEN
+                 CALL errorMessage("oorb / astorbtoorb", &
+                      "Number (" // TRIM(id) // ") too large -> cannot encode.",1)
+                 STOP             
+              END IF
+              DO WHILE (LEN_TRIM(id) < 5)
+                 id = '0' // TRIM(id)
+              END DO
            END IF
-        END DO
-        DO j=1,18
-           IF (IACHAR(str_arr(2)(j:j)) == 0) THEN
-              str_arr(2)(j:j) = CHAR(32)
-           END IF
-        END DO
+        ELSE
+           id = TRIM(ADJUSTL(str_arr(2)))
+           CALL removeBlanks(id)
+        END IF
         i = i + 1
         CALL NEW(epoch, year, month, REAL(iday,bp), "TT")
         elements(3:6) = elements(3:6)*rad_deg
@@ -1583,35 +1617,11 @@ PROGRAM oorb
            STOP
         END IF
         CALL NULLIFY(epoch)
-        id(1:LEN(id)) = " "
-        IF (LEN_TRIM(str_arr(1)) /= 0) THEN
-           id = TRIM(ADJUSTL(str_arr(1)))
-           !! 7-char numeric number
-           !DO WHILE (LEN_TRIM(id) < 7)
-           !   id = '0' // TRIM(id)
-           !END DO
-           !! 5-char alphanumeric number (current MPC format)
-           IF (LEN_TRIM(id) == 6) THEN
-              CALL toInt(id(1:2), i, error)
-              id(2:5) = id(3:6)
-              id(6:6) = " "
-              id(1:1) = mpc_conv_table(i)
-           ELSE IF (LEN_TRIM(id) > 6) THEN
-              CALL errorMessage("oorb / astorbtoorb", &
-                   "Number (" // TRIM(id) // ") too large -> cannot encode.",1)
-              STOP             
-           END IF
-           DO WHILE (LEN_TRIM(id) < 5)
-              id = '0' // TRIM(id)
-           END DO
-        ELSE
-           id = TRIM(ADJUSTL(str_arr(2)))
-        END IF
         SELECT CASE (TRIM(orbit_format_out))
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, &
                 element_type_out_prm, id, orb, H_value, 1, 6, &
-                REAL(int_arr(7),bp), "OPENORB", frame=frame, &
+                REAL(int_arr(7),bp), "ASTORB", frame=frame, &
                 center=center)
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
@@ -1679,7 +1689,7 @@ PROGRAM oorb
         CASE ("des")
            CALL writeDESOrbitFile(lu_orb_out, i==1, element_type_out_prm, &
                 id_arr_in(i), orb_arr_in(i), HG_arr_in(i,1), 1, 6, &
-                arc_arr(i), "OPENORB", frame=frame, center=center)
+                arc_arr(i), "MPCORB", frame=frame, center=center)
         CASE ("orb")
            CALL writeOpenOrbOrbitFile(lu_orb_out, print_header=i==1, &
                 element_type_out=element_type_out_prm, &
@@ -2074,7 +2084,7 @@ PROGRAM oorb
                    "TRACE BACK (90)", 1)
               STOP
            END IF
-           CALL stepwiseRanging(storb, nobs_max=-1)
+           CALL stepwiseRanging2(storb)
 
         CASE ("random-walk")
 
@@ -5169,7 +5179,7 @@ PROGRAM oorb
            IF (noutlier > SIZE(obs_masks,dim=1)*outlier_fraction_max) THEN
               CALL warningMessage("oorb / lsl", &
                    "More than 20% of the observations have been" // &
-                   "discarded as outliers.", 1)
+                   " discarded as outliers.", 1)
               ! In case of too many outliers (>20% of obs), try new
               ! initial orbit or declare error.
               IF (j == SIZE(orb_arr,dim=1)) THEN
@@ -9081,15 +9091,61 @@ PROGRAM oorb
      !! Returns the total observational timespan of the input
      !! observations.
 
-     WRITE(stdout,"(F20.6)") getObservationalTimespan(obss_in)
-
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / obs_timespan", &
+                "TRACE BACK (5)", 1)
+           STOP
+        END IF
+        WRITE(stdout,"(A,1X,F20.6)") TRIM(id), getObservationalTimespan(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / obs_timespan", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END DO
 
   CASE ("obs_angular_arc")
 
      !! Returns the total observational angular arc of the input
      !! observations (first to last).
 
-     WRITE(stdout,"(F14.10)") getObservationalAngularArc(obss_in)/rad_deg
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / obs_angular_arc", &
+                "TRACE BACK (5)", 1)
+           STOP
+        END IF
+        WRITE(stdout,"(A,1X,F14.10)") TRIM(id), getObservationalAngularArc(obss_sep(i))/rad_deg
+        IF (error) THEN
+           CALL errorMessage("oorb / obs_angular_arc", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END DO
+
+
+  CASE ("obs_mean_mag")
+
+     !! Returns the total observational angular arc of the input
+     !! observations (first to last).
+
+     DO i=1,SIZE(obss_sep,dim=1)
+        id = getID(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / obs_angular_arc", &
+                "TRACE BACK (5)", 1)
+           STOP
+        END IF
+        WRITE(stdout,"(A,1X,F14.10)") TRIM(id), getMeanMagnitude(obss_sep(i))
+        IF (error) THEN
+           CALL errorMessage("oorb / obs_angular_arc", &
+                "TRACE BACK (10)", 1)
+           STOP
+        END IF
+     END DO
 
 
   CASE ("uncertainty")
@@ -9589,11 +9645,11 @@ PROGRAM oorb
      ALLOCATE (estimated_masses(nperturber, 7))
      mass = 0.0_bp
      ALLOCATE (orb_arr(SIZE(storb_arr_in)))
-     DO i = 1, SIZE(storb_arr_in)
+     DO i=1,SIZE(storb_arr_in)
         IF (ASSOCIATED(mcmc_orb_arr)) THEN
            orb_arr(i) = mcmc_orb_arr(i,SIZE(mcmc_orb_arr,dim=2))
            mass = 1.0_bp
-           CALL getParameters(orb_arr(i),mass=proposal_density_masses(i))
+           CALL getParameters(orb_arr(i), mass=proposal_density_masses(i))
         ELSE 
            orb_arr(i) = getNominalOrbit(storb_arr_in(i))
         END IF
@@ -9603,7 +9659,7 @@ PROGRAM oorb
      END DO
      ! If masses aren't already known (from resuming a previous chain) this determines initial values
      IF (mass == 0.0_bp) THEN
-        DO i = 1, nperturber
+        DO i=1,nperturber
            IF (mass_arr_in(i) <= 0.0_bp) THEN
               IF (HG_arr_in(i,1) < 99.0_bp) THEN
                  density = 1.0_bp ! g/cm3
@@ -9612,31 +9668,33 @@ PROGRAM oorb
                  const = 391222381.5_bp*pi*density/(albedo*SQRT(albedo))
                  proposal_density_masses(i) = const*10**(-0.6_bp*HG_arr_in(i, 1))
               ELSE ! This happens if the orbit doesn't include brightness info for some reason.
-                 WRITE(stderr, *) "Warning: No H magnitudes or masses in orb file. Very rough initial mass.."
+                 WRITE(stdout, *) "Warning: No H magnitudes or masses in orb file. Very rough initial mass.."
                  proposal_density_masses(i) = 0.5e-11_bp
               END IF
            ELSE
               proposal_density_masses(i) = mass_arr_in(i)
            END IF
-           WRITE (stdout, "(A,I0,A,1X,E12.6)") "# Mass of perturber #", i, ":", proposal_density_masses(i)
         END DO
      END IF
-
      ! Overrides the initial masses if the argument is given.
      IF (initial_masses /= "none") THEN 
+        WRITE(*,*) 'initial masses from command-line argument'
         READ(initial_masses, *) proposal_density_masses(1:nperturber)
      END IF
+     DO i=1,nperturber
+        WRITE (stdout,"(A,I0,A,1X,E12.6)") "# Mass of perturber #", i, ":", proposal_density_masses(i)
+     END DO
 
-     WRITE (stderr, *) "Starting mass estimation..."
+     WRITE (stdout, *) "Starting mass estimation..."
      CALL massEstimation_MCMC(storb_arr_in, orb_arr, proposal_density_masses, massest_mcmc_norb, &
           iorb_init=iorb, itrial_init=itrial, estimated_masses=estimated_masses, &
           accepted_solutions=accepted_solutions, nominal_arr=nominal_arr, &
           adaptation=massest_mcmc_adaptation, delayed_rejection=delayed_rejection,out_fname=out_fname, &
           input_cov_matrix=mcmc_cov_matrix, mass_lock=massest_mcmc_lock)
-     WRITE (stderr, *) "Mass estimation is done."
+     WRITE (stdout, *) "Mass estimation is done."
 
-     DO i = 1, nperturber
-        DO j = 1, 3
+     DO i=1,nperturber
+        DO j=1,3
            IF (proposal_density_masses(i) >= estimated_masses(i, 2*j) .AND. &
                 proposal_density_masses(i) <= estimated_masses(i, 2*j + 1)) THEN
               WRITE (stdout, "(A,1X,I0,1X,A,1X,I0,A)") "# Mass of perturber", i, "is a", j, "-sigma result."
@@ -9645,10 +9703,13 @@ PROGRAM oorb
         END DO
      END DO
 
-     DO i = 1, SIZE(storb_arr_in)
+     DO i=1,SIZE(storb_arr_in)
         CALL NULLIFY (storb_arr_in(i))
      END DO
      DEALLOCATE (storb_arr_in, proposal_density_masses, estimated_masses)
+
+
+
 
 
   CASE ("mass_estimation_march")
@@ -9659,7 +9720,12 @@ PROGRAM oorb
      res_fname  = TRIM(get_cl_option("--residuals=","mass_march_residuals.txt"))
      resolution = get_cl_option("--resolution=",0)
 
-     ALLOCATE(orb_arr(SIZE(storb_arr_in)))
+     ALLOCATE(orb_arr(SIZE(storb_arr_in)), stat=err)
+     IF (err /= 0) THEN
+        CALL errorMessage("oorb / mass_estimation_march", &
+             "Memory allocation failed (5)", 1)
+        STOP        
+     END IF
      CALL NULLIFY(epoch)
      CALL readConfigurationFile(conf_file, &
           t0=epoch, &
@@ -9680,8 +9746,7 @@ PROGRAM oorb
         STOP
      END IF
      IF (get_cl_option("--epoch-mjd-tt=", .FALSE.)) THEN
-        CALL NULLIFY(epoch)
-        ! New epoch given as MJD TT
+        ! New epoch given as command-line parameter
         mjd_tt = get_cl_option("--epoch-mjd-tt=", 0.0_bp)
         CALL NEW(epoch, mjd_tt, "TT")
         IF (error) THEN
@@ -9689,17 +9754,49 @@ PROGRAM oorb
                 "TRACE BACK (10)", 1)
            STOP
         END IF
+     ELSE IF (.NOT.exist(epoch)) THEN
+        ! Inversion epoch determined from observation dates
+        obs = getObservation(obss_in, 1)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (15)", 1)
+           STOP
+        END IF
+        t = getTime(obs)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (20)", 1)
+           STOP
+        END IF
+        mjd = getMJD(t, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (25)", 1)
+           STOP
+        END IF
+        CALL NULLIFY(t)
+        dt = getObservationalTimespan(obss_in)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (30)", 1)
+           STOP
+        END IF
+        WRITE(*,*) mjd, dt
+        mjd = REAL(NINT(mjd + dt/2.0_bp), bp)
+        CALL NEW(epoch, mjd, "TT")
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (35)", 1)
+           STOP
+        END IF
      END IF
 
      obss_sep => getSeparatedSets(obss_in)
-     obs = getObservation(obss_sep(2), 1)
-     dt = getObservationalTimespan(obss_sep(2))
      IF (error) THEN
         CALL errorMessage("oorb / mass_estimation_march", &
              "TRACE BACK (15)", 1)
         STOP
      END IF
-
      CALL NULLIFY(obss_in)
      DO i=1,SIZE(storb_arr_in)
         DO j=1,SIZE(obss_sep)
@@ -9714,11 +9811,11 @@ PROGRAM oorb
            STOP
         END IF
      END DO
-     CALL NULLIFY(obss_in)
      DO i=1,SIZE(obss_sep)
         CALL NULLIFY(obss_sep(i))
      END DO
      DEALLOCATE(obss_sep, stat=err)
+
      DO i=1,SIZE(storb_arr_in)
         t = getTime(getNominalOrbit(storb_arr_in(i)))
         IF (error) THEN
@@ -9751,33 +9848,25 @@ PROGRAM oorb
         END IF
      END DO
 
-     t = getTime(obs)
-     mjd = getMJD(t, "TT")
-     mjd = REAL(NINT(mjd + dt/2.0_bp), bp)
-     CALL NULLIFY(t)
-     CALL NEW(t, mjd, "TT")
-     IF (error) THEN
-        CALL errorMessage("oorb / mass_estimation_march", &
-             "TRACE BACK (30)", 1)
-        STOP
-     END IF
-     ! We have to have all perturbers at the same epoch so lets do that.
-     ! No need to do this if we use MCMC orbits because they're guaranteed to already be in the same epoch. 
-     DO i=1, SIZE(storb_arr_in)
-        CALL propagate(storb_arr_in(i), t)
+     ! Initial orbits
+     DO i=1,SIZE(storb_arr_in)
+        ! propagate to common epoch
+        CALL propagate(storb_arr_in(i), epoch)
         IF (error) THEN
            CALL errorMessage("oorb / mass_estimation_march", &
-                "TRACE BACK (35)", 1)
+                "TRACE BACK (30)", 1)
            STOP
         END IF
-     END DO
-
-     ! Initial orbits! Use MCMC orbits if given, --orb-in otherwise.
-     DO i=1,SIZE(storb_arr_in)
+        ! use MCMC orbits if given, --orb-in otherwise.
         IF (ASSOCIATED(mcmc_orb_arr)) THEN
            orb_arr(i) = mcmc_orb_arr(i,SIZE(mcmc_orb_arr,dim=2))
         ELSE
            orb_arr(i) = getNominalOrbit(storb_arr_in(i))
+        END IF
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (35)", 1)
+           STOP
         END IF
         CALL setParameters(orb_arr(i), dyn_model=dyn_model, &
              perturbers=perturbers, asteroid_perturbers=asteroid_perturbers, &
@@ -9787,23 +9876,28 @@ PROGRAM oorb
                 "TRACE BACK (40)", 1)
            STOP
         END IF
+        CALL propagate(orb_arr(i), epoch)
+        IF (error) THEN
+           CALL errorMessage("oorb / mass_estimation_march", &
+                "TRACE BACK (45)", 1)
+           STOP
+        END IF
      END DO
 
      CALL NEW(out_file, TRIM(out_fname))
      CALL OPEN(out_file)
      IF (error) THEN
         CALL errorMessage("oorb / mass_estimation_march", &
-             "TRACE BACK (45)", 1)
+             "TRACE BACK (50)", 1)
         STOP
      END IF
      CALL NEW(res_file, TRIM(res_fname))
      CALL OPEN(res_file)
      IF (error) THEN
         CALL errorMessage("oorb / mass_estimation_march", &
-             "TRACE BACK (50)", 1)
+             "TRACE BACK (55)", 1)
         STOP        
      END IF
-
      IF (info_verb >= 1) THEN
         WRITE(stdout, *) "Starting mass estimation with the marching method..."
      END IF
@@ -9813,6 +9907,14 @@ PROGRAM oorb
         WRITE(stdout, *) "Mass estimation completed."
         WRITE(stdout, *) "The best-fit mass is ", mass
      END IF
+     IF (error) THEN
+        CALL errorMessage("oorb / mass_estimation_march", &
+             "TRACE BACK (60)", 1)
+        error = .FALSE.
+     END IF
+
+     CALL NULLIFY(out_file)
+     CALL NULLIFY(res_file)
 
 
   CASE ("mass_residuals")

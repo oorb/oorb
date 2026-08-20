@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Lauri Siltala                                  !
 !                                                                    !
@@ -49,7 +49,7 @@
 !!</pre>
 !!
 !! @author  MG, TL
-!! @version 2025-05-20
+!! @version 2026-03-13
 !!
 MODULE planetary_data
 
@@ -144,12 +144,9 @@ MODULE planetary_data
        0.0_rprec8  /)                            !! (17) Vesta
 
   CHARACTER(len=6), DIMENSION(14,3)         :: ttl
-  CHARACTER(len=6), DIMENSION(400)          :: cnam_400
-  CHARACTER(len=6), DIMENSION(645)          :: cnam_645
+  CHARACTER(len=6), DIMENSION(645)          :: cnam
   REAL(rprec8), DIMENSION(:,:), ALLOCATABLE :: buf
-  REAL(rprec8), DIMENSION(21)               :: cval
-  REAL(rprec8), DIMENSION(400)              :: cval_400
-  REAL(rprec8), DIMENSION(645)              :: cval_645
+  REAL(rprec8), DIMENSION(645)              :: cval
   REAL(rprec8), DIMENSION(3)                :: ss
   REAL(rprec8)                              :: au, emrat
   INTEGER, DIMENSION(3,13)                  :: ipt
@@ -344,26 +341,15 @@ CONTAINS
        RETURN
     END IF
 
-    SELECT CASE (dtype)
-    CASE ("405", "406", "430", "431", "10b")
-       READ(lu, rec=1, iostat=err) ttl, cnam_400, ss, ncon, &
-            au, emrat, ipt(1:3,1:12), numde, ipt(1:3,13)
-    CASE default
-       READ(lu, rec=1, iostat=err) ttl, cnam_645, ss, ncon, &
-            au, emrat, ipt(1:3,1:12), numde, ipt(1:3,13)
-    END SELECT
+    READ(lu, rec=1, iostat=err) ttl, cnam, ss, ncon, &
+         au, emrat, ipt(1:3,1:12), numde, ipt(1:3,13)
     IF (err /= 0) THEN
        error = .TRUE.
        WRITE(0,*) "planetary_ephemeris_init(): Could not read record #1."
        RETURN
     END IF
 
-    SELECT CASE (dtype)
-    CASE ("405", "406", "430", "431", "10b")
-       READ(lu, rec=2, iostat=err) cval_400
-    CASE default
-       READ(lu, rec=2, iostat=err) cval_645
-    END SELECT
+    READ(lu, rec=2, iostat=err) cval
     IF (err /= 0) THEN
        error = .TRUE.
        WRITE(0,*) "planetary_ephemeris_init(): Could not read record #2."
@@ -414,12 +400,6 @@ CONTAINS
     END DO
 
     ! Planets' and Moon's GMs
-    SELECT CASE (dtype)
-    CASE ("405", "406", "430", "431", "10b")
-       cval = cval_400(1:21)
-    CASE default
-       cval = cval_645(1:21)
-    END SELECT
     planetary_mu = 0.0_rprec8
     IF (dtype == "405" .OR. dtype == "406") THEN
 
