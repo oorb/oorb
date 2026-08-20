@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz, Grigori Fedorets                               !
 !                                                                    !
@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2025-12-01
+!! @version 2026-08-12
 !!
 MODULE Orbit_cl
 
@@ -8789,7 +8789,8 @@ CONTAINS
                 !this_arr(i)%elements(1:3) = pos(1:3)
                 !this_arr(i)%elements(4:6) = vel(1:3)
              END IF
-             ! Use the universal Kepler solver to propagate the state vector:
+             ! Use the universal Kepler solver by Wisdom & Hernandez
+             ! (2015) to propagate the state vector:
              CALL kepler_step(this_arr(i)%center, dt, this_arr(i)%elements(1:6), elm(1:6), error)
              this_arr(i)%elements(1:6) = elm(1:6)
              IF (info_verb >= 5) THEN

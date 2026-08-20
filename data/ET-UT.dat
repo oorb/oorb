@@ -1,6 +1,6 @@
-Values of DeltaT = ET - UT
-at 0h UT of the date (specified as day, month, year)
-from The Astronomical Almanac 2005
+Values of DeltaT = ET - UT at 0h UT of the date (specified
+as day, month, year) from the Astronomical Almanac 2005
+and from https://maia.usno.navy.mil/ser7/deltat.data
 ----------------------------------------------
 1 1 1800   13.7
 1 1 1801   13.4
@@ -213,6 +213,13 @@ from The Astronomical Almanac 2005
 1 1 2017   68.5927
 1 1 2018   68.9677
 1 1 2019   69.2202
-1 1 2020   69.87
-1 1 2050  114.
-1 1 3000  250.
+1 1 2020   69.3612
+1 1 2021   69.3594
+1 1 2022   69.2945
+1 1 2023   69.2039
+1 1 2024   69.1752
+1 1 2025   69.1377
+1 1 2026   69.1099
+1 1 2050   69.
+1 1 3000   69.
+

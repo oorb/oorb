@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -42,7 +42,7 @@
 !! (The data files for DE200 and DE405 contain 20 years each; for DE406, 100 years)
 !!
 !! @author  MG
-!! @version 2025-04-29
+!! @version 2026-08-17
 !!
 PROGRAM asc2eph
 
@@ -103,7 +103,7 @@ PROGRAM asc2eph
   eph_type = get_cl_option("--eph-type=", "405")
 
   ! Write a fingerprint to the screen.
-  WRITE(*,*) " JPL ASCII-TO-DIRECT-I/O program. Last modified 4-November-2015."
+  WRITE(*,*) " JPL ASCII-TO-DIRECT-I/O program. Last modified 13-March-2026."
   WRITE(*,*) 
   WRITE(*,*) " ASSUMING TYPE OF INPUT ASCII EPHEMERIS FILE IS DE" // TRIM(eph_type)
 
@@ -129,6 +129,7 @@ PROGRAM asc2eph
   IF (header /= "GROUP   1030") CALL errprt(1030, " not header")
   READ(*,"(3D12.0)") ss_dp
   ss = REAL(ss_dp,bp)
+  WRITE(*,"(/A6,3(1X,D26.16))") '  SS =', ss
 
 
   ! Read number of constants and names of constants (GROUP 1040/4).
@@ -137,7 +138,7 @@ PROGRAM asc2eph
   READ(*,"(I6)") n
   READ(*,"(10A8)") cnam(1:n)
   ncon = n
-
+  cnam(n+1:) = ""
 
   ! Read number of values and values (GROUP 1041/4)
   CALL nxtgrp(header)
@@ -145,12 +146,13 @@ PROGRAM asc2eph
   READ(*,"(I6)") n
   READ(*,"(3D26.18)") cval_dp(1:n)
   cval = REAL(cval_dp,bp)
+  cval(n+1:) = 0.0_bp
   DO  i = 1, n
      IF (cnam(i) .EQ. "AU    ")  au    = cval(i)
      IF (cnam(i) .EQ. "EMRAT ")  emrat = cval(i)
      IF (cnam(i) .EQ. "DENUM ")  numde = cval(i)
   END DO
-  WRITE(*,"(500(/2(A8,D24.16)))") (cnam(i),cval(i),i=1,n)
+  WRITE(*,"(323(/2(A8,D24.16)))") (cnam(i),cval(i),i=1,n)
 
 
   ! Read pointers needed by interp (GROUP 1050)
@@ -240,14 +242,13 @@ PROGRAM asc2eph
 
   WRITE(*,'(/I6," ephemeris records written. Last jed = ", F12.2)') nrout, db(2)
 
-
   ! Write header records onto output file.
   nrout = 1
-  WRITE(12, rec=1, iostat=out) ttl, cnam(1:n), ss, ncon, au, emrat, ipt, numde, lpt
+  WRITE(12, rec=1, iostat=out) ttl, cnam, ss, ncon, au, emrat, ipt, numde, lpt
   IF (out /= 0) CALL errprt(nrout, "th record not written because of error")
 
   nrout = 2
-  WRITE(12, rec=2, iostat=out) cval(1:n)
+  WRITE(12, rec=2, iostat=out) cval
   IF (out /= 0) CALL errprt(nrout, "th record not written because of error")
 
   ! We're through.  Wrap it up.

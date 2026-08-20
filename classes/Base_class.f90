@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -35,7 +35,7 @@
 !! - angle = rad
 !!
 !! @author  MG, JV, TL
-!! @version 2025-04-29
+!! @version 2026-08-12
 !!
 MODULE Base_cl
 
@@ -153,12 +153,12 @@ MODULE Base_cl
   ! Used to store the number of accepted MCMC proposals
   INTEGER :: nrun = 0
 
-  TYPE :: Vector
+  TYPE :: Matrix
      REAL(bp), DIMENSION(:,:), POINTER :: elements
-  END TYPE Vector
+  END TYPE Matrix
 
   TYPE :: SparseArray
-     TYPE(Vector), DIMENSION(:), POINTER :: vectors
+     TYPE(Matrix), DIMENSION(:), POINTER :: matrices
   END TYPE SparseArray
 
 CONTAINS
@@ -620,6 +620,10 @@ CONTAINS
     rotationMatrix(i3,i3) = COS(alpha)
 
   END FUNCTION rotationMatrix
+
+
+
+
 
 
   SUBROUTINE setAccessToDataFiles()

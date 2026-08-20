@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2022,2023                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -26,7 +26,7 @@
 !! Independent utilities.
 !!
 !! @author  MG
-!! @version 2023-04-05
+!! @version 2026-08-20
 !!
 MODULE utilities
 
@@ -1260,6 +1260,33 @@ CONTAINS
 
 
 
+  SUBROUTINE removeBlanks(str)
+
+    IMPLICIT NONE
+    CHARACTER(len=*), INTENT(inout) :: str
+    INTEGER :: i, n
+
+    CALL removeLeadingBlanks(str)
+    n = len_TRIM(str)
+    i = INDEX(TRIM(str),CHAR(0))
+    DO WHILE (i /= 0)
+       str(i:n) = str(i+1:n) // CHAR(32)
+       n = len_TRIM(str)
+       i = INDEX(TRIM(str),CHAR(0))
+    END DO
+    i = INDEX(TRIM(str),CHAR(32))
+    DO WHILE (i /= 0)
+       str(i:n) = str(i+1:n) // CHAR(32)
+       n = len_TRIM(str)
+       i = INDEX(TRIM(str),CHAR(32))
+    END DO
+
+  END SUBROUTINE removeBlanks
+
+
+
+
+
   SUBROUTINE removeLeadingBlanks(str)
 
     IMPLICIT NONE
@@ -1521,7 +1548,7 @@ CONTAINS
     IF (err /= 0) THEN
        error = .TRUE.
     END IF
-    
+
   END SUBROUTINE toInt_i4
 
 

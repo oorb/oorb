@@ -1,6 +1,6 @@
 !====================================================================!
 !                                                                    !
-! Copyright 2002-2024,2025                                           !
+! Copyright 2002-2025,2026                                           !
 ! Mikael Granvik, Jenni Virtanen, Karri Muinonen, Teemu Laakso,      !
 ! Dagmara Oszkiewicz                                                 !
 !                                                                    !
@@ -27,7 +27,7 @@
 !! called from main programs.
 !!
 !! @author  MG, JV, LS, ET
-!! @version 2025-05-20
+!! @version 2026-08-17
 !!
 MODULE io
 
@@ -811,6 +811,11 @@ CONTAINS
              obs_stdev_arr(2) = obs_stdev_arr(2)*rad_asec
           END IF
        CASE ("stdev.dec")
+          IF (PRESENT(obs_stdev_arr)) THEN
+             CALL toReal(TRIM(par_val), obs_stdev_arr(3), error)
+             obs_stdev_arr(3) = obs_stdev_arr(3)*rad_asec
+          END IF
+       CASE ("corr.radec")
           IF (PRESENT(obs_stdev_arr)) THEN
              CALL toReal(TRIM(par_val), obs_stdev_arr(3), error)
              obs_stdev_arr(3) = obs_stdev_arr(3)*rad_asec
@@ -3069,11 +3074,11 @@ CONTAINS
     WRITE(lu,"(A)") "#"
 
     IF (element_type_ == "keplerian") THEN
-       WRITE(lu,"(A11,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
+       WRITE(lu,"(A11,2X,A7,1X,7(3X,A12,2X))") str(1:11), id(1:7), & 
             "a [au]", "e", "i [deg]", "node [deg]", "ap [deg]", & 
             "M [deg]", "Epoch"
     ELSE
-       WRITE(lu,"(A11,2X,A7,1X,7(3X,A12,2X))") str(1:6), id(1:7), & 
+       WRITE(lu,"(A11,2X,A7,1X,7(3X,A12,2X))") str(1:11), id(1:7), & 
             "x [au]", "y [au]", "z [au]", "dx/dt [au/d]", & 
             "dy/dt [au/d]", "dz/dt [au/d]", "Epoch" 
     END IF
@@ -3192,7 +3197,7 @@ CONTAINS
     CALL getParameters(storb, ls_element_mask=ls_element_mask)
     inform_mat_obs_bd => getBlockDiagInformationMatrix(obss)
     rchi2 = chi_square(residuals, inform_mat_obs_bd, obs_masks, errstr) / &
-         COUNT(obs_masks)
+         (COUNT(obs_masks) - COUNT(ls_element_mask))
     IF (LEN_TRIM(errstr) /= 0) THEN
        error = .TRUE.
        CALL errorMessage("io / writeNominalSolution", &
