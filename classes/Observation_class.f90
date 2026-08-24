@@ -1297,12 +1297,8 @@ CONTAINS
           DEALLOCATE(records, stat=err)
           RETURN
        END IF
-       IF (SQRT(this%covariance(2,2))*SQRT(this%covariance(3,3)) > EPSILON(correlation)) THEN
-          correlation = this%covariance(2,3) / &
-               (SQRT(this%covariance(2,2))*SQRT(this%covariance(3,3)))
-       ELSE
-          correlation = 0.0_bp
-       END IF
+       correlation = this%covariance(2,3) / &
+            (SQRT(this%covariance(2,2))*SQRT(this%covariance(3,3)))
        ! Optical:
        IF (SQRT(this%covariance(2,2))/rad_asec > 0.01_bp .AND. &
             SQRT(this%covariance(3,3))/rad_asec > 0.01_bp) THEN
@@ -1466,12 +1462,8 @@ CONTAINS
        IF (day < 10.0_bp) THEN
           day_str = "0" // TRIM(day_str)
        END IF
-       IF (SQRT(this%covariance(2,2))*SQRT(this%covariance(3,3)) > EPSILON(correlation)) THEN
-          correlation = this%covariance(2,3) / &
-               (SQRT(this%covariance(2,2))*SQRT(this%covariance(3,3)))
-       ELSE
-          correlation = 0.0_bp
-       END IF
+       correlation = this%covariance(2,3) / &
+            (SQRT(this%covariance(2,2))*SQRT(this%covariance(3,3)))
        ! Optical:
        IF (SQRT(this%covariance(2,2))/rad_asec > 0.01_bp .AND. &
             SQRT(this%covariance(3,3))/rad_asec > 0.01_bp) THEN
