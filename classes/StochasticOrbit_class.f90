@@ -2944,7 +2944,11 @@ CONTAINS
 
     CHARACTER(len=ELEMENT_TYPE_LEN)        :: cov_type_
     CHARACTER(len=FRAME_LEN)               :: frame_
+    CHARACTER(len=FRAME_LEN)               :: frame_current_
     REAL(bp), DIMENSION(6,6)               :: partials
+    REAL(bp), DIMENSION(3,3)               :: rot3
+    REAL(bp), DIMENSION(6,6)               :: rot6
+    REAL(bp)                               :: signed_eps
 
     IF (.NOT. this%is_initialized_prm) THEN
        error = .TRUE.
@@ -2986,7 +2990,25 @@ CONTAINS
     END IF
 
     IF (cov_type_ == this%cov_type_prm) THEN
-       getCovarianceMatrix_SO = this%cov_ml_cmp
+       frame_current_ = getFrame(this%orb_ml_cmp)
+       IF (cov_type_ == "cartesian" .AND. TRIM(frame_current_) /= TRIM(frame_)) THEN
+          signed_eps = 0.0_bp
+          IF (TRIM(frame_current_) == "ecliptic" .AND. TRIM(frame_) == "equatorial") THEN
+             signed_eps = eps
+          ELSE IF (TRIM(frame_current_) == "equatorial" .AND. TRIM(frame_) == "ecliptic") THEN
+             signed_eps = -eps
+          END IF
+          rot3 = 0.0_bp
+          rot3(1,1) = 1.0_bp
+          rot3(2,2) = COS(signed_eps); rot3(2,3) = -SIN(signed_eps)
+          rot3(3,2) = SIN(signed_eps); rot3(3,3) = COS(signed_eps)
+          rot6 = 0.0_bp
+          rot6(1:3,1:3) = rot3
+          rot6(4:6,4:6) = rot3
+          getCovarianceMatrix_SO = MATMUL(MATMUL(rot6, this%cov_ml_cmp), TRANSPOSE(rot6))
+       ELSE
+          getCovarianceMatrix_SO = this%cov_ml_cmp
+       END IF
        RETURN
     ELSE IF (this%cov_type_prm == "cartesian" .AND. &
          cov_type_ == "cometary") THEN
