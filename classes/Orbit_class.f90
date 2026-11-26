@@ -29,7 +29,7 @@
 !! @see StochasticOrbit_class 
 !!
 !! @author  MG, TL, KM, JV, GF
-!! @version 2026-08-12
+!! @version 2026-11-20
 !!
 MODULE Orbit_cl
 
@@ -1095,7 +1095,7 @@ CONTAINS
     CASE ("2-body amoeba")
 
        !! Minimization of the function func in N dimensions by the
-       !! downhill simplex method of Nelder and Mead. The (N + 1) × N
+       !! downhill simplex method of Nelder and Mead. The (N + 1) * N
        !! matrix p is input. Its N + 1 rows are N-dimensional vectors that
        !! are the vertices of the starting simplex. Also input is the
        !! vector y of length N + 1, whose components must be preinitialized
@@ -1190,7 +1190,7 @@ CONTAINS
     CASE ("n-body amoeba")
 
        !! Minimization of the function func in N dimensions by the
-       !! downhill simplex method of Nelder and Mead. The (N + 1) × N
+       !! downhill simplex method of Nelder and Mead. The (N + 1) * N
        !! matrix p is input. Its N + 1 rows are N-dimensional vectors that
        !! are the vertices of the starting simplex. Also input is the
        !! vector y of length N + 1, whose components must be preinitialized
@@ -5361,24 +5361,28 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Computes the light-time corrected epoch via linear extrapolation
-  !! from the objects orbital elements (this) to the retarded,
-  !! apparent position seen from the observer's coordinates
-  !! (observer) at the epoch of the object's orbital elements
-  !! (this).
+  !! Computes the light-time corrected epoch either iteratively
+  !! (default) or via linear extrapolation from the objects orbital
+  !! elements (this) to the retarded, apparent position seen from the
+  !! observer's coordinates (observer) at the epoch of the object's
+  !! orbital elements (this).
   !!
   !! Returns error.
   !!
-  FUNCTION getLightTimeCorrectedTime(this, observer)
+  FUNCTION getLightTimeCorrectedTime(this, observer, iterative)
 
     IMPLICIT NONE
     TYPE (Orbit), INTENT(in)                :: this
     TYPE (CartesianCoordinates), INTENT(in) :: observer
+    LOGICAL, INTENT(in), OPTIONAL           :: iterative
     TYPE (Time)                             :: getLightTimeCorrectedTime
     TYPE (Orbit)                            :: this_
     TYPE (CartesianCoordinates)             :: observer_
     REAL(bp), DIMENSION(6)                  :: observer_coord
-    REAL(bp)                                :: lt, rr, rv, vv, mjd_tt, delta_lt, r_so, r_op, r_sp
+    REAL(bp)                                :: lt, rr, rv, vv, mjd_tt, delta_lt, r_so, r_op, r_sp, &
+         mjd_tt_corrected, mjd_tt_corrected_old
+    INTEGER                                 :: i
+    LOGICAL                                 :: iterative_
 
     IF (.NOT. this%is_initialized) THEN
        error = .TRUE.
@@ -5394,68 +5398,92 @@ CONTAINS
        RETURN
     END IF
 
-    ! Linear solution for light-time:
-    this_ = copy(this)
-    observer_ = copy(observer)
-    mjd_tt = getMJD(this_%t, "TT")
-    CALL toCartesian(this_, frame="equatorial")
-    CALL rotateToEquatorial(observer_)
-    observer_coord = getCoordinates(observer_)
-    rr = DOT_PRODUCT((this_%elements(1:3) - observer_coord(1:3)), &
-         (this_%elements(1:3) - observer_coord(1:3)))
-    rv = DOT_PRODUCT((this_%elements(1:3) - observer_coord(1:3)), &
-         this_%elements(4:6))
-    vv = DOT_PRODUCT(this_%elements(4:6),this_%elements(4:6))
-    IF (rv**2.0_bp+rr*(sol**2.0_bp-vv) < 0.0_bp) THEN
-       error = .TRUE.
-       CALL errorMessage("Orbit / getLightTimeCorrectedTime", &
-            "Object is moving faster than light.", 1)
-       RETURN
-    END IF
-    r_so = SQRT(dot_PRODUCT(observer_coord(1:3),observer_coord(1:3)))
-    r_op = SQRT(rr)
-    r_sp = SQRT(dot_PRODUCT(this_%elements(1:3),this_%elements(1:3)))
-    ! Linear solution (KM?) + Karttunen's (Johdatus
-    ! taivaanmekaniikkaan) correction due to relativistic light
-    ! deflection:
-    lt = (SQRT(rv**2.0_bp+rr*(sol**2.0_bp-vv))-rv) / (sol**2.0_bp-vv) + &
-         (2.0_bp*planetary_mu(11)/sol**3.0_bp)*LOG((r_so + r_op + r_sp)/(r_so - r_op + r_sp))
-    CALL NULLIFY(this_)
-    CALL NULLIFY(observer_)
-    CALL NEW(getLightTimeCorrectedTime, mjd_tt-lt, "TT")
-    IF (error) THEN
-       CALL errorMessage("Orbit / getLightTimeCorrectedTime", &
-            "TRACE BACK 1", 1)
-       RETURN
+    IF (PRESENT(iterative)) THEN
+       iterative_ = iterative
+    ELSE
+       iterative_ = .TRUE.
     END IF
 
-!!$    ! Iterative solution for light-time:
-!!$    this_ = copy(this)
-!!$    observer_ = copy(observer)
-!!$    mjd_tt = getMJD(this_%t, "TT")
-!!$    CALL toCartesian(this_, frame="equatorial")
-!!$    CALL rotateToEquatorial(observer_)
-!!$    observer_coord = getCoordinates(observer_)
-!!$    lt = HUGE(lt)
-!!$    delta_lt = HUGE(delta_lt)
-!!$    DO WHILE (delta_lt > 0.00000001_bp)
-!!$       rr = DOT_PRODUCT((this_%elements(1:3) - observer_coord(1:3)), &
-!!$            (this_%elements(1:3) - observer_coord(1:3)))
-!!$       delta_lt = lt
-!!$       lt = SQRT(rr) / sol
-!!$       delta_lt = ABS(delta_lt - lt)
-!!$       CALL NULLIFY(getLightTimeCorrectedTime)
-!!$       CALL NEW(getLightTimeCorrectedTime, mjd_tt-lt, "TT")
-!!$       IF (error) THEN
-!!$          CALL errorMessage("Orbit / getLightTimeCorrectedTime", &
-!!$               "TRACE BACK 1", 1)
-!!$          RETURN
-!!$       END IF
-!!$       CALL propagate(this_, getLightTimeCorrectedTime)
-!!$    END DO
-!!$    CALL NULLIFY(observer_)
-!!$    CALL NULLIFY(this_)
-!!$    WRITE(*,*) mjd_tt-lt, lt, lt*min_day
+
+    IF (iterative_) THEN
+
+       ! Iterative solution for light-time:
+       this_ = copy(this)
+       observer_ = copy(observer)
+       mjd_tt = getMJD(this_%t, "TT")
+       CALL toCartesian(this_, frame="equatorial")
+       CALL rotateToEquatorial(observer_)
+       observer_coord = getCoordinates(observer_)
+       r_so = SQRT(dot_PRODUCT(observer_coord(1:3),observer_coord(1:3)))
+       delta_lt = HUGE(delta_lt)
+       mjd_tt_corrected =  HUGE(mjd_tt_corrected)
+       i = 0
+       ! Continue iterations for 10 loops or until the correction is
+       ! known to less than 10^â»12 days (about 0.1 microseconds):
+       DO WHILE (delta_lt > 1.0E-12_bp .AND. i < 10)
+          i = i + 1
+          rr = DOT_PRODUCT((this_%elements(1:3) - observer_coord(1:3)), &
+               (this_%elements(1:3) - observer_coord(1:3)))
+          r_op = SQRT(rr)
+          r_sp = SQRT(dot_PRODUCT(this_%elements(1:3),this_%elements(1:3)))
+          ! LT correction + Karttunen's (Johdatus
+          ! taivaanmekaniikkaan) correction due to relativistic light
+          ! deflection:
+          lt = SQRT(rr) / sol + &
+               (2.0_bp*planetary_mu(11)/sol**3.0_bp)*LOG((r_so + r_op + r_sp)/(r_so - r_op + r_sp))
+          mjd_tt_corrected_old = mjd_tt_corrected
+          mjd_tt_corrected = mjd_tt-lt
+          CALL NULLIFY(getLightTimeCorrectedTime)
+          CALL NEW(getLightTimeCorrectedTime, mjd_tt_corrected, "TT")
+          IF (error) THEN
+             CALL errorMessage("Orbit / getLightTimeCorrectedTime", &
+                  "TRACE BACK 1", 1)
+             RETURN
+          END IF
+          CALL propagate(this_, getLightTimeCorrectedTime)
+          delta_lt = ABS(mjd_tt_corrected_old - mjd_tt_corrected)
+       END DO
+       CALL NULLIFY(observer_)
+       CALL NULLIFY(this_)
+
+    ELSE
+
+       ! Linear solution for light-time:
+       this_ = copy(this)
+       observer_ = copy(observer)
+       mjd_tt = getMJD(this_%t, "TT")
+       CALL toCartesian(this_, frame="equatorial")
+       CALL rotateToEquatorial(observer_)
+       observer_coord = getCoordinates(observer_)
+       rr = DOT_PRODUCT((this_%elements(1:3) - observer_coord(1:3)), &
+            (this_%elements(1:3) - observer_coord(1:3)))
+       rv = DOT_PRODUCT((this_%elements(1:3) - observer_coord(1:3)), &
+            this_%elements(4:6))
+       vv = DOT_PRODUCT(this_%elements(4:6),this_%elements(4:6))
+       IF (rv**2.0_bp+rr*(sol**2.0_bp-vv) < 0.0_bp) THEN
+          error = .TRUE.
+          CALL errorMessage("Orbit / getLightTimeCorrectedTime", &
+               "Object is moving faster than light.", 1)
+          RETURN
+       END IF
+       r_so = SQRT(dot_PRODUCT(observer_coord(1:3),observer_coord(1:3)))
+       r_op = SQRT(rr)
+       r_sp = SQRT(dot_PRODUCT(this_%elements(1:3),this_%elements(1:3)))
+       ! Linear solution (KM?) + Karttunen's (Johdatus
+       ! taivaanmekaniikkaan) correction due to relativistic light
+       ! deflection:
+       lt = (SQRT(rv**2.0_bp+rr*(sol**2.0_bp-vv))-rv) / (sol**2.0_bp-vv) + &
+            (2.0_bp*planetary_mu(11)/sol**3.0_bp)*LOG((r_so + r_op + r_sp)/(r_so - r_op + r_sp))
+       CALL NULLIFY(this_)
+       CALL NULLIFY(observer_)
+       CALL NEW(getLightTimeCorrectedTime, mjd_tt-lt, "TT")
+       IF (error) THEN
+          CALL errorMessage("Orbit / getLightTimeCorrectedTime", &
+               "TRACE BACK 1", 1)
+          RETURN
+       END IF
+
+    END IF
 
   END FUNCTION getLightTimeCorrectedTime
 
@@ -6158,12 +6186,6 @@ CONTAINS
 
 
 
-
-
-
-
-
-
   !! *Description*:
   !!
   !! Returns the previous Newtonian periapsis time computed in the
@@ -6633,7 +6655,7 @@ CONTAINS
 
   !! *Description*:
   !!
-  !! Returns Poincaré elements calculated from Delaunay's
+  !! Returns Poincare elements calculated from Delaunay's
   !! elements. The mass of the target body is assumed to be negligible
   !! compared to the mass of the Sun.
   !  (&radic = square root)
