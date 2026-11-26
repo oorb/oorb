@@ -54,7 +54,7 @@
 !! @see StochasticOrbit_class 
 !!  
 !! @author  MG, JV, GF, LS, ET 
-!! @version 2026-08-12
+!! @version 2026-11-26
 !!  
 MODULE Observations_cl
 
@@ -4858,7 +4858,7 @@ CONTAINS
 
 
 
-    CASE ("gdr2", "gdr3", "gfpr", "cgdr3", "cgfpr", "gdr4pvp", "cgdr4pvp", "mgdr4pvp", "mcgdr4pvp")
+    CASE ("gdr2", "gdr3", "gfpr", "gdr4", "cgdr3", "cgfpr", "gdr4pvp", "cgdr4pvp", "mgdr4pvp", "mcgdr4pvp")
 
        ! Full SSO data dump from Gaia Data Release 2, 3, or the Focused Project Release.
        covariance = 0.0_bp
@@ -4937,16 +4937,23 @@ CONTAINS
                   denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
                   covariance_sys(3,3), covariance(2,2), covariance(3,3), covariance_sys(2,3), &
                   covariance(2,3), mag, g_mag, g_flux, g_flux_err, position_angle_scan, &
-                  coordinates(1:6), gaia_geocentric(1:6), astrometric_outcome_transit, &
-                  nOfCcds454
+                  coordinates(1:6), gaia_geocentric(1:6), astrometric_outcome_transit!, &
+             !nOfCcds454!, mjd_tt, ra, dec
+          ELSE IF (suffix == "gdr4") THEN
+             READ(line, *, iostat=err) source_id, transit_id, number, &
+                  denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
+                  covariance_sys(3,3), covariance_sys(2,3), covariance(2,2), covariance(3,3), &
+                  covariance(2,3), mag, g_mag, g_flux, g_flux_err, position_angle_scan, &
+                  coordinates(1:6), gaia_geocentric(1:6), obs_rejected_by_fit
           ELSE IF (suffix == "cgdr4pvp") THEN
              READ(line, *, iostat=err) source_id, transit_id, number, &
                   denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
                   covariance_sys(3,3), covariance(2,2), covariance(3,3), covariance_sys(2,3), &
                   covariance(2,3), mag, g_mag, g_flux, g_flux_err, position_angle_scan, &
                   coordinates(1:6), gaia_geocentric(1:6), astrometric_outcome_transit, &
-                  nOfCcds454, &
                   offset(1), doffset(1), offset(2), doffset(2), offset(3), doffset(3), position(1)
+             !nOfCcds454, &
+             !offset(1), doffset(1), offset(2), doffset(2), offset(3), doffset(3), position(1)
           ELSE IF (suffix == "mgdr4pvp") THEN
              READ(line, *, iostat=err) source_id, transit_id, number, &
                   denomination, fov, epoch, position(2), position(3), covariance_sys(2,2), &
@@ -5077,7 +5084,8 @@ CONTAINS
              ! Add random covariance and systematic covariance
              ! multiplied by the number of observations in each
              ! transit:
-             covariance = covariance + nOfCcds454 * covariance_sys
+             !covariance = covariance + nOfCcds454 * covariance_sys
+             covariance = covariance + covariance_sys
 
           END IF
 
@@ -5095,23 +5103,26 @@ CONTAINS
                   "TRACE BACK (120)", 1)
              RETURN
           END IF
-          ! Transform barycentric spacecraft coordinates to
-          ! heliocentric spacecraft coordinates
+
+          ! TCB -> TDB correction in length
+          gaia_geocentric = gaia_geocentric * (1.0_bp - 1.550519768E-8_bp)
+
+          ! Sun -> Gaia vector (= heliocentric satellite coordinates)
+          ! Sun -> Earth vector (equ)
           mjd_tt = getMJD(t, "TT")
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (121)", 1)
              RETURN
           END IF
-          ! Sun -> solar-system barycenter vector (equ)
-          planeph => planetary_ephemeris(mjd_tt, 12, 11, error)
+          planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
           IF (error) THEN
              CALL errorMessage("Observations / readObservationFile", &
                   "TRACE BACK (122)", 1)
              RETURN
           END IF
-          ! Sun -> Gaia vector (equ)
-          sun_obsy_coordinates = planeph(1,:) + coordinates
+          ! Sun -> Gaia = Sun -> Earth + Earth -> Gaia
+          sun_obsy_coordinates = planeph(1,:) + gaia_geocentric
           DEALLOCATE(planeph, stat=err)
           CALL NEW(obsy_ccoord, sun_obsy_coordinates, "equatorial", t)
           IF (error) THEN
@@ -5119,6 +5130,10 @@ CONTAINS
                   "TRACE BACK (125)", 1)
              RETURN
           END IF
+
+          ! Earth -> Gaia vector (= geocentric satellite coordinates)
+          CALL NULLIFY(satellite_ccoord)
+          CALL NEW(satellite_ccoord, gaia_geocentric, "equatorial", t)
 
           ! Remove erroneous relativistic light deflection for DR2.
           IF (TRIM(suffix) == "gdr2") THEN
@@ -5130,19 +5145,6 @@ CONTAINS
                   "TRACE BACK (130)", 1)
              RETURN
           END IF
-
-          ! Earth -> Gaia vector (= geocentric satellite coordinates)
-          ! Sun -> Earth vector (equ)
-          planeph => planetary_ephemeris(mjd_tt, 3, 11, error)
-          IF (error) THEN
-             CALL errorMessage("Observations / readObservationFile", &
-                  "TRACE BACK (122)", 1)
-             RETURN
-          END IF
-          coordinates = sun_obsy_coordinates - planeph(1,:)
-          CALL NULLIFY(satellite_ccoord)
-          CALL NEW(satellite_ccoord, coordinates, "equatorial", t)
-          DEALLOCATE(planeph, stat=err)
 
           ! Put it all together
           CALL NULLIFY(this%obs_arr(i))
